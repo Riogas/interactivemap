@@ -1,0 +1,28 @@
+# Ignorar entorno virtual
+venv/
+env/
+ENV/
+.venv
+
+# Ignorar archivos Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Ignorar archivos de entorno
+.env
+.env.local
+
+# Ignorar driver JT400 (debe descargarse manualmente)
+# jt400.jar se descarga desde Maven
+
+# Ignorar logs
+*.log
+
+# Ignorar IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

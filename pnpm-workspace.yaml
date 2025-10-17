@@ -1,0 +1,5 @@
+ignoredBuiltDependencies:
+  - odbc
+
+onlyBuiltDependencies:
+  - ibm_db
