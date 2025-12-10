@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Docker build artifacts (NO SUBIR A GIT)
+trackmovil.tar
+trackmovil.zip
+*.tar
+*.tar.gz
