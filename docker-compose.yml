@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Aplicación Next.js
+  trackmovil-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trackmovil-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+    networks:
+      - trackmovil-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/all-positions"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # API Python AS400 (opcional)
+  as400-api:
+    build:
+      context: ./as400-api
+      dockerfile: Dockerfile
+    container_name: trackmovil-as400-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - trackmovil-network
+    profiles:
+      - with-as400  # Solo se levanta si se especifica el profile
+
+networks:
+  trackmovil-network:
+    driver: bridge

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-impoexport async function PUT(request: NextRequest) {
+import { getServerSupabaseClient } from '@/lib/supabase';
+
+export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     let { puntoventa } = body;
@@ -21,12 +23,29 @@ impoexport async function PUT(request: NextRequest) {
 
     console.log(`🔄 Actualizando ${puntoventaArray.length} punto(s) de venta...`);
 
+    const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from('puntoventa')
       .upsert(puntoventaArray, {
         onConflict: 'puntoventa_id',
       })
-      .select(); '@/lib/supabase';
+      .select();
+
+    if (error) {
+      console.error('❌ Error al actualizar puntos de venta:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    console.log(`✅ ${data?.length || 0} punto(s) de venta actualizado(s)`);
+    return NextResponse.json({ success: true, count: data?.length || 0, data });
+  } catch (error: any) {
+    console.error('❌ Error en PUT /api/import/puntoventa:', error);
+    return NextResponse.json(
+      { error: error.message || 'Error al actualizar puntos de venta' },
+      { status: 500 }
+    );
+  }
+}
 
 /**
  * POST /api/import/puntoventa
@@ -54,6 +73,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`📦 Importando ${puntoventaArray.length} punto(s) de venta...`);
 
+    const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from('puntoventa')
       .insert(puntoventaArray)
@@ -84,55 +104,6 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PUT /api/import/puntoventa
- * Actualizar puntos de venta existentes (upsert)
- */
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { puntoventa } = body;
-
-    if (!puntoventa || !Array.isArray(puntoventa)) {
-      return NextResponse.json(
-        { error: 'Se requiere un array de puntoventa' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`🔄 Actualizando ${puntoventa.length} puntos de venta...`);
-
-    const { data, error } = await supabase
-      .from('puntoventa')
-      .upsert(puntoventa, {
-        onConflict: 'puntoventa_id', // Ajusta según tu columna única
-      })
-      .select();
-
-    if (error) {
-      console.error('❌ Error al actualizar puntos de venta:', error);
-      return NextResponse.json(
-        { error: 'Error al actualizar puntos de venta', details: error.message },
-        { status: 500 }
-      );
-    }
-
-    console.log(`✅ ${data?.length || 0} puntos de venta actualizados`);
-
-    return NextResponse.json({
-      success: true,
-      message: `${data?.length || 0} puntos de venta actualizados correctamente`,
-      data,
-    });
-  } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
-    return NextResponse.json(
-      { error: 'Error interno del servidor', details: error.message },
-      { status: 500 }
-    );
-  }
-}
-
-/**
  * DELETE /api/import/puntoventa
  * Eliminar puntos de venta por IDs
  */
@@ -150,6 +121,7 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`🗑️ Eliminando ${puntoventa_ids.length} puntos de venta...`);
 
+    const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from('puntoventa')
       .delete()

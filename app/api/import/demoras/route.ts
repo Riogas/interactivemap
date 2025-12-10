@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-impoexport async function PUT(request: NextRequest) {
+import { getServerSupabaseClient } from '@/lib/supabase';
+
+export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     let { demoras } = body;
@@ -21,12 +23,29 @@ impoexport async function PUT(request: NextRequest) {
 
     console.log(`🔄 Actualizando ${demorasArray.length} demora(s)...`);
 
+    const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from('demoras')
       .upsert(demorasArray, {
         onConflict: 'demora_id',
       })
-      .select(); '@/lib/supabase';
+      .select();
+
+    if (error) {
+      console.error('❌ Error al actualizar demoras:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    console.log(`✅ ${data?.length || 0} demora(s) actualizada(s)`);
+    return NextResponse.json({ success: true, count: data?.length || 0, data });
+  } catch (error: any) {
+    console.error('❌ Error en PUT /api/import/demoras:', error);
+    return NextResponse.json(
+      { error: error.message || 'Error al actualizar demoras' },
+      { status: 500 }
+    );
+  }
+}
 
 /**
  * POST /api/import/demoras
@@ -54,6 +73,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`📦 Importando ${demorasArray.length} demora(s)...`);
 
+    const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from('demoras')
       .insert(demorasArray)
@@ -84,55 +104,6 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PUT /api/import/demoras
- * Actualizar demoras existentes (upsert)
- */
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { demoras } = body;
-
-    if (!demoras || !Array.isArray(demoras)) {
-      return NextResponse.json(
-        { error: 'Se requiere un array de demoras' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`🔄 Actualizando ${demoras.length} demoras...`);
-
-    const { data, error } = await supabase
-      .from('demoras')
-      .upsert(demoras, {
-        onConflict: 'demora_id', // Ajusta según tu columna única
-      })
-      .select();
-
-    if (error) {
-      console.error('❌ Error al actualizar demoras:', error);
-      return NextResponse.json(
-        { error: 'Error al actualizar demoras', details: error.message },
-        { status: 500 }
-      );
-    }
-
-    console.log(`✅ ${data?.length || 0} demoras actualizadas`);
-
-    return NextResponse.json({
-      success: true,
-      message: `${data?.length || 0} demoras actualizadas correctamente`,
-      data,
-    });
-  } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
-    return NextResponse.json(
-      { error: 'Error interno del servidor', details: error.message },
-      { status: 500 }
-    );
-  }
-}
-
-/**
  * DELETE /api/import/demoras
  * Eliminar demoras por IDs
  */
@@ -150,6 +121,7 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`🗑️ Eliminando ${demora_ids.length} demoras...`);
 
+    const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from('demoras')
       .delete()
