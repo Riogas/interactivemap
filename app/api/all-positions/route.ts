@@ -11,7 +11,6 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const empresaIdsParam = searchParams.get('empresaIds');
     const movilIdParam = searchParams.get('movilId'); // Nuevo parámetro
-    const escenarioId = searchParams.get('escenario_id') || '1000'; // Cambiado a 1000
     
     // Parsear empresaIds si existe
     const empresaIds = empresaIdsParam 
@@ -31,13 +30,12 @@ export async function GET(request: NextRequest) {
     // Obtener móviles activos con sus datos
     let movilesQuery = supabase
       .from('moviles')
-      .select('movil, empresa_fletera_id, matricula, estado')
-      .eq('escenario_id', escenarioId)
+      .select('id, empresa_fletera_id, matricula, estado_nro, descripcion')
       .eq('mostrar_en_mapa', true);
     
     // Filtro por móvil específico (tiene prioridad)
     if (movilIdParam) {
-      movilesQuery = movilesQuery.eq('movil', parseInt(movilIdParam));
+      movilesQuery = movilesQuery.eq('id', movilIdParam);
     } else if (empresaIds && empresaIds.length > 0) {
       movilesQuery = movilesQuery.in('empresa_fletera_id', empresaIds);
     }
@@ -58,38 +56,37 @@ export async function GET(request: NextRequest) {
     }
     
     // Obtener las últimas posiciones GPS de cada móvil
-    const movilIds = moviles.map(m => m.movil.toString());
+    const movilIds = moviles.map((m: any) => m.id);
     
     // Query para obtener la última posición de cada móvil
     const { data: gpsData, error: gpsError } = await supabase
       .from('gps_tracking_extended')
       .select('*')
-      .in('movil', movilIds)
-      .eq('escenario_id', escenarioId)
+      .in('movil_id', movilIds)
       .order('fecha_hora', { ascending: false });
     
     if (gpsError) throw gpsError;
     
     // Agrupar por móvil y obtener la última posición de cada uno
     const latestPositions = new Map();
-    gpsData?.forEach(pos => {
-      if (!latestPositions.has(pos.movil)) {
-        latestPositions.set(pos.movil, pos);
+    gpsData?.forEach((pos: any) => {
+      if (!latestPositions.has(pos.movil_id)) {
+        latestPositions.set(pos.movil_id, pos);
       }
     });
     
     // Combinar datos de móviles con posiciones
-    const data = moviles.map((movil, index) => {
-      const position = latestPositions.get(movil.movil.toString());
+    const data = moviles.map((movil: any, index: number) => {
+      const position = latestPositions.get(movil.id);
       
       if (!position) return null; // Sin posición GPS
       
       return {
-        movilId: movil.movil,
-        movilName: `Móvil-${movil.movil}`,
+        movilId: movil.id,
+        movilName: movil.descripcion || `Móvil-${movil.id}`,
         color: getMovilColor(index),
         empresa_fletera_id: movil.empresa_fletera_id,
-        estado: movil.estado,
+        estado: movil.estado_nro,
         position: {
           identificador: position.id,
           origen: 'SUPABASE',
@@ -100,7 +97,7 @@ export async function GET(request: NextRequest) {
           distRecorrida: position.distancia_recorrida || 0,
         },
       };
-    }).filter(m => m !== null); // Solo móviles con posición GPS
+    }).filter((m: any) => m !== null); // Solo móviles con posición GPS
 
     console.log(`✅ API /all-positions - Returning ${data.length} móviles with GPS data`);
 

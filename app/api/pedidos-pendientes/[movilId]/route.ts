@@ -16,9 +16,9 @@ export async function GET(
     const { data: pedidos, error } = await supabase
       .from('pedidos')
       .select(`
-        pedido_id,
+        id,
         escenario_id,
-        movil,
+        movil_id,
         estado,
         latitud,
         longitud,
@@ -45,7 +45,7 @@ export async function GET(
         cliente_observacion,
         empresa_fletera_id
       `)
-      .eq('movil', movilId)
+      .eq('movil_id', movilId)
       .eq('escenario_id', escenarioId)
       .is('fecha_hora_cumplido', null) // Solo pedidos NO cumplidos (pendientes)
       .not('latitud', 'is', null) // Solo pedidos con coordenadas

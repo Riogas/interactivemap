@@ -13,41 +13,95 @@ export interface Database {
     Tables: {
       moviles: {
         Row: {
-          movil: number
-          escenario_id: number
+          id: string
+          descripcion: string
+          detalle_html: string | null
+          distancia_max_mts_cump_pedidos: number | null
           empresa_fletera_id: number
-          estado: number | null
+          empresa_fletera_nom: string | null
+          estado_desc: string | null
+          estado_nro: number | null
+          fch_hora_mov: string | null
+          fch_hora_upd_firestore: string | null
           matricula: string | null
           mostrar_en_mapa: boolean | null
+          nro: number | null
+          obs: string | null
+          pedidos_pendientes: number | null
+          permite_baja_momentanea: boolean | null
+          print_screen: boolean | null
+          se_puede_activar_desde_la_app: boolean | null
+          se_puede_desactivar_desde_la_app: boolean | null
+          tamano_lote: number | null
+          visible_en_app: boolean | null
+          debug_mode: boolean | null
+          gps_n8n: boolean | null
+          grabar_pantalla: boolean | null
           created_at: string | null
           updated_at: string | null
         }
         Insert: {
-          movil: number
-          escenario_id: number
+          id: string
+          descripcion: string
+          detalle_html?: string | null
+          distancia_max_mts_cump_pedidos?: number | null
           empresa_fletera_id: number
-          estado?: number | null
+          empresa_fletera_nom?: string | null
+          estado_desc?: string | null
+          estado_nro?: number | null
+          fch_hora_mov?: string | null
+          fch_hora_upd_firestore?: string | null
           matricula?: string | null
           mostrar_en_mapa?: boolean | null
+          nro?: number | null
+          obs?: string | null
+          pedidos_pendientes?: number | null
+          permite_baja_momentanea?: boolean | null
+          print_screen?: boolean | null
+          se_puede_activar_desde_la_app?: boolean | null
+          se_puede_desactivar_desde_la_app?: boolean | null
+          tamano_lote?: number | null
+          visible_en_app?: boolean | null
+          debug_mode?: boolean | null
+          gps_n8n?: boolean | null
+          grabar_pantalla?: boolean | null
           created_at?: string | null
           updated_at?: string | null
         }
         Update: {
-          movil?: number
-          escenario_id?: number
+          id?: string
+          descripcion?: string
+          detalle_html?: string | null
+          distancia_max_mts_cump_pedidos?: number | null
           empresa_fletera_id?: number
-          estado?: number | null
+          empresa_fletera_nom?: string | null
+          estado_desc?: string | null
+          estado_nro?: number | null
+          fch_hora_mov?: string | null
+          fch_hora_upd_firestore?: string | null
           matricula?: string | null
           mostrar_en_mapa?: boolean | null
+          nro?: number | null
+          obs?: string | null
+          pedidos_pendientes?: number | null
+          permite_baja_momentanea?: boolean | null
+          print_screen?: boolean | null
+          se_puede_activar_desde_la_app?: boolean | null
+          se_puede_desactivar_desde_la_app?: boolean | null
+          tamano_lote?: number | null
+          visible_en_app?: boolean | null
+          debug_mode?: boolean | null
+          gps_n8n?: boolean | null
+          grabar_pantalla?: boolean | null
           created_at?: string | null
           updated_at?: string | null
         }
       }
       pedidos: {
         Row: {
-          pedido_id: number
+          id: number
           escenario_id: number
-          movil: number | null
+          movil_id: number | null
           estado: number | null
           latitud: number | null
           longitud: number | null
@@ -78,9 +132,9 @@ export interface Database {
           empresa_fletera_id: number | null
         }
         Insert: {
-          pedido_id: number
+          id: number
           escenario_id: number
-          movil?: number | null
+          movil_id?: number | null
           estado?: number | null
           latitud?: number | null
           longitud?: number | null
@@ -111,9 +165,9 @@ export interface Database {
           empresa_fletera_id?: number | null
         }
         Update: {
-          pedido_id?: number
+          id?: number
           escenario_id?: number
-          movil?: number | null
+          movil_id?: number | null
           estado?: number | null
           latitud?: number | null
           longitud?: number | null
@@ -197,7 +251,8 @@ export interface Database {
       gps_tracking_extended: {
         Row: {
           id: number
-          movil: string
+          movil_id: string
+          pedido_id: number | null
           device_id: string | null
           usuario: string | null
           escenario_id: number | null
@@ -250,7 +305,8 @@ export interface Database {
         }
         Insert: {
           id?: number
-          movil: string
+          movil_id: string
+          pedido_id?: number | null
           device_id?: string | null
           usuario?: string | null
           escenario_id?: number | null
@@ -303,7 +359,8 @@ export interface Database {
         }
         Update: {
           id?: number
-          movil?: string
+          movil_id?: string
+          pedido_id?: number | null
           device_id?: string | null
           usuario?: string | null
           escenario_id?: number | null

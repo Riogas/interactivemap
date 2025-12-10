@@ -68,10 +68,10 @@ export function useGPSTracking(
             const newPosition = payload.new as GPSTrackingSupabase;
             
             // Filtrar por móvil si se especifica
-            if (!movilIds || movilIds.includes(newPosition.movil)) {
+            if (!movilIds || movilIds.includes(newPosition.movil_id)) {
               setPositions(prev => {
                 const updated = new Map(prev);
-                updated.set(newPosition.movil, newPosition);
+                updated.set(newPosition.movil_id, newPosition);
                 return updated;
               });
               
@@ -95,10 +95,10 @@ export function useGPSTracking(
             console.log('📍 Posición GPS actualizada:', payload.new);
             const updatedPosition = payload.new as GPSTrackingSupabase;
             
-            if (!movilIds || movilIds.includes(updatedPosition.movil)) {
+            if (!movilIds || movilIds.includes(updatedPosition.movil_id)) {
               setPositions(prev => {
                 const updated = new Map(prev);
-                updated.set(updatedPosition.movil, updatedPosition);
+                updated.set(updatedPosition.movil_id, updatedPosition);
                 return updated;
               });
               
@@ -190,7 +190,6 @@ export function useMoviles(
           event: '*', // INSERT, UPDATE, DELETE
           schema: 'public',
           table: 'moviles',
-          filter: `escenario_id=eq.${escenarioId}`,
         },
         (payload) => {
           console.log('🚗 Cambio en móviles:', payload);
@@ -201,11 +200,7 @@ export function useMoviles(
             // Filtrar por empresa si se especifica
             if (!empresaIds || empresaIds.includes(movil.empresa_fletera_id)) {
               setMoviles(prev => {
-                const filtered = prev.filter(m => 
-                  !(m.movil === movil.movil && 
-                    m.escenario_id === movil.escenario_id && 
-                    m.empresa_fletera_id === movil.empresa_fletera_id)
-                );
+                const filtered = prev.filter(m => m.id !== movil.id);
                 return [...filtered, movil];
               });
               
@@ -215,11 +210,7 @@ export function useMoviles(
             }
           } else if (payload.eventType === 'DELETE') {
             const oldMovil = payload.old as MovilSupabase;
-            setMoviles(prev => prev.filter(m => 
-              !(m.movil === oldMovil.movil && 
-                m.escenario_id === oldMovil.escenario_id && 
-                m.empresa_fletera_id === oldMovil.empresa_fletera_id)
-            ));
+            setMoviles(prev => prev.filter(m => m.id !== oldMovil.id));
           }
         }
       )
@@ -252,7 +243,7 @@ export function usePedidos(
     
     let filterString = `escenario_id=eq.${escenarioId}`;
     if (movilId) {
-      filterString += `,movil=eq.${movilId}`;
+      filterString += `,movil_id=eq.${movilId}`;
     }
     
     const channel = supabase
@@ -272,7 +263,7 @@ export function usePedidos(
             const pedido = payload.new as PedidoSupabase;
             setPedidos(prev => {
               const filtered = prev.filter(p => 
-                !(p.pedido_id === pedido.pedido_id && p.escenario_id === pedido.escenario_id)
+                !(p.id === pedido.id && p.escenario_id === pedido.escenario_id)
               );
               return [...filtered, pedido];
             });
@@ -283,7 +274,7 @@ export function usePedidos(
           } else if (payload.eventType === 'DELETE') {
             const oldPedido = payload.old as PedidoSupabase;
             setPedidos(prev => prev.filter(p => 
-              !(p.pedido_id === oldPedido.pedido_id && p.escenario_id === oldPedido.escenario_id)
+              !(p.id === oldPedido.id && p.escenario_id === oldPedido.escenario_id)
             ));
           }
         }
@@ -404,12 +395,12 @@ export function usePedidosRealtime(
             const newPedido = payload.new as PedidoSupabase;
             
             // Filtrar por móvil si se especifica
-            if (newPedido.movil && (!movilIds || movilIds.includes(newPedido.movil))) {
+            if (newPedido.movil_id && (!movilIds || movilIds.includes(newPedido.movil_id))) {
               // Solo agregar si es pendiente y tiene coordenadas
               if (!newPedido.fecha_hora_cumplido && newPedido.latitud && newPedido.longitud) {
                 setPedidos(prev => {
                   const updated = new Map(prev);
-                  updated.set(newPedido.pedido_id, newPedido);
+                  updated.set(newPedido.id, newPedido);
                   return updated;
                 });
                 
@@ -432,22 +423,22 @@ export function usePedidosRealtime(
             console.log('📦 Pedido actualizado:', payload.new);
             const updatedPedido = payload.new as PedidoSupabase;
             
-            if (updatedPedido.movil && (!movilIds || movilIds.includes(updatedPedido.movil))) {
+            if (updatedPedido.movil_id && (!movilIds || movilIds.includes(updatedPedido.movil_id))) {
               setPedidos(prev => {
                 const updated = new Map(prev);
                 
                 // Si el pedido fue cumplido, eliminarlo de pendientes
                 if (updatedPedido.fecha_hora_cumplido) {
-                  updated.delete(updatedPedido.pedido_id);
-                  console.log(`✅ Pedido ${updatedPedido.pedido_id} cumplido - Eliminado de pendientes`);
+                  updated.delete(updatedPedido.id);
+                  console.log(`✅ Pedido ${updatedPedido.id} cumplido - Eliminado de pendientes`);
                 }
                 // Si aún está pendiente y tiene coordenadas, actualizarlo
                 else if (updatedPedido.latitud && updatedPedido.longitud) {
-                  updated.set(updatedPedido.pedido_id, updatedPedido);
+                  updated.set(updatedPedido.id, updatedPedido);
                 }
                 // Si perdió coordenadas, eliminarlo
                 else {
-                  updated.delete(updatedPedido.pedido_id);
+                  updated.delete(updatedPedido.id);
                 }
                 
                 return updated;
@@ -473,7 +464,7 @@ export function usePedidosRealtime(
             
             setPedidos(prev => {
               const updated = new Map(prev);
-              updated.delete(deletedPedido.pedido_id);
+              updated.delete(deletedPedido.id);
               return updated;
             });
             

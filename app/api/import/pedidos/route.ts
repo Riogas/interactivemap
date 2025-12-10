@@ -2,6 +2,79 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
 /**
+ * Transforma campos de PascalCase a snake_case para Supabase
+ */
+function transformPedidoToSupabase(pedido: any) {
+  // Manejar fecha especial "0000-00-00T00:00:00" -> null
+  const parseDate = (dateStr: string) => {
+    if (!dateStr || dateStr.startsWith('0000-00-00')) {
+      return null;
+    }
+    return dateStr;
+  };
+
+  return {
+    id: pedido.id,
+    escenario: pedido.escenario,
+    
+    // Datos del cliente
+    cliente_ciudad: pedido.ClienteCiudad?.trim() || pedido.cliente_ciudad,
+    cliente_direccion: pedido.ClienteDireccion?.trim() || pedido.cliente_direccion,
+    cliente_direccion_esq1: pedido.ClienteDireccionEsq1?.trim() || pedido.cliente_direccion_esq1,
+    cliente_direccion_obs: pedido.ClienteDireccionObs?.trim() || pedido.cliente_direccion_obs,
+    cliente_nombre: pedido.ClienteNombre?.trim() || pedido.cliente_nombre,
+    cliente_nro: pedido.ClienteNro ?? pedido.cliente_nro,
+    cliente_obs: pedido.ClienteObs?.trim() || pedido.cliente_obs,
+    cliente_tel: pedido.ClienteTel?.trim() || pedido.cliente_tel,
+    
+    // Info del pedido
+    demora_informada: pedido.DemoraInformada ?? pedido.demora_informada ?? 0,
+    detalle_html: pedido.DetalleHTML || pedido.detalle_html || '',
+    empresa_fletera_id: pedido.EFleteraId ?? pedido.empresa_fletera_id,
+    empresa_fletera_nom: pedido.EFleteraNom?.trim() || pedido.empresa_fletera_nom,
+    estado_nro: pedido.EstadoNro ?? pedido.estado_nro,
+    fpago_obs1: pedido.FPagoObs1?.trim() || pedido.fpago_obs1,
+    
+    // Fechas
+    fch_hora_max_ent_comp: parseDate(pedido.FchHoraMaxEntComp || pedido.fch_hora_max_ent_comp),
+    fch_hora_mov: parseDate(pedido.FchHoraMov || pedido.fch_hora_mov),
+    fch_hora_para: parseDate(pedido.FchHoraPara || pedido.fch_hora_para),
+    fch_hora_upd_firestore: parseDate(pedido.FchHoraUPDFireStore || pedido.fch_hora_upd_firestore),
+    fch_para: parseDate(pedido.FchPara || pedido.fch_para),
+    
+    // URLs y precios
+    google_maps_url: pedido.GoogleMapsURL || pedido.google_maps_url || '',
+    imp_bruto: pedido.ImpBruto ? parseFloat(pedido.ImpBruto) : pedido.imp_bruto,
+    imp_flete: pedido.ImpFlete ? parseFloat(pedido.ImpFlete) : pedido.imp_flete,
+    
+    // Asignación y estado
+    movil: pedido.Movil ?? pedido.movil,
+    orden_cancelacion: pedido.OrdenCancelacion || pedido.orden_cancelacion || 'N',
+    otros_productos: pedido.OtrosProductos || pedido.otros_productos || 'N',
+    pedido_obs: pedido.PedidoObs?.trim() || pedido.pedido_obs,
+    precio: pedido.Precio ? parseFloat(pedido.Precio) : pedido.precio,
+    prioridad: pedido.Prioridad ?? pedido.prioridad ?? 0,
+    
+    // Producto
+    producto_cant: pedido.ProductoCant ? parseFloat(pedido.ProductoCant) : pedido.producto_cant,
+    producto_cod: pedido.ProductoCod?.trim() || pedido.producto_cod,
+    producto_nom: pedido.ProductoNom?.trim() || pedido.producto_nom,
+    servicio_nombre: pedido.ServicioNombre?.trim() || pedido.servicio_nombre,
+    
+    // Sub estado
+    sub_estado_desc: pedido.SubEstadoDesc?.trim() || pedido.sub_estado_desc,
+    sub_estado_nro: pedido.SubEstadoNro ?? pedido.sub_estado_nro,
+    
+    // Otros
+    tipo: pedido.Tipo || pedido.tipo || '',
+    visible_en_app: pedido.VisibleEnApp || pedido.visible_en_app || 'S',
+    waze_url: pedido.WazeURL || pedido.waze_url || '',
+    zona_nro: pedido.ZonaNro ?? pedido.zona_nro,
+    ubicacion: pedido.ubicacion || '',
+  };
+}
+
+/**
  * POST /api/import/pedidos
  * Importar pedidos desde fuente externa
  */
@@ -27,9 +100,12 @@ export async function POST(request: NextRequest) {
 
     console.log(`📦 Importando ${pedidosArray.length} pedido(s)...`);
 
+    // Transformar campos a formato Supabase
+    const transformedPedidos = pedidosArray.map(transformPedidoToSupabase);
+
     const { data, error } = await supabase
       .from('pedidos')
-      .insert(pedidosArray)
+      .insert(transformedPedidos)
       .select();
 
     if (error) {
@@ -82,10 +158,13 @@ export async function PUT(request: NextRequest) {
 
     console.log(`🔄 Actualizando ${pedidosArray.length} pedido(s)...`);
 
+    // Transformar campos a formato Supabase
+    const transformedPedidos = pedidosArray.map(transformPedidoToSupabase);
+
     const { data, error } = await supabase
       .from('pedidos')
-      .upsert(pedidosArray, {
-        onConflict: 'pedido_id',
+      .upsert(transformedPedidos, {
+        onConflict: 'id', // PRIMARY KEY de la tabla
       })
       .select();
 
@@ -134,7 +213,7 @@ export async function DELETE(request: NextRequest) {
     const { data, error } = await supabase
       .from('pedidos')
       .delete()
-      .in('pedido_id', pedido_ids)
+      .in('id', pedido_ids)
       .select();
 
     if (error) {

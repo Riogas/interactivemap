@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const { data: coordinates, error } = await supabase
       .from('gps_tracking_extended')
       .select('*')
-      .eq('movil', movilId)
+      .eq('movil_id', parseInt(movilId))
       .eq('escenario_id', escenarioId)
       .order('fecha_hora', { ascending: false })
       .limit(limit ? parseInt(limit) : 100);

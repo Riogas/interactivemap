@@ -18,7 +18,7 @@ export async function GET(
     let query = supabase
       .from('pedidos')
       .select('*')
-      .eq('movil', movilId)
+      .eq('movil_id', movilId)
       .eq('escenario_id', escenarioId)
       .is('fecha_hora_cumplido', null);
     

@@ -14,9 +14,9 @@ export async function GET(request: NextRequest) {
     const { data: pedidos, error } = await supabase
       .from('pedidos')
       .select(`
-        pedido_id,
+        id,
         escenario_id,
-        movil,
+        movil_id,
         estado,
         latitud,
         longitud,
