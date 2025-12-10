@@ -1,20 +1,34 @@
 import { NextResponse } from 'next/server';
-import { getEmpresasFleteras } from '@/lib/db';
+import { getServerSupabaseClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    console.log('🏢 API /empresas - Fetching empresas fleteras from AS400');
+    const { searchParams } = new URL(request.url);
+    const escenarioId = searchParams.get('escenario_id') || '1000'; // Cambiado a 1000
     
-    const empresas = await getEmpresasFleteras();
+    console.log('🏢 API /empresas - Fetching empresas fleteras from Supabase');
+    
+    const supabase = getServerSupabaseClient();
+    
+    const { data: empresas, error } = await supabase
+      .from('empresas_fleteras')
+      .select('*')
+      .eq('escenario_id', escenarioId)
+      .eq('estado', 1) // Solo empresas activas
+      .order('nombre');
 
-    console.log(`✅ API /empresas - Returning ${empresas.length} empresas`);
+    if (error) {
+      throw error;
+    }
+
+    console.log(`✅ API /empresas - Returning ${empresas?.length || 0} empresas`);
 
     return NextResponse.json({
       success: true,
-      count: empresas.length,
-      data: empresas,
+      count: empresas?.length || 0,
+      data: empresas || [],
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

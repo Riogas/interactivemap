@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { MovilData, PedidoServicio } from '@/types';
+import { MovilData, PedidoServicio, PedidoPendiente } from '@/types';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
 import PedidoServicioPopup from './PedidoServicioPopup';
+import LayersControl from './LayersControl';
 import { format } from 'date-fns';
 import 'leaflet/dist/leaflet.css';
 
@@ -25,16 +26,44 @@ interface MapViewProps {
   selectedMovil?: number; // Móvil seleccionado para animación
   popupMovil?: number; // Móvil con popup abierto
   showPendientes?: boolean; // Mostrar marcadores de pendientes
+  showCompletados?: boolean; // Mostrar solo marcadores de completados (sin animación)
+  selectedMovilesCount?: number; // Número de móviles seleccionados en la lista
+  defaultMapLayer?: 'streets' | 'satellite' | 'terrain' | 'cartodb' | 'dark' | 'light'; // Capa por defecto del mapa
   onMovilClick?: (movilId: number | undefined) => void;
   onShowAnimation?: (movilId: number) => void;
+  onCloseAnimation?: () => void; // Cerrar animación
   onShowPendientes?: () => void;
+  onShowCompletados?: () => void;
 }
 
-function MapUpdater({ moviles, focusedMovil, selectedMovil }: { moviles: MovilData[]; focusedMovil?: number; selectedMovil?: number }) {
+function MapUpdater({ moviles, focusedMovil, selectedMovil, selectedMovilesCount }: { 
+  moviles: MovilData[]; 
+  focusedMovil?: number; 
+  selectedMovil?: number;
+  selectedMovilesCount?: number;
+}) {
   const map = useMap();
   const hasInitialized = useRef(false);
   const lastSelectedMovil = useRef<number | undefined>(undefined);
   const lastFocusedMovil = useRef<number | undefined>(undefined);
+  const lastSelectedMovilesCount = useRef<number>(0);
+  const userHasInteracted = useRef(false);
+
+  // Detectar cuando el usuario mueve el mapa manualmente
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      userHasInteracted.current = true;
+    };
+
+    // Detectar drag (pan) y zoom manual
+    map.on('dragstart', handleUserInteraction);
+    map.on('zoomstart', handleUserInteraction);
+
+    return () => {
+      map.off('dragstart', handleUserInteraction);
+      map.off('zoomstart', handleUserInteraction);
+    };
+  }, [map]);
 
   // Efecto para centrar el mapa SOLO la primera vez que se cargan móviles
   useEffect(() => {
@@ -51,6 +80,55 @@ function MapUpdater({ moviles, focusedMovil, selectedMovil }: { moviles: MovilDa
       }
     }
   }, [map, moviles.length]); // Solo cuando cambia la cantidad de móviles (primera carga)
+
+  // Efecto para centrar el mapa SOLO cuando cambia la selección (no por actualizaciones GPS)
+  useEffect(() => {
+    // Solo ajustar si cambió la cantidad de móviles seleccionados
+    const selectionChanged = selectedMovilesCount !== lastSelectedMovilesCount.current;
+    
+    if (!selectionChanged) {
+      return; // No hacer nada si es solo actualización de coordenadas GPS
+    }
+
+    // Actualizar la referencia
+    lastSelectedMovilesCount.current = selectedMovilesCount || 0;
+
+    // Resetear flag de interacción del usuario cuando cambia la selección
+    userHasInteracted.current = false;
+
+    // No ajustar si hay animación activa
+    if (selectedMovil) {
+      return;
+    }
+
+    // Si no hay móviles para mostrar, no hacer nada
+    if (moviles.length === 0) {
+      return;
+    }
+
+    const movilesConPosicion = moviles.filter(m => m.currentPosition);
+    
+    if (movilesConPosicion.length === 0) {
+      return;
+    }
+
+    // Si hay múltiples móviles, ajustar bounds para mostrar todos
+    if (movilesConPosicion.length > 1) {
+      const bounds = movilesConPosicion.map(m => 
+        [m.currentPosition!.coordX, m.currentPosition!.coordY] as [number, number]
+      );
+      console.log('📍 Ajustando mapa para mostrar', movilesConPosicion.length, 'móviles seleccionados');
+      console.log('📍 IDs de móviles:', movilesConPosicion.map(m => m.id).join(', '));
+      map.fitBounds(bounds, { padding: [80, 80], maxZoom: 15 });
+    } else if (movilesConPosicion.length === 1) {
+      // Si solo hay un móvil con posición, centrar en él
+      const movil = movilesConPosicion[0];
+      console.log('📍 Centrando mapa en único móvil visible:', movil.id);
+      map.setView([movil.currentPosition!.coordX, movil.currentPosition!.coordY], 15, {
+        animate: true,
+      });
+    }
+  }, [map, selectedMovilesCount, moviles, selectedMovil]); // Solo depende de selectedMovilesCount para cambios de selección
 
   // Efecto para centrar el mapa cuando se enfoca un móvil desde la lista
   useEffect(() => {
@@ -168,7 +246,7 @@ function AnimationFollower({
   return null;
 }
 
-export default function MapView({ moviles, focusedMovil, selectedMovil, popupMovil, showPendientes, onMovilClick, onShowAnimation, onShowPendientes }: MapViewProps) {
+export default function MapView({ moviles, focusedMovil, selectedMovil, popupMovil, showPendientes, showCompletados, selectedMovilesCount = 0, defaultMapLayer = 'streets', onMovilClick, onShowAnimation, onCloseAnimation, onShowPendientes, onShowCompletados }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
   
@@ -178,6 +256,7 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
   const [animationSpeed, setAnimationSpeed] = useState(1); // 1x, 2x, 4x, etc.
   const [startTime, setStartTime] = useState('00:00');
   const [endTime, setEndTime] = useState('23:59');
+  const [simplifiedPath, setSimplifiedPath] = useState(true); // Mostrar solo últimas 3 líneas
   const [selectedPedidoServicio, setSelectedPedidoServicio] = useState<PedidoServicio | null>(null);
   const animationRef = useRef<number | null>(null);
   const animationStartTime = useRef<number>(0); // Timestamp de inicio de animación
@@ -281,37 +360,218 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
     return deduplicados;
   }, [moviles, selectedMovil]);
 
+  // Extraer pedidos completados del móvil enfocado (para mostrar sin animación)
+  const pedidosCompletadosFocused = useMemo(() => {
+    if (!focusedMovil || !showCompletados) {
+      return [];
+    }
+    
+    const movilData = moviles.find(m => m.id === focusedMovil);
+    if (!movilData?.history) {
+      return [];
+    }
+
+    // Filtrar y extraer pedidos completados
+    const completados = movilData.history
+      .filter(coord => {
+        const origen = coord.origen?.trim();
+        const esOrigenCorrecto = origen === 'UPDPEDIDOS' || origen === 'DYLPEDIDOS';
+        const tienePedidoId = coord.pedidoId && coord.pedidoId > 0;
+        
+        const clienteXNum = typeof coord.clienteX === 'string'
+          ? parseFloat((coord.clienteX as string).trim())
+          : typeof coord.clienteX === 'number'
+            ? coord.clienteX
+            : 0;
+        const clienteYNum = typeof coord.clienteY === 'string'
+          ? parseFloat((coord.clienteY as string).trim())
+          : typeof coord.clienteY === 'number'
+            ? coord.clienteY
+            : 0;
+        
+        const tieneCoordenadasValidas = 
+          clienteXNum && !isNaN(clienteXNum) && clienteXNum !== 0 &&
+          clienteYNum && !isNaN(clienteYNum) && clienteYNum !== 0;
+
+        return esOrigenCorrecto && tienePedidoId && tieneCoordenadasValidas;
+      })
+      .map(coord => {
+        const clienteXNum = typeof coord.clienteX === 'string'
+          ? parseFloat((coord.clienteX as string).trim())
+          : coord.clienteX!;
+        const clienteYNum = typeof coord.clienteY === 'string'
+          ? parseFloat((coord.clienteY as string).trim())
+          : coord.clienteY!;
+
+        return {
+          tipo: coord.obs?.trim() === 'Services' ? 'SERVICIO' as const : 'PEDIDO' as const,
+          id: coord.pedidoId!,
+          cliid: 0,
+          clinom: '',
+          fecha: coord.fechaInsLog,
+          x: clienteXNum,
+          y: clienteYNum,
+          estado: 2,
+          subestado: 0,
+        } as PedidoServicio;
+      });
+
+    // Deduplicar por pedidoId
+    const deduplicados = completados.reduce((acc, curr) => {
+      const existe = acc.find(item => item.id === curr.id);
+      if (!existe) {
+        acc.push(curr);
+      }
+      return acc;
+    }, [] as PedidoServicio[]);
+
+    console.log(`✅ Completados para móvil ${focusedMovil}: ${deduplicados.length} pedidos/servicios`);
+    return deduplicados;
+  }, [moviles, focusedMovil, showCompletados]);
+
   // Móvil actual del popup
   const movilActual = popupMovil ? moviles.find(m => m.id === popupMovil) : null;
   
   // Móvil seleccionado para mostrar pendientes
   const movilConPendientes = (popupMovil || focusedMovil) ? moviles.find(m => m.id === (popupMovil || focusedMovil)) : null;
   
-  // Filtrar móviles a mostrar: si hay un móvil enfocado, solo mostrar ese
-  const movilesToShow = focusedMovil ? moviles.filter(m => m.id === focusedMovil) : moviles;
+  // Móvil con completados para mostrar (cuando showCompletados está activo)
+  const movilConCompletados = focusedMovil ? moviles.find(m => m.id === focusedMovil) : null;
+  
+  // Los móviles ya vienen filtrados desde page.tsx según la selección múltiple
+  // No necesitamos filtrar aquí nuevamente
+  const movilesToShow = moviles;
 
-  const createCustomIcon = (color: string) => {
+  const createCustomIcon = (color: string, movilId?: number, isInactive?: boolean) => {
+    // Si el móvil está inactivo, mostramos un ícono de alarma parpadeante
+    if (isInactive) {
+      return L.divIcon({
+        className: '', // Sin className para evitar conflictos CSS
+        html: `
+          <div style="
+            width: 46px;
+            height: 46px;
+            position: absolute;
+            left: -23px;
+            top: -23px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+          ">
+            <!-- Círculo principal con ícono de alarma -->
+            <div style="
+              width: 40px;
+              height: 40px;
+              background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+              border: 3px solid white;
+              border-radius: 50%;
+              box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              animation: alarm-pulse 1.5s infinite, alarm-ring 0.3s infinite;
+            ">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));">
+                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+              </svg>
+            </div>
+            <!-- Badge con número del móvil -->
+            ${movilId ? `
+            <div style="
+              position: absolute;
+              bottom: -6px;
+              background-color: white;
+              color: #DC2626;
+              border: 2px solid #EF4444;
+              border-radius: 10px;
+              padding: 2px 6px;
+              font-size: 11px;
+              font-weight: bold;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+              white-space: nowrap;
+              line-height: 1;
+              animation: badge-pulse 1.5s infinite;
+            ">${movilId}</div>
+            ` : ''}
+          </div>
+          <style>
+            @keyframes alarm-pulse {
+              0%, 100% { 
+                transform: scale(1); 
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
+              }
+              50% { 
+                transform: scale(1.1); 
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4), 0 0 0 10px rgba(239, 68, 68, 0);
+              }
+            }
+            @keyframes alarm-ring {
+              0%, 100% { transform: rotate(-3deg); }
+              50% { transform: rotate(3deg); }
+            }
+            @keyframes badge-pulse {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.7; }
+            }
+          </style>
+        `,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23],
+      });
+    }
+
+    // Ícono normal para móviles activos
     return L.divIcon({
       className: '', // Sin className para evitar conflictos CSS
       html: `
         <div style="
-          width: 40px;
-          height: 40px;
+          width: 46px;
+          height: 46px;
           position: absolute;
-          left: -20px;
-          top: -20px;
-          background-color: ${color};
-          border: 3px solid white;
-          border-radius: 50%;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+          left: -23px;
+          top: -23px;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
-          animation: pulse 2s infinite;
         ">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-            <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
-          </svg>
+          <!-- Círculo principal con ícono del auto -->
+          <div style="
+            width: 40px;
+            height: 40px;
+            background-color: ${color};
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s infinite;
+          ">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+              <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
+            </svg>
+          </div>
+          <!-- Badge con número del móvil -->
+          ${movilId ? `
+          <div style="
+            position: absolute;
+            bottom: -6px;
+            background-color: white;
+            color: ${color};
+            border: 2px solid ${color};
+            border-radius: 10px;
+            padding: 2px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            white-space: nowrap;
+            line-height: 1;
+          ">${movilId}</div>
+          ` : ''}
         </div>
         <style>
           @keyframes pulse {
@@ -320,8 +580,8 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
           }
         </style>
       `,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
+      iconSize: [46, 46],
+      iconAnchor: [23, 23],
     });
   };
 
@@ -541,10 +801,8 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
         className="h-full w-full"
         zoomControl={true}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        {/* Control de capas base (calles, satélite, terreno, etc.) */}
+        <LayersControl defaultLayer={defaultMapLayer} />
         
         {selectedMovil ? (
           // Mostrar SOLO el móvil seleccionado con su recorrido
@@ -577,53 +835,101 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
 
                 return (
                   <div key={movil.id}>
-                    {/* Línea del recorrido con estilo discontinuo y gradiente */}
+                    {/* Línea del recorrido - SIMPLIFICADA O COMPLETA según switch */}
                     {pathCoordinates.length > 1 && (
                       <>
-                        {/* Línea base más gruesa y transparente (como sombra) */}
-                        <Polyline
-                          positions={pathCoordinates}
-                          pathOptions={{
-                            color: '#333',
-                            weight: 6,
-                            opacity: 0.2,
-                            lineCap: 'round',
-                            lineJoin: 'round',
-                          }}
-                        />
-                        {/* Línea principal discontinua */}
-                        <Polyline
-                          positions={pathCoordinates}
-                          pathOptions={{
-                            color: movil.color,
-                            weight: 4,
-                            opacity: 0.8,
-                            dashArray: '10, 8', // Línea discontinua
-                            lineCap: 'round',
-                            lineJoin: 'round',
-                          }}
-                        />
-                        {/* Segmentos individuales con gradiente de opacidad */}
-                        {pathCoordinates.map((coord, index) => {
-                          if (index === pathCoordinates.length - 1) return null;
-                          
-                          const nextCoord = pathCoordinates[index + 1];
-                          // Opacidad decrece con la antigüedad (más reciente = más opaco)
-                          const opacity = 1 - (index / pathCoordinates.length) * 0.5;
-                          
-                          return (
+                        {simplifiedPath ? (
+                          /* MODO SIMPLIFICADO: Solo últimas 3 líneas desde el punto actual hacia atrás */
+                          <>
+                            {pathCoordinates.map((coord, index) => {
+                              if (index === pathCoordinates.length - 1) return null;
+                              
+                              const nextCoord = pathCoordinates[index + 1];
+                              const totalLines = pathCoordinates.length - 1;
+                              
+                              // Mostrar solo las últimas 3 líneas (desde el punto actual hacia atrás)
+                              // index >= totalLines - 3 significa las últimas 3 líneas
+                              if (index < totalLines - 3) return null;
+                              
+                              return (
+                                <React.Fragment key={`simplified-${index}`}>
+                                  {/* Sombra */}
+                                  <Polyline
+                                    positions={[coord, nextCoord]}
+                                    pathOptions={{
+                                      color: '#333',
+                                      weight: 6,
+                                      opacity: 0.2,
+                                      lineCap: 'round',
+                                      lineJoin: 'round',
+                                    }}
+                                  />
+                                  {/* Línea principal */}
+                                  <Polyline
+                                    positions={[coord, nextCoord]}
+                                    pathOptions={{
+                                      color: movil.color,
+                                      weight: 4,
+                                      opacity: 0.9,
+                                      dashArray: '10, 8',
+                                      lineCap: 'round',
+                                      lineJoin: 'round',
+                                    }}
+                                  />
+                                </React.Fragment>
+                              );
+                            })}
+                          </>
+                        ) : (
+                          /* MODO COMPLETO: Todas las líneas con difuminado progresivo */
+                          <>
+                            {/* Línea base (sombra) muy sutil */}
                             <Polyline
-                              key={`segment-${index}`}
-                              positions={[coord, nextCoord]}
+                              positions={pathCoordinates}
                               pathOptions={{
-                                color: movil.color,
-                                weight: 3,
-                                opacity: opacity,
+                                color: '#333',
+                                weight: 6,
+                                opacity: 0.1,
                                 lineCap: 'round',
+                                lineJoin: 'round',
                               }}
                             />
-                          );
-                        })}
+                            {/* Segmentos individuales con difuminado progresivo */}
+                            {pathCoordinates.map((coord, index) => {
+                              if (index === pathCoordinates.length - 1) return null;
+                              
+                              const nextCoord = pathCoordinates[index + 1];
+                              const totalLines = pathCoordinates.length - 1;
+                              
+                              // Las últimas 3 líneas (desde el punto actual hacia atrás) son nítidas
+                              const distanceFromEnd = totalLines - index;
+                              const isRecent = distanceFromEnd <= 3;
+                              
+                              // Opacidad: últimas 3 = 0.9, anteriores casi transparentes (0.05-0.15)
+                              const opacity = isRecent 
+                                ? 0.9 
+                                : Math.max(0.05, 0.15 * (index / (totalLines - 3)));
+                              
+                              const weight = isRecent ? 4 : 2;
+                              const dashArray = isRecent ? '10, 8' : undefined;
+                              
+                              return (
+                                <Polyline
+                                  key={`segment-${index}`}
+                                  positions={[coord, nextCoord]}
+                                  pathOptions={{
+                                    color: movil.color,
+                                    weight: weight,
+                                    opacity: opacity,
+                                    dashArray: dashArray,
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                  }}
+                                />
+                              );
+                            })}
+                          </>
+                        )}
                       </>
                     )}
                     
@@ -771,7 +1077,7 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
                     {/* Marcador principal (posición actual) */}
                     <Marker
                       position={[movil.currentPosition!.coordX, movil.currentPosition!.coordY]}
-                      icon={createCustomIcon(movil.color)}
+                      icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
                     >
                       <Popup>
                         <div className="p-2">
@@ -930,7 +1236,7 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
                 <Marker
                   key={movil.id}
                   position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
-                  icon={createCustomIcon(movil.color)}
+                  icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
                   eventHandlers={{
                     click: () => {
                       // Cerrar popup de pedido/servicio si está abierto
@@ -948,16 +1254,41 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
         )}
         
         {/* Marcadores de pedidos/servicios pendientes - solo si showPendientes está activo */}
-        {showPendientes && movilConPendientes && movilConPendientes.pendientes && (
+        {showPendientes && moviles && (
           <>
-            {movilConPendientes.pendientes.map((item) => {
+            {moviles.flatMap(movil => 
+              (movil.pendientes || []).map((item) => {
+                if (!item.x || !item.y) return null;
+
+                return (
+                  <Marker
+                    key={`${item.tipo}-${item.id}-${movil.id}`}
+                    position={[item.x, item.y]}
+                    icon={item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon()}
+                    eventHandlers={{
+                      click: () => {
+                        // Abrir popup del pedido/servicio
+                        setSelectedPedidoServicio(item);
+                      },
+                    }}
+                  />
+                );
+              })
+            ).filter(Boolean)}
+          </>
+        )}
+
+        {/* Marcadores de pedidos/servicios completados - solo si showCompletados está activo */}
+        {showCompletados && pedidosCompletadosFocused.length > 0 && (
+          <>
+            {pedidosCompletadosFocused.map((item) => {
               if (!item.x || !item.y) return null;
 
               return (
                 <Marker
-                  key={`${item.tipo}-${item.id}`}
+                  key={`completado-${item.tipo}-${item.id}`}
                   position={[item.x, item.y]}
-                  icon={item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon()}
+                  icon={createCompletadoIcon(item.tipo)}
                   eventHandlers={{
                     click: () => {
                       // Abrir popup del pedido/servicio
@@ -970,7 +1301,12 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
           </>
         )}
         
-        <MapUpdater moviles={moviles} focusedMovil={focusedMovil} selectedMovil={selectedMovil} />
+        <MapUpdater 
+          moviles={moviles} 
+          focusedMovil={focusedMovil} 
+          selectedMovil={selectedMovil}
+          selectedMovilesCount={selectedMovilesCount}
+        />
         <AnimationFollower 
           moviles={moviles}
           selectedMovil={selectedMovil}
@@ -990,9 +1326,12 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
           onPlayPause={handlePlayPause}
           onReset={handleReset}
           onSpeedChange={handleSpeedChange}
+          onClose={onCloseAnimation}
           startTime={startTime}
           endTime={endTime}
           onTimeRangeChange={handleTimeRangeChange}
+          simplifiedPath={simplifiedPath}
+          onSimplifiedPathChange={setSimplifiedPath}
         />
       )}
 
@@ -1000,6 +1339,7 @@ export default function MapView({ moviles, focusedMovil, selectedMovil, popupMov
       {popupMovil && movilActual && movilActual.currentPosition && (
         <MovilInfoPopup 
           movil={movilActual} 
+          selectedMovilesCount={selectedMovilesCount}
           onClose={() => {
             if (onMovilClick) {
               onMovilClick(undefined);

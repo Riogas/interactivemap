@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMovilCoordinates } from '@/lib/db'; // Conexión real DB2
-// import { getMovilCoordinates } from '@/lib/db-mock'; // Datos mock para desarrollo
+import { getServerSupabaseClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const movilId = searchParams.get('movilId');
-  const startDate = searchParams.get('startDate');
+  const escenarioId = searchParams.get('escenario_id') || '1000'; // Cambiado a 1000
   const limit = searchParams.get('limit');
 
   if (!movilId) {
@@ -18,16 +17,23 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const coordinates = await getMovilCoordinates(
-      parseInt(movilId),
-      startDate || undefined,
-      limit ? parseInt(limit) : 100
-    );
+    const supabase = getServerSupabaseClient();
+    
+    // Obtener historial de coordenadas del móvil
+    const { data: coordinates, error } = await supabase
+      .from('gps_tracking_extended')
+      .select('*')
+      .eq('movil', movilId)
+      .eq('escenario_id', escenarioId)
+      .order('fecha_hora', { ascending: false })
+      .limit(limit ? parseInt(limit) : 100);
+
+    if (error) throw error;
 
     return NextResponse.json({
       success: true,
-      data: coordinates,
-      count: coordinates.length,
+      data: coordinates || [],
+      count: coordinates?.length || 0,
     });
   } catch (error) {
     console.error('API Error:', error);

@@ -11,17 +11,20 @@ interface MovilInfoPopupProps {
   onClose: () => void;
   onShowAnimation?: () => void;
   onShowPendientes?: () => void;
+  selectedMovilesCount?: number; // Número de móviles seleccionados
 }
 
 export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({ 
   movil, 
   onClose,
   onShowAnimation,
-  onShowPendientes
+  onShowPendientes,
+  selectedMovilesCount = 0
 }) => {
   if (!movil || !movil.currentPosition) return null;
 
   const totalPendientes = (movil.pedidosPendientes || 0) + (movil.serviciosPendientes || 0);
+  const canShowAnimation = selectedMovilesCount === 1; // Solo si hay exactamente 1 seleccionado
 
   return (
     <AnimatePresence>
@@ -52,9 +55,9 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
               </div>
               <button
                 onClick={onClose}
-                className="w-7 h-7 rounded-full bg-white bg-opacity-20 hover:bg-opacity-30 transition-all flex items-center justify-center backdrop-blur-sm"
+                className="w-7 h-7 rounded-full bg-white hover:bg-gray-100 transition-all flex items-center justify-center shadow-md"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -93,7 +96,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   <div>
                     <div className="text-[9px] text-purple-600 font-semibold mb-0.5">📏 Distancia</div>
                     <div className="text-lg font-bold text-purple-900">
-                      {movil.currentPosition.distRecorrida.toFixed(2)}
+                      {(movil.currentPosition.distRecorrida / 1000).toFixed(2)}
                       <span className="text-[10px] font-normal text-purple-600 ml-0.5">km</span>
                     </div>
                   </div>
@@ -141,7 +144,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                     </div>
                     <div className="text-center">
                       <div className="text-xl font-bold text-green-600">
-                        {movil.currentPosition.distRecorrida.toFixed(1)}
+                        {(movil.currentPosition.distRecorrida / 1000).toFixed(1)}
                       </div>
                       <div className="text-[9px] text-gray-600 font-semibold">Kilómetros</div>
                     </div>
@@ -150,20 +153,35 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
               </div>
             )}
 
-            {/* Timestamp */}
-            <div className="flex items-center justify-center gap-1.5 text-[9px] text-gray-500 pt-1.5 border-t border-gray-200">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>
-                {format(new Date(movil.currentPosition.fechaInsLog), "dd/MM/yyyy HH:mm:ss", { locale: es })}
-              </span>
+            {/* Timestamp - Última Actualización */}
+            <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-2.5 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-[9px] text-gray-500 font-semibold">Última Actualización</div>
+                    <div className="text-xs font-bold text-gray-900">
+                      {format(new Date(movil.currentPosition.fechaInsLog), "HH:mm:ss", { locale: es })}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[9px] text-gray-500">Fecha</div>
+                  <div className="text-[10px] font-semibold text-gray-700">
+                    {format(new Date(movil.currentPosition.fechaInsLog), "dd/MM/yyyy", { locale: es })}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Botones de acción */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              {/* Botón para ver animación del recorrido - Siempre visible */}
-              {onShowAnimation && (
+            <div className={`grid gap-2 pt-1 ${canShowAnimation && totalPendientes > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {/* Botón para ver animación del recorrido - Solo si hay 1 móvil seleccionado */}
+              {onShowAnimation && canShowAnimation && (
                 <button
                   onClick={onShowAnimation}
                   className="py-2.5 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg font-semibold text-xs transition-all duration-200 flex items-center justify-center gap-1.5 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"

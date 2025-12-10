@@ -9,9 +9,12 @@ interface RouteAnimationControlProps {
   onPlayPause: () => void;
   onReset: () => void;
   onSpeedChange: (speed: number) => void;
+  onClose?: () => void; // Función para cerrar la animación
   startTime?: string;
   endTime?: string;
   onTimeRangeChange?: (startTime: string, endTime: string) => void;
+  simplifiedPath?: boolean;
+  onSimplifiedPathChange?: (value: boolean) => void;
 }
 
 const SPEED_OPTIONS = [
@@ -31,9 +34,12 @@ export default function RouteAnimationControl({
   onPlayPause,
   onReset,
   onSpeedChange,
+  onClose,
   startTime = '00:00',
   endTime = '23:59',
   onTimeRangeChange,
+  simplifiedPath = true,
+  onSimplifiedPathChange,
 }: RouteAnimationControlProps) {
   return (
     <motion.div
@@ -48,15 +54,28 @@ export default function RouteAnimationControl({
             <span className="text-lg">🎬</span>
             <h3 className="font-bold text-gray-800">Animación del Recorrido</h3>
           </div>
-          <div className="text-xs text-gray-600 font-semibold">
-            {progress.toFixed(1)}% completado
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-gray-600 font-semibold">
+              {progress.toFixed(1)}% completado
+            </div>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 transition-all flex items-center justify-center shadow-sm"
+                title="Cerrar animación"
+              >
+                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
         {/* Time Range Selector */}
         {onTimeRangeChange && (
           <div className="mb-3 pb-3 border-b border-gray-200">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 mb-3">
               <div className="flex items-center gap-2 flex-1">
                 <label className="text-xs text-gray-600 font-medium whitespace-nowrap">
                   🕐 Desde:
@@ -80,6 +99,28 @@ export default function RouteAnimationControl({
                 />
               </div>
             </div>
+            
+            {/* Switch para simplificar trayectoria */}
+            {onSimplifiedPathChange && (
+              <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2 border border-blue-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">🎯 Ruta Simplificada</span>
+                  <span className="text-xs text-gray-500">(Solo últimas 3 líneas)</span>
+                </div>
+                <button
+                  onClick={() => onSimplifiedPathChange(!simplifiedPath)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    simplifiedPath ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      simplifiedPath ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
           </div>
         )}
 

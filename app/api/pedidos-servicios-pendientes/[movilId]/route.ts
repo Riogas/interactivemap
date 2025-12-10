@@ -1,17 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPedidosServiciosPendientes } from '@/lib/db';
+import { getServerSupabaseClient } from '@/lib/supabase';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ movilId: string }> }
 ) {
   try {
-    const resolvedParams = await params; // Next.js 15 requiere await
+    const resolvedParams = await params;
     const movilId = parseInt(resolvedParams.movilId);
     const searchParams = request.nextUrl.searchParams;
-    const fechaDesde = searchParams.get('fechaDesde') || undefined;
+    const escenarioId = searchParams.get('escenario_id') || '1000'; // Cambiado a 1000
+    const fechaDesde = searchParams.get('fechaDesde');
 
-    const result = await getPedidosServiciosPendientes(movilId, fechaDesde);
+    const supabase = getServerSupabaseClient();
+    
+    // Obtener pedidos pendientes (sin fecha_hora_cumplido)
+    let query = supabase
+      .from('pedidos')
+      .select('*')
+      .eq('movil', movilId)
+      .eq('escenario_id', escenarioId)
+      .is('fecha_hora_cumplido', null);
+    
+    if (fechaDesde) {
+      query = query.gte('fecha_para', fechaDesde);
+    }
+    
+    const { data: pedidos, error } = await query.order('prioridad', { ascending: false });
+    
+    if (error) throw error;
+    
+    const result = {
+      success: true,
+      movilId,
+      fechaDesde: fechaDesde || new Date().toISOString().split('T')[0],
+      total: pedidos?.length || 0,
+      pedidosPendientes: pedidos?.length || 0,
+      serviciosPendientes: 0, // Puede ajustarse según tu lógica de negocio
+      data: pedidos || [],
+    };
 
     return NextResponse.json(result);
   } catch (error) {

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getLatestPosition } from '@/lib/db'; // Conexión real DB2
-// import { getLatestPosition } from '@/lib/db-mock'; // Datos mock para desarrollo
+import { getServerSupabaseClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const movilId = searchParams.get('movilId');
+  const escenarioId = searchParams.get('escenario_id') || '1000'; // Cambiado a 1000
 
   if (!movilId) {
     return NextResponse.json(
@@ -16,7 +16,21 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const position = await getLatestPosition(parseInt(movilId));
+    const supabase = getServerSupabaseClient();
+    
+    // Obtener la posición más reciente del móvil desde gps_tracking_extended
+    const { data: position, error } = await supabase
+      .from('gps_tracking_extended')
+      .select('*')
+      .eq('movil', movilId)
+      .eq('escenario_id', escenarioId)
+      .order('fecha_hora', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+      throw error;
+    }
 
     if (!position) {
       return NextResponse.json(

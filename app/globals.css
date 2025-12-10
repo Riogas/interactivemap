@@ -56,3 +56,89 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* Estilos mejorados para el control de capas de Leaflet */
+.leaflet-control-layers {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(10px);
+  border-radius: 12px !important;
+  border: 2px solid rgba(59, 130, 246, 0.3) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
+  padding: 4px !important;
+}
+
+.leaflet-control-layers-toggle {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2v20M2 12h20'/%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3C/svg%3E") !important;
+  background-size: 24px 24px !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 10px !important;
+}
+
+.leaflet-control-layers-toggle:hover {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+.leaflet-control-layers-expanded {
+  padding: 12px !important;
+  min-width: 220px !important;
+}
+
+.leaflet-control-layers-list {
+  margin-top: 8px !important;
+}
+
+.leaflet-control-layers-base label {
+  display: flex !important;
+  align-items: center !important;
+  padding: 8px 12px !important;
+  margin: 4px 0 !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+.leaflet-control-layers-base label:hover {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  transform: translateX(4px);
+}
+
+.leaflet-control-layers-base input[type="radio"] {
+  margin-right: 8px !important;
+  accent-color: #3b82f6 !important;
+  cursor: pointer !important;
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Separador visual */
+.leaflet-control-layers-separator {
+  height: 2px !important;
+  background: linear-gradient(to right, transparent, rgba(59, 130, 246, 0.3), transparent) !important;
+  margin: 8px 0 !important;
+  border: none !important;
+}
+
+/* Posicionar el control en la esquina inferior derecha */
+.leaflet-bottom.leaflet-right {
+  margin-bottom: 20px !important;
+  margin-right: 20px !important;
+}
+
+/* Animación de entrada */
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.leaflet-control-layers-expanded {
+  animation: slideInFromRight 0.3s ease;
+}
