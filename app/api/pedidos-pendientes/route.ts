@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       .from('pedidos')
       .select(`
         id,
-        escenario_id,
+        escenario,
         movil_id,
         estado,
         latitud,
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
         cliente_observacion,
         empresa_fletera_id
       `)
-      .eq('escenario_id', escenarioId)
+      .eq('escenario', escenarioId)
       .is('fecha_hora_cumplido', null) // Solo pedidos NO cumplidos (pendientes)
       .not('latitud', 'is', null) // Solo pedidos con coordenadas
       .not('longitud', 'is', null)
