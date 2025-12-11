@@ -3,7 +3,11 @@
 ## 📊 Estado Actual
 
 ### ✅ Completado en Windows
-- [x] `.env.production` local actualizado con API correcta
+- [x] `.env.production` local actualizaDebe mostrar:
+```
+EXTERNAL_API_URL=https://www.riogas.com.uy
+NEXT_PUBLIC_EXTERNAL_API_URL=https://www.riogas.com.uy
+```n API correcta
 - [x] `.env.production.template` creado y subido a Git
 - [x] `CONFIGURACION_API_LOGIN.md` documentación completa
 - [x] `GUIA_RAPIDA_UPDATE_API.md` guía paso a paso
@@ -85,8 +89,8 @@ El script `update-env-api.sh` automáticamente:
 
 1. ✅ Verifica que estás en el directorio correcto
 2. ✅ Crea backup de tu `.env.production` actual
-3. ✅ Actualiza `EXTERNAL_API_URL=http://192.168.1.72:8082`
-4. ✅ Agrega `NEXT_PUBLIC_EXTERNAL_API_URL=http://192.168.1.72:8082`
+3. ✅ Actualiza `EXTERNAL_API_URL=https://www.riogas.com.uy`
+4. ✅ Agrega `NEXT_PUBLIC_EXTERNAL_API_URL=https://www.riogas.com.uy`
 5. ✅ Te pregunta si quieres reconstruir el contenedor
 6. ✅ Si dices sí:
    - Hace `docker build`
