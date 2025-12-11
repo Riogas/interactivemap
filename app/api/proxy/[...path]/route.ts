@@ -78,11 +78,12 @@ async function proxyRequest(
       headers['Authorization'] = authHeader;
     }
 
-    // Copiar Cookie header si existe
-    const cookieHeader = request.headers.get('Cookie');
-    if (cookieHeader) {
-      headers['Cookie'] = cookieHeader;
-    }
+    // NO enviar cookies del navegador - pueden causar conflictos
+    // La API parece generar su propio GX_CLIENT_ID
+    // const cookieHeader = request.headers.get('Cookie');
+    // if (cookieHeader) {
+    //   headers['Cookie'] = cookieHeader;
+    // }
 
     // Preparar body para métodos que lo requieren
     let body: string | undefined;
@@ -110,6 +111,7 @@ async function proxyRequest(
     });
 
     console.log(`📥 Response Status: ${response.status}`);
+    console.log(`📥 Response Headers:`, Object.fromEntries(response.headers.entries()));
 
     // Intentar parsear como JSON
     let data;
@@ -117,11 +119,18 @@ async function proxyRequest(
     
     if (contentType && contentType.includes('application/json')) {
       data = await response.json();
-      console.log(`📥 Response Data:`, data);
+      console.log(`📥 Response Data:`, JSON.stringify(data, null, 2));
     } else {
       const text = await response.text();
       console.log(`📥 Response Text:`, text);
-      data = { response: text };
+      
+      // Intentar parsear como JSON aunque el Content-Type no lo indique
+      try {
+        data = JSON.parse(text);
+        console.log(`📥 Parsed as JSON:`, JSON.stringify(data, null, 2));
+      } catch {
+        data = { response: text };
+      }
     }
 
     // Copiar cookies de la respuesta si existen
