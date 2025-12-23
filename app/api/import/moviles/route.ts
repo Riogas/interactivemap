@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { successResponse, errorResponse, logRequest } from '@/lib/api-response';
 
 /**
  * Transforma campos de PascalCase a snake_case para Supabase
@@ -35,59 +36,199 @@ function transformMovilToSupabase(movil: any) {
 
 /**
  * POST /api/import/moviles
- * Importar móviles desde fuente externa
+ * Importar móviles desde fuente externa (GeneXus)
+ * 
+ * @returns 200 - Móviles importados correctamente
+ * @returns 400 - Datos de entrada inválidos
+ * @returns 500 - Error del servidor o base de datos
  */
 export async function POST(request: NextRequest) {
+  const timestamp = new Date().toISOString();
+  console.log('\n' + '='.repeat(80));
+  console.log(`🚀 [${timestamp}] POST /api/import/moviles - INICIO`);
+  console.log('='.repeat(80));
+
   try {
-    const body = await request.json();
+    // PASO 1: Verificar headers de la petición
+    console.log('\n📋 PASO 1: Headers de la petición');
+    console.log('----------------------------------------');
+    const headers = {
+      'content-type': request.headers.get('content-type'),
+      'accept': request.headers.get('accept'),
+      'origin': request.headers.get('origin'),
+      'user-agent': request.headers.get('user-agent'),
+      'authorization': request.headers.get('authorization') ? '***PRESENTE***' : 'NO PRESENTE',
+    };
+    console.log(JSON.stringify(headers, null, 2));
+
+    // PASO 2: Intentar parsear el body
+    console.log('\n📦 PASO 2: Parseando body JSON');
+    console.log('----------------------------------------');
+    let body;
+    let rawBody = '';
+    try {
+      rawBody = await request.text();
+      console.log('Body raw (primeros 500 chars):', rawBody.substring(0, 500));
+      console.log('Longitud total del body:', rawBody.length, 'caracteres');
+      
+      body = JSON.parse(rawBody);
+      console.log('✅ JSON parseado correctamente');
+      console.log('Claves en el body:', Object.keys(body));
+    } catch (parseError: any) {
+      console.error('❌ ERROR al parsear JSON:', parseError.message);
+      console.error('Stack trace:', parseError.stack);
+      return errorResponse(
+        'JSON inválido en el body de la petición',
+        400,
+        { 
+          originalError: parseError.message,
+          receivedBodyLength: rawBody.length,
+          receivedBodyPreview: rawBody.substring(0, 200)
+        }
+      );
+    }
+
+    logRequest('POST', '/api/import/moviles', body);
+
+    // PASO 3: Extraer móviles del body
+    console.log('\n🔍 PASO 3: Extrayendo móviles del body');
+    console.log('----------------------------------------');
     let { moviles } = body;
 
     // Si no viene "moviles", asumir que el body ES el movil
     if (!moviles) {
+      console.log('⚠️  No se encontró clave "moviles", asumiendo que el body ES el móvil');
       moviles = body;
+    } else {
+      console.log(`✅ Clave "moviles" encontrada`);
     }
 
     // Normalizar a array si es un solo objeto
     const movilesArray = Array.isArray(moviles) ? moviles : [moviles];
+    console.log(`📊 Cantidad de móviles a procesar: ${movilesArray.length}`);
 
+    // PASO 4: Validación
+    console.log('\n✔️  PASO 4: Validación de datos');
+    console.log('----------------------------------------');
     if (movilesArray.length === 0) {
-      return NextResponse.json(
-        { error: 'Se requiere al menos un móvil' },
-        { status: 400 }
+      console.error('❌ VALIDACIÓN FALLIDA: Array de móviles vacío');
+      return errorResponse(
+        'Se requiere al menos un móvil en el body',
+        400,
+        { 
+          received: body,
+          movilesExtracted: moviles,
+          movilesArrayLength: movilesArray.length
+        }
       );
     }
+    console.log('✅ Validación exitosa');
 
-    console.log(`📦 Importando ${movilesArray.length} móvil(es)...`);
+    // PASO 5: Mostrar datos de cada móvil
+    console.log('\n� PASO 5: Datos de móviles recibidos');
+    console.log('----------------------------------------');
+    movilesArray.forEach((movil, index) => {
+      console.log(`Móvil #${index + 1}:`, JSON.stringify(movil, null, 2));
+    });
 
-    // Transformar campos a formato Supabase
-    const transformedMoviles = movilesArray.map(transformMovilToSupabase);
+    // PASO 6: Transformar datos
+    console.log('\n🔄 PASO 6: Transformando datos a formato Supabase');
+    console.log('----------------------------------------');
+    const transformedMoviles = movilesArray.map((movil, index) => {
+      const transformed = transformMovilToSupabase(movil);
+      console.log(`Móvil #${index + 1} transformado:`, JSON.stringify(transformed, null, 2));
+      return transformed;
+    });
+    console.log('✅ Transformación completada');
 
-    // Insertar móviles en Supabase
+    // PASO 7: Insertar en Supabase
+    console.log('\n💾 PASO 7: Insertando en Supabase');
+    console.log('----------------------------------------');
+    console.log('Conectando a Supabase...');
+    
     const { data, error } = await supabase
       .from('moviles')
       .insert(transformedMoviles)
       .select();
 
+    // PASO 8: Verificar resultado de Supabase
+    console.log('\n🔍 PASO 8: Verificando resultado de Supabase');
+    console.log('----------------------------------------');
     if (error) {
-      console.error('❌ Error al importar móviles:', error);
-      return NextResponse.json(
-        { error: 'Error al importar móviles', details: error.message },
-        { status: 500 }
+      console.error('❌ ERROR DE SUPABASE:');
+      console.error('  - Mensaje:', error.message);
+      console.error('  - Código:', error.code);
+      console.error('  - Detalles:', error.details);
+      console.error('  - Hint:', error.hint);
+      console.error('  - Error completo:', JSON.stringify(error, null, 2));
+      
+      return errorResponse(
+        'Error al insertar móviles en la base de datos',
+        500,
+        {
+          supabaseError: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        }
       );
     }
 
-    console.log(`✅ ${data?.length || 0} móviles importados`);
+    console.log('✅ Inserción exitosa en Supabase');
+    console.log('📊 Registros insertados:', data?.length || 0);
+    if (data && data.length > 0) {
+      console.log('📋 IDs insertados:', data.map((m: any) => m.id).join(', '));
+    }
 
-    return NextResponse.json({
-      success: true,
-      message: `${data?.length || 0} móviles importados correctamente`,
-      data,
-    });
+    // PASO 9: Preparar respuesta exitosa
+    console.log('\n📤 PASO 9: Preparando respuesta');
+    console.log('----------------------------------------');
+    const responseData = {
+      count: data?.length || 0,
+      moviles: data,
+    };
+    const message = `${data?.length || 0} móvil(es) importado(s) correctamente`;
+    
+    console.log('Respuesta a enviar:');
+    console.log('  - Success: true');
+    console.log('  - Message:', message);
+    console.log('  - Status Code: 200');
+    console.log('  - Count:', responseData.count);
+
+    console.log('\n' + '='.repeat(80));
+    console.log(`✅ POST /api/import/moviles - ÉXITO`);
+    console.log('='.repeat(80) + '\n');
+    
+    return successResponse(responseData, message, 200);
+    
   } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
-    return NextResponse.json(
-      { error: 'Error interno del servidor', details: error.message },
-      { status: 500 }
+    console.log('\n' + '='.repeat(80));
+    console.error(`💥 POST /api/import/moviles - ERROR INESPERADO`);
+    console.log('='.repeat(80));
+    console.error('Tipo de error:', error.constructor.name);
+    console.error('Mensaje:', error.message);
+    console.error('Stack trace completo:');
+    console.error(error.stack);
+    console.log('='.repeat(80) + '\n');
+    
+    // Error al parsear JSON
+    if (error instanceof SyntaxError) {
+      return errorResponse(
+        'JSON inválido en el body de la petición',
+        400,
+        { originalError: error.message }
+      );
+    }
+
+    // Error genérico
+    return errorResponse(
+      'Error interno del servidor',
+      500,
+      {
+        errorType: error.constructor.name,
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      }
     );
   }
 }
@@ -95,10 +236,16 @@ export async function POST(request: NextRequest) {
 /**
  * PUT /api/import/moviles
  * Actualizar móviles existentes (upsert)
+ * 
+ * @returns 200 - Móviles actualizados correctamente
+ * @returns 400 - Datos de entrada inválidos
+ * @returns 500 - Error del servidor o base de datos
  */
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
+    logRequest('PUT', '/api/import/moviles', body);
+
     let { moviles } = body;
 
     // Si no viene "moviles", asumir que el body ES el movil
@@ -109,10 +256,11 @@ export async function PUT(request: NextRequest) {
     // Normalizar a array si es un solo objeto
     const movilesArray = Array.isArray(moviles) ? moviles : [moviles];
 
+    // Validación
     if (movilesArray.length === 0) {
-      return NextResponse.json(
-        { error: 'Se requiere al menos un móvil para actualizar' },
-        { status: 400 }
+      return errorResponse(
+        'Se requiere al menos un móvil para actualizar',
+        400
       );
     }
 
@@ -129,26 +277,48 @@ export async function PUT(request: NextRequest) {
       })
       .select();
 
+    // Manejo de error de Supabase
     if (error) {
-      console.error('❌ Error al actualizar móviles:', error);
-      return NextResponse.json(
-        { error: 'Error al actualizar móviles', details: error.message },
-        { status: 500 }
+      console.error('❌ Error de Supabase:', error);
+      return errorResponse(
+        'Error al actualizar móviles en la base de datos',
+        500,
+        {
+          supabaseError: error.message,
+          code: error.code,
+        }
       );
     }
 
-    console.log(`✅ ${data?.length || 0} móviles actualizados`);
-
-    return NextResponse.json({
-      success: true,
-      message: `${data?.length || 0} móviles actualizados correctamente`,
-      data,
-    });
+    // Éxito
+    console.log(`✅ ${data?.length || 0} móviles actualizados exitosamente`);
+    
+    return successResponse(
+      {
+        count: data?.length || 0,
+        moviles: data,
+      },
+      `${data?.length || 0} móvil(es) actualizado(s) correctamente`,
+      200
+    );
   } catch (error: any) {
     console.error('❌ Error inesperado:', error);
-    return NextResponse.json(
-      { error: 'Error interno del servidor', details: error.message },
-      { status: 500 }
+    
+    if (error instanceof SyntaxError) {
+      return errorResponse(
+        'JSON inválido en el body de la petición',
+        400,
+        { originalError: error.message }
+      );
+    }
+
+    return errorResponse(
+      'Error interno del servidor',
+      500,
+      {
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      }
     );
   }
 }
@@ -156,16 +326,31 @@ export async function PUT(request: NextRequest) {
 /**
  * DELETE /api/import/moviles
  * Eliminar móviles por IDs
+ * 
+ * @returns 200 - Móviles eliminados correctamente
+ * @returns 400 - Datos de entrada inválidos
+ * @returns 500 - Error del servidor o base de datos
  */
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
+    logRequest('DELETE', '/api/import/moviles', body);
+
     const { movil_ids } = body;
 
+    // Validación
     if (!movil_ids || !Array.isArray(movil_ids)) {
-      return NextResponse.json(
-        { error: 'Se requiere un array de movil_ids' },
-        { status: 400 }
+      return errorResponse(
+        'Se requiere un array de movil_ids',
+        400,
+        { received: body }
+      );
+    }
+
+    if (movil_ids.length === 0) {
+      return errorResponse(
+        'El array de movil_ids no puede estar vacío',
+        400
       );
     }
 
@@ -177,26 +362,48 @@ export async function DELETE(request: NextRequest) {
       .in('id', movil_ids)
       .select();
 
+    // Manejo de error de Supabase
     if (error) {
-      console.error('❌ Error al eliminar móviles:', error);
-      return NextResponse.json(
-        { error: 'Error al eliminar móviles', details: error.message },
-        { status: 500 }
+      console.error('❌ Error de Supabase:', error);
+      return errorResponse(
+        'Error al eliminar móviles de la base de datos',
+        500,
+        {
+          supabaseError: error.message,
+          code: error.code,
+        }
       );
     }
 
-    console.log(`✅ ${data?.length || 0} móviles eliminados`);
-
-    return NextResponse.json({
-      success: true,
-      message: `${data?.length || 0} móviles eliminados correctamente`,
-      deleted_count: data?.length || 0,
-    });
+    // Éxito
+    console.log(`✅ ${data?.length || 0} móviles eliminados exitosamente`);
+    
+    return successResponse(
+      {
+        deleted_count: data?.length || 0,
+        moviles: data,
+      },
+      `${data?.length || 0} móvil(es) eliminado(s) correctamente`,
+      200
+    );
   } catch (error: any) {
     console.error('❌ Error inesperado:', error);
-    return NextResponse.json(
-      { error: 'Error interno del servidor', details: error.message },
-      { status: 500 }
+    
+    if (error instanceof SyntaxError) {
+      return errorResponse(
+        'JSON inválido en el body de la petición',
+        400,
+        { originalError: error.message }
+      );
+    }
+
+    return errorResponse(
+      'Error interno del servidor',
+      500,
+      {
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      }
     );
   }
 }
