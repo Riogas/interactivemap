@@ -66,7 +66,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
 
           {/* Contenido */}
           <div className="p-3 space-y-2.5">
-            {/* Estado y Origen */}
+            {/* Estado Actual y Lote */}
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Estado Actual</h4>
               <div className="grid grid-cols-2 gap-2">
@@ -74,31 +74,24 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   <div className="text-[9px] text-blue-600 font-semibold mb-0.5">Estado</div>
                   <div className="font-bold text-blue-900 text-xs">{movil.currentPosition.auxIn2}</div>
                 </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-2 border border-green-200">
-                  <div className="text-[9px] text-green-600 font-semibold mb-0.5">Origen</div>
-                  <div className="font-bold text-green-900 text-xs">{movil.currentPosition.origen}</div>
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-2 border border-purple-200">
+                  <div className="text-[9px] text-purple-600 font-semibold mb-0.5">Lote</div>
+                  <div className="font-bold text-purple-900 text-xs">
+                    {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Coordenadas GPS y Distancia */}
+            {/* Información GPS */}
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Información GPS</h4>
-              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg p-2.5 border border-purple-200">
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <div className="text-[9px] text-purple-600 font-semibold mb-0.5">📍 Coordenadas</div>
-                    <div className="font-mono text-[10px] text-gray-900 leading-tight">
-                      <div>Lat: {movil.currentPosition.coordX.toFixed(6)}</div>
-                      <div>Lng: {movil.currentPosition.coordY.toFixed(6)}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-purple-600 font-semibold mb-0.5">📏 Distancia</div>
-                    <div className="text-lg font-bold text-purple-900">
-                      {(movil.currentPosition.distRecorrida / 1000).toFixed(2)}
-                      <span className="text-[10px] font-normal text-purple-600 ml-0.5">km</span>
-                    </div>
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-2.5 border border-green-200">
+                <div className="flex items-center justify-between">
+                  <div className="text-[9px] text-green-600 font-semibold">📏 Distancia Recorrida</div>
+                  <div className="text-lg font-bold text-green-900">
+                    {(movil.currentPosition.distRecorrida / 1000).toFixed(2)}
+                    <span className="text-[10px] font-normal text-green-600 ml-0.5">km</span>
                   </div>
                 </div>
               </div>
@@ -127,27 +120,6 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   </div>
                   <div className="text-[9px] text-center text-gray-600 bg-white bg-opacity-60 rounded-lg py-1 px-2">
                     💡 Visibles en el mapa como puntos naranjas y rojos
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Historial del Recorrido */}
-            {movil.history && movil.history.length > 0 && (
-              <div>
-                <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Recorrido del Día</h4>
-                <div className="bg-gradient-to-br from-gray-50 to-slate-100 rounded-lg p-2.5 border border-gray-200">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-blue-600">{movil.history.length}</div>
-                      <div className="text-[9px] text-gray-600 font-semibold">Puntos GPS</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-green-600">
-                        {(movil.currentPosition.distRecorrida / 1000).toFixed(1)}
-                      </div>
-                      <div className="text-[9px] text-gray-600 font-semibold">Kilómetros</div>
-                    </div>
                   </div>
                 </div>
               </div>
