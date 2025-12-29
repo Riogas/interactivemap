@@ -137,6 +137,29 @@ function DashboardContent() {
     loadEmpresas();
   }, []);
 
+  // 🎨 Función para calcular el color del móvil según ocupación
+  const getMovilColorByOccupancy = useCallback((pedidosAsignados: number, capacidad: number): string => {
+    // Si no hay capacidad definida, usar color por defecto
+    if (!capacidad || capacidad === 0) {
+      return '#3B82F6'; // Azul por defecto
+    }
+
+    // Calcular porcentaje de ocupación
+    const occupancyPercentage = (pedidosAsignados / capacidad) * 100;
+
+    // Asignar color según porcentaje:
+    // 100% (lleno) = Negro
+    // 67-99% (casi lleno) = Amarillo
+    // 0-66% (disponible) = Verde
+    if (occupancyPercentage >= 100) {
+      return '#000000'; // Negro - Lote lleno
+    } else if (occupancyPercentage >= 67) {
+      return '#EAB308'; // Amarillo - Casi lleno (4-5/6 en una capacidad de 6)
+    } else {
+      return '#22C55E'; // Verde - Disponible (0-3/6 en una capacidad de 6)
+    }
+  }, []);
+
   // 🔥 NUEVO: Función para enriquecer móviles con datos extendidos de Supabase
   const enrichMovilesWithExtendedData = useCallback(async (moviles: MovilData[]): Promise<MovilData[]> => {
     try {
@@ -166,16 +189,24 @@ function DashboardContent() {
           // Convertir movil.id a string para buscar en el map
           const extendedData = extendedDataMap.get(movil.id.toString());
           if (extendedData) {
+            // Calcular el color basado en la ocupación
+            const calculatedColor = getMovilColorByOccupancy(
+              extendedData.pedidosAsignados, 
+              extendedData.tamanoLote
+            );
+            
             console.log(`✅ Enriching movil ${movil.id}:`, {
               tamanoLote: extendedData.tamanoLote,
               pedidosAsignados: extendedData.pedidosAsignados,
-              matricula: extendedData.matricula
+              matricula: extendedData.matricula,
+              color: calculatedColor
             });
             return {
               ...movil,
               tamanoLote: extendedData.tamanoLote,
               pedidosAsignados: extendedData.pedidosAsignados,
               matricula: extendedData.matricula,
+              color: calculatedColor, // Usar el color calculado en lugar del del API
             };
           }
           console.warn(`⚠️ No extended data for movil ${movil.id}`);
@@ -193,7 +224,7 @@ function DashboardContent() {
       console.error('❌ Error enriching moviles:', error);
       return moviles;
     }
-  }, []);
+  }, [getMovilColorByOccupancy]);
 
   const fetchPositions = useCallback(async () => {
     try {
@@ -795,16 +826,27 @@ function DashboardContent() {
         });
         
         if (pedidosDelMovil.length > 0) {
+          // Actualizar el conteo de pedidos asignados
+          const newPedidosAsignados = pedidosDelMovil.length;
+          
+          // Recalcular el color basado en la nueva ocupación
+          const newColor = getMovilColorByOccupancy(
+            newPedidosAsignados,
+            movil.tamanoLote || 0
+          );
+          
           return {
             ...movil,
             pedidos: pedidosDelMovil,
+            pedidosAsignados: newPedidosAsignados,
+            color: newColor, // Actualizar el color dinámicamente
           };
         }
         
         return movil;
       });
     });
-  }, [pedidosRealtime]);
+  }, [pedidosRealtime, getMovilColorByOccupancy]);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
