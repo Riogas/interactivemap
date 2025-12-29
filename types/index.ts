@@ -24,6 +24,10 @@ export interface MovilData {
   serviciosPendientes?: number;
   pendientes?: PedidoServicio[];
   isInactive?: boolean; // Móvil con coordenadas muy antiguas
+  // 🔥 NUEVO: Datos extendidos desde Supabase
+  tamanoLote?: number;        // Capacidad del móvil (desde tabla moviles)
+  pedidosAsignados?: number;  // Cantidad de pedidos asignados (count desde tabla pedidos)
+  matricula?: string;         // Matrícula del móvil
 }
 
 export interface EmpresaFletera {
@@ -165,4 +169,73 @@ export const MOVIL_COLORS = [
 
 export function getMovilColor(index: number): string {
   return MOVIL_COLORS[index % MOVIL_COLORS.length];
+}
+
+// ========== TIPOS EXTENDIDOS PARA CAPAS DEL MAPA ==========
+
+// Móvil extendido con información adicional para display
+export interface MovilExtended extends MovilData {
+  pedidosAsignados: number;  // Cantidad de pedidos asignados
+  capacidadMovil: number;     // Capacidad total del móvil
+  numeroCelular?: string;     // Número de teléfono del móvil
+}
+
+// Service (Servicio)
+export interface ServiceData {
+  id: number;
+  nroService: string;
+  nroTelCliente: string;
+  fechaEntregaComprometida: Date;
+  fechaEntregaReal?: Date;
+  estado: 'pendiente' | 'en_proceso' | 'completado' | 'atrasado';
+  diasAtraso: number;  // Calculado: hoy - fechaEntregaComprometida
+  latitud: number;
+  longitud: number;
+  clienteNombre: string;
+  observaciones?: string;
+}
+
+// Pedido
+export interface PedidoData {
+  id: number;
+  nroPedido: string;
+  nroTelCliente: string;
+  fechaEntregaComprometida: Date;
+  fechaEntregaReal?: Date;
+  estado: 'pendiente' | 'en_proceso' | 'completado' | 'atrasado';
+  tipoServicio: 'urgente' | 'especial' | 'normal';
+  diasAtraso: number;  // Calculado: hoy - fechaEntregaComprometida
+  latitud: number;
+  longitud: number;
+  clienteNombre: string;
+  movilAsignado?: number;  // ID del móvil asignado
+  observaciones?: string;
+}
+
+// Punto de Interés
+export interface PuntoInteresData {
+  id: number;
+  nombre: string;
+  observaciones?: string;
+  icono: string;  // Emoji o nombre de icono
+  latitud: number;
+  longitud: number;
+  tipo: 'publico' | 'privado';  // Público (admin) o Privado (usuario)
+  creadoPor?: string;  // ID o nombre del usuario creador
+  fechaCreacion: Date;
+  visible: boolean;  // Si está visible en el mapa
+}
+
+// Filtros para cada categoría
+export interface MovilFilters {
+  capacidad: 'all' | '1-3' | '4-6' | '7-10' | '10+';
+}
+
+export interface ServiceFilters {
+  atraso: 'all' | 'sin_atraso' | '1-3_dias' | '4-7_dias' | '7+_dias';
+}
+
+export interface PedidoFilters {
+  atraso: 'all' | 'sin_atraso' | '1-3_dias' | '4-7_dias' | '7+_dias';
+  tipoServicio: 'all' | 'urgente' | 'especial' | 'normal';
 }

@@ -1,16 +1,27 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { MovilData } from '@/types';
+import { motion, AnimatePresence } from 'framer-motion';
+import { MovilData, MovilFilters, ServiceFilters, PedidoFilters } from '@/types';
 import clsx from 'clsx';
 import { useState, useMemo } from 'react';
+import FilterBar from './FilterBar';
 
 interface MovilSelectorProps {
   moviles: MovilData[];
-  selectedMoviles: number[]; // Cambiado a array
-  onToggleMovil: (movilId: number) => void; // Toggle individual
-  onSelectAll: () => void; // Seleccionar todos
-  onClearAll: () => void; // Deseleccionar todos
+  selectedMoviles: number[];
+  onToggleMovil: (movilId: number) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+}
+
+// Definir las categorías del árbol
+type CategoryKey = 'moviles' | 'pedidos' | 'services' | 'pois';
+
+interface Category {
+  key: CategoryKey;
+  title: string;
+  icon: string;
+  count: number;
 }
 
 export default function MovilSelector({
@@ -20,196 +31,433 @@ export default function MovilSelector({
   onSelectAll,
   onClearAll,
 }: MovilSelectorProps) {
-  const [searchFilter, setSearchFilter] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
+  
+  // Estados de búsqueda por categoría
+  const [movilesSearch, setMovilesSearch] = useState('');
+  const [pedidosSearch, setPedidosSearch] = useState('');
+  const [servicesSearch, setServicesSearch] = useState('');
+  const [poisSearch, setPoisSearch] = useState('');
+  
+  // Estados de filtros por categoría
+  const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ capacidad: 'all' });
+  const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: 'all' });
+  const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ 
+    atraso: 'all', 
+    tipoServicio: 'all' 
+  });
 
-  // Filtrar y ordenar móviles según el texto de búsqueda y hora de actualización
+  // Filtrar y ordenar móviles
   const filteredMoviles = useMemo(() => {
-    let result = [...moviles]; // Crear copia para no mutar el original
+    let result = [...moviles];
     
-    // Filtrar si hay texto de búsqueda
-    if (searchFilter.trim()) {
-      const searchLower = searchFilter.toLowerCase();
+    // Filtrar por búsqueda
+    if (movilesSearch.trim()) {
+      const searchLower = movilesSearch.toLowerCase();
       result = result.filter(movil => 
         movil.id.toString().includes(searchLower) ||
-        movil.name.toLowerCase().includes(searchLower)
+        movil.name.toLowerCase().includes(searchLower) ||
+        (movil.matricula && movil.matricula.toLowerCase().includes(searchLower))
       );
     }
     
-    // Ordenar por hora de última actualización descendente (más recientes primero)
-    return result.sort((a, b) => {
-      // Si alguno no tiene posición actual, va al final
-      if (!a.currentPosition && !b.currentPosition) return a.id - b.id;
-      if (!a.currentPosition) return 1;
-      if (!b.currentPosition) return -1;
-      
-      // Ordenar por fecha de actualización (más reciente primero)
-      const dateA = new Date(a.currentPosition.fechaInsLog).getTime();
-      const dateB = new Date(b.currentPosition.fechaInsLog).getTime();
-      return dateB - dateA; // Descendente (más reciente primero)
-    });
-  }, [moviles, searchFilter]);
+    // 🔥 Filtrar por capacidad (tamano_lote)
+    if (movilesFilters.capacidad !== 'all') {
+      result = result.filter(movil => {
+        const capacidad = movil.tamanoLote || 0;
+        switch (movilesFilters.capacidad) {
+          case '1-3': return capacidad >= 1 && capacidad <= 3;
+          case '4-6': return capacidad >= 4 && capacidad <= 6;
+          case '7-10': return capacidad >= 7 && capacidad <= 10;
+          case '10+': return capacidad > 10;
+          default: return true;
+        }
+      });
+    }
+    
+    // Ordenar por número de móvil (ascendente)
+    return result.sort((a, b) => a.id - b.id);
+  }, [moviles, movilesSearch, movilesFilters]);
 
   const allSelected = filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
+
+  // Categorías disponibles
+  const categories: Category[] = [
+    { key: 'moviles', title: 'Móviles', icon: '🚗', count: moviles.length },
+    { key: 'pedidos', title: 'Pedidos', icon: '📦', count: 0 },
+    { key: 'services', title: 'Services', icon: '🔧', count: 0 },
+    { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: 0 },
+  ];
+
+  const toggleCategory = (categoryKey: CategoryKey) => {
+    setExpandedCategories(new Set([categoryKey])); // Solo una categoría abierta a la vez
+  };
+
+  // Determinar qué categoría está activa
+  const activeCategory = Array.from(expandedCategories)[0] || 'moviles';
+
+  // Obtener filtros contextuales según la categoría activa
+  const getContextualFilters = () => {
+    switch (activeCategory) {
+      case 'moviles':
+        return {
+          searchValue: movilesSearch,
+          onSearchChange: setMovilesSearch,
+          searchPlaceholder: 'Buscar móvil por número...',
+          filters: [
+            {
+              id: 'capacidad',
+              label: 'Capacidad',
+              options: [
+                { value: 'all', label: 'Todas las capacidades' },
+                { value: '1-3', label: '1-3 garrafas' },
+                { value: '4-6', label: '4-6 garrafas' },
+                { value: '7-10', label: '7-10 garrafas' },
+                { value: '10+', label: '10+ garrafas' },
+              ],
+              value: movilesFilters.capacidad,
+            }
+          ],
+          onFilterChange: (filterId: string, value: string) => {
+            if (filterId === 'capacidad') {
+              setMovilesFilters(prev => ({ 
+                ...prev, 
+                capacidad: value as 'all' | '1-3' | '4-6' | '7-10' | '10+' 
+              }));
+            }
+          }
+        };
+
+      case 'services':
+        return {
+          searchValue: servicesSearch,
+          onSearchChange: setServicesSearch,
+          searchPlaceholder: 'Buscar service...',
+          filters: [
+            {
+              id: 'atraso',
+              label: 'Atraso',
+              options: [
+                { value: 'all', label: 'Todos' },
+                { value: 'sin_atraso', label: 'Sin atraso' },
+                { value: '1-3_dias', label: '1-3 días' },
+                { value: '4-7_dias', label: '4-7 días' },
+                { value: '7+_dias', label: 'Más de 7 días' },
+              ],
+              value: servicesFilters.atraso,
+            }
+          ],
+          onFilterChange: (filterId: string, value: string) => {
+            if (filterId === 'atraso') {
+              setServicesFilters(prev => ({ 
+                ...prev, 
+                atraso: value as 'all' | 'sin_atraso' | '1-3_dias' | '4-7_dias' | '7+_dias' 
+              }));
+            }
+          }
+        };
+
+      case 'pedidos':
+        return {
+          searchValue: pedidosSearch,
+          onSearchChange: setPedidosSearch,
+          searchPlaceholder: 'Buscar pedido...',
+          filters: [
+            {
+              id: 'atraso',
+              label: 'Atraso',
+              options: [
+                { value: 'all', label: 'Todos' },
+                { value: 'sin_atraso', label: 'Sin atraso' },
+                { value: '1-3_dias', label: '1-3 días' },
+                { value: '4-7_dias', label: '4-7 días' },
+                { value: '7+_dias', label: 'Más de 7 días' },
+              ],
+              value: pedidosFilters.atraso,
+            },
+            {
+              id: 'tipoServicio',
+              label: 'Tipo de Servicio',
+              options: [
+                { value: 'all', label: 'Todos' },
+                { value: 'urgente', label: 'Urgente' },
+                { value: 'especial', label: 'Especial' },
+              ],
+              value: pedidosFilters.tipoServicio,
+            }
+          ],
+          onFilterChange: (filterId: string, value: string) => {
+            if (filterId === 'atraso') {
+              setPedidosFilters(prev => ({ 
+                ...prev, 
+                atraso: value as 'all' | 'sin_atraso' | '1-3_dias' | '4-7_dias' | '7+_dias' 
+              }));
+            } else if (filterId === 'tipoServicio') {
+              setPedidosFilters(prev => ({ 
+                ...prev, 
+                tipoServicio: value as 'all' | 'urgente' | 'especial' 
+              }));
+            }
+          }
+        };
+
+      case 'pois':
+        return {
+          searchValue: poisSearch,
+          onSearchChange: setPoisSearch,
+          searchPlaceholder: 'Buscar punto de interés...',
+          filters: [],
+          onFilterChange: () => {}
+        };
+
+      default:
+        return {
+          searchValue: '',
+          onSearchChange: () => {},
+          searchPlaceholder: 'Buscar...',
+          filters: [],
+          onFilterChange: () => {}
+        };
+    }
+  };
+
+  const contextualFilters = getContextualFilters();
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 h-full flex flex-col">
       <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center justify-between">
-        <span>Móviles</span>
+        <span>Capas del Mapa</span>
         <span className="text-sm font-normal text-gray-500">
-          {selectedMoviles.length} de {moviles.length} seleccionados
+          {selectedMoviles.length} seleccionado{selectedMoviles.length !== 1 ? 's' : ''}
         </span>
       </h2>
       
-      {/* Buscador de móviles */}
-      <div className="mb-4">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Buscar móvil por número..."
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            className="w-full px-4 py-2 pl-10 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
-          />
-          <svg 
-            className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
+      {/* Buscador y Filtros Contextuales - Cambian según la categoría activa */}
+      <AnimatePresence mode="wait">
+        {expandedCategories.size > 0 && (
+          <motion.div
+            key={activeCategory}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="mb-4 overflow-hidden"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          {searchFilter && (
-            <button
-              onClick={() => setSearchFilter('')}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-        </div>
-        {searchFilter && (
-          <p className="text-xs text-gray-500 mt-1">
-            {filteredMoviles.length} móvil(es) encontrado(s)
-          </p>
+            <FilterBar
+              searchValue={contextualFilters.searchValue}
+              onSearchChange={contextualFilters.onSearchChange}
+              searchPlaceholder={contextualFilters.searchPlaceholder}
+              filters={contextualFilters.filters}
+              onFilterChange={contextualFilters.onFilterChange}
+            />
+            {activeCategory === 'moviles' && contextualFilters.searchValue && (
+              <p className="text-xs text-gray-500 mt-2">
+                {filteredMoviles.length} móvil(es) encontrado(s)
+              </p>
+            )}
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
       
-      {/* Lista de móviles con scroll */}
-      <div className="space-y-3 flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-        {/* Botón Todos/Ninguno */}
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={allSelected ? onClearAll : onSelectAll}
-          className={clsx(
-            'w-full p-4 rounded-lg font-semibold transition-all duration-200',
-            allSelected
-              ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          )}
-        >
-          <span className="flex items-center justify-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-            </svg>
-            {allSelected ? 'Deseleccionar Todos' : 'Seleccionar Todos'}
-          </span>
-        </motion.button>
-
-        {filteredMoviles.map((movil) => {
-          const isSelected = selectedMoviles.includes(movil.id);
-          const isInactive = movil.isInactive;
-          
-          return (
-            <motion.button
-              key={movil.id}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => onToggleMovil(movil.id)}
-              className={clsx(
-                'w-full p-4 rounded-lg font-semibold transition-all duration-200 border-2',
-                isSelected
-                  ? 'text-white shadow-lg border-transparent'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200',
-                isInactive && !isSelected && 'bg-red-50 border-red-200',
-                isInactive && 'animate-pulse-slow'
-              )}
-              style={{
-                backgroundColor: isSelected ? (isInactive ? '#DC2626' : movil.color) : undefined,
-              }}
-            >
-              <span className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  {/* Checkbox visual */}
-                  <div className={clsx(
-                    "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
-                    isSelected 
-                      ? "bg-white border-white" 
-                      : "bg-white border-gray-300"
-                  )}>
-                    {isSelected && (
-                      <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : movil.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                  
-                  {isInactive ? (
-                    <span className="relative inline-block">
-                      <svg 
-                        className="w-5 h-5 text-red-600 animate-pulse" 
-                        fill="currentColor" 
-                        viewBox="0 0 24 24"
-                        style={{ animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
-                      >
-                        <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
-                      </svg>
-                      <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                      </span>
+      {/* Estructura de árbol con categorías colapsables */}
+      <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+        <div className="space-y-2">
+          {categories.map((category) => (
+            <div key={category.key} className="border border-gray-200 rounded-lg overflow-hidden">
+              {/* Header de la categoría */}
+              <button
+                onClick={() => toggleCategory(category.key)}
+                className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{category.icon}</span>
+                  <span className="font-semibold text-gray-700">{category.title}</span>
+                  {category.count > 0 && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                      {category.count}
                     </span>
-                  ) : (
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: movil.color }}
-                    />
                   )}
-                  {movil.name}
-                </span>
-                {movil.currentPosition && (
-                  <div className="flex flex-col items-end">
-                    <span className={clsx("text-sm", isInactive ? "text-red-500 font-semibold" : "opacity-80")}>
-                      {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    {(() => {
-                      const now = Date.now();
-                      const coordDate = new Date(movil.currentPosition.fechaInsLog).getTime();
-                      const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
-                      
-                      if (minutesDiff < 1) {
-                        return <span className="text-xs text-green-600 font-medium">Ahora</span>;
-                      } else if (minutesDiff < 5) {
-                        return <span className="text-xs text-green-500">{minutesDiff}m</span>;
-                      } else if (minutesDiff < 15) {
-                        return <span className="text-xs text-yellow-600">{minutesDiff}m</span>;
-                      } else if (minutesDiff < 30) {
-                        return <span className="text-xs text-orange-600">{minutesDiff}m</span>;
-                      } else {
-                        return <span className="text-xs text-red-600 font-semibold">{minutesDiff}m ⚠️</span>;
-                      }
-                    })()}
-                  </div>
+                </div>
+                <svg
+                  className={clsx(
+                    'w-5 h-5 text-gray-500 transition-transform duration-200',
+                    expandedCategories.has(category.key) && 'rotate-180'
+                  )}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Contenido de la categoría */}
+              <AnimatePresence>
+                {expandedCategories.has(category.key) && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="p-3 bg-white border-t border-gray-200">
+                      {/* Contenido según la categoría */}
+                      {category.key === 'moviles' && (
+                        <div className="space-y-2">
+                          {/* Botón Seleccionar Todos */}
+                          <button
+                            onClick={allSelected ? onClearAll : onSelectAll}
+                            className="w-full flex items-center gap-3 p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200"
+                          >
+                            <div className={clsx(
+                              'flex items-center justify-center w-5 h-5 border-2 rounded transition-colors',
+                              allSelected
+                                ? 'bg-blue-500 border-blue-500'
+                                : 'border-gray-300 bg-white'
+                            )}>
+                              {allSelected && (
+                                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </div>
+                            <span className="font-medium text-gray-700">
+                              {allSelected ? 'Deseleccionar Todos' : 'Seleccionar Todos'}
+                            </span>
+                          </button>
+
+                          {/* Lista de móviles */}
+                          {filteredMoviles.map((movil) => {
+                            const isSelected = selectedMoviles.includes(movil.id);
+                            const isInactive = movil.isInactive;
+                            
+                            return (
+                              <motion.button
+                                key={movil.id}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => onToggleMovil(movil.id)}
+                                className={clsx(
+                                  'w-full p-3 rounded-lg font-medium transition-all duration-200 border-2',
+                                  isSelected
+                                    ? 'text-white shadow-md border-transparent'
+                                    : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
+                                  isInactive && !isSelected && 'bg-red-50 border-red-200',
+                                  isInactive && 'animate-pulse-slow'
+                                )}
+                                style={{
+                                  backgroundColor: isSelected ? (isInactive ? '#DC2626' : movil.color) : undefined,
+                                }}
+                              >
+                                <span className="flex items-center justify-between">
+                                  <span className="flex items-center gap-2">
+                                    {/* Checkbox visual */}
+                                    <div className={clsx(
+                                      "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                      isSelected 
+                                        ? "bg-white border-white" 
+                                        : "bg-white border-gray-300"
+                                    )}>
+                                      {isSelected && (
+                                        <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : movil.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      )}
+                                    </div>
+                                    
+                                    {isInactive ? (
+                                      <span className="relative inline-block">
+                                        <svg 
+                                          className="w-5 h-5 text-red-600 animate-pulse" 
+                                          fill="currentColor" 
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                                        </svg>
+                                        <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <div
+                                        className="w-4 h-4 rounded-full"
+                                        style={{ backgroundColor: movil.color }}
+                                      />
+                                    )}
+                                    {/* 🔥 Formato compacto: NroMovil – PedAsignados/Capacidad – Matricula */}
+                                    <span className="text-sm font-medium leading-tight">
+                                      {movil.id}
+                                      {' – '}
+                                      {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}
+                                      {movil.matricula && movil.matricula.trim() && (
+                                        <> – {movil.matricula.trim()}</>
+                                      )}
+                                    </span>
+                                  </span>
+                                  {movil.currentPosition && (
+                                    <div className="flex flex-col items-end">
+                                      <span className={clsx("text-sm", isInactive ? "text-red-100 font-semibold" : isSelected ? "opacity-90" : "text-gray-600")}>
+                                        {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </span>
+                                      {(() => {
+                                        const now = Date.now();
+                                        const coordDate = new Date(movil.currentPosition.fechaInsLog).getTime();
+                                        const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
+                                        
+                                        if (minutesDiff < 1) {
+                                          return <span className={clsx("text-xs font-medium", isSelected ? "text-green-200" : "text-green-600")}>Ahora</span>;
+                                        } else if (minutesDiff < 5) {
+                                          return <span className={clsx("text-xs", isSelected ? "text-green-200" : "text-green-500")}>{minutesDiff}m</span>;
+                                        } else if (minutesDiff < 15) {
+                                          return <span className={clsx("text-xs", isSelected ? "text-yellow-200" : "text-yellow-600")}>{minutesDiff}m</span>;
+                                        } else if (minutesDiff < 30) {
+                                          return <span className={clsx("text-xs", isSelected ? "text-orange-200" : "text-orange-600")}>{minutesDiff}m</span>;
+                                        } else {
+                                          return <span className={clsx("text-xs font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m ⚠️</span>;
+                                        }
+                                      })()}
+                                    </div>
+                                  )}
+                                </span>
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Contenido vacío para otras categorías */}
+                      {category.key === 'pedidos' && (
+                        <div className="text-center py-4 text-gray-500 text-sm">
+                          <p>📦 Sin datos de pedidos</p>
+                          <p className="text-xs mt-1">Próximamente...</p>
+                        </div>
+                      )}
+
+                      {category.key === 'services' && (
+                        <div className="text-center py-4 text-gray-500 text-sm">
+                          <p>🔧 Sin datos de services</p>
+                          <p className="text-xs mt-1">Próximamente...</p>
+                        </div>
+                      )}
+
+                      {category.key === 'pois' && (
+                        <div className="text-center py-4 text-gray-500 text-sm">
+                          <p>📍 Sin puntos de interés</p>
+                          <p className="text-xs mt-1">Próximamente...</p>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
                 )}
-              </span>
-            </motion.button>
-          );
-        })}
+              </AnimatePresence>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -101,7 +101,7 @@ EXTERNAL_API_URL=http://localhost:3000
 # EXTERNAL_API_URL=http://192.168.7.14:3000
 
 # Opción 3: Si es una API externa
-# EXTERNAL_API_URL=https://www.riogas.com.uy
+# EXTERNAL_API_URL=https://sgm.glp.riogas.com.uy
 
 NEXT_PUBLIC_EXTERNAL_API_URL=http://localhost:3000
 

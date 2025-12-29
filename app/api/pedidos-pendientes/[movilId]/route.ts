@@ -17,37 +17,36 @@ export async function GET(
       .from('pedidos')
       .select(`
         id,
-        escenario_id,
-        movil_id,
-        estado,
-        latitud,
-        longitud,
-        zona,
-        tipo,
-        nombre_servicio,
-        producto_codigo,
-        producto_nombre,
-        producto_cantidad,
-        producto_precio,
-        prioridad,
-        observacion,
-        importe_flete,
-        importe_bruto,
-        fecha_para,
-        fecha_hora_max_comp,
-        fecha_hora_para,
-        fecha_hora_asignado,
-        fecha_hora_cumplido,
-        cliente_nombre,
+        escenario,
+        movil,
+        estado_nro,
+        cliente_ciudad,
         cliente_direccion,
+        cliente_nombre,
         cliente_nro,
-        cliente_telefono,
-        cliente_observacion,
-        empresa_fletera_id
+        cliente_tel,
+        cliente_obs,
+        detalle_html,
+        empresa_fletera_id,
+        fch_hora_max_ent_comp,
+        fch_para,
+        google_maps_url,
+        imp_bruto,
+        imp_flete,
+        pedido_obs,
+        precio,
+        prioridad,
+        producto_cant,
+        producto_cod,
+        producto_nom,
+        servicio_nombre,
+        tipo,
+        ubicacion,
+        zona_nro
       `)
-      .eq('movil_id', movilId)
-      .eq('escenario_id', escenarioId)
-      .is('fecha_hora_cumplido', null) // Solo pedidos NO cumplidos (pendientes)
+      .eq('movil', movilId)
+      .eq('escenario', escenarioId)
+      .in('estado_nro', [1, 2, 3, 4, 5, 6, 7]) // Estados que representan pendientes
       .not('latitud', 'is', null) // Solo pedidos con coordenadas
       .not('longitud', 'is', null)
       .order('prioridad', { ascending: false })

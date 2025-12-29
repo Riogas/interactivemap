@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 
 # Configuración
 ENV_FILE=".env.production"
-API_URL="https://www.riogas.com.uy"
+API_URL="https://sgm.glp.riogas.com.uy"
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  Actualización de API Configuration${NC}"

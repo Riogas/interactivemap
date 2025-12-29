@@ -14,7 +14,7 @@ async function testApiConnection() {
   // Test 1: Verificar que el proxy está activo
   console.log('📋 Test 1: Verificar proxy local');
   try {
-    const proxyTest = await fetch('/api/proxy/puestos/gestion/login', {
+    const proxyTest = await fetch('/api/proxy/gestion/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -40,7 +40,7 @@ async function testApiConnection() {
   // Test 2: Login con credenciales reales
   console.log('📋 Test 2: Login con credenciales');
   try {
-    const loginResponse = await fetch('/api/proxy/puestos/gestion/login', {
+    const loginResponse = await fetch('/api/proxy/gestion/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

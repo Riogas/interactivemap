@@ -92,7 +92,7 @@ export const authService = {
       };
 
       const response = await apiClient.post<LoginResponse>(
-        '/puestos/gestion/login',
+        '/gestion/login',
         credentials
       );
 

@@ -141,14 +141,18 @@ export async function POST(request: NextRequest) {
     });
     console.log('✅ Transformación completada');
 
-    // PASO 7: Insertar en Supabase
-    console.log('\n💾 PASO 7: Insertando en Supabase');
+    // PASO 7: Insertar/Actualizar en Supabase (UPSERT)
+    console.log('\n💾 PASO 7: Insertando/Actualizando en Supabase (UPSERT)');
     console.log('----------------------------------------');
     console.log('Conectando a Supabase...');
+    console.log('🔄 Usando UPSERT - Si existe actualiza, si no existe inserta');
     
     const { data, error } = await supabase
       .from('moviles')
-      .insert(transformedMoviles)
+      .upsert(transformedMoviles as any, {
+        onConflict: 'id', // Usar el ID como clave para detectar duplicados
+        ignoreDuplicates: false // Actualizar si existe
+      })
       .select();
 
     // PASO 8: Verificar resultado de Supabase
@@ -163,7 +167,7 @@ export async function POST(request: NextRequest) {
       console.error('  - Error completo:', JSON.stringify(error, null, 2));
       
       return errorResponse(
-        'Error al insertar móviles en la base de datos',
+        'Error al insertar/actualizar móviles en la base de datos',
         500,
         {
           supabaseError: error.message,
@@ -174,10 +178,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('✅ Inserción exitosa en Supabase');
-    console.log('📊 Registros insertados:', data?.length || 0);
+    console.log('✅ UPSERT exitoso en Supabase');
+    console.log('📊 Registros procesados:', data?.length || 0);
     if (data && data.length > 0) {
-      console.log('📋 IDs insertados:', data.map((m: any) => m.id).join(', '));
+      console.log('📋 IDs procesados:', data.map((m: any) => m.id).join(', '));
     }
 
     // PASO 9: Preparar respuesta exitosa
@@ -187,7 +191,7 @@ export async function POST(request: NextRequest) {
       count: data?.length || 0,
       moviles: data,
     };
-    const message = `${data?.length || 0} móvil(es) importado(s) correctamente`;
+    const message = `${data?.length || 0} móvil(es) importado(s)/actualizado(s) correctamente`;
     
     console.log('Respuesta a enviar:');
     console.log('  - Success: true');
@@ -196,7 +200,7 @@ export async function POST(request: NextRequest) {
     console.log('  - Count:', responseData.count);
 
     console.log('\n' + '='.repeat(80));
-    console.log(`✅ POST /api/import/moviles - ÉXITO`);
+    console.log(`✅ POST /api/import/moviles - ÉXITO (UPSERT)`);
     console.log('='.repeat(80) + '\n');
     
     return successResponse(responseData, message, 200);
@@ -272,7 +276,7 @@ export async function PUT(request: NextRequest) {
     // Upsert: Insertar o actualizar si ya existe
     const { data, error } = await supabase
       .from('moviles')
-      .upsert(transformedMoviles, {
+      .upsert(transformedMoviles as any, {
         onConflict: 'id', // PRIMARY KEY de la tabla
       })
       .select();

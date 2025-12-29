@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
+import https from 'https';
 
 /**
  * Proxy genérico para todas las peticiones a la API
  * Ruta: /api/proxy/[...path]
  * 
  * Ejemplos:
- * - POST /api/proxy/puestos/gestion/login
- * - GET /api/proxy/puestos/gestion/moviles
- * - PUT /api/proxy/puestos/gestion/moviles/123
+ * - POST /api/proxy/gestion/login
+ * - GET /api/proxy/gestion/moviles
+ * - PUT /api/proxy/gestion/moviles/123
  */
+
+// Agente HTTPS que ignora errores de certificado SSL
+// NOTA: Solo para desarrollo o certificados auto-firmados internos
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false
+});
 
 export async function GET(
   request: NextRequest,
@@ -102,12 +109,14 @@ async function proxyRequest(
       console.log(`📤 Body:`, body);
     }
 
-    // Hacer la petición
+    // Hacer la petición con agente HTTPS que ignora certificados
     const response = await fetch(fullUrl, {
       method,
       headers,
       body,
       credentials: 'include', // Importante para cookies
+      // @ts-ignore - Node.js fetch acepta agent
+      agent: fullUrl.startsWith('https:') ? httpsAgent : undefined,
     });
 
     console.log(`📥 Response Status: ${response.status}`);

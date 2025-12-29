@@ -9,13 +9,13 @@ EXTERNAL_API_URL=http://192.168.1.72:8082
 
 **AHORA:**
 ```
-EXTERNAL_API_URL=https://www.riogas.com.uy
+EXTERNAL_API_URL=https://sgm.glp.riogas.com.uy
 ```
 
 ## 🌐 Endpoint Completo
 
 ```
-https://www.riogas.com.uy/puestos/gestion/login
+https://sgm.glp.riogas.com.uy/gestion/login
 ```
 
 ---
@@ -49,8 +49,8 @@ git pull origin main
 nano .env.production
 
 # Cambiar a:
-EXTERNAL_API_URL=https://www.riogas.com.uy
-NEXT_PUBLIC_EXTERNAL_API_URL=https://www.riogas.com.uy
+EXTERNAL_API_URL=https://sgm.glp.riogas.com.uy
+NEXT_PUBLIC_EXTERNAL_API_URL=https://sgm.glp.riogas.com.uy
 
 # Guardar: Ctrl+O, Enter
 # Salir: Ctrl+X
@@ -72,7 +72,7 @@ docker logs -f trackmovil
 
 **En los logs deberías ver:**
 ```
-🔄 Proxy POST https://www.riogas.com.uy/puestos/gestion/login
+🔄 Proxy POST https://sgm.glp.riogas.com.uy/gestion/login
 📤 Headers: { 'Content-Type': 'application/json', Accept: 'application/json' }
 📤 Body: {"UserName":"...","Password":"..."}
 📥 Response Status: 200

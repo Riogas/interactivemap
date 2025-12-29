@@ -12,7 +12,8 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
-        HOSTNAME: '0.0.0.0'
+        HOSTNAME: '0.0.0.0',
+        NODE_TLS_REJECT_UNAUTHORIZED: '0'  // Ignorar errores de certificado SSL
       },
       error_file: 'logs/pm2-error.log',
       out_file: 'logs/pm2-out.log',

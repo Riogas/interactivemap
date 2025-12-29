@@ -137,6 +137,64 @@ function DashboardContent() {
     loadEmpresas();
   }, []);
 
+  // 🔥 NUEVO: Función para enriquecer móviles con datos extendidos de Supabase
+  const enrichMovilesWithExtendedData = useCallback(async (moviles: MovilData[]): Promise<MovilData[]> => {
+    try {
+      console.log('📊 Fetching extended data for moviles...');
+      const response = await fetch('/api/moviles-extended');
+      const result = await response.json();
+
+      if (result.success) {
+        // Definir tipo para los datos extendidos
+        interface ExtendedData {
+          id: string;           // TEXT - ID del móvil (clave principal)
+          nro: number;          // INTEGER - Número del móvil
+          tamanoLote: number;
+          pedidosAsignados: number;
+          matricula: string;
+          descripcion: string;
+        }
+
+        // Mapear por ID (que es TEXT), no por nro
+        const extendedDataMap = new Map<string, ExtendedData>(
+          result.data.map((item: ExtendedData) => [item.id, item])
+        );
+
+        console.log('📊 Extended data map:', Array.from(extendedDataMap.entries()).slice(0, 2)); // Ver primeros 2 móviles
+
+        const enrichedMoviles = moviles.map(movil => {
+          // Convertir movil.id a string para buscar en el map
+          const extendedData = extendedDataMap.get(movil.id.toString());
+          if (extendedData) {
+            console.log(`✅ Enriching movil ${movil.id}:`, {
+              tamanoLote: extendedData.tamanoLote,
+              pedidosAsignados: extendedData.pedidosAsignados,
+              matricula: extendedData.matricula
+            });
+            return {
+              ...movil,
+              tamanoLote: extendedData.tamanoLote,
+              pedidosAsignados: extendedData.pedidosAsignados,
+              matricula: extendedData.matricula,
+            };
+          }
+          console.warn(`⚠️ No extended data for movil ${movil.id}`);
+          return movil;
+        });
+
+        console.log(`✅ Enriched ${enrichedMoviles.length} moviles with extended data`);
+        console.log('📊 Sample enriched movil:', enrichedMoviles[0]);
+        return enrichedMoviles;
+      }
+
+      console.warn('⚠️ Could not fetch extended data, returning original moviles');
+      return moviles;
+    } catch (error) {
+      console.error('❌ Error enriching moviles:', error);
+      return moviles;
+    }
+  }, []);
+
   const fetchPositions = useCallback(async () => {
     try {
       console.log('🔄 Fetching all positions from API...');
@@ -163,7 +221,7 @@ function DashboardContent() {
         
         if (isInitialLoad) {
           // PRIMERA CARGA: Crear array completo de móviles
-          const newMoviles: MovilData[] = result.data.map((item: { 
+          let newMoviles: MovilData[] = result.data.map((item: { 
             movilId: number; 
             movilName: string; 
             color: string;
@@ -178,11 +236,17 @@ function DashboardContent() {
             history: undefined, // Se cargará bajo demanda
           }));
           
+          console.log('📊 Sample movil from API:', newMoviles[0]); // Ver ID del móvil
+          
           // Eliminar duplicados antes de establecer
           const uniqueMoviles = removeDuplicateMoviles(newMoviles);
-          setMoviles(uniqueMoviles);
+          
+          // 🔥 NUEVO: Enriquecer con datos extendidos de Supabase
+          const enrichedMoviles = await enrichMovilesWithExtendedData(uniqueMoviles);
+          
+          setMoviles(enrichedMoviles);
           setIsInitialLoad(false); // Marcar que ya no es carga inicial
-          console.log(`📦 Carga inicial completa con ${uniqueMoviles.length} móviles únicos`);
+          console.log(`📦 Carga inicial completa con ${enrichedMoviles.length} móviles únicos enriquecidos`);
         } else {
           // ACTUALIZACIÓN: Solo actualizar las posiciones GPS manteniendo TODAS las propiedades
           setMoviles(prevMoviles => {
@@ -192,7 +256,7 @@ function DashboardContent() {
               
               if (updatedData) {
                 // Solo actualizar currentPosition, mantener TODO el resto igual
-                // (history, pendientes, pedidosPendientes, serviciosPendientes)
+                // (history, pendientes, pedidosPendientes, serviciosPendientes, tamanoLote, pedidosAsignados)
                 return {
                   ...movil, // Mantener TODAS las propiedades existentes
                   currentPosition: updatedData.position, // Solo actualizar posición
@@ -203,7 +267,7 @@ function DashboardContent() {
               return movil;
             });
           });
-          console.log('🔄 Posiciones GPS actualizadas (historial y pendientes preservados)');
+          console.log('🔄 Posiciones GPS actualizadas (historial, pendientes y datos extendidos preservados)');
         }
         
         setLastUpdate(new Date());
@@ -217,7 +281,19 @@ function DashboardContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedEmpresas, empresas.length, isInitialLoad]);
+  }, [selectedEmpresas, empresas.length, isInitialLoad, enrichMovilesWithExtendedData, removeDuplicateMoviles]);
+
+  // 🔥 NUEVO: Seleccionar todos los móviles automáticamente en la carga inicial
+  useEffect(() => {
+    // Solo auto-seleccionar si:
+    // 1. Hay móviles cargados
+    // 2. No hay ningún móvil seleccionado (primera carga o después de limpiar)
+    // 3. Es la primera carga (isInitialLoad es false significa que ya terminó la carga inicial)
+    if (moviles.length > 0 && selectedMoviles.length === 0 && !isInitialLoad) {
+      console.log('✅ Auto-selección: Marcando todos los móviles por defecto:', moviles.length);
+      setSelectedMoviles(moviles.map(m => m.id));
+    }
+  }, [moviles.length, isInitialLoad]); // Depende de la cantidad de móviles y si es carga inicial
 
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {

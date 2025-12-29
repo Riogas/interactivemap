@@ -1,0 +1,151 @@
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+interface FilterBarProps {
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  searchPlaceholder?: string;
+  filters?: FilterOption[];
+  onFilterChange?: (filterId: string, value: string) => void;
+}
+
+interface FilterOption {
+  id: string;
+  label: string;
+  icon?: string;
+  options: { value: string; label: string }[];
+  value: string;
+}
+
+export default function FilterBar({
+  searchValue,
+  onSearchChange,
+  searchPlaceholder = 'Buscar...',
+  filters = [],
+  onFilterChange,
+}: FilterBarProps) {
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
+
+  return (
+    <>
+      <div className="space-y-2">
+        {/* Barra de búsqueda con botón de filtros */}
+        <div className="flex gap-2">
+          {/* Buscador */}
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder={searchPlaceholder}
+              value={searchValue}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full px-4 py-2 pl-10 pr-10 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors text-sm"
+            />
+            <svg 
+              className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {searchValue && (
+              <button
+                onClick={() => onSearchChange('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {/* Botón de filtros (solo si hay filtros disponibles) */}
+          {filters.length > 0 && (
+            <button
+              onClick={() => setShowFiltersModal(!showFiltersModal)}
+              className="px-3 py-2 bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 rounded-lg transition-colors relative"
+              title="Filtros"
+            >
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              {/* Badge indicador de filtros activos */}
+              {filters.some(f => f.value !== 'all' && f.value !== '') && (
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></span>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Panel de filtros desplegable */}
+        <AnimatePresence>
+          {showFiltersModal && filters.length > 0 && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-gray-700">Filtros</h4>
+                  <button
+                    onClick={() => setShowFiltersModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {filters.map((filter) => (
+                  <div key={filter.id} className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      {filter.icon && <span>{filter.icon}</span>}
+                      {filter.label}
+                    </label>
+                    <select
+                      value={filter.value}
+                      onChange={(e) => onFilterChange?.(filter.id, e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:border-blue-500 focus:outline-none bg-white"
+                    >
+                      {filter.options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Indicadores de búsqueda/filtros activos */}
+        {(searchValue || filters.some(f => f.value !== 'all' && f.value !== '')) && (
+          <div className="flex flex-wrap gap-1">
+            {searchValue && (
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                Búsqueda: "{searchValue}"
+              </span>
+            )}
+            {filters
+              .filter(f => f.value !== 'all' && f.value !== '')
+              .map(f => {
+                const selectedOption = f.options.find(opt => opt.value === f.value);
+                return (
+                  <span key={f.id} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                    {f.label}: {selectedOption?.label}
+                  </span>
+                );
+              })}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}

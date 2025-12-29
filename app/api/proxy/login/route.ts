@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
+import https from 'https';
+
+// Agente HTTPS que ignora errores de certificado SSL
+// NOTA: Solo para desarrollo o certificados auto-firmados internos
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +15,8 @@ export async function POST(request: NextRequest) {
     console.log('🔐 Login Request');
     console.log('📤 Body:', body);
 
-    const response = await fetch(`${API_BASE_URL}/puestos/gestion/login`, {
+    const loginUrl = `${API_BASE_URL}/gestion/login`;
+    const response = await fetch(loginUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -16,6 +24,8 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(body),
       credentials: 'include', // Importante para cookies
+      // @ts-ignore - Node.js fetch acepta agent
+      agent: loginUrl.startsWith('https:') ? httpsAgent : undefined,
     });
 
     console.log('📥 Login Response Status:', response.status);
