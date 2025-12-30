@@ -83,44 +83,77 @@ function transformPedidoToSupabase(pedido: any) {
  * Importar pedidos desde fuente externa
  */
 export async function POST(request: NextRequest) {
+  const timestamp = new Date().toISOString();
+  console.log('\n' + '═'.repeat(100));
+  console.log(`📦 INICIO IMPORTACIÓN DE PEDIDOS [${timestamp}]`);
+  console.log('═'.repeat(100));
+  
   try {
+    console.log('📥 1. Leyendo body del request...');
     const body = await request.json();
+    console.log('✅ Body recibido correctamente');
+    console.log('📊 Tipo de body:', typeof body);
+    console.log('📊 Claves del body:', Object.keys(body));
+    
+    console.log('\n🔍 2. Normalizando estructura...');
     let { pedidos } = body;
 
     // Si no viene "pedidos", asumir que el body ES el pedido
     if (!pedidos) {
+      console.log('⚠️  No hay propiedad "pedidos", asumiendo que body ES el pedido');
       pedidos = body;
     }
 
     // Normalizar a array si es un solo objeto
     const pedidosArray = Array.isArray(pedidos) ? pedidos : [pedidos];
+    console.log(`✅ Estructura normalizada: ${pedidosArray.length} pedido(s)`);
+    console.log(`📊 ¿Es array?: ${Array.isArray(pedidos)}`);
 
     if (pedidosArray.length === 0) {
+      console.error('❌ Array de pedidos está vacío');
       return NextResponse.json(
         { error: 'Se requiere al menos un pedido' },
         { status: 400 }
       );
     }
 
-    console.log(`📦 Importando ${pedidosArray.length} pedido(s)...`);
+    console.log('\n' + '─'.repeat(100));
+    console.log('📦 3. Transformando pedidos a formato Supabase...');
+    console.log('📄 Pedido #1 (sin transformar):');
+    console.log(JSON.stringify(pedidosArray[0], null, 2));
 
     // Transformar campos a formato Supabase
     const transformedPedidos = pedidosArray.map(transformPedidoToSupabase);
+    
+    console.log('\n📄 Pedido #1 (transformado):');
+    console.log(JSON.stringify(transformedPedidos[0], null, 2));
+    console.log('─'.repeat(100) + '\n');
 
+    console.log('🔄 4. Insertando en Supabase...');
     const { data, error } = await supabase
       .from('pedidos')
       .insert(transformedPedidos as any)
       .select();
 
     if (error) {
-      console.error('❌ Error al importar pedidos:', error);
+      console.error('\n' + '❌'.repeat(50));
+      console.error('💥 ERROR DE SUPABASE:');
+      console.error('📛 Código:', error.code);
+      console.error('📛 Mensaje:', error.message);
+      console.error('📛 Detalles:', error.details);
+      console.error('📛 Hint:', error.hint);
+      console.error('❌'.repeat(50) + '\n');
       return NextResponse.json(
         { error: 'Error al importar pedidos', details: error.message },
         { status: 500 }
       );
     }
 
-    console.log(`✅ ${data?.length || 0} pedidos importados`);
+    const finalTimestamp = new Date().toISOString();
+    console.log('\n' + '✅'.repeat(50));
+    console.log(`🎉 IMPORTACIÓN EXITOSA [${finalTimestamp}]`);
+    console.log(`📊 5. Pedidos importados: ${data?.length || 0}`);
+    console.log('✅'.repeat(50) + '\n');
 
     return NextResponse.json({
       success: true,
@@ -128,9 +161,16 @@ export async function POST(request: NextRequest) {
       data,
     });
   } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
+    console.error('\n' + '💥'.repeat(50));
+    console.error('⚠️  ERROR INESPERADO EN POST:');
+    console.error('📛 Tipo:', typeof error);
+    console.error('📛 Nombre:', error?.name);
+    console.error('📛 Mensaje:', error?.message);
+    console.error('📛 Stack trace:');
+    console.error(error?.stack);
+    console.error('💥'.repeat(50) + '\n');
     return NextResponse.json(
-      { error: 'Error interno del servidor', details: error.message },
+      { error: 'Error interno del servidor', details: error.message, stack: error.stack },
       { status: 500 }
     );
   }
@@ -141,30 +181,52 @@ export async function POST(request: NextRequest) {
  * Actualizar pedidos existentes (upsert)
  */
 export async function PUT(request: NextRequest) {
+  const timestamp = new Date().toISOString();
+  console.log('\n' + '═'.repeat(100));
+  console.log(`🔄 INICIO ACTUALIZACIÓN DE PEDIDOS [${timestamp}]`);
+  console.log('═'.repeat(100));
+  
   try {
+    console.log('📥 1. Leyendo body del request...');
     const body = await request.json();
+    console.log('✅ Body recibido correctamente');
+    console.log('📊 Tipo de body:', typeof body);
+    console.log('📊 Claves del body:', Object.keys(body));
+    
+    console.log('\n🔍 2. Normalizando estructura...');
     let { pedidos } = body;
 
     // Si no viene "pedidos", asumir que el body ES el pedido
     if (!pedidos) {
+      console.log('⚠️  No hay propiedad "pedidos", asumiendo que body ES el pedido');
       pedidos = body;
     }
 
     // Normalizar a array si es un solo objeto
     const pedidosArray = Array.isArray(pedidos) ? pedidos : [pedidos];
+    console.log(`✅ Estructura normalizada: ${pedidosArray.length} pedido(s)`);
 
     if (pedidosArray.length === 0) {
+      console.error('❌ Array de pedidos está vacío');
       return NextResponse.json(
         { error: 'Se requiere al menos un pedido para actualizar' },
         { status: 400 }
       );
     }
 
-    console.log(`🔄 Actualizando ${pedidosArray.length} pedido(s)...`);
+    console.log('\n' + '─'.repeat(100));
+    console.log('🔄 3. Transformando pedidos a formato Supabase...');
+    console.log('📄 Pedido #1 (sin transformar):');
+    console.log(JSON.stringify(pedidosArray[0], null, 2));
 
     // Transformar campos a formato Supabase
     const transformedPedidos = pedidosArray.map(transformPedidoToSupabase);
+    
+    console.log('\n📄 Pedido #1 (transformado):');
+    console.log(JSON.stringify(transformedPedidos[0], null, 2));
+    console.log('─'.repeat(100) + '\n');
 
+    console.log('🔄 4. Haciendo UPSERT en Supabase (conflict: id)...');
     const { data, error } = await supabase
       .from('pedidos')
       .upsert(transformedPedidos as any, {
@@ -173,14 +235,24 @@ export async function PUT(request: NextRequest) {
       .select();
 
     if (error) {
-      console.error('❌ Error al actualizar pedidos:', error);
+      console.error('\n' + '❌'.repeat(50));
+      console.error('💥 ERROR DE SUPABASE AL ACTUALIZAR:');
+      console.error('📛 Código:', error.code);
+      console.error('📛 Mensaje:', error.message);
+      console.error('📛 Detalles:', error.details);
+      console.error('📛 Hint:', error.hint);
+      console.error('❌'.repeat(50) + '\n');
       return NextResponse.json(
         { error: 'Error al actualizar pedidos', details: error.message },
         { status: 500 }
       );
     }
 
-    console.log(`✅ ${data?.length || 0} pedidos actualizados`);
+    const finalTimestamp = new Date().toISOString();
+    console.log('\n' + '✅'.repeat(50));
+    console.log(`🎉 ACTUALIZACIÓN EXITOSA [${finalTimestamp}]`);
+    console.log(`📊 5. Pedidos actualizados: ${data?.length || 0}`);
+    console.log('✅'.repeat(50) + '\n');
 
     return NextResponse.json({
       success: true,
@@ -188,7 +260,14 @@ export async function PUT(request: NextRequest) {
       data,
     });
   } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
+    console.error('\n' + '💥'.repeat(50));
+    console.error('⚠️  ERROR INESPERADO EN PUT:');
+    console.error('📛 Tipo:', typeof error);
+    console.error('📛 Nombre:', error?.name);
+    console.error('📛 Mensaje:', error?.message);
+    console.error('📛 Stack trace:');
+    console.error(error?.stack);
+    console.error('💥'.repeat(50) + '\n');
     return NextResponse.json(
       { error: 'Error interno del servidor', details: error.message },
       { status: 500 }
