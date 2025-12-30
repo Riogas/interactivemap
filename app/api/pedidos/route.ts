@@ -49,8 +49,10 @@ export async function GET(request: NextRequest) {
       query = query.eq('estado_nro', parseInt(estado));
     }
 
+    // Si se especifica fecha, mostrar pedidos de esa fecha O sin fecha O con fecha anterior (atrasados)
+    // Esto permite ver pedidos pendientes que deberían haberse entregado antes
     if (fecha) {
-      query = query.eq('fch_para', fecha);
+      query = query.or(`fch_para.eq.${fecha},fch_para.is.null,fch_para.lte.${fecha}`);
     }
 
     if (empresaFleteraId) {
