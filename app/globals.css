@@ -142,3 +142,13 @@ body {
 .leaflet-control-layers-expanded {
   animation: slideInFromRight 0.3s ease;
 }
+
+/* Hide scrollbar para indicadores del header */
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}

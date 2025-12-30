@@ -62,12 +62,12 @@ export default function FloatingToolbar({
 
   return (
     <>
-      {/* Botón Flotante */}
-      <div className="fixed top-4 right-4 z-[9999]" ref={panelRef}>
+      {/* Botón Flotante - Centrado verticalmente con el header */}
+      <div className="fixed top-3 right-4 z-[9999]" ref={panelRef}>
         <button
           onClick={() => setIsOpen(!isOpen)}
           className={`
-            flex items-center justify-center w-12 h-12 rounded-full shadow-2xl
+            flex items-center justify-center w-10 h-10 rounded-full shadow-2xl
             transition-all duration-300 transform hover:scale-110
             ${isOpen 
               ? 'bg-gradient-to-br from-blue-600 to-blue-700 rotate-90' 
@@ -77,7 +77,7 @@ export default function FloatingToolbar({
           title="Filtros y Configuración"
         >
           <svg 
-            className={`w-6 h-6 text-white transition-transform duration-300 ${isOpen ? 'rotate-45' : ''}`}
+            className={`w-5 h-5 text-white transition-transform duration-300 ${isOpen ? 'rotate-45' : ''}`}
             fill="none" 
             stroke="currentColor" 
             viewBox="0 0 24 24"

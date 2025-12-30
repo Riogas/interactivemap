@@ -7,6 +7,7 @@ import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase } fr
 import MovilSelector from '@/components/ui/MovilSelector';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
+import DashboardIndicators from '@/components/dashboard/DashboardIndicators';
 import { useRealtime } from '@/components/providers/RealtimeProvider';
 import { useUserPreferences, UserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -909,21 +910,12 @@ function DashboardContent() {
       {/* Navbar Simple - Solo logo y espacio para indicadores */}
       <div className="flex-shrink-0">
         <NavbarSimple>
-          {/* Aquí puedes agregar indicadores personalizados */}
-          <div className="flex items-center gap-4">
-            {/* Ejemplo: Contador de móviles activos */}
-            <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30">
-              <span className="text-white font-semibold text-sm">
-                🚗 {moviles.filter(m => !m.isInactive).length} activos
-              </span>
-            </div>
-            {/* Ejemplo: Contador de pedidos */}
-            <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30">
-              <span className="text-white font-semibold text-sm">
-                📦 {pedidosCompletos.length} pedidos
-              </span>
-            </div>
-          </div>
+          {/* Dashboard Indicators Component */}
+          <DashboardIndicators
+            moviles={moviles}
+            pedidos={pedidosCompletos}
+            selectedDate={selectedDate}
+          />
         </NavbarSimple>
       </div>
 
@@ -941,7 +933,7 @@ function DashboardContent() {
       />
 
       {/* Indicador de conexión Realtime - Alineado a la derecha en el borde header/mapa */}
-      <div className="absolute right-6 top-[68px] z-50">
+      <div className="absolute right-4 top-[68px] z-50">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
