@@ -3,8 +3,9 @@ import { getServerSupabaseClient } from '@/lib/supabase';
 
 /**
  * POST /api/puntos-interes
- * Crear un nuevo punto de interés
- * Body: { nombre, descripcion, icono, latitud, longitud, tipo?, usuario_email }
+ * Crear o actualizar un punto de interés (UPSERT)
+ * Body: { id?, nombre, descripcion, icono, latitud, longitud, tipo?, usuario_email }
+ * Si se incluye 'id' y existe, se actualiza. Si no existe o no se incluye 'id', se crea uno nuevo.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -48,55 +49,60 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('📍 Creando punto de interés:', {
+    console.log('📍 Creando/Actualizando punto de interés:', {
       nombre,
       icono,
       usuario_email,
       coords: [latitud, longitud],
     });
 
-    // Insertar en la base de datos
+    // UPSERT: Insertar o actualizar si ya existe (basado en id si se proporciona)
+    // Si el body incluye un 'id', se actualizará ese registro
+    // Si no incluye 'id' o el id no existe, se insertará uno nuevo
+    const upsertData: any = {
+      nombre: nombre.trim(),
+      descripcion: descripcion?.trim() || null,
+      icono,
+      latitud,
+      longitud,
+      tipo: tipo || 'privado',
+      usuario_email,
+      visible: true,
+    };
+
+    // Si se proporciona un ID, incluirlo para el upsert
+    if (body.id) {
+      upsertData.id = body.id;
+    }
+
     const { data, error } = await supabase
       .from('puntos_interes')
-      .insert({
-        nombre: nombre.trim(),
-        descripcion: descripcion?.trim() || null,
-        icono,
-        latitud,
-        longitud,
-        tipo: tipo || 'privado',
-        usuario_email,
-        visible: true,
-      } as any)
+      .upsert(upsertData, {
+        onConflict: 'id',
+        ignoreDuplicates: false,
+      })
       .select()
       .single() as any;
 
     if (error) {
-      console.error('❌ Error al insertar punto:', error);
+      console.error('❌ Error al hacer upsert del punto:', error);
       
-      // Manejar error de duplicado (nombre ya existe para este usuario)
-      if (error.code === '23505') {
-        return NextResponse.json(
-          { error: 'Ya existe un punto con ese nombre' },
-          { status: 409 }
-        );
-      }
-
       return NextResponse.json(
         { error: 'Error al guardar el punto de interés', details: error.message },
         { status: 500 }
       );
     }
 
-    console.log('✅ Punto creado exitosamente:', data.id);
+    const wasUpdate = body.id !== undefined;
+    console.log(`✅ Punto ${wasUpdate ? 'actualizado' : 'creado'} exitosamente:`, data.id);
 
     return NextResponse.json(
       { 
         success: true, 
-        message: 'Punto de interés creado',
+        message: `Punto de interés ${wasUpdate ? 'actualizado' : 'creado'}`,
         data 
       },
-      { status: 201 }
+      { status: wasUpdate ? 200 : 201 }
     );
 
   } catch (error) {

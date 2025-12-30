@@ -500,64 +500,26 @@ export default function MovilSelector({
                                   key={pedido.id}
                                   onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
                                   className={clsx(
-                                    'w-full text-left px-3 py-2 rounded-lg transition-all duration-200 border',
+                                    'w-full text-left px-2.5 py-1.5 rounded-lg transition-all duration-200 border',
                                     getEstadoColor()
                                   )}
                                   whileHover={{ scale: 1.02 }}
                                   whileTap={{ scale: 0.98 }}
                                 >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                      {/* Primera línea: Número de pedido y badges */}
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-sm font-bold text-gray-900">#{pedido.id}</span>
-                                        {pedido.prioridad && pedido.prioridad > 0 && (
-                                          <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">
-                                            P{pedido.prioridad}
-                                          </span>
-                                        )}
-                                        {(!pedido.latitud || !pedido.longitud) && (
-                                          <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-semibold" title="Sin coordenadas">
-                                            �❌
-                                          </span>
-                                        )}
-                                      </div>
-                                      
-                                      {/* Segunda línea: Móvil */}
-                                      <div className="flex items-center gap-1.5 text-xs text-gray-700 mb-0.5">
-                                        <span className="font-semibold">🚗</span>
-                                        <span className="font-medium">{pedido.movil}</span>
-                                      </div>
-                                      
-                                      {/* Tercera línea: Servicio */}
-                                      {pedido.servicio_nombre && (
-                                        <div className="text-[10px] text-gray-600 truncate mb-0.5">
-                                          <span className="font-semibold">📋</span> {pedido.servicio_nombre}
-                                        </div>
-                                      )}
-                                      
-                                      {/* Cuarta línea: Teléfono */}
-                                      {pedido.cliente_tel && (
-                                        <div className="text-[10px] text-gray-600 truncate">
-                                          <span className="font-semibold">📞</span> {pedido.cliente_tel}
-                                        </div>
-                                      )}
-                                    </div>
-                                    
-                                    {/* Columna derecha: Estado y fecha */}
-                                    <div className="flex flex-col items-end text-right">
-                                      <span className="text-[10px] text-gray-500">
-                                        Estado {pedido.estado_nro || 'N/A'}
+                                                                    <div className="flex items-center gap-2 text-xs">
+                                    <span className="font-bold text-gray-900">#{pedido.id}</span>
+                                    {(!pedido.latitud || !pedido.longitud) && (
+                                      <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
+                                        📍❌
                                       </span>
-                                      {pedido.fch_hora_para && (
-                                        <span className="text-[10px] text-gray-600 font-medium">
-                                          {new Date(pedido.fch_hora_para).toLocaleDateString('es-PY', { 
-                                            day: '2-digit', 
-                                            month: '2-digit' 
-                                          })}
-                                        </span>
-                                      )}
-                                    </div>
+                                    )}
+                                    <span className="text-gray-700">🚗{pedido.movil}</span>
+                                    {pedido.servicio_nombre && (
+                                      <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
+                                    )}
+                                    {pedido.cliente_tel && (
+                                      <span className="text-gray-600 text-[10px]">📞{pedido.cliente_tel}</span>
+                                    )}
                                   </div>
                                 </motion.button>
                               );

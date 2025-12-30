@@ -10,6 +10,7 @@ http://localhost:3000
 ## 📋 Table of Contents
 - [Moviles API](#moviles-api)
 - [Pedidos API](#pedidos-api)
+- [Puntos de Interés API](#puntos-de-interés-api)
 - [GPS Tracking API](#gps-tracking-api)
 - [Demoras API](#demoras-api)
 - [Punto de Venta API](#punto-de-venta-api)
@@ -947,6 +948,347 @@ Body: { "movil_ids": ["693"] }
 
 ---
 
+---
+
+# Pedidos API
+
+## GET /api/pedidos
+Obtiene pedidos filtrados por fecha con soporte para pedidos atrasados y sin fecha.
+
+### Request
+
+**Method:** `GET`  
+**Endpoint:** `/api/pedidos`  
+**Query Parameters:**
+- `fecha` (opcional): Fecha en formato YYYY-MM-DD. Por defecto usa la fecha actual.
+
+### Behavior
+Retorna pedidos que cumplan alguna de estas condiciones:
+1. Pedidos con fecha igual a la solicitada
+2. Pedidos sin fecha asignada (`fch_para = null`)
+3. Pedidos atrasados (fecha menor o igual a la solicitada)
+
+### Response 200 OK
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 16619474,
+      "escenario": 1,
+      "movil": 132,
+      "estado_nro": 7,
+      "prioridad": 7,
+      "fch_para": "2025-12-30",
+      "fch_hora_para": "2025-12-30T12:00:00",
+      "latitud": -25.2637,
+      "longitud": -57.5759,
+      "servicio_nombre": "URGENTE",
+      "cliente_nombre": "Juan Pérez",
+      "cliente_tel": "096514760",
+      "producto_nombre": "Botellón 20L",
+      "created_at": "2025-12-30T08:00:00Z"
+    }
+  ],
+  "count": 1,
+  "fecha_consultada": "2025-12-30"
+}
+```
+
+### Response 500 Internal Server Error
+```json
+{
+  "error": "Error al obtener pedidos",
+  "details": "connection timeout"
+}
+```
+
+### cURL Example
+```bash
+# Pedidos de hoy
+curl http://localhost:3000/api/pedidos
+
+# Pedidos de una fecha específica
+curl http://localhost:3000/api/pedidos?fecha=2025-12-25
+```
+
+---
+
+# Puntos de Interés API
+
+## GET /api/puntos-interes
+Obtiene puntos de interés privados del usuario y todos los públicos.
+
+### Request
+
+**Method:** `GET`  
+**Endpoint:** `/api/puntos-interes`  
+**Query Parameters:**
+- `usuario_email` (requerido): Email del usuario para filtrar puntos privados
+
+### Behavior
+Retorna:
+- Todos los puntos privados del usuario especificado
+- Todos los puntos públicos (visibles para todos los usuarios)
+
+### Response 200 OK
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-123",
+      "nombre": "Depósito Central",
+      "descripcion": "Depósito principal de distribución",
+      "icono": "🏭",
+      "latitud": -25.2637,
+      "longitud": -57.5759,
+      "tipo": "publico",
+      "usuario_email": "admin@trackmovil.com",
+      "visible": true,
+      "created_at": "2025-12-29T10:00:00Z"
+    }
+  ]
+}
+```
+
+### Response 400 Bad Request
+```json
+{
+  "error": "usuario_email es requerido como query param"
+}
+```
+
+### cURL Example
+```bash
+curl "http://localhost:3000/api/puntos-interes?usuario_email=usuario@example.com"
+```
+
+---
+
+## POST /api/puntos-interes
+Crea un nuevo punto de interés o actualiza uno existente (UPSERT).
+
+### Request
+
+**Method:** `POST`  
+**Endpoint:** `/api/puntos-interes`  
+**Content-Type:** `application/json`
+
+### Request Body
+```json
+{
+  "id": "uuid-opcional",
+  "nombre": "Punto de Distribución Norte",
+  "descripcion": "Zona de distribución sector norte",
+  "icono": "📍",
+  "latitud": -25.2500,
+  "longitud": -57.5800,
+  "tipo": "privado",
+  "usuario_email": "usuario@example.com"
+}
+```
+
+### Request Fields
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `id` | string (uuid) | ❌ | Si se proporciona y existe, actualiza el punto. Si no, crea uno nuevo |
+| `nombre` | string | ✅ | Nombre del punto de interés |
+| `descripcion` | string | ❌ | Descripción o notas adicionales |
+| `icono` | string (emoji) | ✅ | Icono emoji para mostrar en el mapa |
+| `latitud` | number | ✅ | Latitud en grados decimales |
+| `longitud` | number | ✅ | Longitud en grados decimales |
+| `tipo` | string | ❌ | "publico" o "privado" (default: "privado") |
+| `usuario_email` | string | ✅ | Email del usuario propietario |
+
+### Response 201 Created (nuevo punto)
+```json
+{
+  "success": true,
+  "message": "Punto de interés creado",
+  "data": {
+    "id": "uuid-123",
+    "nombre": "Punto de Distribución Norte",
+    "icono": "📍",
+    "latitud": -25.2500,
+    "longitud": -57.5800,
+    "tipo": "privado",
+    "usuario_email": "usuario@example.com",
+    "visible": true,
+    "created_at": "2025-12-30T10:30:00Z"
+  }
+}
+```
+
+### Response 200 OK (punto actualizado)
+```json
+{
+  "success": true,
+  "message": "Punto de interés actualizado",
+  "data": { ... }
+}
+```
+
+### Response 400 Bad Request
+```json
+{
+  "error": "El nombre es obligatorio"
+}
+```
+
+### cURL Example
+```bash
+# Crear nuevo punto
+curl -X POST http://localhost:3000/api/puntos-interes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Depósito Sur",
+    "icono": "🏢",
+    "latitud": -25.3000,
+    "longitud": -57.6000,
+    "usuario_email": "usuario@example.com"
+  }'
+
+# Actualizar punto existente (upsert)
+curl -X POST http://localhost:3000/api/puntos-interes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "uuid-123",
+    "nombre": "Depósito Sur - Actualizado",
+    "icono": "🏢",
+    "latitud": -25.3000,
+    "longitud": -57.6000,
+    "usuario_email": "usuario@example.com"
+  }'
+```
+
+---
+
+## PATCH /api/puntos-interes
+Actualiza parcialmente un punto de interés existente.
+
+### Request
+
+**Method:** `PATCH`  
+**Endpoint:** `/api/puntos-interes`  
+**Content-Type:** `application/json`
+
+### Request Body
+```json
+{
+  "id": "uuid-123",
+  "usuario_email": "usuario@example.com",
+  "nombre": "Nombre actualizado",
+  "icono": "🏭",
+  "tipo": "publico"
+}
+```
+
+### Request Fields
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `id` | string (uuid) | ✅ | ID del punto a actualizar |
+| `usuario_email` | string | ✅ | Email del usuario (validación de permisos) |
+| Otros campos | any | ❌ | Cualquier campo del punto que se quiera actualizar |
+
+### Validación de Permisos
+- Solo el usuario propietario (`usuario_email`) puede actualizar el punto
+- Si el punto no existe o no pertenece al usuario, retorna error 404 o 403
+
+### Response 200 OK
+```json
+{
+  "success": true,
+  "message": "Punto de interés actualizado",
+  "data": {
+    "id": "uuid-123",
+    "nombre": "Nombre actualizado",
+    "icono": "🏭",
+    ...
+  }
+}
+```
+
+### Response 403 Forbidden
+```json
+{
+  "error": "No tienes permiso para actualizar este punto"
+}
+```
+
+### Response 404 Not Found
+```json
+{
+  "error": "Punto de interés no encontrado"
+}
+```
+
+### cURL Example
+```bash
+curl -X PATCH http://localhost:3000/api/puntos-interes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "uuid-123",
+    "usuario_email": "usuario@example.com",
+    "nombre": "Nuevo nombre"
+  }'
+```
+
+---
+
+## DELETE /api/puntos-interes
+Elimina un punto de interés.
+
+### Request
+
+**Method:** `DELETE`  
+**Endpoint:** `/api/puntos-interes`  
+**Query Parameters:**
+- `id` (requerido): UUID del punto a eliminar
+- `usuario_email` (requerido): Email del usuario para validación de permisos
+
+### Validación de Permisos
+- Solo el usuario propietario puede eliminar el punto
+- Si el punto no pertenece al usuario, retorna error 403
+
+### Response 200 OK
+```json
+{
+  "success": true,
+  "message": "Punto de interés eliminado"
+}
+```
+
+### Response 400 Bad Request
+```json
+{
+  "error": "id y usuario_email son requeridos"
+}
+```
+
+### Response 403 Forbidden
+```json
+{
+  "error": "No tienes permiso para eliminar este punto"
+}
+```
+
+### Response 404 Not Found
+```json
+{
+  "error": "Punto de interés no encontrado"
+}
+```
+
+### cURL Example
+```bash
+curl -X DELETE "http://localhost:3000/api/puntos-interes?id=uuid-123&usuario_email=usuario@example.com"
+```
+
+---
+
 # Notes
 
 1. **Formato flexible**: Todos los endpoints aceptan objetos únicos o arrays
@@ -957,6 +1299,6 @@ Body: { "movil_ids": ["693"] }
 
 ---
 
-**Version:** 1.0.0  
-**Last Updated:** December 10, 2025  
+**Version:** 1.1.0  
+**Last Updated:** December 30, 2025  
 **Base URL:** `http://localhost:3000`
