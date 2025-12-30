@@ -940,20 +940,20 @@ function DashboardContent() {
         }}
       />
 
-      {/* Indicador de conexión Realtime - Centrado en el borde header/mapa */}
-      <div className="absolute left-1/2 -translate-x-1/2 top-[72px] z-50">
+      {/* Indicador de conexión Realtime - Alineado a la derecha en el borde header/mapa */}
+      <div className="absolute right-6 top-[68px] z-50">
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 text-sm font-semibold border-2 ${
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className={`px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-medium ${
             preferences.realtimeEnabled 
               ? (isConnected 
-                  ? 'bg-green-500 text-white border-green-400' 
-                  : 'bg-yellow-500 text-white border-yellow-400')
-              : 'bg-gray-500 text-white border-gray-400'
+                  ? 'bg-green-500 text-white' 
+                  : 'bg-yellow-500 text-white')
+              : 'bg-gray-500 text-white'
           }`}
         >
-          <div className={`w-2.5 h-2.5 rounded-full ${
+          <div className={`w-2 h-2 rounded-full ${
             preferences.realtimeEnabled 
               ? (isConnected ? 'bg-white animate-pulse' : 'bg-white')
               : 'bg-gray-300'
