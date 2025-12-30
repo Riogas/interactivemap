@@ -348,11 +348,12 @@ function Indicator({ icon, label, value, subtitle, color = 'blue', pulse = false
         ${pulse ? 'animate-pulse' : ''}
         hover:scale-105 transition-transform cursor-default
         whitespace-nowrap
+        h-[38px] flex items-center
       `}
     >
       <div className="flex items-center gap-1.5">
         <span className="text-xs">{icon}</span>
-        <div className="flex flex-col leading-none">
+        <div className="flex flex-col leading-none justify-center">
           <div className="flex items-baseline gap-1">
             <span className="text-[9px] font-medium opacity-75">{label}</span>
             <span className="text-xs font-bold">{value}</span>
