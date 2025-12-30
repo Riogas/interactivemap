@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
-import Navbar from '@/components/layout/Navbar';
+import NavbarSimple from '@/components/layout/NavbarSimple';
+import FloatingToolbar from '@/components/layout/FloatingToolbar';
 import { useRealtime } from '@/components/providers/RealtimeProvider';
 import { useUserPreferences, UserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -905,20 +906,39 @@ function DashboardContent() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      {/* Navbar with filters - Fixed height */}
+      {/* Navbar Simple - Solo logo y espacio para indicadores */}
       <div className="flex-shrink-0">
-        <Navbar
-          selectedDate={selectedDate}
-          onDateChange={setSelectedDate}
-          empresas={empresas}
-          selectedEmpresas={selectedEmpresas}
-          onEmpresasChange={setSelectedEmpresas}
-          isLoadingEmpresas={isLoadingEmpresas}
-          onPreferencesChange={(newPrefs) => {
-            updatePreferences(newPrefs);
-          }}
-        />
+        <NavbarSimple>
+          {/* Aquí puedes agregar indicadores personalizados */}
+          <div className="flex items-center gap-4">
+            {/* Ejemplo: Contador de móviles activos */}
+            <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30">
+              <span className="text-white font-semibold text-sm">
+                🚗 {moviles.filter(m => !m.isInactive).length} activos
+              </span>
+            </div>
+            {/* Ejemplo: Contador de pedidos */}
+            <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30">
+              <span className="text-white font-semibold text-sm">
+                📦 {pedidosCompletos.length} pedidos
+              </span>
+            </div>
+          </div>
+        </NavbarSimple>
       </div>
+
+      {/* Floating Toolbar - Filtros, Preferencias, Usuario */}
+      <FloatingToolbar
+        selectedDate={selectedDate}
+        onDateChange={setSelectedDate}
+        empresas={empresas}
+        selectedEmpresas={selectedEmpresas}
+        onEmpresasChange={setSelectedEmpresas}
+        isLoadingEmpresas={isLoadingEmpresas}
+        onPreferencesChange={(newPrefs) => {
+          updatePreferences(newPrefs);
+        }}
+      />
 
       {/* Indicador de conexión Realtime */}
       <div className="fixed top-20 right-4 z-50">
