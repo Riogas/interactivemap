@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { MovilData, MovilFilters, ServiceFilters, PedidoFilters } from '@/types';
+import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase } from '@/types';
 import clsx from 'clsx';
 import { useState, useMemo } from 'react';
 import FilterBar from './FilterBar';
@@ -12,6 +12,8 @@ interface MovilSelectorProps {
   onToggleMovil: (movilId: number) => void;
   onSelectAll: () => void;
   onClearAll: () => void;
+  pedidos?: PedidoSupabase[]; // Nueva prop para pedidos
+  onPedidoClick?: (pedidoId: number) => void; // Callback para click en pedido
 }
 
 // Definir las categorías del árbol
@@ -30,6 +32,8 @@ export default function MovilSelector({
   onToggleMovil,
   onSelectAll,
   onClearAll,
+  pedidos = [],
+  onPedidoClick,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   
@@ -81,10 +85,39 @@ export default function MovilSelector({
 
   const allSelected = filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
 
+  // Filtrar y ordenar pedidos
+  const filteredPedidos = useMemo(() => {
+    let result = [...pedidos];
+    
+    // Filtrar por búsqueda
+    if (pedidosSearch.trim()) {
+      const searchLower = pedidosSearch.toLowerCase();
+      result = result.filter(pedido => 
+        pedido.id.toString().includes(searchLower) ||
+        (pedido.cliente_nombre && pedido.cliente_nombre.toLowerCase().includes(searchLower)) ||
+        (pedido.producto_nom && pedido.producto_nom.toLowerCase().includes(searchLower)) ||
+        (pedido.cliente_tel && pedido.cliente_tel.includes(searchLower))
+      );
+    }
+    
+    // Ordenar por prioridad (desc) y fecha (asc)
+    return result.sort((a, b) => {
+      // Primero por prioridad (mayor a menor)
+      const prioridadDiff = (b.prioridad || 0) - (a.prioridad || 0);
+      if (prioridadDiff !== 0) return prioridadDiff;
+      
+      // Luego por fecha
+      if (a.fch_hora_para && b.fch_hora_para) {
+        return new Date(a.fch_hora_para).getTime() - new Date(b.fch_hora_para).getTime();
+      }
+      return 0;
+    });
+  }, [pedidos, pedidosSearch, pedidosFilters]);
+
   // Categorías disponibles
   const categories: Category[] = [
     { key: 'moviles', title: 'Móviles', icon: '🚗', count: moviles.length },
-    { key: 'pedidos', title: 'Pedidos', icon: '📦', count: 0 },
+    { key: 'pedidos', title: 'Pedidos', icon: '📦', count: pedidos.length },
     { key: 'services', title: 'Services', icon: '🔧', count: 0 },
     { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: 0 },
   ];
@@ -430,11 +463,76 @@ export default function MovilSelector({
                         </div>
                       )}
 
-                      {/* Contenido vacío para otras categorías */}
+                      {/* Contenido de Pedidos */}
                       {category.key === 'pedidos' && (
-                        <div className="text-center py-4 text-gray-500 text-sm">
-                          <p>📦 Sin datos de pedidos</p>
-                          <p className="text-xs mt-1">Próximamente...</p>
+                        <div className="space-y-1 max-h-[calc(100vh-280px)] overflow-y-auto">
+                          {filteredPedidos.length === 0 ? (
+                            <div className="text-center py-4 text-gray-500 text-sm">
+                              <p>📦 Sin pedidos</p>
+                              <p className="text-xs mt-1">No hay pedidos para mostrar</p>
+                            </div>
+                          ) : (
+                            filteredPedidos.map((pedido) => {
+                              // Determinar color según estado
+                              const getEstadoColor = () => {
+                                if (!pedido.estado_nro) return 'bg-gray-100 hover:bg-gray-200 border-gray-300';
+                                if (pedido.estado_nro <= 2) return 'bg-blue-50 hover:bg-blue-100 border-blue-300';
+                                if (pedido.estado_nro <= 5) return 'bg-yellow-50 hover:bg-yellow-100 border-yellow-300';
+                                if (pedido.estado_nro === 7) return 'bg-green-50 hover:bg-green-100 border-green-300';
+                                return 'bg-red-50 hover:bg-red-100 border-red-300';
+                              };
+
+                              return (
+                                <motion.button
+                                  key={pedido.id}
+                                  onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
+                                  className={clsx(
+                                    'w-full text-left px-3 py-2 rounded-lg transition-all duration-200 border',
+                                    getEstadoColor()
+                                  )}
+                                  whileHover={{ scale: 1.02 }}
+                                  whileTap={{ scale: 0.98 }}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-gray-900">#{pedido.id}</span>
+                                        {pedido.prioridad && pedido.prioridad > 0 && (
+                                          <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">
+                                            P{pedido.prioridad}
+                                          </span>
+                                        )}
+                                        {pedido.movil && (
+                                          <span className="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded-full font-semibold">
+                                            M{pedido.movil}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-gray-700 font-medium truncate mt-0.5">
+                                        {pedido.cliente_nombre || 'Sin nombre'}
+                                      </div>
+                                      <div className="text-[10px] text-gray-600 truncate">
+                                        {pedido.producto_nom || pedido.tipo || 'Pedido'}
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-col items-end text-right">
+                                      <span className="text-[10px] text-gray-500">
+                                        Estado {pedido.estado_nro || 'N/A'}
+                                      </span>
+                                      {pedido.fch_hora_para && (
+                                        <span className="text-[10px] text-gray-600 font-medium">
+                                          {new Date(pedido.fch_hora_para).toLocaleDateString('es-PY', { 
+                                            day: '2-digit', 
+                                            month: '2-digit' 
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </motion.button>
+                              );
+                            })
+                          )}
                         </div>
                       )}
 

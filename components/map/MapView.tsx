@@ -3,9 +3,10 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { MovilData, PedidoServicio, PedidoPendiente } from '@/types';
+import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase } from '@/types';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
+import { PedidoInfoPopup } from './PedidoInfoPopup';
 import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
 import { format } from 'date-fns';
@@ -34,6 +35,9 @@ interface MapViewProps {
   onCloseAnimation?: () => void; // Cerrar animación
   onShowPendientes?: () => void;
   onShowCompletados?: () => void;
+  pedidos?: PedidoSupabase[]; // Nueva prop para mostrar pedidos en el mapa
+  onPedidoClick?: (pedidoId: number) => void; // Callback para click en pedido
+  popupPedido?: number; // Pedido con popup abierto
 }
 
 function MapUpdater({ moviles, focusedMovil, selectedMovil, selectedMovilesCount }: { 
@@ -246,7 +250,24 @@ function AnimationFollower({
   return null;
 }
 
-export default function MapView({ moviles, focusedMovil, selectedMovil, popupMovil, showPendientes, showCompletados, selectedMovilesCount = 0, defaultMapLayer = 'streets', onMovilClick, onShowAnimation, onCloseAnimation, onShowPendientes, onShowCompletados }: MapViewProps) {
+export default function MapView({ 
+  moviles, 
+  focusedMovil, 
+  selectedMovil, 
+  popupMovil, 
+  showPendientes, 
+  showCompletados, 
+  selectedMovilesCount = 0, 
+  defaultMapLayer = 'streets', 
+  onMovilClick, 
+  onShowAnimation, 
+  onCloseAnimation, 
+  onShowPendientes, 
+  onShowCompletados,
+  pedidos = [],
+  onPedidoClick,
+  popupPedido
+}: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
   
