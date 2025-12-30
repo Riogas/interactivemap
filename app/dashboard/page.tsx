@@ -36,6 +36,7 @@ function DashboardContent() {
   const [focusedMovil, setFocusedMovil] = useState<number | undefined>(); // Móvil enfocado en el mapa (para centrar)
   const [selectedMovil, setSelectedMovil] = useState<number | undefined>(); // Móvil seleccionado para animación
   const [popupMovil, setPopupMovil] = useState<number | undefined>(); // Móvil con popup abierto
+  const [popupPedido, setPopupPedido] = useState<number | undefined>(); // Pedido con popup abierto
   const [showPendientes, setShowPendientes] = useState(false); // Mostrar marcadores de pedidos
   const [showCompletados, setShowCompletados] = useState(false); // Mostrar marcadores de completados
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -736,6 +737,11 @@ function DashboardContent() {
     setSelectedMovil(undefined); // Desactiva la animación
   }, []);
 
+  // Handler para click en pedido
+  const handlePedidoClick = useCallback((pedidoId: number | undefined) => {
+    setPopupPedido(pedidoId); // Abre/cierra popup de pedido
+  }, []);
+
   // Initial fetch
   useEffect(() => {
     fetchPositions();
@@ -926,6 +932,8 @@ function DashboardContent() {
                   onToggleMovil={handleToggleMovil}
                   onSelectAll={handleSelectAll}
                   onClearAll={handleClearAll}
+                  pedidos={pedidosRealtime}
+                  onPedidoClick={handlePedidoClick}
                 />
               </div>
             </motion.div>
@@ -981,6 +989,9 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
+                pedidos={pedidosRealtime}
+                onPedidoClick={handlePedidoClick}
+                popupPedido={popupPedido}
               />
             </motion.div>
           </>

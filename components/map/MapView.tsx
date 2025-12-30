@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase } from '@/types';
 import RouteAnimationControl from './RouteAnimationControl';
@@ -36,7 +36,7 @@ interface MapViewProps {
   onShowPendientes?: () => void;
   onShowCompletados?: () => void;
   pedidos?: PedidoSupabase[]; // Nueva prop para mostrar pedidos en el mapa
-  onPedidoClick?: (pedidoId: number) => void; // Callback para click en pedido
+  onPedidoClick?: (pedidoId: number | undefined) => void; // Callback para click en pedido
   popupPedido?: number; // Pedido con popup abierto
 }
 
@@ -606,7 +606,7 @@ export default function MapView({
     });
   };
 
-  // Iconos para pedidos (naranja) - MÁS GRANDE Y DISTINTIVO
+  // Iconos para pedidos (naranja) - MÁS GRANDE Y DISTINTIVO - LEGACY para animación
   const createPedidoIcon = () => {
     return L.divIcon({
       className: '',
@@ -621,6 +621,58 @@ export default function MapView({
           border: 3px solid white;
           border-radius: 8px;
           box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px rgba(249, 115, 22, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          cursor: pointer;
+          transition: transform 0.2s;
+        " 
+        onmouseover="this.style.transform='scale(1.15)'"
+        onmouseout="this.style.transform='scale(1)'">📦</div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+  };
+
+  // Iconos para pedidos desde tabla - por estado
+  const createPedidoIconByEstado = (estadoNro: number | null) => {
+    // Colores según estado (mismo esquema que PedidoInfoPopup)
+    let color = '#EF4444'; // Rojo por defecto
+    let lightColor = '#FCA5A5';
+    let shadowColor = 'rgba(239, 68, 68, 0.3)';
+    
+    if (estadoNro !== null && estadoNro <= 2) {
+      // Asignado - Azul
+      color = '#3B82F6';
+      lightColor = '#93C5FD';
+      shadowColor = 'rgba(59, 130, 246, 0.3)';
+    } else if (estadoNro !== null && estadoNro >= 3 && estadoNro <= 5) {
+      // En proceso - Amarillo
+      color = '#EAB308';
+      lightColor = '#FDE047';
+      shadowColor = 'rgba(234, 179, 8, 0.3)';
+    } else if (estadoNro === 7) {
+      // Completado - Verde
+      color = '#22C55E';
+      lightColor = '#86EFAC';
+      shadowColor = 'rgba(34, 197, 94, 0.3)';
+    }
+
+    return L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width: 32px;
+          height: 32px;
+          position: absolute;
+          left: -16px;
+          top: -16px;
+          background: linear-gradient(135deg, ${color} 0%, ${lightColor} 100%);
+          border: 3px solid white;
+          border-radius: 8px;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px ${shadowColor};
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1322,6 +1374,28 @@ export default function MapView({
           </>
         )}
         
+        {/* Marcadores de Pedidos desde tabla - con coordenadas */}
+        {pedidos && pedidos.filter(p => p.latitud && p.longitud).map(pedido => (
+          <Marker
+            key={`pedido-tabla-${pedido.id}`}
+            position={[pedido.latitud!, pedido.longitud!]}
+            icon={createPedidoIconByEstado(pedido.estado_nro)}
+            eventHandlers={{
+              click: () => {
+                onPedidoClick && onPedidoClick(pedido.id);
+              }
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+              <div className="text-xs">
+                <div className="font-bold">Pedido #{pedido.id}</div>
+                <div>{pedido.cliente_nombre}</div>
+                <div className="text-gray-600">{pedido.producto_nom}</div>
+              </div>
+            </Tooltip>
+          </Marker>
+        ))}
+        
         <MapUpdater 
           moviles={moviles} 
           focusedMovil={focusedMovil} 
@@ -1376,6 +1450,18 @@ export default function MapView({
             // Activar vista de pendientes
             if (onShowPendientes) {
               onShowPendientes();
+            }
+          }}
+        />
+      )}
+
+      {/* Popup de información del pedido */}
+      {popupPedido && (
+        <PedidoInfoPopup 
+          pedido={pedidos.find(p => p.id === popupPedido) || null}
+          onClose={() => {
+            if (onPedidoClick) {
+              onPedidoClick(undefined);
             }
           }}
         />
