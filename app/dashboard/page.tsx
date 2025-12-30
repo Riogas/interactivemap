@@ -57,7 +57,7 @@ function DashboardContent() {
     isConnected: pedidosConnected,
     error: pedidosError 
   } = usePedidosRealtime(
-    1, // escenarioId
+    1000, // escenarioId (ajustar según tu base de datos)
     selectedMoviles.length > 0 ? selectedMoviles : undefined // Solo escuchar pedidos de móviles seleccionados
   );
   
@@ -328,7 +328,7 @@ function DashboardContent() {
       
       // Construir URL con filtros
       const params = new URLSearchParams();
-      params.append('escenario', '1'); // Escenario 1
+      params.append('escenario', '1000'); // Escenario (ajustar según tu base de datos)
       if (selectedDate) {
         params.append('fecha', selectedDate);
       }

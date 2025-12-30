@@ -388,7 +388,7 @@ export function usePedidosRealtime(
             event: 'INSERT',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario_id=eq.${escenarioId}`,
+            filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
             console.log('📦 Nuevo pedido recibido:', payload.new);
@@ -415,7 +415,7 @@ export function usePedidosRealtime(
             event: 'UPDATE',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario_id=eq.${escenarioId}`,
+            filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
             console.log('📦 Pedido actualizado:', payload.new);
@@ -442,7 +442,7 @@ export function usePedidosRealtime(
             event: 'DELETE',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario_id=eq.${escenarioId}`,
+            filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
             console.log('📦 Pedido eliminado:', payload.old);
