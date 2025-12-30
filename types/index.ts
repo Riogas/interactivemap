@@ -212,7 +212,20 @@ export interface PedidoData {
   observaciones?: string;
 }
 
-// Punto de Interés
+// Marcador Personalizado
+export interface CustomMarker {
+  id: string;  // UUID generado
+  nombre: string;
+  observacion: string;
+  icono: string;  // Emoji
+  latitud: number;
+  longitud: number;
+  creadoPor?: string;  // ID o nombre del usuario creador
+  fechaCreacion: string;  // ISO date string
+  visible: boolean;  // Si está visible en el mapa
+}
+
+// Punto de Interés (legacy, mantener por compatibilidad)
 export interface PuntoInteresData {
   id: number;
   nombre: string;

@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase } from '@/types';
+import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase, CustomMarker } from '@/types';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
 import { PedidoInfoPopup } from './PedidoInfoPopup';
 import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
+import CustomMarkerModal from './CustomMarkerModal';
 import { format } from 'date-fns';
 import 'leaflet/dist/leaflet.css';
 
@@ -250,6 +251,24 @@ function AnimationFollower({
   return null;
 }
 
+// Componente para capturar clics en el mapa
+function MapClickHandler({ 
+  isPlacingMarker, 
+  onMapClick 
+}: { 
+  isPlacingMarker: boolean; 
+  onMapClick: (lat: number, lng: number) => void;
+}) {
+  useMapEvents({
+    click: (e) => {
+      if (isPlacingMarker) {
+        onMapClick(e.latlng.lat, e.latlng.lng);
+      }
+    },
+  });
+  return null;
+}
+
 export default function MapView({ 
   moviles, 
   focusedMovil, 
@@ -279,9 +298,60 @@ export default function MapView({
   const [endTime, setEndTime] = useState('23:59');
   const [simplifiedPath, setSimplifiedPath] = useState(true); // Mostrar solo últimas 3 líneas
   const [selectedPedidoServicio, setSelectedPedidoServicio] = useState<PedidoServicio | null>(null);
+  
+  // ===== MARCADORES PERSONALIZADOS =====
+  const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([]);
+  const [isPlacingMarker, setIsPlacingMarker] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [tempMarkerPosition, setTempMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
+  
   const animationRef = useRef<number | null>(null);
   const animationStartTime = useRef<number>(0); // Timestamp de inicio de animación
   const lastProgressUpdate = useRef<number>(0); // Último progreso guardado
+
+  // Cargar marcadores personalizados desde localStorage
+  useEffect(() => {
+    const savedMarkers = localStorage.getItem('customMarkers');
+    if (savedMarkers) {
+      try {
+        setCustomMarkers(JSON.parse(savedMarkers));
+      } catch (error) {
+        console.error('Error al cargar marcadores:', error);
+      }
+    }
+  }, []);
+
+  // Guardar marcadores en localStorage cuando cambien
+  useEffect(() => {
+    if (customMarkers.length > 0) {
+      localStorage.setItem('customMarkers', JSON.stringify(customMarkers));
+    }
+  }, [customMarkers]);
+
+  // Manejar guardado de nuevo marcador
+  const handleSaveMarker = (data: { nombre: string; observacion: string; icono: string }) => {
+    if (!tempMarkerPosition) return;
+
+    const newMarker: CustomMarker = {
+      id: `marker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      nombre: data.nombre,
+      observacion: data.observacion,
+      icono: data.icono,
+      latitud: tempMarkerPosition.lat,
+      longitud: tempMarkerPosition.lng,
+      fechaCreacion: new Date().toISOString(),
+      visible: true,
+    };
+
+    setCustomMarkers(prev => [...prev, newMarker]);
+    setTempMarkerPosition(null);
+    setIsPlacingMarker(false);
+  };
+
+  // Eliminar marcador
+  const handleDeleteMarker = (markerId: string) => {
+    setCustomMarkers(prev => prev.filter(m => m.id !== markerId));
+  };
 
   // Extraer pedidos/servicios completados del historial de coordenadas
   // Ahora los completados están en LOGCOORDMOVIL con ORIGEN='UPDPEDIDOS' o 'DYLPEDIDOS'
@@ -1410,6 +1480,71 @@ export default function MapView({
           startTime={startTime}
           endTime={endTime}
         />
+
+        {/* Handler para capturar clics en el mapa */}
+        <MapClickHandler
+          isPlacingMarker={isPlacingMarker}
+          onMapClick={(lat, lng) => {
+            setTempMarkerPosition({ lat, lng });
+            setIsModalOpen(true);
+          }}
+        />
+
+        {/* Renderizar marcadores personalizados */}
+        {customMarkers.filter(m => m.visible).map((marker) => {
+          // Crear icono personalizado con emoji
+          const customIcon = L.divIcon({
+            html: `
+              <div style="
+                font-size: 32px;
+                text-align: center;
+                line-height: 1;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+              ">
+                ${marker.icono}
+              </div>
+            `,
+            className: 'custom-marker-icon',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32],
+          });
+
+          return (
+            <Marker
+              key={marker.id}
+              position={[marker.latitud, marker.longitud]}
+              icon={customIcon}
+            >
+              <Popup>
+                <div className="p-2 min-w-[200px]">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      <span className="text-2xl">{marker.icono}</span>
+                      {marker.nombre}
+                    </h3>
+                    <button
+                      onClick={() => handleDeleteMarker(marker.id)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                      title="Eliminar marcador"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                  {marker.observacion && (
+                    <p className="text-sm text-gray-600 mb-2">{marker.observacion}</p>
+                  )}
+                  <div className="text-xs text-gray-400 border-t pt-2">
+                    <p>📍 {marker.latitud.toFixed(6)}, {marker.longitud.toFixed(6)}</p>
+                    <p>📅 {new Date(marker.fechaCreacion).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
       
       {/* Control de animación (solo visible cuando hay un móvil seleccionado con historial) */}
@@ -1471,6 +1606,53 @@ export default function MapView({
       <PedidoServicioPopup 
         item={selectedPedidoServicio} 
         onClose={() => setSelectedPedidoServicio(null)} 
+      />
+
+      {/* Botón para agregar marcadores personalizados */}
+      <button
+        onClick={() => {
+          setIsPlacingMarker(!isPlacingMarker);
+          if (isPlacingMarker) {
+            setTempMarkerPosition(null);
+          }
+        }}
+        className={`
+          absolute bottom-32 right-4 z-[1000]
+          flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl
+          font-medium transition-all duration-300 transform hover:scale-105
+          ${isPlacingMarker
+            ? 'bg-gradient-to-r from-red-500 to-red-600 text-white animate-pulse'
+            : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700'
+          }
+        `}
+        title={isPlacingMarker ? 'Haz clic en el mapa para colocar el marcador' : 'Agregar marcador personalizado'}
+      >
+        <span className="text-xl">
+          {isPlacingMarker ? '📍' : '➕'}
+        </span>
+        <span className="text-sm font-bold">
+          {isPlacingMarker ? 'Colocar Marcador' : 'Nuevo Marcador'}
+        </span>
+      </button>
+
+      {/* Contador de marcadores */}
+      {customMarkers.length > 0 && (
+        <div className="absolute bottom-24 right-4 z-[999] bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg">
+          <span className="text-xs font-medium text-gray-700">
+            📍 {customMarkers.length} {customMarkers.length === 1 ? 'marcador' : 'marcadores'}
+          </span>
+        </div>
+      )}
+
+      {/* Modal para configurar el marcador */}
+      <CustomMarkerModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setTempMarkerPosition(null);
+          setIsPlacingMarker(false);
+        }}
+        onSave={handleSaveMarker}
       />
     </div>
   );
