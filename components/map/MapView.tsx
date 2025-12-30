@@ -11,6 +11,7 @@ import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 
 // Fix for default marker icons in Next.js
@@ -309,6 +310,7 @@ export default function MapView({
   const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempMarkerPosition, setTempMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [editingMarker, setEditingMarker] = useState<CustomMarker | null>(null); // Nuevo: para edición
   
   // Usar el estado externo si se proporciona, sino usar estado interno
   const isPlacingMarker = externalIsPlacingMarker;
@@ -368,6 +370,7 @@ export default function MapView({
           console.log(`✅ ${markers.length} marcadores cargados desde Supabase`);
         } else {
           console.warn('⚠️ No se pudieron cargar los marcadores, usando modo offline');
+          toast.error('⚠️ No se pudieron cargar los puntos desde el servidor. Usando datos locales.');
           // Fallback a localStorage si la API falla
           const savedMarkers = localStorage.getItem('customMarkers');
           if (savedMarkers) {
@@ -376,6 +379,7 @@ export default function MapView({
         }
       } catch (error) {
         console.error('❌ Error al cargar marcadores:', error);
+        toast.error('❌ Error al cargar los puntos. Usando datos locales.');
         // Fallback a localStorage
         const savedMarkers = localStorage.getItem('customMarkers');
         if (savedMarkers) {
@@ -397,6 +401,8 @@ export default function MapView({
   // Manejar guardado de nuevo marcador
   const handleSaveMarker = async (data: { nombre: string; observacion: string; icono: string }) => {
     if (!tempMarkerPosition) return;
+
+    const toastId = toast.loading('💾 Guardando punto...');
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
@@ -458,18 +464,21 @@ export default function MapView({
       localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
       
       console.log('✅ Marcador guardado exitosamente en Supabase');
+      toast.success('✅ Punto guardado correctamente', { id: toastId });
       
       if (onPlacingMarkerChange) {
         onPlacingMarkerChange(false);
       }
     } catch (error) {
       console.error('❌ Error al guardar marcador:', error);
-      alert('Error al guardar el marcador. Por favor intenta nuevamente.');
+      toast.error('❌ Error al guardar el punto. Por favor intenta nuevamente.', { id: toastId });
     }
   };
 
   // Eliminar marcador
   const handleDeleteMarker = async (markerId: string) => {
+    const toastId = toast.loading('🗑️ Eliminando punto...');
+
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
       const userStr = localStorage.getItem('trackmovil_user');
@@ -502,9 +511,87 @@ export default function MapView({
       localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
       
       console.log('✅ Marcador eliminado exitosamente');
+      toast.success('✅ Punto eliminado correctamente', { id: toastId });
     } catch (error) {
       console.error('❌ Error al eliminar marcador:', error);
-      alert('Error al eliminar el marcador. Por favor intenta nuevamente.');
+      toast.error('❌ Error al eliminar el punto. Por favor intenta nuevamente.', { id: toastId });
+    }
+  };
+
+  // Editar marcador existente
+  const handleEditMarker = async (data: { nombre: string; observacion: string; icono: string }) => {
+    if (!editingMarker) return;
+
+    const toastId = toast.loading('🔄 Actualizando punto...');
+
+    try {
+      // Obtener email del usuario desde localStorage (trackmovil_user)
+      const userStr = localStorage.getItem('trackmovil_user');
+      let usuario_email = 'anonimo@trackmovil.com';
+
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          usuario_email = user.email || user.username || usuario_email;
+        } catch (e) {
+          console.warn('⚠️ Error parseando usuario');
+        }
+      }
+
+      // Actualizar en Supabase via API
+      const response = await fetch('/api/puntos-interes', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: editingMarker.id,
+          usuario_email,
+          nombre: data.nombre,
+          descripcion: data.observacion,
+          icono: data.icono,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al actualizar el marcador');
+      }
+
+      const { data: updatedPunto } = await response.json();
+
+      // Actualizar estado local
+      setCustomMarkers(prev => prev.map(m => 
+        m.id === editingMarker.id 
+          ? {
+              ...m,
+              nombre: updatedPunto.nombre,
+              observacion: updatedPunto.descripcion || '',
+              icono: updatedPunto.icono,
+            }
+          : m
+      ));
+
+      // También actualizar localStorage
+      const updatedMarkers = customMarkers.map(m => 
+        m.id === editingMarker.id 
+          ? {
+              ...m,
+              nombre: updatedPunto.nombre,
+              observacion: updatedPunto.descripcion || '',
+              icono: updatedPunto.icono,
+            }
+          : m
+      );
+      localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
+      
+      console.log('✅ Marcador actualizado exitosamente');
+      toast.success('✅ Punto actualizado correctamente', { id: toastId });
+      
+      setEditingMarker(null);
+    } catch (error) {
+      console.error('❌ Error al actualizar marcador:', error);
+      toast.error('❌ Error al actualizar el punto. Por favor intenta nuevamente.', { id: toastId });
     }
   };
 
@@ -1678,15 +1765,29 @@ export default function MapView({
                       <span className="text-2xl">{marker.icono}</span>
                       {marker.nombre}
                     </h3>
-                    <button
-                      onClick={() => handleDeleteMarker(marker.id)}
-                      className="text-red-500 hover:text-red-700 p-1"
-                      title="Eliminar marcador"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          setEditingMarker(marker);
+                          setIsModalOpen(true);
+                        }}
+                        className="text-blue-500 hover:text-blue-700 p-1"
+                        title="Editar marcador"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMarker(marker.id)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                        title="Eliminar marcador"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   {marker.observacion && (
                     <p className="text-sm text-gray-600 mb-2">{marker.observacion}</p>
@@ -1769,11 +1870,17 @@ export default function MapView({
         onClose={() => {
           setIsModalOpen(false);
           setTempMarkerPosition(null);
+          setEditingMarker(null);
           if (onPlacingMarkerChange) {
             onPlacingMarkerChange(false);
           }
         }}
-        onSave={handleSaveMarker}
+        onSave={editingMarker ? handleEditMarker : handleSaveMarker}
+        initialData={editingMarker ? {
+          nombre: editingMarker.nombre,
+          observacion: editingMarker.observacion,
+          icono: editingMarker.icono,
+        } : undefined}
       />
     </div>
   );

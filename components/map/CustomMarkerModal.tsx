@@ -108,7 +108,7 @@ export default function CustomMarkerModal({
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-bold text-white flex items-center gap-2">
                     <span className="text-2xl">{selectedIcon}</span>
-                    Crear Marcador Personalizado
+                    {initialData ? 'Editar Punto de Interés' : 'Crear Marcador Personalizado'}
                   </h3>
                   <button
                     onClick={handleClose}
@@ -199,7 +199,7 @@ export default function CustomMarkerModal({
                     type="submit"
                     className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium rounded-lg shadow-lg transition-all transform hover:scale-105"
                   >
-                    Guardar Marcador
+                    {initialData ? '🔄 Actualizar Punto' : '💾 Guardar Marcador'}
                   </button>
                 </div>
               </form>
