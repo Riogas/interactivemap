@@ -71,6 +71,10 @@ function transformPedidoToSupabase(pedido: any) {
     waze_url: pedido.WazeURL || pedido.waze_url || '',
     zona_nro: pedido.ZonaNro ?? pedido.zona_nro,
     ubicacion: pedido.ubicacion || '',
+    
+    // Coordenadas geográficas
+    latitud: pedido.Latitud ?? pedido.latitud ?? null,
+    longitud: pedido.Longitud ?? pedido.longitud ?? null,
   };
 }
 
@@ -105,7 +109,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('pedidos')
-      .insert(transformedPedidos)
+      .insert(transformedPedidos as any)
       .select();
 
     if (error) {
@@ -163,7 +167,7 @@ export async function PUT(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('pedidos')
-      .upsert(transformedPedidos, {
+      .upsert(transformedPedidos as any, {
         onConflict: 'id', // PRIMARY KEY de la tabla
       })
       .select();

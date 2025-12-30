@@ -100,102 +100,144 @@ export interface Database {
       pedidos: {
         Row: {
           id: number
-          escenario_id: number
-          movil_id: number | null
-          estado: number | null
-          latitud: number | null
-          longitud: number | null
-          zona: number | null
-          tipo: string | null
-          nombre_servicio: string | null
-          producto_codigo: string | null
-          producto_nombre: string | null
-          producto_cantidad: number | null
-          producto_precio: number | null
-          prioridad: number | null
-          observacion: string | null
-          importe_flete: number | null
-          importe_bruto: number | null
-          fecha_para: string | null
-          fecha_hora_max_comp: string | null
-          fecha_hora_para: string | null
-          fecha_hora_asignado: string | null
-          fecha_hora_cumplido: string | null
-          cliente_nombre: string | null
+          escenario: number
+          cliente_ciudad: string | null
           cliente_direccion: string | null
-          cliente_nro: string | null
-          cliente_telefono: string | null
-          cliente_observacion: string | null
-          aux1: string | null
+          cliente_direccion_esq1: string | null
+          cliente_direccion_obs: string | null
+          cliente_nombre: string | null
+          cliente_nro: number | null
+          cliente_obs: string | null
+          cliente_tel: string | null
+          demora_informada: number | null
+          detalle_html: string | null
+          empresa_fletera_id: number | null
+          empresa_fletera_nom: string | null
+          estado_nro: number | null
+          fpago_obs1: string | null
+          fch_hora_max_ent_comp: string | null
+          fch_hora_mov: string | null
+          fch_hora_para: string | null
+          fch_hora_upd_firestore: string | null
+          fch_para: string | null
+          google_maps_url: string | null
+          imp_bruto: number | null
+          imp_flete: number | null
+          movil: number | null
+          orden_cancelacion: string | null
+          otros_productos: string | null
+          pedido_obs: string | null
+          precio: number | null
+          prioridad: number | null
+          producto_cant: number | null
+          producto_cod: string | null
+          producto_nom: string | null
+          servicio_nombre: string | null
+          sub_estado_desc: string | null
+          sub_estado_nro: number | null
+          tipo: string | null
+          visible_en_app: string | null
+          waze_url: string | null
+          zona_nro: number | null
+          ubicacion: string | null
           created_at: string | null
           updated_at: string | null
-          empresa_fletera_id: number | null
+          latitud: number | null
+          longitud: number | null
         }
         Insert: {
           id: number
-          escenario_id: number
-          movil_id?: number | null
-          estado?: number | null
-          latitud?: number | null
-          longitud?: number | null
-          zona?: number | null
-          tipo?: string | null
-          nombre_servicio?: string | null
-          producto_codigo?: string | null
-          producto_nombre?: string | null
-          producto_cantidad?: number | null
-          producto_precio?: number | null
-          prioridad?: number | null
-          observacion?: string | null
-          importe_flete?: number | null
-          importe_bruto?: number | null
-          fecha_para?: string | null
-          fecha_hora_max_comp?: string | null
-          fecha_hora_para?: string | null
-          fecha_hora_asignado?: string | null
-          fecha_hora_cumplido?: string | null
-          cliente_nombre?: string | null
+          escenario: number
+          cliente_ciudad?: string | null
           cliente_direccion?: string | null
-          cliente_nro?: string | null
-          cliente_telefono?: string | null
-          cliente_observacion?: string | null
-          aux1?: string | null
+          cliente_direccion_esq1?: string | null
+          cliente_direccion_obs?: string | null
+          cliente_nombre?: string | null
+          cliente_nro?: number | null
+          cliente_obs?: string | null
+          cliente_tel?: string | null
+          demora_informada?: number | null
+          detalle_html?: string | null
+          empresa_fletera_id?: number | null
+          empresa_fletera_nom?: string | null
+          estado_nro?: number | null
+          fpago_obs1?: string | null
+          fch_hora_max_ent_comp?: string | null
+          fch_hora_mov?: string | null
+          fch_hora_para?: string | null
+          fch_hora_upd_firestore?: string | null
+          fch_para?: string | null
+          google_maps_url?: string | null
+          imp_bruto?: number | null
+          imp_flete?: number | null
+          movil?: number | null
+          orden_cancelacion?: string | null
+          otros_productos?: string | null
+          pedido_obs?: string | null
+          precio?: number | null
+          prioridad?: number | null
+          producto_cant?: number | null
+          producto_cod?: string | null
+          producto_nom?: string | null
+          servicio_nombre?: string | null
+          sub_estado_desc?: string | null
+          sub_estado_nro?: number | null
+          tipo?: string | null
+          visible_en_app?: string | null
+          waze_url?: string | null
+          zona_nro?: number | null
+          ubicacion?: string | null
           created_at?: string | null
           updated_at?: string | null
-          empresa_fletera_id?: number | null
+          latitud?: number | null
+          longitud?: number | null
         }
         Update: {
           id?: number
-          escenario_id?: number
-          movil_id?: number | null
-          estado?: number | null
-          latitud?: number | null
-          longitud?: number | null
-          zona?: number | null
-          tipo?: string | null
-          nombre_servicio?: string | null
-          producto_codigo?: string | null
-          producto_nombre?: string | null
-          producto_cantidad?: number | null
-          producto_precio?: number | null
-          prioridad?: number | null
-          observacion?: string | null
-          importe_flete?: number | null
-          importe_bruto?: number | null
-          fecha_para?: string | null
-          fecha_hora_max_comp?: string | null
-          fecha_hora_para?: string | null
-          fecha_hora_asignado?: string | null
-          fecha_hora_cumplido?: string | null
-          cliente_nombre?: string | null
+          escenario?: number
+          cliente_ciudad?: string | null
           cliente_direccion?: string | null
-          cliente_nro?: string | null
-          cliente_telefono?: string | null
-          cliente_observacion?: string | null
-          aux1?: string | null
+          cliente_direccion_esq1?: string | null
+          cliente_direccion_obs?: string | null
+          cliente_nombre?: string | null
+          cliente_nro?: number | null
+          cliente_obs?: string | null
+          cliente_tel?: string | null
+          demora_informada?: number | null
+          detalle_html?: string | null
+          empresa_fletera_id?: number | null
+          empresa_fletera_nom?: string | null
+          estado_nro?: number | null
+          fpago_obs1?: string | null
+          fch_hora_max_ent_comp?: string | null
+          fch_hora_mov?: string | null
+          fch_hora_para?: string | null
+          fch_hora_upd_firestore?: string | null
+          fch_para?: string | null
+          google_maps_url?: string | null
+          imp_bruto?: number | null
+          imp_flete?: number | null
+          movil?: number | null
+          orden_cancelacion?: string | null
+          otros_productos?: string | null
+          pedido_obs?: string | null
+          precio?: number | null
+          prioridad?: number | null
+          producto_cant?: number | null
+          producto_cod?: string | null
+          producto_nom?: string | null
+          servicio_nombre?: string | null
+          sub_estado_desc?: string | null
+          sub_estado_nro?: number | null
+          tipo?: string | null
+          visible_en_app?: string | null
+          waze_url?: string | null
+          zona_nro?: number | null
+          ubicacion?: string | null
           created_at?: string | null
           updated_at?: string | null
-          empresa_fletera_id?: number | null
+          latitud?: number | null
+          longitud?: number | null
         }
       }
       empresas_fleteras: {
