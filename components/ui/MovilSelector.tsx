@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase } from '@/types';
+import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, CustomMarker } from '@/types';
 import clsx from 'clsx';
 import { useState, useMemo } from 'react';
 import FilterBar from './FilterBar';
@@ -14,6 +14,8 @@ interface MovilSelectorProps {
   onClearAll: () => void;
   pedidos?: PedidoSupabase[]; // Nueva prop para pedidos
   onPedidoClick?: (pedidoId: number) => void; // Callback para click en pedido
+  puntosInteres?: CustomMarker[]; // Nueva prop para puntos de interés
+  onPuntoInteresClick?: (puntoId: string) => void; // Callback para click en punto
 }
 
 // Definir las categorías del árbol
@@ -34,6 +36,8 @@ export default function MovilSelector({
   onClearAll,
   pedidos = [],
   onPedidoClick,
+  puntosInteres = [],
+  onPuntoInteresClick,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   
@@ -119,7 +123,7 @@ export default function MovilSelector({
     { key: 'moviles', title: 'Móviles', icon: '🚗', count: moviles.length },
     { key: 'pedidos', title: 'Pedidos', icon: '📦', count: pedidos.length },
     { key: 'services', title: 'Services', icon: '🔧', count: 0 },
-    { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: 0 },
+    { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: puntosInteres.length },
   ];
 
   const toggleCategory = (categoryKey: CategoryKey) => {
@@ -549,9 +553,42 @@ export default function MovilSelector({
                       )}
 
                       {category.key === 'pois' && (
-                        <div className="text-center py-4 text-gray-500 text-sm">
-                          <p>📍 Sin puntos de interés</p>
-                          <p className="text-xs mt-1">Próximamente...</p>
+                        <div className="space-y-1">
+                          {puntosInteres.length === 0 ? (
+                            <div className="text-center py-4 text-gray-500 text-sm">
+                              <p>📍 Sin puntos de interés</p>
+                              <p className="text-xs mt-1">Crea uno haciendo clic en el botón verde del header</p>
+                            </div>
+                          ) : (
+                            puntosInteres.map((punto) => (
+                              <motion.button
+                                key={punto.id}
+                                onClick={() => onPuntoInteresClick?.(punto.id)}
+                                className="w-full text-left px-3 py-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors group"
+                                whileHover={{ scale: 1.01, x: 2 }}
+                                whileTap={{ scale: 0.98 }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-2xl">{punto.icono}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-gray-900 dark:text-white truncate">
+                                        {punto.nombre}
+                                      </span>
+                                    </div>
+                                    {punto.observacion && (
+                                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                        {punto.observacion}
+                                      </p>
+                                    )}
+                                    <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                                      <span>📍 {punto.latitud.toFixed(4)}, {punto.longitud.toFixed(4)}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.button>
+                            ))
+                          )}
                         </div>
                       )}
                     </div>

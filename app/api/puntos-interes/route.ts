@@ -1,0 +1,311 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSupabaseClient } from '@/lib/supabase';
+
+/**
+ * POST /api/puntos-interes
+ * Crear un nuevo punto de interés
+ * Body: { nombre, descripcion, icono, latitud, longitud, tipo?, usuario_email }
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = getServerSupabaseClient();
+    const body = await request.json();
+    const { nombre, descripcion, icono, latitud, longitud, tipo, usuario_email } = body;
+
+    // Validaciones
+    if (!usuario_email) {
+      return NextResponse.json(
+        { error: 'usuario_email es requerido' },
+        { status: 400 }
+      );
+    }
+
+    if (!nombre || nombre.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'El nombre es obligatorio' },
+        { status: 400 }
+      );
+    }
+
+    if (!icono) {
+      return NextResponse.json(
+        { error: 'El icono es obligatorio' },
+        { status: 400 }
+      );
+    }
+
+    if (typeof latitud !== 'number' || typeof longitud !== 'number') {
+      return NextResponse.json(
+        { error: 'Latitud y longitud deben ser números válidos' },
+        { status: 400 }
+      );
+    }
+
+    if (tipo && !['publico', 'privado'].includes(tipo)) {
+      return NextResponse.json(
+        { error: 'El tipo debe ser "publico" o "privado"' },
+        { status: 400 }
+      );
+    }
+
+    console.log('📍 Creando punto de interés:', {
+      nombre,
+      icono,
+      usuario_email,
+      coords: [latitud, longitud],
+    });
+
+    // Insertar en la base de datos
+    const { data, error } = await supabase
+      .from('puntos_interes')
+      .insert({
+        nombre: nombre.trim(),
+        descripcion: descripcion?.trim() || null,
+        icono,
+        latitud,
+        longitud,
+        tipo: tipo || 'privado',
+        usuario_email,
+        visible: true,
+      } as any)
+      .select()
+      .single() as any;
+
+    if (error) {
+      console.error('❌ Error al insertar punto:', error);
+      
+      // Manejar error de duplicado (nombre ya existe para este usuario)
+      if (error.code === '23505') {
+        return NextResponse.json(
+          { error: 'Ya existe un punto con ese nombre' },
+          { status: 409 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: 'Error al guardar el punto de interés', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    console.log('✅ Punto creado exitosamente:', data.id);
+
+    return NextResponse.json(
+      { 
+        success: true, 
+        message: 'Punto de interés creado',
+        data 
+      },
+      { status: 201 }
+    );
+
+  } catch (error) {
+    console.error('❌ Error en POST /api/puntos-interes:', error);
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/puntos-interes?usuario_email=xxx
+ * Obtener puntos privados del usuario + todos los públicos
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = getServerSupabaseClient();
+    const { searchParams } = new URL(request.url);
+    const usuario_email = searchParams.get('usuario_email');
+
+    if (!usuario_email) {
+      return NextResponse.json(
+        { error: 'usuario_email es requerido como query param' },
+        { status: 400 }
+      );
+    }
+
+    console.log('📍 Obteniendo puntos para:', usuario_email);
+
+    // Obtener puntos privados del usuario + todos los públicos
+    const { data, error } = await supabase
+      .from('puntos_interes')
+      .select('*')
+      .or(`usuario_email.eq.${usuario_email},tipo.eq.publico`)
+      .eq('visible', true)
+      .order('created_at', { ascending: false }) as any;
+
+    if (error) {
+      console.error('❌ Error al obtener puntos:', error);
+      return NextResponse.json(
+        { error: 'Error al obtener los puntos de interés', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    console.log(`✅ ${data?.length || 0} puntos encontrados`);
+
+    return NextResponse.json({
+      success: true,
+      data: data || [],
+    });
+
+  } catch (error) {
+    console.error('❌ Error en GET /api/puntos-interes:', error);
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/puntos-interes?id=123&usuario_email=xxx
+ * Eliminar un punto de interés
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = getServerSupabaseClient();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const usuario_email = searchParams.get('usuario_email');
+
+    if (!id || !usuario_email) {
+      return NextResponse.json(
+        { error: 'id y usuario_email son requeridos' },
+        { status: 400 }
+      );
+    }
+
+    console.log('🗑️ Eliminando punto:', id, 'Usuario:', usuario_email);
+
+    // Verificar que el punto pertenece al usuario
+    const { data: punto, error: fetchError } = await supabase
+      .from('puntos_interes')
+      .select('usuario_email')
+      .eq('id', id)
+      .single() as any;
+
+    if (fetchError || !punto) {
+      console.error('❌ Punto no encontrado:', fetchError);
+      return NextResponse.json(
+        { error: 'Punto de interés no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    if (punto.usuario_email !== usuario_email) {
+      console.error('❌ Usuario no autorizado para eliminar este punto');
+      return NextResponse.json(
+        { error: 'No tienes permiso para eliminar este punto' },
+        { status: 403 }
+      );
+    }
+
+    // Eliminar el punto
+    const { error: deleteError } = await supabase
+      .from('puntos_interes')
+      .delete()
+      .eq('id', id)
+      .eq('usuario_email', usuario_email);
+
+    if (deleteError) {
+      console.error('❌ Error al eliminar:', deleteError);
+      return NextResponse.json(
+        { error: 'Error al eliminar el punto de interés', details: deleteError.message },
+        { status: 500 }
+      );
+    }
+
+    console.log('✅ Punto eliminado exitosamente');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Punto de interés eliminado',
+    });
+
+  } catch (error) {
+    console.error('❌ Error en DELETE /api/puntos-interes:', error);
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH /api/puntos-interes
+ * Actualizar un punto de interés
+ * Body: { id, usuario_email, nombre?, descripcion?, icono?, tipo?, visible? }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const supabase = getServerSupabaseClient();
+    const body = await request.json();
+    const { id, usuario_email, ...updates } = body;
+
+    if (!id || !usuario_email) {
+      return NextResponse.json(
+        { error: 'id y usuario_email son requeridos' },
+        { status: 400 }
+      );
+    }
+
+    console.log('✏️ Actualizando punto:', id, 'Usuario:', usuario_email);
+
+    // Verificar que el punto pertenece al usuario
+    const { data: punto, error: fetchError } = await supabase
+      .from('puntos_interes')
+      .select('usuario_email')
+      .eq('id', id)
+      .single() as any;
+
+    if (fetchError || !punto) {
+      console.error('❌ Punto no encontrado:', fetchError);
+      return NextResponse.json(
+        { error: 'Punto de interés no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    if (punto.usuario_email !== usuario_email) {
+      console.error('❌ Usuario no autorizado para actualizar este punto');
+      return NextResponse.json(
+        { error: 'No tienes permiso para actualizar este punto' },
+        { status: 403 }
+      );
+    }
+
+    // Actualizar el punto
+    const { data, error: updateError } = await supabase
+      .from('puntos_interes')
+      .update(updates as any)
+      .eq('id', id)
+      .eq('usuario_email', usuario_email)
+      .select()
+      .single() as any;
+
+    if (updateError) {
+      console.error('❌ Error al actualizar:', updateError);
+      return NextResponse.json(
+        { error: 'Error al actualizar el punto de interés', details: updateError.message },
+        { status: 500 }
+      );
+    }
+
+    console.log('✅ Punto actualizado exitosamente');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Punto de interés actualizado',
+      data,
+    });
+
+  } catch (error) {
+    console.error('❌ Error en PATCH /api/puntos-interes:', error);
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}

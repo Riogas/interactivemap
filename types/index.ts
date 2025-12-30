@@ -212,9 +212,9 @@ export interface PedidoData {
   observaciones?: string;
 }
 
-// Marcador Personalizado
+// Marcador Personalizado (Cliente - LocalStorage)
 export interface CustomMarker {
-  id: string;  // UUID generado
+  id: string;  // UUID generado localmente
   nombre: string;
   observacion: string;
   icono: string;  // Emoji
@@ -223,6 +223,22 @@ export interface CustomMarker {
   creadoPor?: string;  // ID o nombre del usuario creador
   fechaCreacion: string;  // ISO date string
   visible: boolean;  // Si está visible en el mapa
+}
+
+// Punto de Interés (Supabase - Persistente)
+export interface PuntoInteresSupabase {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  icono: string;
+  latitud: number; // Stored as DECIMAL in DB
+  longitud: number; // Stored as DECIMAL in DB
+  tipo: 'publico' | 'privado';
+  visible: boolean;
+  usuario_id: string; // UUID
+  usuario_email: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // Punto de Interés (legacy, mantener por compatibilidad)

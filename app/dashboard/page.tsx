@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase } from '@/types';
+import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase, CustomMarker } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
@@ -48,6 +48,9 @@ function DashboardContent() {
   
   // Estado para marcadores personalizados
   const [isPlacingMarker, setIsPlacingMarker] = useState(false);
+  
+  // Estado para puntos de interés
+  const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
   
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -782,6 +785,18 @@ function DashboardContent() {
     setPopupPedido(pedidoId); // Abre/cierra popup de pedido
   }, []);
 
+  // Handler para click en punto de interés
+  const handlePuntoInteresClick = useCallback((puntoId: string) => {
+    console.log('📍 Click en punto de interés:', puntoId);
+    // Encontrar el punto en la lista
+    const punto = puntosInteres.find(p => p.id === puntoId);
+    if (punto) {
+      // Centrar mapa en el punto (esto lo manejará MapView automáticamente)
+      // Por ahora solo logueamos
+      console.log('📍 Punto encontrado:', punto);
+    }
+  }, [puntosInteres]);
+
   // Combinar pedidos iniciales con updates de realtime
   const pedidosCompletos = useMemo(() => {
     const pedidosMap = new Map<number, PedidoSupabase>();
@@ -936,7 +951,7 @@ function DashboardContent() {
       />
 
       {/* Botón para activar modo de colocación de marcadores */}
-      <div className="fixed top-4 right-16 z-[9999]">
+      <div className="fixed top-3 right-16 z-[9999]">
         <button
           onClick={() => setIsPlacingMarker(!isPlacingMarker)}
           className={`
@@ -1036,6 +1051,8 @@ function DashboardContent() {
                   onClearAll={handleClearAll}
                   pedidos={pedidosCompletos}
                   onPedidoClick={handlePedidoClick}
+                  puntosInteres={puntosInteres}
+                  onPuntoInteresClick={handlePuntoInteresClick}
                 />
               </div>
             </motion.div>
@@ -1096,6 +1113,7 @@ function DashboardContent() {
                 popupPedido={popupPedido}
                 isPlacingMarker={isPlacingMarker}
                 onPlacingMarkerChange={setIsPlacingMarker}
+                onMarkersChange={setPuntosInteres}
               />
             </motion.div>
           </>

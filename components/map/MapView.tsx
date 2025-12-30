@@ -41,6 +41,7 @@ interface MapViewProps {
   popupPedido?: number; // Pedido con popup abierto
   isPlacingMarker?: boolean; // Prop externa para controlar el modo de colocación
   onPlacingMarkerChange?: (isPlacing: boolean) => void; // Callback para notificar cambios
+  onMarkersChange?: (markers: CustomMarker[]) => void; // Callback para notificar cambios en los marcadores
 }
 
 function MapUpdater({ moviles, focusedMovil, selectedMovil, selectedMovilesCount }: { 
@@ -289,7 +290,8 @@ export default function MapView({
   onPedidoClick,
   popupPedido,
   isPlacingMarker: externalIsPlacingMarker = false,
-  onPlacingMarkerChange
+  onPlacingMarkerChange,
+  onMarkersChange
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -315,50 +317,195 @@ export default function MapView({
   const animationStartTime = useRef<number>(0); // Timestamp de inicio de animación
   const lastProgressUpdate = useRef<number>(0); // Último progreso guardado
 
-  // Cargar marcadores personalizados desde localStorage
+  // Cargar marcadores personalizados desde la API
   useEffect(() => {
-    const savedMarkers = localStorage.getItem('customMarkers');
-    if (savedMarkers) {
+    const loadMarkers = async () => {
       try {
-        setCustomMarkers(JSON.parse(savedMarkers));
+        // Obtener email del usuario desde localStorage (trackmovil_user)
+        const userStr = localStorage.getItem('trackmovil_user');
+        if (!userStr) {
+          console.warn('⚠️ No hay usuario logueado, cargando desde localStorage');
+          const savedMarkers = localStorage.getItem('customMarkers');
+          if (savedMarkers) {
+            setCustomMarkers(JSON.parse(savedMarkers));
+          }
+          return;
+        }
+
+        const user = JSON.parse(userStr);
+        const usuario_email = user.email || user.username;
+
+        if (!usuario_email) {
+          console.warn('⚠️ Usuario sin email, usando localStorage');
+          const savedMarkers = localStorage.getItem('customMarkers');
+          if (savedMarkers) {
+            setCustomMarkers(JSON.parse(savedMarkers));
+          }
+          return;
+        }
+
+        console.log('📍 Cargando puntos para usuario:', usuario_email);
+
+        // Cargar desde API
+        const response = await fetch(`/api/puntos-interes?usuario_email=${encodeURIComponent(usuario_email)}`);
+        if (response.ok) {
+          const { data } = await response.json();
+          // Convertir de PuntoInteresSupabase a CustomMarker
+          const markers: CustomMarker[] = data.map((punto: any) => ({
+            id: punto.id.toString(),
+            nombre: punto.nombre,
+            observacion: punto.descripcion || '',
+            icono: punto.icono,
+            latitud: parseFloat(punto.latitud),
+            longitud: parseFloat(punto.longitud),
+            creadoPor: punto.usuario_email,
+            fechaCreacion: punto.created_at,
+            visible: punto.visible,
+          }));
+          setCustomMarkers(markers);
+          // Guardar backup en localStorage
+          localStorage.setItem('customMarkers', JSON.stringify(markers));
+          console.log(`✅ ${markers.length} marcadores cargados desde Supabase`);
+        } else {
+          console.warn('⚠️ No se pudieron cargar los marcadores, usando modo offline');
+          // Fallback a localStorage si la API falla
+          const savedMarkers = localStorage.getItem('customMarkers');
+          if (savedMarkers) {
+            setCustomMarkers(JSON.parse(savedMarkers));
+          }
+        }
       } catch (error) {
-        console.error('Error al cargar marcadores:', error);
+        console.error('❌ Error al cargar marcadores:', error);
+        // Fallback a localStorage
+        const savedMarkers = localStorage.getItem('customMarkers');
+        if (savedMarkers) {
+          setCustomMarkers(JSON.parse(savedMarkers));
+        }
       }
-    }
-  }, []);
-
-  // Guardar marcadores en localStorage cuando cambien
-  useEffect(() => {
-    if (customMarkers.length > 0) {
-      localStorage.setItem('customMarkers', JSON.stringify(customMarkers));
-    }
-  }, [customMarkers]);
-
-  // Manejar guardado de nuevo marcador
-  const handleSaveMarker = (data: { nombre: string; observacion: string; icono: string }) => {
-    if (!tempMarkerPosition) return;
-
-    const newMarker: CustomMarker = {
-      id: `marker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      nombre: data.nombre,
-      observacion: data.observacion,
-      icono: data.icono,
-      latitud: tempMarkerPosition.lat,
-      longitud: tempMarkerPosition.lng,
-      fechaCreacion: new Date().toISOString(),
-      visible: true,
     };
 
-    setCustomMarkers(prev => [...prev, newMarker]);
-    setTempMarkerPosition(null);
-    if (onPlacingMarkerChange) {
-      onPlacingMarkerChange(false);
+    loadMarkers();
+  }, []);
+
+  // Notificar al padre cuando cambien los marcadores
+  useEffect(() => {
+    if (onMarkersChange) {
+      onMarkersChange(customMarkers);
+    }
+  }, [customMarkers, onMarkersChange]);
+
+  // Manejar guardado de nuevo marcador
+  const handleSaveMarker = async (data: { nombre: string; observacion: string; icono: string }) => {
+    if (!tempMarkerPosition) return;
+
+    try {
+      // Obtener email del usuario desde localStorage (trackmovil_user)
+      const userStr = localStorage.getItem('trackmovil_user');
+      let usuario_email = 'anonimo@trackmovil.com'; // Default
+
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          usuario_email = user.email || user.username || usuario_email;
+          console.log('👤 Usuario guardando marcador:', usuario_email);
+        } catch (e) {
+          console.warn('⚠️ Error parseando usuario, usando email por defecto');
+        }
+      }
+
+      // Guardar en Supabase via API
+      const response = await fetch('/api/puntos-interes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nombre: data.nombre,
+          descripcion: data.observacion,
+          icono: data.icono,
+          latitud: tempMarkerPosition.lat,
+          longitud: tempMarkerPosition.lng,
+          tipo: 'privado', // Por defecto privado
+          usuario_email, // Incluir email del usuario
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al guardar el marcador');
+      }
+
+      const { data: savedPunto } = await response.json();
+
+      // Agregar al estado local
+      const newMarker: CustomMarker = {
+        id: savedPunto.id.toString(),
+        nombre: savedPunto.nombre,
+        observacion: savedPunto.descripcion || '',
+        icono: savedPunto.icono,
+        latitud: parseFloat(savedPunto.latitud),
+        longitud: parseFloat(savedPunto.longitud),
+        creadoPor: savedPunto.usuario_email,
+        fechaCreacion: savedPunto.created_at,
+        visible: savedPunto.visible,
+      };
+
+      setCustomMarkers(prev => [...prev, newMarker]);
+      setTempMarkerPosition(null);
+      
+      // También guardar en localStorage como backup
+      const updatedMarkers = [...customMarkers, newMarker];
+      localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
+      
+      console.log('✅ Marcador guardado exitosamente en Supabase');
+      
+      if (onPlacingMarkerChange) {
+        onPlacingMarkerChange(false);
+      }
+    } catch (error) {
+      console.error('❌ Error al guardar marcador:', error);
+      alert('Error al guardar el marcador. Por favor intenta nuevamente.');
     }
   };
 
   // Eliminar marcador
-  const handleDeleteMarker = (markerId: string) => {
-    setCustomMarkers(prev => prev.filter(m => m.id !== markerId));
+  const handleDeleteMarker = async (markerId: string) => {
+    try {
+      // Obtener email del usuario desde localStorage (trackmovil_user)
+      const userStr = localStorage.getItem('trackmovil_user');
+      let usuario_email = 'anonimo@trackmovil.com';
+
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          usuario_email = user.email || user.username || usuario_email;
+        } catch (e) {
+          console.warn('⚠️ Error parseando usuario');
+        }
+      }
+
+      // Eliminar de Supabase via API
+      const response = await fetch(`/api/puntos-interes?id=${markerId}&usuario_email=${encodeURIComponent(usuario_email)}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al eliminar el marcador');
+      }
+
+      // Actualizar estado local
+      setCustomMarkers(prev => prev.filter(m => m.id !== markerId));
+      
+      // También actualizar localStorage
+      const updatedMarkers = customMarkers.filter(m => m.id !== markerId);
+      localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
+      
+      console.log('✅ Marcador eliminado exitosamente');
+    } catch (error) {
+      console.error('❌ Error al eliminar marcador:', error);
+      alert('Error al eliminar el marcador. Por favor intenta nuevamente.');
+    }
   };
 
   // Extraer pedidos/servicios completados del historial de coordenadas
