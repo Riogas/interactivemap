@@ -507,6 +507,11 @@ export default function MovilSelector({
                                             M{pedido.movil}
                                           </span>
                                         )}
+                                        {(!pedido.latitud || !pedido.longitud) && (
+                                          <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-semibold" title="Sin coordenadas">
+                                            📍❌
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="text-xs text-gray-700 font-medium truncate mt-0.5">
                                         {pedido.cliente_nombre || 'Sin nombre'}

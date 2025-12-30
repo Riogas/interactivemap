@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { MovilData, EmpresaFleteraSupabase, PedidoPendiente } from '@/types';
+import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import Navbar from '@/components/layout/Navbar';
 import { useRealtime } from '@/components/providers/RealtimeProvider';
@@ -60,6 +60,11 @@ function DashboardContent() {
     1, // escenarioId
     selectedMoviles.length > 0 ? selectedMoviles : undefined // Solo escuchar pedidos de móviles seleccionados
   );
+  
+  // Estado para pedidos cargados inicialmente
+  const [pedidosIniciales, setPedidosIniciales] = useState<PedidoSupabase[]>([]);
+  const [isLoadingPedidos, setIsLoadingPedidos] = useState(true);
+  
   const [isLoadingEmpresas, setIsLoadingEmpresas] = useState(true);
   
   // Estado para fecha seleccionada (por defecto hoy)
@@ -314,6 +319,36 @@ function DashboardContent() {
       setIsLoading(false);
     }
   }, [selectedEmpresas, empresas.length, isInitialLoad, enrichMovilesWithExtendedData, removeDuplicateMoviles]);
+
+  // Función para cargar pedidos desde API
+  const fetchPedidos = useCallback(async () => {
+    try {
+      console.log('📦 Fetching pedidos from API...');
+      setIsLoadingPedidos(true);
+      
+      // Construir URL con filtros
+      const params = new URLSearchParams();
+      params.append('escenario', '1'); // Escenario 1
+      if (selectedDate) {
+        params.append('fecha', selectedDate);
+      }
+      
+      const url = `/api/pedidos?${params.toString()}`;
+      const response = await fetch(url);
+      const result = await response.json();
+
+      if (result.success) {
+        console.log(`✅ Loaded ${result.count} pedidos (con y sin coordenadas)`);
+        setPedidosIniciales(result.data || []);
+      } else {
+        console.error('❌ Error loading pedidos:', result.error);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching pedidos:', err);
+    } finally {
+      setIsLoadingPedidos(false);
+    }
+  }, [selectedDate]);
 
   // 🔥 NUEVO: Seleccionar todos los móviles automáticamente en la carga inicial
   useEffect(() => {
@@ -742,10 +777,24 @@ function DashboardContent() {
     setPopupPedido(pedidoId); // Abre/cierra popup de pedido
   }, []);
 
+  // Combinar pedidos iniciales con updates de realtime
+  const pedidosCompletos = useMemo(() => {
+    const pedidosMap = new Map<number, PedidoSupabase>();
+    
+    // Agregar pedidos iniciales
+    pedidosIniciales.forEach(p => pedidosMap.set(p.id, p));
+    
+    // Actualizar/agregar pedidos de realtime (sobrescriben los iniciales si existen)
+    pedidosRealtime.forEach(p => pedidosMap.set(p.id, p));
+    
+    return Array.from(pedidosMap.values());
+  }, [pedidosIniciales, pedidosRealtime]);
+
   // Initial fetch
   useEffect(() => {
     fetchPositions();
-  }, [fetchPositions]);
+    fetchPedidos(); // Cargar pedidos iniciales
+  }, [fetchPositions, fetchPedidos]);
 
   // Reset focusedMovil when date or selected companies change
   useEffect(() => {
@@ -932,7 +981,7 @@ function DashboardContent() {
                   onToggleMovil={handleToggleMovil}
                   onSelectAll={handleSelectAll}
                   onClearAll={handleClearAll}
-                  pedidos={pedidosRealtime}
+                  pedidos={pedidosCompletos}
                   onPedidoClick={handlePedidoClick}
                 />
               </div>
@@ -989,7 +1038,7 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={pedidosRealtime}
+                pedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
               />

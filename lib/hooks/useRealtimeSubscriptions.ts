@@ -263,7 +263,7 @@ export function usePedidos(
             const pedido = payload.new as PedidoSupabase;
             setPedidos(prev => {
               const filtered = prev.filter(p => 
-                !(p.id === pedido.id && p.escenario_id === pedido.escenario_id)
+                !(p.id === pedido.id && p.escenario === pedido.escenario)
               );
               return [...filtered, pedido];
             });
@@ -274,7 +274,7 @@ export function usePedidos(
           } else if (payload.eventType === 'DELETE') {
             const oldPedido = payload.old as PedidoSupabase;
             setPedidos(prev => prev.filter(p => 
-              !(p.id === oldPedido.id && p.escenario_id === oldPedido.escenario_id)
+              !(p.id === oldPedido.id && p.escenario === oldPedido.escenario)
             ));
           }
         }
@@ -394,19 +394,17 @@ export function usePedidosRealtime(
             console.log('📦 Nuevo pedido recibido:', payload.new);
             const newPedido = payload.new as PedidoSupabase;
             
-            // Filtrar por móvil si se especifica
-            if (newPedido.movil_id && (!movilIds || movilIds.includes(newPedido.movil_id))) {
-              // Solo agregar si es pendiente y tiene coordenadas
-              if (!newPedido.fecha_hora_cumplido && newPedido.latitud && newPedido.longitud) {
-                setPedidos(prev => {
-                  const updated = new Map(prev);
-                  updated.set(newPedido.id, newPedido);
-                  return updated;
-                });
-                
-                if (onUpdate) {
-                  onUpdate(newPedido, 'INSERT');
-                }
+            // Filtrar por móvil si se especifica (o mostrar todos si no hay filtro)
+            if (!movilIds || movilIds.length === 0 || (newPedido.movil && movilIds.includes(newPedido.movil))) {
+              // Agregar todos los pedidos (con o sin coordenadas)
+              setPedidos(prev => {
+                const updated = new Map(prev);
+                updated.set(newPedido.id, newPedido);
+                return updated;
+              });
+              
+              if (onUpdate) {
+                onUpdate(newPedido, 'INSERT');
               }
             }
           }
@@ -423,24 +421,12 @@ export function usePedidosRealtime(
             console.log('📦 Pedido actualizado:', payload.new);
             const updatedPedido = payload.new as PedidoSupabase;
             
-            if (updatedPedido.movil_id && (!movilIds || movilIds.includes(updatedPedido.movil_id))) {
+            // Filtrar por móvil si se especifica (o mostrar todos si no hay filtro)
+            if (!movilIds || movilIds.length === 0 || (updatedPedido.movil && movilIds.includes(updatedPedido.movil))) {
               setPedidos(prev => {
                 const updated = new Map(prev);
-                
-                // Si el pedido fue cumplido, eliminarlo de pendientes
-                if (updatedPedido.fecha_hora_cumplido) {
-                  updated.delete(updatedPedido.id);
-                  console.log(`✅ Pedido ${updatedPedido.id} cumplido - Eliminado de pendientes`);
-                }
-                // Si aún está pendiente y tiene coordenadas, actualizarlo
-                else if (updatedPedido.latitud && updatedPedido.longitud) {
-                  updated.set(updatedPedido.id, updatedPedido);
-                }
-                // Si perdió coordenadas, eliminarlo
-                else {
-                  updated.delete(updatedPedido.id);
-                }
-                
+                // Actualizar el pedido (con o sin coordenadas)
+                updated.set(updatedPedido.id, updatedPedido);
                 return updated;
               });
               
