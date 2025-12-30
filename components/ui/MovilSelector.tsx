@@ -513,9 +513,13 @@ export default function MovilSelector({
                                             P{pedido.prioridad}
                                           </span>
                                         )}
-                                        {pedido.movil && (
+                                        {pedido.movil ? (
                                           <span className="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded-full font-semibold">
                                             M{pedido.movil}
+                                          </span>
+                                        ) : (
+                                          <span className="text-[10px] bg-gray-400 text-white px-1.5 py-0.5 rounded-full font-semibold" title="Sin móvil asignado">
+                                            🚗❌
                                           </span>
                                         )}
                                         {(!pedido.latitud || !pedido.longitud) && (
