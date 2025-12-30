@@ -28,12 +28,12 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
 
   const estadoColor = getEstadoColor(pedido.estado_nro);
 
-  // Formatear precio
+  // Formatear precio con símbolo de peso
   const formatPrecio = (precio: number | null) => {
     if (!precio) return 'N/A';
-    return new Intl.NumberFormat('es-PY', {
+    return new Intl.NumberFormat('es-UY', {
       style: 'currency',
-      currency: 'PYG',
+      currency: 'UYU',
       minimumFractionDigits: 0,
     }).format(precio);
   };
@@ -110,13 +110,8 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                 <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-2 border border-green-200">
                   <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
                   <div className="font-bold text-green-900 text-xs">
-                    {pedido.estado_nro || 'N/A'}
+                    {pedido.sub_estado_desc || 'N/A'}
                   </div>
-                  {pedido.sub_estado_desc && (
-                    <div className="text-[10px] text-green-700 mt-0.5 truncate">
-                      {pedido.sub_estado_desc}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
