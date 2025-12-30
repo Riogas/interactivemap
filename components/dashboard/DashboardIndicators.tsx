@@ -159,31 +159,107 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
 
   return (
     <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
-      {/* ========== SECCIÓN MÓVILES ========== */}
+      {/* ========== ALERTAS CRÍTICAS ========== */}
+      <div className="flex items-center gap-1.5">
+        {/* Pedidos Atrasados */}
+        {pedidosStats.cantAtrasados > 0 && (
+          <Indicator
+            icon="⏰"
+            label="Pedidos Atrasados"
+            value={pedidosStats.cantAtrasados}
+            subtitle={`${pedidosStats.porcentajeAtrasados}%`}
+            color="red"
+            pulse
+          />
+        )}
+        
+        {/* Pedido Más Atrasado */}
+        {parseInt(pedidosStats.masAtrasadoMins) > 0 && (
+          <Indicator
+            icon="🔴"
+            label="Más Atrasado"
+            value={`${pedidosStats.masAtrasadoMins} min`}
+            color="red"
+          />
+        )}
+        
+        {/* Services Atrasados */}
+        {servicesStats.cantAtrasados > 0 && (
+          <Indicator
+            icon="⏱️"
+            label="Services Atrasados"
+            value={servicesStats.cantAtrasados}
+            subtitle={`${servicesStats.porcentajeAtrasados}%`}
+            color="red"
+            pulse
+          />
+        )}
+        
+        {/* Service Más Atrasado */}
+        {parseInt(servicesStats.masAtrasadoMins) > 0 && (
+          <Indicator
+            icon="�"
+            label="Service + Atrasado"
+            value={`${servicesStats.masAtrasadoMins} min`}
+            color="red"
+          />
+        )}
+        
+        {/* Móviles con Pedidos Atrasados */}
+        {movilesStats.conPedidosAtrasados > 0 && (
+          <Indicator
+            icon="�"
+            label="Móviles con Atrasos"
+            value={movilesStats.conPedidosAtrasados}
+            color="red"
+          />
+        )}
+      </div>
+
+      {/* Separador */}
+      {(pedidosStats.cantAtrasados > 0 || servicesStats.cantAtrasados > 0 || movilesStats.conPedidosAtrasados > 0) && (
+        <div className="h-6 w-px bg-white/30" />
+      )}
+
+      {/* ========== OPERACIONES ACTIVAS ========== */}
+      <div className="flex items-center gap-1.5">
+        {/* Pedidos Pendientes */}
+        <Indicator
+          icon="📦"
+          label="Pedidos Pendientes"
+          value={pedidosStats.pendientes}
+          color="blue"
+        />
+        
+        {/* Services Pendientes */}
+        <Indicator
+          icon="🔧"
+          label="Services Pendientes"
+          value={servicesStats.pendientes}
+          color="purple"
+        />
+      </div>
+
+      {/* Separador */}
+      <div className="h-6 w-px bg-white/30" />
+
+      {/* ========== RECURSOS (MÓVILES) ========== */}
       <div className="flex items-center gap-1.5">
         {/* Móviles Activos */}
         <Indicator
           icon="🚗"
-          label="Activos"
+          label="Móviles Activos"
           value={movilesStats.activos}
           color="green"
         />
         
         {/* Móviles sin Reportar */}
-        <Indicator
-          icon="⚠️"
-          label="Sin Reportar"
-          value={movilesStats.sinReportar}
-          color="orange"
-        />
-        
-        {/* Móviles con Pedidos Atrasados */}
-        {movilesStats.conPedidosAtrasados > 0 && (
+        {movilesStats.sinReportar > 0 && (
           <Indicator
-            icon="🚨"
-            label="Con Pedidos Atrasados"
-            value={movilesStats.conPedidosAtrasados}
-            color="red"
+            icon="⚠️"
+            label="Sin Reportar"
+            value={movilesStats.sinReportar}
+            color="orange"
           />
         )}
         
@@ -208,38 +284,8 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
       {/* Separador */}
       <div className="h-6 w-px bg-white/30" />
 
-      {/* ========== SECCIÓN PEDIDOS ========== */}
+      {/* ========== RESULTADOS ========== */}
       <div className="flex items-center gap-1.5">
-        {/* Pedidos Pendientes */}
-        <Indicator
-          icon="📦"
-          label="Pendientes"
-          value={pedidosStats.pendientes}
-          color="blue"
-        />
-        
-        {/* Pedidos Atrasados */}
-        {pedidosStats.cantAtrasados > 0 && (
-          <Indicator
-            icon="⏰"
-            label="Atrasados"
-            value={pedidosStats.cantAtrasados}
-            subtitle={`${pedidosStats.porcentajeAtrasados}%`}
-            color="red"
-            pulse
-          />
-        )}
-        
-        {/* Pedido Más Atrasado */}
-        {parseInt(pedidosStats.masAtrasadoMins) > 0 && (
-          <Indicator
-            icon="🔴"
-            label="Más Atrasado"
-            value={`${pedidosStats.masAtrasadoMins} min`}
-            color="red"
-          />
-        )}
-        
         {/* Pedidos Entregados */}
         <Indicator
           icon="✅"
@@ -258,47 +304,11 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
             color="red"
           />
         )}
-      </div>
-
-      {/* Separador */}
-      <div className="h-6 w-px bg-white/30" />
-
-      {/* ========== SECCIÓN SERVICES ========== */}
-      <div className="flex items-center gap-1.5">
-        {/* Services Pendientes */}
-        <Indicator
-          icon="🔧"
-          label="Services Pendientes"
-          value={servicesStats.pendientes}
-          color="purple"
-        />
-        
-        {/* Services Atrasados */}
-        {servicesStats.cantAtrasados > 0 && (
-          <Indicator
-            icon="⏱️"
-            label="Services Atrasados"
-            value={servicesStats.cantAtrasados}
-            subtitle={`${servicesStats.porcentajeAtrasados}%`}
-            color="red"
-            pulse
-          />
-        )}
-        
-        {/* Service Más Atrasado */}
-        {parseInt(servicesStats.masAtrasadoMins) > 0 && (
-          <Indicator
-            icon="🔴"
-            label="Service Más Atrasado"
-            value={`${servicesStats.masAtrasadoMins} min`}
-            color="red"
-          />
-        )}
         
         {/* Services Realizados */}
         <Indicator
           icon="✔️"
-          label="Realizados"
+          label="Services OK"
           value={servicesStats.realizados}
           subtitle={`${servicesStats.porcentajeRealizados}%`}
           color="green"
@@ -308,7 +318,7 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
         {servicesStats.noRealizados > 0 && (
           <Indicator
             icon="✖️"
-            label="NO Realizados"
+            label="Services NO"
             value={servicesStats.noRealizados}
             color="red"
           />
