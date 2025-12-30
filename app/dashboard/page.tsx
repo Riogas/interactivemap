@@ -66,7 +66,7 @@ function DashboardContent() {
     error: pedidosError 
   } = usePedidosRealtime(
     1000, // escenarioId (ajustar según tu base de datos)
-    selectedMoviles.length > 0 ? selectedMoviles : undefined // Solo escuchar pedidos de móviles seleccionados
+    undefined // Cargar TODOS los pedidos (sin filtrar por móvil)
   );
   
   // Estado para pedidos cargados inicialmente
