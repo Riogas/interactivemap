@@ -46,6 +46,9 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Flag para carga inicial
   
+  // Estado para marcadores personalizados
+  const [isPlacingMarker, setIsPlacingMarker] = useState(false);
+  
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
@@ -932,6 +935,42 @@ function DashboardContent() {
         }}
       />
 
+      {/* Botón para activar modo de colocación de marcadores */}
+      <div className="fixed top-4 right-16 z-[9999]">
+        <button
+          onClick={() => setIsPlacingMarker(!isPlacingMarker)}
+          className={`
+            flex items-center justify-center w-10 h-10 rounded-full shadow-2xl
+            transition-all duration-300 transform hover:scale-110
+            ${isPlacingMarker
+              ? 'bg-gradient-to-br from-red-500 to-red-600 animate-pulse'
+              : 'bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+            }
+          `}
+          title={isPlacingMarker ? 'Cancelar modo de colocación' : 'Agregar marcador personalizado'}
+        >
+          <svg 
+            className={`w-5 h-5 text-white transition-transform ${isPlacingMarker ? 'scale-110' : ''}`}
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" 
+            />
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" 
+            />
+          </svg>
+        </button>
+      </div>
+
       {/* Indicador de conexión Realtime - Alineado a la derecha en el borde header/mapa */}
       <div className="absolute right-4 top-[68px] z-50">
         <motion.div
@@ -1055,6 +1094,8 @@ function DashboardContent() {
                 pedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
+                isPlacingMarker={isPlacingMarker}
+                onPlacingMarkerChange={setIsPlacingMarker}
               />
             </motion.div>
           </>

@@ -39,6 +39,8 @@ interface MapViewProps {
   pedidos?: PedidoSupabase[]; // Nueva prop para mostrar pedidos en el mapa
   onPedidoClick?: (pedidoId: number | undefined) => void; // Callback para click en pedido
   popupPedido?: number; // Pedido con popup abierto
+  isPlacingMarker?: boolean; // Prop externa para controlar el modo de colocación
+  onPlacingMarkerChange?: (isPlacing: boolean) => void; // Callback para notificar cambios
 }
 
 function MapUpdater({ moviles, focusedMovil, selectedMovil, selectedMovilesCount }: { 
@@ -285,7 +287,9 @@ export default function MapView({
   onShowCompletados,
   pedidos = [],
   onPedidoClick,
-  popupPedido
+  popupPedido,
+  isPlacingMarker: externalIsPlacingMarker = false,
+  onPlacingMarkerChange
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -301,9 +305,11 @@ export default function MapView({
   
   // ===== MARCADORES PERSONALIZADOS =====
   const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([]);
-  const [isPlacingMarker, setIsPlacingMarker] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempMarkerPosition, setTempMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
+  
+  // Usar el estado externo si se proporciona, sino usar estado interno
+  const isPlacingMarker = externalIsPlacingMarker;
   
   const animationRef = useRef<number | null>(null);
   const animationStartTime = useRef<number>(0); // Timestamp de inicio de animación
@@ -345,7 +351,9 @@ export default function MapView({
 
     setCustomMarkers(prev => [...prev, newMarker]);
     setTempMarkerPosition(null);
-    setIsPlacingMarker(false);
+    if (onPlacingMarkerChange) {
+      onPlacingMarkerChange(false);
+    }
   };
 
   // Eliminar marcador
@@ -941,7 +949,7 @@ export default function MapView({
       <MapContainer
         center={defaultCenter}
         zoom={13}
-        className="h-full w-full"
+        className={`h-full w-full ${isPlacingMarker ? 'cursor-crosshair' : ''}`}
         zoomControl={true}
       >
         {/* Control de capas base (calles, satélite, terreno, etc.) */}
@@ -1608,49 +1616,15 @@ export default function MapView({
         onClose={() => setSelectedPedidoServicio(null)} 
       />
 
-      {/* Botón para agregar marcadores personalizados */}
-      <button
-        onClick={() => {
-          setIsPlacingMarker(!isPlacingMarker);
-          if (isPlacingMarker) {
-            setTempMarkerPosition(null);
-          }
-        }}
-        className={`
-          absolute bottom-32 right-4 z-[1000]
-          flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl
-          font-medium transition-all duration-300 transform hover:scale-105
-          ${isPlacingMarker
-            ? 'bg-gradient-to-r from-red-500 to-red-600 text-white animate-pulse'
-            : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700'
-          }
-        `}
-        title={isPlacingMarker ? 'Haz clic en el mapa para colocar el marcador' : 'Agregar marcador personalizado'}
-      >
-        <span className="text-xl">
-          {isPlacingMarker ? '📍' : '➕'}
-        </span>
-        <span className="text-sm font-bold">
-          {isPlacingMarker ? 'Colocar Marcador' : 'Nuevo Marcador'}
-        </span>
-      </button>
-
-      {/* Contador de marcadores */}
-      {customMarkers.length > 0 && (
-        <div className="absolute bottom-24 right-4 z-[999] bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg">
-          <span className="text-xs font-medium text-gray-700">
-            📍 {customMarkers.length} {customMarkers.length === 1 ? 'marcador' : 'marcadores'}
-          </span>
-        </div>
-      )}
-
       {/* Modal para configurar el marcador */}
       <CustomMarkerModal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
           setTempMarkerPosition(null);
-          setIsPlacingMarker(false);
+          if (onPlacingMarkerChange) {
+            onPlacingMarkerChange(false);
+          }
         }}
         onSave={handleSaveMarker}
       />
