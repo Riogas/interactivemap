@@ -97,13 +97,15 @@ export default function MovilSelector({
     console.log('🔍 Filtrando pedidos - Input:', pedidos.length);
     let result = [...pedidos];
     
+    // 🔥 FILTRO: Eliminar pedidos sin móvil asignado
+    result = result.filter(pedido => pedido.movil && pedido.movil > 0);
+    
     // Filtrar por búsqueda
     if (pedidosSearch.trim()) {
       const searchLower = pedidosSearch.toLowerCase();
       result = result.filter(pedido => 
         pedido.id.toString().includes(searchLower) ||
-        (pedido.cliente_nombre && pedido.cliente_nombre.toLowerCase().includes(searchLower)) ||
-        (pedido.producto_nom && pedido.producto_nom.toLowerCase().includes(searchLower)) ||
+        (pedido.servicio_nombre && pedido.servicio_nombre.toLowerCase().includes(searchLower)) ||
         (pedido.cliente_tel && pedido.cliente_tel.includes(searchLower))
       );
     }
@@ -128,7 +130,7 @@ export default function MovilSelector({
   // Categorías disponibles
   const categories: Category[] = [
     { key: 'moviles', title: 'Móviles', icon: '🚗', count: moviles.length },
-    { key: 'pedidos', title: 'Pedidos', icon: '📦', count: pedidos.length },
+    { key: 'pedidos', title: 'Pedidos', icon: '📦', count: filteredPedidos.length }, // Usar filteredPedidos para el conteo
     { key: 'services', title: 'Services', icon: '🔧', count: 0 },
     { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: puntosInteres.length },
   ];
@@ -506,35 +508,43 @@ export default function MovilSelector({
                                 >
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
+                                      {/* Primera línea: Número de pedido y badges */}
+                                      <div className="flex items-center gap-2 mb-1">
                                         <span className="text-sm font-bold text-gray-900">#{pedido.id}</span>
                                         {pedido.prioridad && pedido.prioridad > 0 && (
                                           <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">
                                             P{pedido.prioridad}
                                           </span>
                                         )}
-                                        {pedido.movil ? (
-                                          <span className="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded-full font-semibold">
-                                            🚗{pedido.movil}
-                                          </span>
-                                        ) : (
-                                          <span className="text-[10px] bg-gray-400 text-white px-1.5 py-0.5 rounded-full font-semibold" title="Sin móvil asignado">
-                                            🚗❌
-                                          </span>
-                                        )}
                                         {(!pedido.latitud || !pedido.longitud) && (
                                           <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-semibold" title="Sin coordenadas">
-                                            📍❌
+                                            �❌
                                           </span>
                                         )}
                                       </div>
-                                      <div className="text-xs text-gray-700 font-medium truncate mt-0.5">
-                                        {pedido.cliente_nombre || 'Sin asignar'}
+                                      
+                                      {/* Segunda línea: Móvil */}
+                                      <div className="flex items-center gap-1.5 text-xs text-gray-700 mb-0.5">
+                                        <span className="font-semibold">🚗</span>
+                                        <span className="font-medium">{pedido.movil}</span>
                                       </div>
-                                      <div className="text-[10px] text-gray-600 truncate">
-                                        {pedido.producto_nom || pedido.tipo || 'Pedido'}
-                                      </div>
+                                      
+                                      {/* Tercera línea: Servicio */}
+                                      {pedido.servicio_nombre && (
+                                        <div className="text-[10px] text-gray-600 truncate mb-0.5">
+                                          <span className="font-semibold">📋</span> {pedido.servicio_nombre}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Cuarta línea: Teléfono */}
+                                      {pedido.cliente_tel && (
+                                        <div className="text-[10px] text-gray-600 truncate">
+                                          <span className="font-semibold">📞</span> {pedido.cliente_tel}
+                                        </div>
+                                      )}
                                     </div>
+                                    
+                                    {/* Columna derecha: Estado y fecha */}
                                     <div className="flex flex-col items-end text-right">
                                       <span className="text-[10px] text-gray-500">
                                         Estado {pedido.estado_nro || 'N/A'}
