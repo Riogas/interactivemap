@@ -564,24 +564,26 @@ export default function MovilSelector({
                               <motion.button
                                 key={punto.id}
                                 onClick={() => onPuntoInteresClick?.(punto.id)}
-                                className="w-full text-left px-3 py-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors group"
+                                className="w-full text-left px-3 py-2.5 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-400 dark:from-cyan-600 dark:to-blue-600 hover:from-cyan-500 hover:to-blue-500 dark:hover:from-cyan-700 dark:hover:to-blue-700 border border-cyan-300 dark:border-cyan-500 transition-all duration-200 group shadow-sm hover:shadow-md"
                                 whileHover={{ scale: 1.01, x: 2 }}
                                 whileTap={{ scale: 0.98 }}
                               >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-2xl">{punto.icono}</span>
+                                <div className="flex items-center gap-2.5">
+                                  <div className="text-2xl bg-white dark:bg-gray-800 rounded-lg p-1.5 shadow-sm">
+                                    {punto.icono}
+                                  </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <span className="font-medium text-gray-900 dark:text-white truncate">
+                                      <span className="font-semibold text-white drop-shadow-sm truncate">
                                         {punto.nombre}
                                       </span>
                                     </div>
                                     {punto.observacion && (
-                                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                      <p className="text-xs text-white/90 truncate mt-0.5">
                                         {punto.observacion}
                                       </p>
                                     )}
-                                    <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                                    <div className="flex items-center gap-2 text-xs text-white/80 mt-1">
                                       <span>📍 {punto.latitud.toFixed(4)}, {punto.longitud.toFixed(4)}</span>
                                     </div>
                                   </div>
