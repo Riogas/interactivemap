@@ -80,7 +80,8 @@ function transformPedidoToSupabase(pedido: any) {
 
 /**
  * POST /api/import/pedidos
- * Importar pedidos desde fuente externa
+ * Importar o actualizar pedidos desde fuente externa (UPSERT)
+ * Si el pedido existe (mismo id), lo actualiza. Si no existe, lo inserta.
  */
 export async function POST(request: NextRequest) {
   const timestamp = new Date().toISOString();
@@ -129,10 +130,12 @@ export async function POST(request: NextRequest) {
     console.log(JSON.stringify(transformedPedidos[0], null, 2));
     console.log('─'.repeat(100) + '\n');
 
-    console.log('🔄 4. Insertando en Supabase...');
+    console.log('🔄 4. Haciendo UPSERT en Supabase (conflict: id)...');
     const { data, error } = await supabase
       .from('pedidos')
-      .insert(transformedPedidos as any)
+      .upsert(transformedPedidos as any, {
+        onConflict: 'id', // PRIMARY KEY de la tabla
+      })
       .select();
 
     if (error) {
@@ -151,13 +154,13 @@ export async function POST(request: NextRequest) {
 
     const finalTimestamp = new Date().toISOString();
     console.log('\n' + '✅'.repeat(50));
-    console.log(`🎉 IMPORTACIÓN EXITOSA [${finalTimestamp}]`);
-    console.log(`📊 5. Pedidos importados: ${data?.length || 0}`);
+    console.log(`🎉 IMPORTACIÓN/ACTUALIZACIÓN EXITOSA [${finalTimestamp}]`);
+    console.log(`📊 5. Pedidos procesados (insertados o actualizados): ${data?.length || 0}`);
     console.log('✅'.repeat(50) + '\n');
 
     return NextResponse.json({
       success: true,
-      message: `${data?.length || 0} pedidos importados correctamente`,
+      message: `${data?.length || 0} pedidos procesados correctamente (insertados o actualizados)`,
       data,
     });
   } catch (error: any) {
