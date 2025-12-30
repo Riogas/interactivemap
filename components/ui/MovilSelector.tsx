@@ -529,7 +529,7 @@ export default function MovilSelector({
                                         )}
                                       </div>
                                       <div className="text-xs text-gray-700 font-medium truncate mt-0.5">
-                                        {pedido.cliente_nombre || 'Sin nombre'}
+                                        {pedido.cliente_nombre || 'Sin asignar'}
                                       </div>
                                       <div className="text-[10px] text-gray-600 truncate">
                                         {pedido.producto_nom || pedido.tipo || 'Pedido'}
