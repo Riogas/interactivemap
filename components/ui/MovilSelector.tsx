@@ -41,6 +41,9 @@ export default function MovilSelector({
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   
+  // 🔍 DEBUG: Log pedidos recibidos
+  console.log('📦 MovilSelector recibió pedidos:', pedidos.length, pedidos);
+  
   // Estados de búsqueda por categoría
   const [movilesSearch, setMovilesSearch] = useState('');
   const [pedidosSearch, setPedidosSearch] = useState('');
@@ -91,6 +94,7 @@ export default function MovilSelector({
 
   // Filtrar y ordenar pedidos
   const filteredPedidos = useMemo(() => {
+    console.log('🔍 Filtrando pedidos - Input:', pedidos.length);
     let result = [...pedidos];
     
     // Filtrar por búsqueda
@@ -105,7 +109,7 @@ export default function MovilSelector({
     }
     
     // Ordenar por prioridad (desc) y fecha (asc)
-    return result.sort((a, b) => {
+    const sorted = result.sort((a, b) => {
       // Primero por prioridad (mayor a menor)
       const prioridadDiff = (b.prioridad || 0) - (a.prioridad || 0);
       if (prioridadDiff !== 0) return prioridadDiff;
@@ -116,6 +120,9 @@ export default function MovilSelector({
       }
       return 0;
     });
+    
+    console.log('✅ Pedidos filtrados - Output:', sorted.length, sorted.map(p => `#${p.id}`));
+    return sorted;
   }, [pedidos, pedidosSearch, pedidosFilters]);
 
   // Categorías disponibles
