@@ -515,7 +515,7 @@ export default function MovilSelector({
                                         )}
                                         {pedido.movil ? (
                                           <span className="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded-full font-semibold">
-                                            M{pedido.movil}
+                                            🚗{pedido.movil}
                                           </span>
                                         ) : (
                                           <span className="text-[10px] bg-gray-400 text-white px-1.5 py-0.5 rounded-full font-semibold" title="Sin móvil asignado">
