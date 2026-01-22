@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const movilId = searchParams.get('movilId');
-  const escenarioId = searchParams.get('escenario_id') || '1000'; // Cambiado a 1000
+  const escenario = searchParams.get('escenario') || '1000';
   const limit = searchParams.get('limit');
 
   if (!movilId) {
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       .from('gps_tracking_extended')
       .select('*')
       .eq('movil_id', parseInt(movilId))
-      .eq('escenario_id', escenarioId)
+      .eq('escenario', escenario)
       .order('fecha_hora', { ascending: false })
       .limit(limit ? parseInt(limit) : 100);
 

@@ -18,8 +18,8 @@ export async function GET(
     let query = supabase
       .from('pedidos')
       .select('*')
-      .eq('movil_id', movilId)
-      .eq('escenario_id', escenarioId)
+      .eq('movil', movilId)
+      .eq('escenario', escenarioId)
       .is('fecha_hora_cumplido', null);
     
     if (fechaDesde) {

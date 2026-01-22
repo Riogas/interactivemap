@@ -21,7 +21,7 @@ export async function GET(
     // Obtener startDate del query string si existe
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate');
-    const escenarioId = searchParams.get('escenario_id') || '1000';
+    const escenario = searchParams.get('escenario') || '1000';
     const dateToUse = startDate || new Date().toISOString().split('T')[0];
 
     console.log(`🚗 API /movil/${movilId} - Fetching history (date: ${dateToUse})`);
@@ -35,8 +35,8 @@ export async function GET(
     const { data: coordinates, error } = await supabase
       .from('gps_tracking_extended')
       .select('*')
-      .eq('movil', movilId.toString()) // Convert to string because movil is VARCHAR
-      .eq('escenario_id', escenarioId)
+      .eq('movil_id', movilId.toString()) // Nombre correcto de la columna
+      .eq('escenario', escenario)
       .gte('fecha_hora', startDateTime)
       .lte('fecha_hora', endDateTime)
       .order('fecha_hora', { ascending: false })

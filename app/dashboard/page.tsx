@@ -736,13 +736,16 @@ function DashboardContent() {
 
   // Handler para mostrar la animación (solo si hay UN móvil seleccionado)
   const handleShowAnimation = useCallback(async (movilId: number) => {
-    // Verificar que solo haya UN móvil seleccionado
-    if (selectedMoviles.length !== 1) {
-      alert('⚠️ La animación solo está disponible cuando tienes UN solo móvil seleccionado');
-      return;
+    console.log(`🎬 Iniciando animación para móvil ${movilId}`);
+    
+    // Si el móvil no está en selectedMoviles, agregarlo y limpiar los demás
+    if (!selectedMoviles.includes(movilId)) {
+      setSelectedMoviles([movilId]);
+    } else if (selectedMoviles.length > 1) {
+      // Si hay múltiples seleccionados, dejar solo este
+      setSelectedMoviles([movilId]);
     }
     
-    console.log(`🎬 Iniciando animación para móvil ${movilId}`);
     setPopupMovil(undefined); // Cierra el popup
     setShowPendientes(false); // Oculta pendientes
     setShowCompletados(false); // Oculta completados
