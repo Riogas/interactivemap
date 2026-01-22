@@ -50,7 +50,7 @@ export async function GET(
       .not('latitud', 'is', null) // Solo pedidos con coordenadas
       .not('longitud', 'is', null)
       .order('prioridad', { ascending: false })
-      .order('fecha_hora_para', { ascending: true });
+      .order('fch_hora_para', { ascending: true});
 
     if (error) {
       console.error('Error al obtener pedidos pendientes:', error);

@@ -16,39 +16,38 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         escenario,
-        movil_id,
-        estado,
+        movil,
+        estado_nro,
         latitud,
         longitud,
-        zona,
+        zona_nro,
         tipo,
-        nombre_servicio,
-        producto_codigo,
-        producto_nombre,
-        producto_cantidad,
-        producto_precio,
+        servicio_nombre,
+        producto_cod,
+        producto_nom,
+        producto_cant,
+        precio,
         prioridad,
-        observacion,
-        importe_flete,
-        importe_bruto,
-        fecha_para,
-        fecha_hora_max_comp,
-        fecha_hora_para,
-        fecha_hora_asignado,
-        fecha_hora_cumplido,
+        pedido_obs,
+        imp_flete,
+        imp_bruto,
+        fch_para,
+        fch_hora_max_ent_comp,
+        fch_hora_para,
+        fch_hora_mov,
         cliente_nombre,
         cliente_direccion,
         cliente_nro,
-        cliente_telefono,
-        cliente_observacion,
+        cliente_tel,
+        cliente_obs,
         empresa_fletera_id
       `)
       .eq('escenario', escenarioId)
-      .is('fecha_hora_cumplido', null) // Solo pedidos NO cumplidos (pendientes)
+      .in('estado_nro', [1, 2]) // Solo pedidos pendientes (Asignado y En camino)
       .not('latitud', 'is', null) // Solo pedidos con coordenadas
       .not('longitud', 'is', null)
       .order('prioridad', { ascending: false })
-      .order('fecha_hora_para', { ascending: true });
+      .order('fch_hora_para', { ascending: true});
 
     if (error) {
       console.error('❌ Error al obtener todos los pedidos pendientes:', error);

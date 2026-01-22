@@ -14,16 +14,17 @@ export async function GET(
 
     const supabase = getServerSupabaseClient();
     
-    // Obtener pedidos pendientes (sin fecha_hora_cumplido)
+    // Obtener pedidos pendientes (estados 1 y 2 = pendientes)
+    // Estado 1: Asignado, Estado 2: En camino
     let query = supabase
       .from('pedidos')
       .select('*')
       .eq('movil', movilId)
       .eq('escenario', escenarioId)
-      .is('fecha_hora_cumplido', null);
+      .in('estado_nro', [1, 2]); // Solo pedidos pendientes
     
     if (fechaDesde) {
-      query = query.gte('fecha_para', fechaDesde);
+      query = query.gte('fch_para', fechaDesde);
     }
     
     const { data: pedidos, error } = await query.order('prioridad', { ascending: false });
