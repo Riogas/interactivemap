@@ -4,7 +4,6 @@ module.exports = {
       name: 'track',
       script: 'node_modules/next/dist/bin/next',
       args: 'start',
-      cwd: '/home/riogas/trackmovil',
       instances: 1,
       autorestart: true,
       watch: false,
