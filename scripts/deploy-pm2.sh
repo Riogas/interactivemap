@@ -51,7 +51,7 @@ if pm2 describe trackmovil > /dev/null 2>&1; then
     pm2 reload trackmovil --update-env
 else
     echo -e "${BLUE}🚀 Iniciando aplicación por primera vez con PM2...${NC}"
-    pm2 start ecosystem.config.js
+    pm2 start pm2.config.js
 fi
 echo
 

@@ -148,14 +148,6 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                       {formatPrecio(pedido.imp_bruto || pedido.precio || null)}
                     </div>
                   </div>
-                  {pedido.imp_flete && Number(pedido.imp_flete) > 0 && (
-                    <div className="flex justify-between items-center mt-1">
-                      <div className="text-[9px] text-emerald-600">Flete</div>
-                      <div className="text-xs font-semibold text-emerald-700">
-                        {formatPrecio(pedido.imp_flete)}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}

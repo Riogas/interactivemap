@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'trackmovil',
+      name: 'track',
       script: 'node_modules/next/dist/bin/next',
       args: 'start',
       cwd: '/home/riogas/trackmovil',
