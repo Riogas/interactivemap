@@ -1193,10 +1193,38 @@ export default function MapView({
           // Mostrar SOLO el móvil seleccionado con su recorrido
           <>
             {moviles
-              .filter(m => m.id === selectedMovil && m.currentPosition)
+              .filter(m => m.id === selectedMovil)
               .map((movil) => {
+                // Si no tiene posición actual, no renderizar nada
+                if (!movil.currentPosition) return null;
+                
                 // Filtrar historial por rango de tiempo
                 const filteredHistory = movil.history ? filterHistoryByTime(movil.history) : [];
+                
+                // Si no hay historial, solo mostrar el marcador actual
+                if (filteredHistory.length === 0) {
+                  return (
+                    <Marker
+                      key={movil.id}
+                      position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
+                      icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
+                    >
+                      <Popup>
+                        <div className="p-2">
+                          <h3 className="font-bold text-lg" style={{ color: movil.color }}>
+                            {movil.name}
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            <strong>Estado:</strong> {movil.currentPosition.auxIn2}
+                          </p>
+                          <p className="text-sm text-yellow-600 font-semibold mt-2">
+                            ⚠️ Sin historial para esta fecha
+                          </p>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                }
                 
                 // Dibujar la línea del recorrido si tiene historial
                 const fullPathCoordinates = filteredHistory.map(coord => [coord.coordX, coord.coordY] as [number, number]);
