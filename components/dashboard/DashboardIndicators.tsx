@@ -223,6 +223,14 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
 
       {/* ========== OPERACIONES ACTIVAS ========== */}
       <div className="flex items-center gap-1.5">
+        {/* Pedidos Sin Asignar */}
+        <Indicator
+          icon="📋"
+          label="Pedidos Sin Asignar"
+          value={0}
+          color="orange"
+        />
+        
         {/* Pedidos Pendientes */}
         <Indicator
           icon="📦"
