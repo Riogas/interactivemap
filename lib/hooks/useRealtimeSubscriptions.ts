@@ -470,9 +470,10 @@ export function usePedidosRealtime(
             setIsConnected(false);
             const errorMsg = `Error de conexión con Realtime Pedidos: ${status}`;
             setError(errorMsg);
-            console.error('❌ Error en suscripción de pedidos:', status);
-            console.error('💡 Verifica que Realtime esté habilitado en Supabase para la tabla pedidos');
-            console.error('💡 Ejecuta: ALTER PUBLICATION supabase_realtime ADD TABLE pedidos;');
+            console.warn('⚠️ Error en suscripción de pedidos:', status);
+            console.warn('💡 Verifica que Realtime esté habilitado en Supabase para la tabla pedidos');
+            console.warn('💡 Ejecuta: ALTER PUBLICATION supabase_realtime ADD TABLE pedidos;');
+            console.warn('💡 La aplicación seguirá funcionando sin actualizaciones en tiempo real de pedidos');
           } else if (status === 'CLOSED') {
             setIsConnected(false);
             console.log('🔌 Suscripción pedidos cerrada');
