@@ -19,7 +19,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3002,
         HOSTNAME: '0.0.0.0',
-        NODE_TLS_REJECT_UNAUTHORIZED: '0'  // Ignorar errores de certificado SSL
+        NODE_TLS_REJECT_UNAUTHORIZED: '0',  // Ignorar errores de certificado SSL
+        UV_THREADPOOL_SIZE: 2  // Limitar el tamaño del threadpool de libuv
       },
       error_file: 'logs/pm2-error.log',
       out_file: 'logs/pm2-out.log',
