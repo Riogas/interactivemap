@@ -11,18 +11,22 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const empresaIdsParam = searchParams.get('empresaIds');
     const movilIdParam = searchParams.get('movilId'); // Nuevo parámetro
+    const startDate = searchParams.get('startDate'); // Nuevo parámetro para filtrar por fecha
     
     // Parsear empresaIds si existe
     const empresaIds = empresaIdsParam 
       ? empresaIdsParam.split(',').map(id => parseInt(id.trim()))
       : undefined;
     
+    // Si no se proporciona startDate, usar hoy
+    const dateFilter = startDate || new Date().toISOString().split('T')[0];
+    
     if (movilIdParam) {
-      console.log(`🚀 API /all-positions - Fetching móvil específico: ${movilIdParam}`);
+      console.log(`🚀 API /all-positions - Fetching móvil específico: ${movilIdParam} (fecha: ${dateFilter})`);
     } else if (empresaIds && empresaIds.length > 0) {
-      console.log(`🚀 API /all-positions - Fetching móviles for empresas: ${empresaIds.join(', ')}`);
+      console.log(`🚀 API /all-positions - Fetching móviles for empresas: ${empresaIds.join(', ')} (fecha: ${dateFilter})`);
     } else {
-      console.log(`🚀 API /all-positions - Fetching ALL móviles from Supabase`);
+      console.log(`🚀 API /all-positions - Fetching ALL móviles from Supabase (fecha: ${dateFilter})`);
     }
     
     const supabase = getServerSupabaseClient();
@@ -58,11 +62,19 @@ export async function GET(request: NextRequest) {
     // Obtener las últimas posiciones GPS de cada móvil
     const movilIds = moviles.map((m: any) => m.id);
     
-    // Query para obtener la última posición de cada móvil
+    // Filtrar por fecha: obtener coordenadas desde las 00:00:00 hasta las 23:59:59 del día especificado
+    const startDateTime = `${dateFilter}T00:00:00`;
+    const endDateTime = `${dateFilter}T23:59:59`;
+    
+    console.log(`🔍 Buscando coordenadas GPS entre ${startDateTime} y ${endDateTime}`);
+    
+    // Query para obtener la última posición de cada móvil SOLO del día especificado
     const { data: gpsData, error: gpsError } = await supabase
       .from('gps_tracking_extended')
       .select('*')
       .in('movil_id', movilIds)
+      .gte('fecha_hora', startDateTime)
+      .lte('fecha_hora', endDateTime)
       .order('fecha_hora', { ascending: false });
     
     if (gpsError) throw gpsError;
@@ -75,22 +87,16 @@ export async function GET(request: NextRequest) {
       }
     });
     
+    console.log(`📍 Móviles con coordenadas en ${dateFilter}: ${latestPositions.size} de ${moviles.length}`);
+    
+    // 🔥 FILTRAR: Solo incluir móviles que tienen coordenadas del día especificado
+    const movilesConCoordenadas = moviles.filter((movil: any) => latestPositions.has(movil.id));
+    
+    console.log(`✅ Móviles filtrados con GPS del día: ${movilesConCoordenadas.length}`);
+    
     // Combinar datos de móviles con posiciones
-    const data = moviles.map((movil: any, index: number) => {
+    const data = movilesConCoordenadas.map((movil: any, index: number) => {
       const position = latestPositions.get(movil.id);
-      
-      // Si no tiene posición GPS, retornar con flag especial
-      if (!position) {
-        return {
-          movilId: movil.id,
-          movilName: movil.descripcion || `Móvil-${movil.id}`,
-          color: getMovilColor(index),
-          empresa_fletera_id: movil.empresa_fletera_id,
-          estado: movil.estado_nro,
-          position: null, // Sin posición GPS
-          noGpsData: true, // Flag para indicar que no hay datos GPS
-        };
-      }
       
       return {
         movilId: movil.id,
@@ -108,15 +114,16 @@ export async function GET(request: NextRequest) {
           distRecorrida: position.distancia_recorrida || 0,
         },
       };
-    }); // NO filtrar - mostrar todos los móviles
+    });
 
-    console.log(`✅ API /all-positions - Returning ${data.length} móviles with GPS data`);
+    console.log(`✅ API /all-positions - Returning ${data.length} móviles with GPS data from ${dateFilter}`);
 
     return NextResponse.json({
       success: true,
       count: data.length,
       data,
       empresaIds: empresaIds || null,
+      startDate: dateFilter, // Incluir fecha usada en el filtro
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
