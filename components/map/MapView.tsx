@@ -1643,7 +1643,12 @@ export default function MapView({
           // Mostrar móviles (todos o solo el enfocado)
           <>
             {movilesToShow.map((movil) => {
-              if (!movil.currentPosition) return null;
+              // Si no tiene posición GPS, no mostrar en el mapa
+              // TODO: Agregar panel lateral para móviles sin GPS
+              if (!movil.currentPosition) {
+                console.warn(`⚠️ Móvil ${movil.name} (ID: ${movil.id}) sin posición GPS para esta fecha`);
+                return null;
+              }
               
               return (
                 <Marker

@@ -79,7 +79,18 @@ export async function GET(request: NextRequest) {
     const data = moviles.map((movil: any, index: number) => {
       const position = latestPositions.get(movil.id);
       
-      if (!position) return null; // Sin posición GPS
+      // Si no tiene posición GPS, retornar con flag especial
+      if (!position) {
+        return {
+          movilId: movil.id,
+          movilName: movil.descripcion || `Móvil-${movil.id}`,
+          color: getMovilColor(index),
+          empresa_fletera_id: movil.empresa_fletera_id,
+          estado: movil.estado_nro,
+          position: null, // Sin posición GPS
+          noGpsData: true, // Flag para indicar que no hay datos GPS
+        };
+      }
       
       return {
         movilId: movil.id,
@@ -97,7 +108,7 @@ export async function GET(request: NextRequest) {
           distRecorrida: position.distancia_recorrida || 0,
         },
       };
-    }).filter((m: any) => m !== null); // Solo móviles con posición GPS
+    }); // NO filtrar - mostrar todos los móviles
 
     console.log(`✅ API /all-positions - Returning ${data.length} móviles with GPS data`);
 

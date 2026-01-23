@@ -8,6 +8,7 @@ import MovilSelector from '@/components/ui/MovilSelector';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
 import DashboardIndicators from '@/components/dashboard/DashboardIndicators';
+import MovilesSinGPS from '@/components/dashboard/MovilesSinGPS';
 import { useRealtime } from '@/components/providers/RealtimeProvider';
 import { useUserPreferences, UserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
