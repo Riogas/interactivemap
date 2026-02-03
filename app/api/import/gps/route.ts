@@ -88,15 +88,34 @@ function transformGpsToSupabase(gps: any) {
 /**
  * POST /api/import/gps
  * Insertar registros de GPS tracking
+ * 
+ * AUTENTICACIÓN:
+ * - Opción 1: Header X-API-Key (para uso interno)
+ * - Opción 2: Token en el body (para app móvil)
  */
 export async function POST(request: NextRequest) {
-  // 🔒 VALIDAR API KEY
-  const keyValidation = requireApiKey(request);
-  if (keyValidation instanceof NextResponse) return keyValidation;
-
   try {
     const body = await request.json();
-    let { gps } = body;
+    let { gps, token } = body;
+    
+    // 🔒 AUTENTICACIÓN FLEXIBLE
+    // Opción 1: Validar API Key en header (uso interno)
+    const hasApiKey = request.headers.get('X-API-Key') === process.env.INTERNAL_API_KEY;
+    
+    // Opción 2: Validar token en body (app móvil)
+    const hasValidToken = token && token === process.env.GPS_TRACKING_TOKEN;
+    
+    if (!hasApiKey && !hasValidToken) {
+      console.warn('⚠️ Intento de acceso sin autenticación válida a /api/import/gps');
+      return NextResponse.json(
+        { error: 'No autorizado. Se requiere X-API-Key en header o token en body.' },
+        { status: 403 }
+      );
+    }
+    
+    console.log(`✅ Autenticación exitosa (${hasApiKey ? 'API Key' : 'Token'})`);
+    
+    // Continuar con la lógica normal
 
     // Si no viene "gps", asumir que el body ES el registro GPS
     if (!gps) {
@@ -150,15 +169,30 @@ export async function POST(request: NextRequest) {
 /**
  * DELETE /api/import/gps
  * Eliminar registros GPS por IDs
+ * 
+ * AUTENTICACIÓN:
+ * - Opción 1: Header X-API-Key (para uso interno)
+ * - Opción 2: Token en el body (para app móvil)
  */
 export async function DELETE(request: NextRequest) {
-  // 🔒 VALIDAR API KEY
-  const keyValidation = requireApiKey(request);
-  if (keyValidation instanceof NextResponse) return keyValidation;
-
   try {
     const body = await request.json();
-    const { gps_ids } = body;
+    const { gps_ids, token } = body;
+    
+    // 🔒 AUTENTICACIÓN FLEXIBLE
+    const hasApiKey = request.headers.get('X-API-Key') === process.env.INTERNAL_API_KEY;
+    const hasValidToken = token && token === process.env.GPS_TRACKING_TOKEN;
+    
+    if (!hasApiKey && !hasValidToken) {
+      console.warn('⚠️ Intento de acceso sin autenticación válida a DELETE /api/import/gps');
+      return NextResponse.json(
+        { error: 'No autorizado. Se requiere X-API-Key en header o token en body.' },
+        { status: 403 }
+      );
+    }
+    
+    console.log(`✅ Autenticación exitosa (${hasApiKey ? 'API Key' : 'Token'})`);
+
 
     if (!gps_ids || !Array.isArray(gps_ids)) {
       return NextResponse.json(

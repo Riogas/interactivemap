@@ -120,15 +120,28 @@ export function checkRateLimit(
   const config = RATE_LIMIT_CONFIGS[type];
   const now = Date.now();
   
+  console.log(`🚦 checkRateLimit:`);
+  console.log(`   - IP: ${ip}`);
+  console.log(`   - Type: ${type}`);
+  console.log(`   - Config: ${config.maxRequests} req / ${config.windowMs}ms`);
+  
   // Generar clave única para este IP + endpoint
   const key = `${ip}:${type}`;
+  console.log(`   - Key: ${key}`);
   
   // Limpiar registros antiguos periódicamente
   if (Math.random() < 0.01) { // 1% de probabilidad
+    console.log(`   🧹 Limpiando registros expirados...`);
     cleanupExpiredRecords();
   }
   
   const record = rateLimitStore.get(key);
+  console.log(`   - Record exists: ${!!record}`);
+  if (record) {
+    console.log(`   - Record count: ${record.count}`);
+    console.log(`   - Record resetTime: ${new Date(record.resetTime).toISOString()}`);
+    console.log(`   - Record blockedUntil: ${record.blockedUntil ? new Date(record.blockedUntil).toISOString() : 'none'}`);
+  }
   
   // Verificar si la IP está bloqueada
   if (record?.blockedUntil && now < record.blockedUntil) {
@@ -265,20 +278,39 @@ export function clearRateLimitStore() {
 export function autoRateLimit(request: NextRequest): true | NextResponse {
   const pathname = request.nextUrl.pathname;
   
+  console.log(`🚦 autoRateLimit:`);
+  console.log(`   - Pathname: ${pathname}`);
+  
   // Determinar tipo basándose en la ruta
   let type: keyof typeof RATE_LIMIT_CONFIGS = 'default';
   
   if (pathname.startsWith('/api/import/')) {
     type = 'import';
+    console.log(`   - Tipo detectado: IMPORT`);
   } else if (pathname.includes('/login') || pathname.includes('/auth')) {
     type = 'auth';
+    console.log(`   - Tipo detectado: AUTH (login)`);
   } else if (pathname.startsWith('/api/proxy/')) {
     type = 'proxy';
+    console.log(`   - Tipo detectado: PROXY`);
   } else if (pathname.startsWith('/api/')) {
     type = 'public';
+    console.log(`   - Tipo detectado: PUBLIC`);
+  } else {
+    console.log(`   - Tipo detectado: DEFAULT`);
   }
   
-  return checkRateLimit(request, type);
+  const config = RATE_LIMIT_CONFIGS[type];
+  console.log(`   - Config: ${config.maxRequests} req / ${config.windowMs}ms`);
+  
+  const result = checkRateLimit(request, type);
+  if (result instanceof NextResponse) {
+    console.warn(`   ⚠️ Rate limit excedido!`);
+  } else {
+    console.log(`   ✅ Rate limit OK`);
+  }
+  
+  return result;
 }
 
 /**
@@ -290,6 +322,11 @@ export function detectSuspiciousActivity(request: NextRequest) {
   const ip = getClientIp(request);
   const userAgent = request.headers.get('user-agent') || 'unknown';
   const pathname = request.nextUrl.pathname;
+  
+  console.log(`🔍 detectSuspiciousActivity:`);
+  console.log(`   - IP: ${ip}`);
+  console.log(`   - Pathname: ${pathname}`);
+  console.log(`   - User-Agent: ${userAgent.substring(0, 50)}...`);
   
   // Patrones sospechosos
   const suspiciousPatterns = [
@@ -305,13 +342,15 @@ export function detectSuspiciousActivity(request: NextRequest) {
   
   for (const pattern of suspiciousPatterns) {
     if (pattern.test(pathname)) {
-      console.error('🚨 ACTIVIDAD SOSPECHOSA DETECTADA:', {
-        timestamp: new Date().toISOString(),
-        ip,
-        userAgent,
-        pathname,
-        pattern: pattern.source,
-      });
+      console.error('🚨 ═══════════════════════════════════════════════════════════');
+      console.error('🚨 ACTIVIDAD SOSPECHOSA DETECTADA:');
+      console.error('🚨 ═══════════════════════════════════════════════════════════');
+      console.error('🚨 Timestamp:', new Date().toISOString());
+      console.error('🚨 IP:', ip);
+      console.error('🚨 User-Agent:', userAgent);
+      console.error('🚨 Pathname:', pathname);
+      console.error('🚨 Pattern matched:', pattern.source);
+      console.error('🚨 ═══════════════════════════════════════════════════════════');
       
       // Aquí podrías integrar con un sistema de alertas
       // como Sentry, Discord webhook, email, etc.
@@ -320,5 +359,6 @@ export function detectSuspiciousActivity(request: NextRequest) {
     }
   }
   
+  console.log(`   ✅ No se detectó actividad sospechosa`);
   return false;
 }

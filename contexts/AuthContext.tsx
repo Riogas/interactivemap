@@ -66,10 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
+      console.log('🔐 Iniciando login en GeneXus...');
       const response: ParsedLoginResponse = await authService.login(username, password);
       
       // El login es exitoso SOLO si success=true Y viene el objeto user
       if (response.success && response.user && response.user.id && response.user.username) {
+        console.log('✅ Login GeneXus exitoso');
+        
         const newUser: User = {
           id: response.user.id,
           username: response.user.username,
@@ -81,22 +84,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           token: response.token,
         };
         
+        // 🔄 SINCRONIZAR CON SUPABASE
+        console.log('🔄 Sincronizando sesión con Supabase...');
+        try {
+          const syncResponse = await fetch('/api/auth/sync-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: response.token,
+              user: newUser,
+            }),
+          });
+
+          if (!syncResponse.ok) {
+            const errorData = await syncResponse.json();
+            console.warn('⚠️ No se pudo sincronizar sesión con Supabase:', errorData);
+            // No fallar el login si Supabase falla - permitir continuar
+          } else {
+            const syncData = await syncResponse.json();
+            console.log('✅ Sesión sincronizada con Supabase exitosamente');
+            console.log('   User ID:', syncData.supabase_session?.user_id);
+          }
+        } catch (syncError) {
+          console.warn('⚠️ Error sincronizando sesión con Supabase:', syncError);
+          // No fallar el login si Supabase falla - permitir continuar
+        }
+        
         setUser(newUser);
         return { success: true };
       } else if (response.success && !response.user) {
         // Si success=true pero no hay usuario, es credencial inválida
+        console.log('❌ Login falló: no hay datos de usuario');
         return { 
           success: false, 
           error: 'Usuario o contraseña incorrectos' 
         };
       } else {
+        console.log('❌ Login falló:', response.message);
         return { 
           success: false, 
           error: response.message || 'Usuario o contraseña incorrectos' 
         };
       }
     } catch (error) {
-      console.error('Error en login:', error);
+      console.error('❌ Error en login:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Error de conexión con el servidor' 
@@ -104,9 +135,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    console.log('🚪 Cerrando sesión...');
+    
+    // 1. Cerrar sesión de Supabase
+    try {
+      console.log('🔐 Cerrando sesión de Supabase...');
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        console.log('✅ Sesión de Supabase cerrada');
+      } else {
+        console.warn('⚠️ No se pudo cerrar sesión de Supabase');
+      }
+    } catch (error) {
+      console.warn('⚠️ Error cerrando sesión de Supabase:', error);
+    }
+    
+    // 2. Cerrar sesión local (GeneXus)
+    console.log('🔐 Limpiando sesión local...');
     setUser(null);
     authService.logout();
+    console.log('✅ Sesión cerrada completamente');
   };
 
   const value = {
