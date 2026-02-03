@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
  * Transforma campos del body a formato de base de datos
@@ -89,6 +90,10 @@ function transformGpsToSupabase(gps: any) {
  * Insertar registros de GPS tracking
  */
 export async function POST(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     let { gps } = body;
@@ -147,6 +152,10 @@ export async function POST(request: NextRequest) {
  * Eliminar registros GPS por IDs
  */
 export async function DELETE(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     const { gps_ids } = body;

@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
+import { requireAuth } from '@/lib/auth-middleware';
 import https from 'https';
 
 /**
- * Proxy genérico para todas las peticiones a la API
+ * Proxy seguro para peticiones a la API de GeneXus
  * Ruta: /api/proxy/[...path]
+ * 
+ * SEGURIDAD:
+ * - ✅ Requiere autenticación de usuario (Supabase)
+ * - ✅ Lista blanca de rutas permitidas
+ * - ✅ Solo permite proxy a API_BASE_URL configurada
  * 
  * Ejemplos:
  * - POST /api/proxy/gestion/login
@@ -12,11 +18,32 @@ import https from 'https';
  * - PUT /api/proxy/gestion/moviles/123
  */
 
+// 🔒 LISTA BLANCA DE RUTAS PERMITIDAS (SSRF Protection)
+const ALLOWED_PATHS = [
+  /^gestion\/login$/,
+  /^gestion\/moviles$/,
+  /^gestion\/moviles\/\d+$/,
+  /^gestion\/pedidos$/,
+  /^gestion\/pedidos\/\d+$/,
+  /^gestion\/zonas$/,
+  /^gestion\/puntoventa$/,
+  /^gestion\/empresas$/,
+  /^gestion\/demoras$/,
+  /^gestion\/.*$/,  // Permitir todas las rutas de gestion por ahora
+];
+
 // Agente HTTPS que ignora errores de certificado SSL
 // NOTA: Solo para desarrollo o certificados auto-firmados internos
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
+
+/**
+ * Validar que la ruta solicitada esté en la lista blanca
+ */
+function isPathAllowed(path: string): boolean {
+  return ALLOWED_PATHS.some(pattern => pattern.test(path));
+}
 
 export async function GET(
   request: NextRequest,
@@ -63,9 +90,26 @@ async function proxyRequest(
   pathSegments: string[],
   method: string
 ) {
+  // 🔒 AUTENTICACIÓN REQUERIDA (excepto para login)
+  const path = pathSegments.join('/');
+  const isLoginPath = path === 'gestion/login';
+  
+  if (!isLoginPath) {
+    const authResult = await requireAuth(request);
+    if (authResult instanceof NextResponse) return authResult;
+  }
+
+  // 🔒 VALIDAR RUTA CONTRA LISTA BLANCA (SSRF Protection)
+  if (!isPathAllowed(path)) {
+    console.error(`🚫 Ruta no permitida: ${path}`);
+    return NextResponse.json(
+      { error: 'Ruta no permitida por políticas de seguridad' },
+      { status: 403 }
+    );
+  }
+
   try {
     // Construir la URL completa
-    const path = pathSegments.join('/');
     const url = `${API_BASE_URL}/${path}`;
 
     // Obtener query parameters

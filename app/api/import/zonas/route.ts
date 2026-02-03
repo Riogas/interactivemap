@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
  * POST /api/import/zonas
  * Importar zonas desde fuente externa
  */
 export async function POST(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     let { zonas } = body;
@@ -61,6 +66,10 @@ export async function POST(request: NextRequest) {
  * Actualizar zonas existentes (upsert)
  */
 export async function PUT(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     let { zonas } = body;
@@ -118,6 +127,10 @@ export async function PUT(request: NextRequest) {
  * Eliminar zonas por IDs
  */
 export async function DELETE(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     const { zona_ids } = body;

@@ -20,6 +20,12 @@ const nextConfig = {
   // Permite importaciones de módulos externos
   serverExternalPackages: ['odbc'],
   
+  // Configuración de Turbopack para Next.js 16
+  turbopack: {
+    // Configuración vacía para silenciar warning
+    // Añade configuraciones específicas aquí si es necesario
+  },
+  
   // Evita warnings de Leaflet en SSR
   webpack: (config, { isServer }) => {
     if (!isServer) {

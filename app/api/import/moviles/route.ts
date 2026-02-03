@@ -1,6 +1,7 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { successResponse, errorResponse, logRequest } from '@/lib/api-response';
+import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
  * Transforma campos de PascalCase a snake_case para Supabase
@@ -43,6 +44,10 @@ function transformMovilToSupabase(movil: any) {
  * @returns 500 - Error del servidor o base de datos
  */
 export async function POST(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   const timestamp = new Date().toISOString();
   console.log('\n' + '='.repeat(80));
   console.log(`🚀 [${timestamp}] POST /api/import/moviles - INICIO`);
@@ -246,6 +251,10 @@ export async function POST(request: NextRequest) {
  * @returns 500 - Error del servidor o base de datos
  */
 export async function PUT(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     logRequest('PUT', '/api/import/moviles', body);
@@ -336,6 +345,10 @@ export async function PUT(request: NextRequest) {
  * @returns 500 - Error del servidor o base de datos
  */
 export async function DELETE(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     logRequest('DELETE', '/api/import/moviles', body);

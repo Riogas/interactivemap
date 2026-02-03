@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAuth } from '@/lib/auth-middleware';
 
 /**
  * GET /api/pedidos
@@ -13,6 +14,10 @@ import { supabase } from '@/lib/supabase';
  * - conCoordenadas: 'true' para obtener solo pedidos con lat/lng
  */
 export async function GET(request: NextRequest) {
+  // 🔒 AUTENTICACIÓN REQUERIDA
+  const authResult = await requireAuth(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const { searchParams } = new URL(request.url);
     

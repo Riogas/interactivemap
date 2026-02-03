@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
  * Transforma campos de PascalCase a snake_case para Supabase
@@ -84,6 +85,10 @@ function transformPedidoToSupabase(pedido: any) {
  * Si el pedido existe (mismo id), lo actualiza. Si no existe, lo inserta.
  */
 export async function POST(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   const timestamp = new Date().toISOString();
   console.log('\n' + '═'.repeat(100));
   console.log(`📦 INICIO IMPORTACIÓN DE PEDIDOS [${timestamp}]`);
@@ -184,6 +189,10 @@ export async function POST(request: NextRequest) {
  * Actualizar pedidos existentes (upsert)
  */
 export async function PUT(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   const timestamp = new Date().toISOString();
   console.log('\n' + '═'.repeat(100));
   console.log(`🔄 INICIO ACTUALIZACIÓN DE PEDIDOS [${timestamp}]`);
@@ -283,6 +292,10 @@ export async function PUT(request: NextRequest) {
  * Eliminar pedidos por IDs
  */
 export async function DELETE(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     const { pedido_ids } = body;

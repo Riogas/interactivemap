@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
+import { requireApiKey } from '@/lib/auth-middleware';
 
 export async function PUT(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     let { puntoventa } = body;
@@ -52,6 +57,10 @@ export async function PUT(request: NextRequest) {
  * Importar puntos de venta desde fuente externa
  */
 export async function POST(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     let { puntoventa } = body;
@@ -108,6 +117,10 @@ export async function POST(request: NextRequest) {
  * Eliminar puntos de venta por IDs
  */
 export async function DELETE(request: NextRequest) {
+  // 🔒 VALIDAR API KEY
+  const keyValidation = requireApiKey(request);
+  if (keyValidation instanceof NextResponse) return keyValidation;
+
   try {
     const body = await request.json();
     const { puntoventa_ids } = body;

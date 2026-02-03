@@ -1,11 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth-middleware';
 
 const AS400_API_URL = process.env.AS400_API_URL || 'http://localhost:8000';
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   context: { params: Promise<{ pedidoId: string }> }
 ) {
+  // 🔒 AUTENTICACIÓN REQUERIDA
+  const authResult = await requireAuth(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const params = await context.params;
     const pedidoId = params.pedidoId;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
+import { requireAuth } from '@/lib/auth-middleware';
 
 /**
  * POST /api/puntos-interes
@@ -8,6 +9,10 @@ import { getServerSupabaseClient } from '@/lib/supabase';
  * Si se incluye 'id' y existe, se actualiza. Si no existe o no se incluye 'id', se crea uno nuevo.
  */
 export async function POST(request: NextRequest) {
+  // 🔒 AUTENTICACIÓN REQUERIDA
+  const authResult = await requireAuth(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const supabase = getServerSupabaseClient();
     const body = await request.json();
@@ -119,6 +124,10 @@ export async function POST(request: NextRequest) {
  * Obtener puntos privados del usuario + todos los públicos
  */
 export async function GET(request: NextRequest) {
+  // 🔒 AUTENTICACIÓN REQUERIDA
+  const authResult = await requireAuth(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const supabase = getServerSupabaseClient();
     const { searchParams } = new URL(request.url);
@@ -170,6 +179,10 @@ export async function GET(request: NextRequest) {
  * Eliminar un punto de interés
  */
 export async function DELETE(request: NextRequest) {
+  // 🔒 AUTENTICACIÓN REQUERIDA
+  const authResult = await requireAuth(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const supabase = getServerSupabaseClient();
     const { searchParams } = new URL(request.url);
@@ -245,6 +258,10 @@ export async function DELETE(request: NextRequest) {
  * Body: { id, usuario_email, nombre?, descripcion?, icono?, tipo?, visible? }
  */
 export async function PATCH(request: NextRequest) {
+  // 🔒 AUTENTICACIÓN REQUERIDA
+  const authResult = await requireAuth(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const supabase = getServerSupabaseClient();
     const body = await request.json();
