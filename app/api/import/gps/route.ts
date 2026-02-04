@@ -23,12 +23,14 @@ async function importMovilFromGeneXus(movilId: number): Promise<boolean> {
     
     console.log(`📤 Enviando a ${importUrl}:`, JSON.stringify(payload));
     
+    // 🔧 TIMEOUT: 30 segundos para importación desde GeneXus
     const response = await fetch(importUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000), // 30 segundos
     });
 
     const responseText = await response.text();
