@@ -14,6 +14,70 @@ function transformPedidoToSupabase(pedido: any) {
     return dateStr;
   };
 
+  /**
+   * Convierte fecha en formato YYYYMMDD (sin ceros a la izquierda) a ISO 8601
+   * Ejemplos:
+   *   "202624"   -> "2026-02-04" (4 de febrero)
+   *   "2026214"  -> "2026-02-14" (14 de febrero) 
+   *   "20261231" -> "2026-12-31" (31 de diciembre)
+   */
+  const parseDateYYYYMMDD = (dateStr: string) => {
+    if (!dateStr || dateStr === '0' || dateStr.startsWith('0000')) {
+      return null;
+    }
+
+    try {
+      const str = dateStr.toString().trim();
+      
+      // Si ya está en formato ISO (YYYY-MM-DD), devolver tal cual
+      if (str.includes('-') || str.includes('T')) {
+        return parseDate(str);
+      }
+
+      // Parsear formato YYYYMMDD (sin ceros a la izquierda)
+      // Extraer año (primeros 4 dígitos)
+      const year = str.substring(0, 4);
+      
+      // El resto son mes y día sin ceros
+      const monthDay = str.substring(4);
+      
+      // Determinar dónde termina el mes y empieza el día
+      // Si quedan 3+ dígitos: mes es 1 dígito, día son los últimos 2
+      // Si quedan 4 dígitos: mes son 2 dígitos, día son los últimos 2
+      let month, day;
+      
+      if (monthDay.length <= 2) {
+        // Solo día (mes implícito = 01)
+        month = '01';
+        day = monthDay.padStart(2, '0');
+      } else if (monthDay.length === 3) {
+        // Mes de 1 dígito, día de 2 dígitos
+        month = monthDay.substring(0, 1).padStart(2, '0');
+        day = monthDay.substring(1);
+      } else {
+        // Mes de 2 dígitos, día de 2 dígitos
+        month = monthDay.substring(0, 2);
+        day = monthDay.substring(2);
+      }
+
+      const isoDate = `${year}-${month}-${day}`;
+      
+      // Validar que sea fecha válida
+      const testDate = new Date(isoDate);
+      if (isNaN(testDate.getTime())) {
+        console.warn(`⚠️ Fecha inválida después de parseo: ${dateStr} -> ${isoDate}`);
+        return null;
+      }
+
+      console.log(`📅 Fecha parseada: ${dateStr} -> ${isoDate}`);
+      return isoDate;
+      
+    } catch (error) {
+      console.error(`❌ Error parseando fecha YYYYMMDD: ${dateStr}`, error);
+      return null;
+    }
+  };
+
   return {
     id: pedido.id,
     escenario: pedido.escenario,
@@ -41,7 +105,7 @@ function transformPedidoToSupabase(pedido: any) {
     fch_hora_mov: parseDate(pedido.FchHoraMov || pedido.fch_hora_mov),
     fch_hora_para: parseDate(pedido.FchHoraPara || pedido.fch_hora_para),
     fch_hora_upd_firestore: parseDate(pedido.FchHoraUPDFireStore || pedido.fch_hora_upd_firestore),
-    fch_para: parseDate(pedido.FchPara || pedido.fch_para),
+    fch_para: parseDateYYYYMMDD(pedido.FchPara || pedido.fch_para), // 🔧 Formato especial YYYYMMDD
     
     // URLs y precios
     google_maps_url: pedido.GoogleMapsURL || pedido.google_maps_url || '',
