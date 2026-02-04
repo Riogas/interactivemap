@@ -26,6 +26,16 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     headers: {
       'x-client-info': 'trackmovil-realtime',
     },
+    // 🔧 TIMEOUT AUMENTADO: 30 segundos para requests HTTP
+    fetch: (url, options = {}) => {
+      return fetch(url, {
+        ...options,
+        signal: options.signal || AbortSignal.timeout(30000), // 30 segundos
+      });
+    },
+  },
+  db: {
+    schema: 'public',
   },
 });
 
@@ -39,6 +49,21 @@ export function getServerSupabaseClient() {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
+      },
+      global: {
+        headers: {
+          'x-client-info': 'trackmovil-server',
+        },
+        // 🔧 TIMEOUT AUMENTADO: 30 segundos para requests HTTP del servidor
+        fetch: (url, options = {}) => {
+          return fetch(url, {
+            ...options,
+            signal: options.signal || AbortSignal.timeout(30000), // 30 segundos
+          });
+        },
+      },
+      db: {
+        schema: 'public',
       },
     });
   }
