@@ -3,6 +3,10 @@
  * 
  * Este archivo proporciona funciones de autenticación y autorización
  * para proteger las rutas API de la aplicación TrackMovil.
+ * 
+ * VARIABLE DE ENTORNO:
+ * - ENABLE_SECURITY_CHECKS: true/false (default: false)
+ *   Controla si se aplican las validaciones de seguridad (requireAuth, requireApiKey, requireRole)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,10 +23,18 @@ type AuthResult = {
 };
 
 /**
- * 🔑 Verificar autenticación de usuario mediante Supabase Auth
+ * � Variable de control de seguridad
+ * Si es false, todos los checks de seguridad se saltan
+ */
+const SECURITY_ENABLED = process.env.ENABLE_SECURITY_CHECKS === 'true';
+
+/**
+ * �🔑 Verificar autenticación de usuario mediante Supabase Auth
  * 
  * Esta función valida que el usuario tenga una sesión válida de Supabase.
  * Se debe usar en todas las rutas que requieren que el usuario esté logueado.
+ * 
+ * NOTA: Si ENABLE_SECURITY_CHECKS=false, esta validación se salta automáticamente.
  * 
  * @example
  * ```typescript
@@ -36,6 +48,14 @@ type AuthResult = {
  * ```
  */
 export async function requireAuth(request: NextRequest): Promise<AuthResult | NextResponse> {
+  // ⚠️ MODO SIN SEGURIDAD: Bypass de autenticación
+  if (!SECURITY_ENABLED) {
+    console.log('⚠️ SECURITY_CHECKS DISABLED: Saltando requireAuth()');
+    return {
+      session: { user: { id: 'bypass-mode' } },
+      user: { id: 'bypass-mode', email: 'bypass@disabled.local' }
+    };
+  }
   try {
     // Crear cliente de Supabase con las cookies del request
     const cookieStore = await cookies();
@@ -131,6 +151,8 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult | Ne
  * Se usa para proteger endpoints que son llamados por sistemas externos
  * como GeneXus o integraciones automáticas.
  * 
+ * NOTA: Si ENABLE_SECURITY_CHECKS=false, esta validación se salta automáticamente.
+ * 
  * Configuración:
  * 1. Generar API Key: Usa un generador aleatorio de al menos 32 caracteres
  * 2. Agregar a .env: INTERNAL_API_KEY=tu_api_key_secreta
@@ -147,6 +169,12 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult | Ne
  * ```
  */
 export function requireApiKey(request: NextRequest): true | NextResponse {
+  // ⚠️ MODO SIN SEGURIDAD: Bypass de API Key
+  if (!SECURITY_ENABLED) {
+    console.log('⚠️ SECURITY_CHECKS DISABLED: Saltando requireApiKey()');
+    return true;
+  }
+
   const apiKey = request.headers.get('x-api-key');
   const validApiKey = process.env.INTERNAL_API_KEY;
 
@@ -202,6 +230,8 @@ export function requireApiKey(request: NextRequest): true | NextResponse {
  * Útil para endpoints de administración que solo deben ser accesibles
  * por usuarios con permisos especiales.
  * 
+ * NOTA: Si ENABLE_SECURITY_CHECKS=false, esta validación se salta automáticamente.
+ * 
  * @example
  * ```typescript
  * export async function DELETE(request: NextRequest) {
@@ -216,6 +246,12 @@ export function requireApiKey(request: NextRequest): true | NextResponse {
  * ```
  */
 export function requireRole(user: any, requiredRole: string): true | NextResponse {
+  // ⚠️ MODO SIN SEGURIDAD: Bypass de roles
+  if (!SECURITY_ENABLED) {
+    console.log(`⚠️ SECURITY_CHECKS DISABLED: Saltando requireRole('${requiredRole}')`);
+    return true;
+  }
+
   const userRole = user.user_metadata?.role || user.role || 'user';
 
   if (userRole !== requiredRole) {
