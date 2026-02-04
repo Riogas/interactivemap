@@ -136,11 +136,16 @@ export default function MovilSelector({
   ];
 
   const toggleCategory = (categoryKey: CategoryKey) => {
-    setExpandedCategories(new Set([categoryKey])); // Solo una categoría abierta a la vez
+    // Si la categoría ya está abierta, cerrarla (toggle)
+    if (expandedCategories.has(categoryKey)) {
+      setExpandedCategories(new Set()); // Cerrar todas
+    } else {
+      setExpandedCategories(new Set([categoryKey])); // Abrir solo esta categoría
+    }
   };
 
-  // Determinar qué categoría está activa
-  const activeCategory = Array.from(expandedCategories)[0] || 'moviles';
+  // Determinar qué categoría está activa (puede ser null si todas están cerradas)
+  const activeCategory = Array.from(expandedCategories)[0] || null;
 
   // Obtener filtros contextuales según la categoría activa
   const getContextualFilters = () => {
