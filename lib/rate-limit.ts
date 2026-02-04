@@ -281,6 +281,12 @@ export function autoRateLimit(request: NextRequest): true | NextResponse {
   console.log(`🚦 autoRateLimit:`);
   console.log(`   - Pathname: ${pathname}`);
   
+  // 🚀 BYPASS para GPS tracking - sin rate limit (muchos móviles reportando)
+  if (pathname === '/api/import/gps') {
+    console.log(`   - 🚀 GPS Tracking endpoint - SIN RATE LIMIT`);
+    return true;
+  }
+  
   // Determinar tipo basándose en la ruta
   let type: keyof typeof RATE_LIMIT_CONFIGS = 'default';
   

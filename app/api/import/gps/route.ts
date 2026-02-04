@@ -37,7 +37,29 @@ async function importMovilFromGeneXus(movilId: number): Promise<boolean> {
     if (!response.ok) {
       console.error(`❌ Error al importar móvil ${movilId}: HTTP ${response.status}`);
       console.error(`📄 Respuesta completa:`, responseText);
-      return false;
+      
+      // Si falla la importación de GeneXus, crear un registro básico en Supabase
+      console.log(`⚠️ Creando registro básico del móvil ${movilId} en Supabase...`);
+      const { error: insertError } = await supabase
+        .from('moviles')
+        .upsert({
+          id: movilId.toString(),
+          nro: movilId,
+          descripcion: `Móvil ${movilId}`,
+          empresa_fletera_id: 0,
+          mostrar_en_mapa: true,
+          estado_nro: 1,
+        }, {
+          onConflict: 'id'
+        });
+      
+      if (insertError) {
+        console.error(`❌ Error al crear registro básico:`, insertError);
+        return false;
+      }
+      
+      console.log(`✅ Registro básico creado para móvil ${movilId}`);
+      return true;
     }
 
     // Intentar parsear como JSON
@@ -52,6 +74,38 @@ async function importMovilFromGeneXus(movilId: number): Promise<boolean> {
     // Espera más tiempo para que se procese la importación (1.5 segundos)
     console.log(`⏱️ Esperando 1500ms para que se procese la importación...`);
     await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Verificar que el móvil ahora existe en Supabase
+    const { data: movilExiste } = await supabase
+      .from('moviles')
+      .select('id, descripcion')
+      .eq('id', movilId.toString())
+      .single();
+    
+    if (!movilExiste) {
+      console.warn(`⚠️ Móvil ${movilId} importado pero no aparece en Supabase, creando registro básico...`);
+      const { error: insertError } = await supabase
+        .from('moviles')
+        .upsert({
+          id: movilId.toString(),
+          nro: movilId,
+          descripcion: `Móvil ${movilId}`,
+          empresa_fletera_id: 0,
+          mostrar_en_mapa: true,
+          estado_nro: 1,
+        }, {
+          onConflict: 'id'
+        });
+      
+      if (insertError) {
+        console.error(`❌ Error al crear registro básico:`, insertError);
+        return false;
+      }
+      
+      console.log(`✅ Registro básico creado para móvil ${movilId}`);
+    } else {
+      console.log(`✅ Móvil ${movilId} existe en Supabase:`, movilExiste);
+    }
     
     return true;
   } catch (error: any) {
