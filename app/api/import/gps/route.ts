@@ -10,36 +10,53 @@ async function importMovilFromGeneXus(movilId: number): Promise<boolean> {
   try {
     console.log(`🔄 Importando móvil ${movilId} desde GeneXus...`);
     
-    const importUrl = 'https://sgm-dev.glp.riogas.com.uy/tracking/importacion';
+    // Usar la URL de producción (no dev)
+    const importUrl = 'https://sgm.glp.riogas.com.uy/tracking/importacion';
+    
+    const payload = {
+      EscenarioId: 1000,
+      IdentificadorId: movilId,
+      Accion: 'Publicar',
+      Entidad: 'Moviles',
+      ProcesarEn: 1,
+    };
+    
+    console.log(`📤 Enviando a ${importUrl}:`, JSON.stringify(payload));
     
     const response = await fetch(importUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        EscenarioId: 1000,
-        IdentificadorId: movilId,
-        Accion: 'Publicar',
-        Entidad: 'Moviles',
-        ProcesarEn: 1,
-      }),
+      body: JSON.stringify(payload),
     });
+
+    const responseText = await response.text();
+    console.log(`📥 Respuesta (${response.status}):`, responseText.substring(0, 200));
 
     if (!response.ok) {
       console.error(`❌ Error al importar móvil ${movilId}: HTTP ${response.status}`);
+      console.error(`📄 Respuesta completa:`, responseText);
       return false;
     }
 
-    const result = await response.json();
-    console.log(`✅ Móvil ${movilId} importado exitosamente:`, result);
+    // Intentar parsear como JSON
+    let result;
+    try {
+      result = JSON.parse(responseText);
+      console.log(`✅ Móvil ${movilId} importado exitosamente:`, result);
+    } catch {
+      console.log(`✅ Móvil ${movilId} importado (respuesta no-JSON):`, responseText.substring(0, 100));
+    }
     
-    // Pequeña espera para que se procese la importación
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Espera más tiempo para que se procese la importación (1.5 segundos)
+    console.log(`⏱️ Esperando 1500ms para que se procese la importación...`);
+    await new Promise(resolve => setTimeout(resolve, 1500));
     
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`❌ Error al importar móvil ${movilId}:`, error);
+    console.error(`❌ Error stack:`, error.stack);
     return false;
   }
 }
