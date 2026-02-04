@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
+import { fetchExternalAPI } from '@/lib/fetch-with-timeout';
 import https from 'https';
 
 // Agente HTTPS que ignora errores de certificado SSL
@@ -16,7 +17,9 @@ export async function POST(request: NextRequest) {
     console.log('📤 Body:', body);
 
     const loginUrl = `${API_BASE_URL}/gestion/login`;
-    const response = await fetch(loginUrl, {
+    
+    // 🔧 TIMEOUT + REINTENTOS: fetchExternalAPI usa 30s timeout y 2 reintentos
+    const response = await fetchExternalAPI(loginUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

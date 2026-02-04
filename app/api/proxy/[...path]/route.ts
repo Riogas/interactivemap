@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
 import { requireAuth } from '@/lib/auth-middleware';
+import { fetchExternalAPI } from '@/lib/fetch-with-timeout';
 import https from 'https';
 
 /**
@@ -230,7 +231,8 @@ async function proxyRequest(
     console.log(`🚀 Ejecutando fetch...`);
     const fetchStartTime = Date.now();
     
-    const response = await fetch(fullUrl, {
+    // 🔧 TIMEOUT + REINTENTOS: fetchExternalAPI usa 30s timeout y 2 reintentos
+    const response = await fetchExternalAPI(fullUrl, {
       method,
       headers,
       body,

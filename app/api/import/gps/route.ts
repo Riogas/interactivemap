@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
+import { fetchSlowOperation } from '@/lib/fetch-with-timeout';
 
 /**
  * Importa un móvil desde el servicio de sincronización de GeneXus
@@ -23,14 +24,13 @@ async function importMovilFromGeneXus(movilId: number): Promise<boolean> {
     
     console.log(`📤 Enviando a ${importUrl}:`, JSON.stringify(payload));
     
-    // 🔧 TIMEOUT: 30 segundos para importación desde GeneXus
-    const response = await fetch(importUrl, {
+    // 🔧 TIMEOUT + REINTENTOS: fetchSlowOperation usa 60s timeout y 1 reintento
+    const response = await fetchSlowOperation(importUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30000), // 30 segundos
     });
 
     const responseText = await response.text();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-middleware';
+import { fetchExternalAPI } from '@/lib/fetch-with-timeout';
 
 const AS400_API_URL = process.env.AS400_API_URL || 'http://localhost:8000';
 
@@ -15,7 +16,8 @@ export async function GET(
     const params = await context.params;
     const servicioId = params.servicioId;
 
-    const response = await fetch(`${AS400_API_URL}/servicio-detalle/${servicioId}`, {
+    // 🔧 TIMEOUT + REINTENTOS: fetchExternalAPI usa 30s timeout y 2 reintentos
+    const response = await fetchExternalAPI(`${AS400_API_URL}/servicio-detalle/${servicioId}`, {
       headers: {
         'Content-Type': 'application/json',
       },
