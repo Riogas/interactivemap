@@ -3,6 +3,48 @@ import { supabase } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
+ * Importa un móvil desde el servicio de sincronización de GeneXus
+ * cuando no existe en la base de datos
+ */
+async function importMovilFromGeneXus(movilId: number): Promise<boolean> {
+  try {
+    console.log(`🔄 Importando móvil ${movilId} desde GeneXus...`);
+    
+    const importUrl = 'https://sgm-dev.glp.riogas.com.uy/tracking/importacion';
+    
+    const response = await fetch(importUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        EscenarioId: 1000,
+        IdentificadorId: movilId,
+        Accion: 'Publicar',
+        Entidad: 'Moviles',
+        ProcesarEn: 1,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`❌ Error al importar móvil ${movilId}: HTTP ${response.status}`);
+      return false;
+    }
+
+    const result = await response.json();
+    console.log(`✅ Móvil ${movilId} importado exitosamente:`, result);
+    
+    // Pequeña espera para que se procese la importación
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    return true;
+  } catch (error) {
+    console.error(`❌ Error al importar móvil ${movilId}:`, error);
+    return false;
+  }
+}
+
+/**
  * Transforma campos del body a formato de base de datos
  */
 function transformGpsToSupabase(gps: any) {
@@ -137,15 +179,62 @@ export async function POST(request: NextRequest) {
     // Transformar campos a formato Supabase
     const transformedGps = gpsArray.map(transformGpsToSupabase);
 
-    const { data, error } = await supabase
+    // Intentar insertar
+    let { data, error } = await supabase
       .from('gps_tracking_extended')
       .insert(transformedGps)
       .select();
 
+    // Si hay error de foreign key (móvil no existe)
+    if (error && error.code === '23503' && error.message.includes('fk_gps_movil')) {
+      console.warn('⚠️ Error de integridad referencial detectado - móvil no existe');
+      
+      // Extraer el ID del móvil del mensaje de error
+      // Ejemplo: 'Key (movil_id)=(994) is not present in table "moviles".'
+      const match = error.details?.match(/\(movil_id\)=\((\d+)\)/);
+      
+      if (match && match[1]) {
+        const movilId = parseInt(match[1]);
+        console.log(`🔍 Móvil faltante identificado: ${movilId}`);
+        
+        // Intentar importar el móvil desde GeneXus
+        const imported = await importMovilFromGeneXus(movilId);
+        
+        if (imported) {
+          console.log(`🔄 Reintentando inserción de GPS después de importar móvil ${movilId}...`);
+          
+          // Reintentar la inserción
+          const retryResult = await supabase
+            .from('gps_tracking_extended')
+            .insert(transformedGps)
+            .select();
+          
+          data = retryResult.data;
+          error = retryResult.error;
+          
+          if (!retryResult.error) {
+            console.log(`✅ Inserción exitosa después de importar móvil ${movilId}`);
+          } else {
+            console.error(`❌ Error al reintentar inserción:`, retryResult.error);
+          }
+        } else {
+          console.error(`❌ No se pudo importar el móvil ${movilId}`);
+        }
+      } else {
+        console.error('❌ No se pudo extraer el ID del móvil del error');
+      }
+    }
+
+    // Si todavía hay error después del reintento
     if (error) {
       console.error('❌ Error al insertar GPS:', error);
       return NextResponse.json(
-        { error: 'Error al insertar GPS', details: error.message },
+        { 
+          error: 'Error al insertar GPS', 
+          details: error.message,
+          code: error.code,
+          hint: error.hint 
+        },
         { status: 500 }
       );
     }
