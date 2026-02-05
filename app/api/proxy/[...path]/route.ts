@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
 import { requireAuth } from '@/lib/auth-middleware';
-import { fetchExternalAPI } from '@/lib/fetch-with-timeout';
 import https from 'https';
 
 /**
@@ -231,15 +230,35 @@ async function proxyRequest(
     console.log(`🚀 Ejecutando fetch...`);
     const fetchStartTime = Date.now();
     
-    // 🔧 TIMEOUT + REINTENTOS: fetchExternalAPI usa 30s timeout y 2 reintentos
-    const response = await fetchExternalAPI(fullUrl, {
-      method,
-      headers,
-      body,
-      credentials: 'include', // Importante para cookies
-      // @ts-ignore - Node.js fetch acepta agent
-      agent: fullUrl.startsWith('https:') ? httpsAgent : undefined,
-    });
+    // 🔧 TIMEOUT MANUAL: AbortController + setTimeout
+    // No podemos usar fetchExternalAPI porque httpsAgent puede ignorar el AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log(`⏰ TIMEOUT después de 30 segundos - abortando request`);
+      controller.abort();
+    }, 30000); // 30 segundos
+    
+    let response: Response;
+    try {
+      response = await fetch(fullUrl, {
+        method,
+        headers,
+        body,
+        credentials: 'include',
+        signal: controller.signal,
+        // @ts-ignore - Node.js fetch acepta agent
+        agent: fullUrl.startsWith('https:') ? httpsAgent : undefined,
+      });
+      clearTimeout(timeoutId);
+      console.log(`✅ Fetch exitoso - limpiando timeout`);
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.error(`❌ Request abortado por timeout (30s)`);
+        throw new Error('Request timeout después de 30 segundos');
+      }
+      throw error;
+    }
 
     const fetchEndTime = Date.now();
     console.log(`✅ Fetch completado en ${fetchEndTime - fetchStartTime}ms`);
