@@ -3,15 +3,21 @@
  * 
  * Sistema de cola para inserción de coordenadas GPS en lotes.
  * Reduce la carga a Supabase agrupando múltiples inserciones en una sola operación.
+ * Optimizado para 100+ móviles enviando coordenadas simultáneamente.
  * 
  * Características:
  * - ✅ Acumula coordenadas en memoria
- * - ✅ Flush automático cada 5 segundos o 50 registros
+ * - ✅ Flush automático cada 5 segundos o 100 registros (optimizado para alta carga)
  * - ✅ Retry automático con exponential backoff
  * - ✅ Evita sobrecarga de Supabase
  * - ✅ Logging detallado para debugging
  * - ✅ Timeout de 15 segundos en requests a Supabase
  * - ✅ Fallback a archivo si falla después de 3 reintentos
+ * - ✅ Auto-creación de móviles si no existen (FK constraint)
+ * 
+ * Rendimiento estimado con 100 móviles:
+ * - 100 coords/segundo → 500 coords cada 5s → 5 batches de 100/minuto
+ * - Reducción de carga: 6,000 requests/min → 60 requests/min (99% reducción)
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -63,7 +69,7 @@ class GPSBatchQueue {
   private flushTimer: NodeJS.Timeout | null = null;
   
   // Configuración
-  private readonly BATCH_SIZE = 50;        // Flush cada 50 registros
+  private readonly BATCH_SIZE = 100;       // Flush cada 100 registros (aumentado para 100+ móviles)
   private readonly FLUSH_INTERVAL = 5000;  // Flush cada 5 segundos
   private readonly MAX_RETRIES = 3;        // 3 intentos máximo
   private readonly RETRY_DELAY = 2000;     // 2s entre reintentos

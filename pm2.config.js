@@ -12,14 +12,14 @@ module.exports = {
       watch: false,
       
       // 🔄 Gestión de Reinicio
-      max_memory_restart: '1.5G',  // Reinicia si usa >1.5GB (aumentado para batching GPS)
+      max_memory_restart: '2G',    // Aumentado para 100+ móviles con batching GPS
       min_uptime: '30s',           // Tiempo mínimo para considerar "estable" (aumentado)
       max_restarts: 10,            // Reintentos antes de rendirse (reducido - si falla 10 veces, hay un bug)
       restart_delay: 5000,         // Esperar 5s entre reinicios
       exp_backoff_restart_delay: 1000, // Backoff exponencial más agresivo
       
       // ⏱️ Timeouts
-      kill_timeout: 10000,         // Esperar 10s antes de forzar cierre (dar tiempo al flush)
+      kill_timeout: 15000,         // 15s para flush de queue con 100+ móviles
       listen_timeout: 10000,       // Timeout para que la app esté lista (Next.js puede tardar)
       
       // 🌍 Variables de Entorno
@@ -28,8 +28,8 @@ module.exports = {
         PORT: 3002,
         HOSTNAME: '0.0.0.0',
         NODE_TLS_REJECT_UNAUTHORIZED: '0',  // Ignorar errores de certificado SSL
-        UV_THREADPOOL_SIZE: 4,              // Aumentado para más I/O paralelo (Supabase, GeneXus)
-        NODE_OPTIONS: '--max-old-space-size=1536', // Límite heap V8 (1.5GB)
+        UV_THREADPOOL_SIZE: 8,              // Aumentado para 100+ móviles (más I/O paralelo)
+        NODE_OPTIONS: '--max-old-space-size=2048', // Límite heap V8 (2GB) para alta carga
       },
       
       // 📝 Logs
