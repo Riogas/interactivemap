@@ -96,10 +96,18 @@ export const authService = {
         credentials
       );
 
-      // La API devuelve un JSON string dentro de RespuestaLogin
-      const parsedResponse: ParsedLoginResponse = JSON.parse(
-        response.data.RespuestaLogin
-      );
+      // 🔧 FIX: El proxy ya parseó RespuestaLogin
+      // Si response.data ya es un objeto (no string), usarlo directamente
+      let parsedResponse: ParsedLoginResponse;
+      
+      if (typeof response.data === 'string' || response.data.RespuestaLogin) {
+        // Caso legacy: RespuestaLogin viene como string (no debería pasar con proxy actualizado)
+        const rawData = typeof response.data === 'string' ? response.data : response.data.RespuestaLogin;
+        parsedResponse = JSON.parse(rawData);
+      } else {
+        // Caso nuevo: El proxy ya devolvió el objeto parseado
+        parsedResponse = response.data as unknown as ParsedLoginResponse;
+      }
 
       if (!parsedResponse.success) {
         throw new Error(parsedResponse.message || 'Error en el login');
