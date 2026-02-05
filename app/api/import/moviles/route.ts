@@ -5,15 +5,24 @@ import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
  * Transforma campos de PascalCase a snake_case para Supabase
+ * 
+ * DEFAULTS:
+ * - empresa_fletera_id: 999 (empresa genérica "Sin Empresa")
+ * - descripcion: "Móvil {ID}"
+ * - escenario_id: 1000
  */
 function transformMovilToSupabase(movil: any) {
+  // Detectar empresa fletera con fallback a 999 "Sin Empresa"
+  const empresaFleteraId = movil.EFleteraId ?? movil.empresa_fletera_id ?? 999;
+  
   return {
     id: movil.id || movil.IdentificadorId?.toString() || movil.Nro?.toString() || movil.nro?.toString(),
     descripcion: movil.Descripcion || movil.descripcion || `Móvil ${movil.IdentificadorId || movil.Nro || movil.nro || movil.id}`,
     detalle_html: movil.DetalleHTML || movil.detalle_html || '',
     distancia_max_mts_cump_pedidos: movil.DistanciaMaxMtsCumpPedidos ?? movil.distancia_max_mts_cump_pedidos ?? 0,
-    empresa_fletera_id: movil.EFleteraId || movil.empresa_fletera_id,
+    empresa_fletera_id: empresaFleteraId, // 999 por defecto si no viene
     empresa_fletera_nom: movil.EFleteraNom || movil.empresa_fletera_nom,
+    escenario_id: movil.EscenarioId ?? movil.escenario_id ?? 1000, // Agregar escenario_id con default 1000
     estado_desc: movil.EstadoDesc || movil.estado_desc || '',
     estado_nro: movil.EstadoNro ?? movil.estado_nro ?? 0,
     fch_hora_mov: movil.FchHoraMov || movil.fch_hora_mov,
