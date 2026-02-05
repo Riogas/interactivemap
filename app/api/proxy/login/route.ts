@@ -39,7 +39,21 @@ export async function POST(request: NextRequest) {
     
     if (contentType && contentType.includes('application/json')) {
       data = await response.json();
-      console.log('📥 Login Response Data:', data);
+      console.log('📥 Login Response Data (raw):', data);
+      
+      // 🔧 FIX: GeneXus devuelve JSON anidado como string
+      // Si viene "RespuestaLogin" como string, parsearlo
+      if (data.RespuestaLogin && typeof data.RespuestaLogin === 'string') {
+        try {
+          const parsedLogin = JSON.parse(data.RespuestaLogin);
+          console.log('🔄 RespuestaLogin parseado:', parsedLogin);
+          data = parsedLogin; // Reemplazar con el objeto parseado
+        } catch (e) {
+          console.error('❌ Error al parsear RespuestaLogin:', e);
+        }
+      }
+      
+      console.log('📥 Login Response Data (final):', data);
     } else {
       const text = await response.text();
       console.log('📥 Login Response Text:', text);

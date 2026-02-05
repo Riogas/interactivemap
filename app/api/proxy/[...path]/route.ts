@@ -267,6 +267,18 @@ async function proxyRequest(
       console.log(`📥 Parseando como JSON...`);
       data = await response.json();
       console.log(`📥 Response Data (parsed JSON):`, JSON.stringify(data, null, 2));
+      
+      // 🔧 FIX: GeneXus devuelve algunos JSONs anidados como strings
+      // Si viene "RespuestaLogin" o cualquier campo que termine en "Respuesta" como string, parsearlo
+      if (data.RespuestaLogin && typeof data.RespuestaLogin === 'string') {
+        try {
+          const parsedLogin = JSON.parse(data.RespuestaLogin);
+          console.log('🔄 RespuestaLogin parseado:', parsedLogin);
+          data = parsedLogin; // Reemplazar con el objeto parseado
+        } catch (e) {
+          console.error('❌ Error al parsear RespuestaLogin:', e);
+        }
+      }
     } else {
       console.log(`📥 Leyendo como texto (no es JSON)...`);
       const text = await response.text();
