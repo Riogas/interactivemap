@@ -10,14 +10,28 @@
  * - ✅ Retry automático con exponential backoff
  * - ✅ Evita sobrecarga de Supabase
  * - ✅ Logging detallado para debugging
+ * - ✅ Timeout de 15 segundos en requests a Supabase
+ * - ✅ Fallback a archivo si falla después de 3 reintentos
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+// Cliente con timeout configurado
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  global: {
+    fetch: (url, options = {}) => {
+      return fetch(url, {
+        ...options,
+        signal: AbortSignal.timeout(15000), // 15 segundos timeout
+      });
+    },
+  },
+});
 
 interface GPSRecord {
   movil_id: string;
@@ -150,11 +164,21 @@ class GPSBatchQueue {
         console.log(`${'═'.repeat(80)}\n`);
 
       } catch (error: any) {
-        console.error(`❌ Error en intento ${attempt}/${this.MAX_RETRIES}:`, {
-          message: error.message,
-          name: error.name,
-          code: error.code,
-        });
+        console.error(`❌ Error en intento ${attempt}/${this.MAX_RETRIES}:`);
+        console.error(`   - Mensaje: ${error.message}`);
+        console.error(`   - Tipo: ${error.name}`);
+        console.error(`   - Código: ${error.code || 'N/A'}`);
+        console.error(`   - Causa: ${error.cause || 'N/A'}`);
+        
+        // Detectar tipo de error
+        const isTimeout = error.name === 'AbortError' || error.message.includes('timeout');
+        const isNetwork = error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED');
+        
+        if (isTimeout) {
+          console.error(`   ⏱️ TIMEOUT: Supabase no respondió en 15 segundos`);
+        } else if (isNetwork) {
+          console.error(`   🌐 ERROR DE RED: No se pudo conectar a Supabase`);
+        }
 
         if (attempt < this.MAX_RETRIES) {
           const delay = this.RETRY_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
@@ -165,8 +189,8 @@ class GPSBatchQueue {
           console.error(`   - Registros perdidos: ${batch.length}`);
           console.error(`   - Error final:`, error.message);
           
-          // TODO: Guardar en archivo para recuperación manual
-          // await this.saveFailedBatch(batch);
+          // Guardar en archivo para recuperación manual
+          await this.saveFailedBatch(batch);
         }
       }
     }
@@ -209,11 +233,34 @@ class GPSBatchQueue {
   }
 
   /**
-   * Guardar batch fallido en archivo (TODO: implementar)
+   * Guardar batch fallido en archivo
    */
   private async saveFailedBatch(batch: GPSRecord[]): Promise<void> {
-    // TODO: Guardar en archivo para recuperación manual
-    console.log(`💾 TODO: Guardar batch fallido en archivo`);
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `failed-batch-${timestamp}.json`;
+      
+      // Crear directorio si no existe
+      const failedDir = join(process.cwd(), 'failed-batches');
+      await mkdir(failedDir, { recursive: true });
+      
+      const filepath = join(failedDir, filename);
+      
+      // Guardar batch con metadata
+      const data = {
+        timestamp: new Date().toISOString(),
+        records: batch,
+        count: batch.length,
+        reason: 'Failed after 3 retry attempts',
+      };
+      
+      await writeFile(filepath, JSON.stringify(data, null, 2));
+      
+      console.log(`💾 Batch guardado en: ${filepath}`);
+      console.log(`   - Para recuperar: Importar manualmente a Supabase`);
+    } catch (error: any) {
+      console.error(`❌ Error al guardar batch fallido:`, error.message);
+    }
   }
 }
 
