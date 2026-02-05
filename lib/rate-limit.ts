@@ -23,6 +23,70 @@ interface RateLimitRecord {
 const rateLimitStore = new Map<string, RateLimitRecord>();
 
 /**
+ * 🟢 WHITELIST DE IPS INTERNAS (sin rate limit)
+ * 
+ * IPs que están exentas de rate limiting (servidores internos de confianza).
+ * Útil para:
+ * - SGM (servidor de importación masiva)
+ * - Servidores internos de la empresa
+ * - Scripts automatizados de confianza
+ */
+const WHITELISTED_IPS = [
+  '127.0.0.1',           // Localhost
+  '::1',                 // Localhost IPv6
+  '192.168.7.13',        // Track server (self)
+  '192.168.7.12',        // SGM server (importación masiva)
+  // Agregar más IPs internas aquí según sea necesario
+];
+
+/**
+ * Normalizar IP (convertir IPv6-mapped IPv4 a IPv4)
+ * Ejemplo: ::ffff:127.0.0.1 → 127.0.0.1
+ */
+function normalizeIp(ip: string): string {
+  // Detectar y convertir IPv6-mapped IPv4
+  if (ip.startsWith('::ffff:')) {
+    return ip.substring(7); // Remover "::ffff:" prefix
+  }
+  
+  // IPv6 localhost
+  if (ip === '::1') {
+    return '127.0.0.1'; // Normalizar a IPv4 localhost
+  }
+  
+  return ip;
+}
+
+/**
+ * Verificar si una IP está en la whitelist
+ */
+function isWhitelistedIp(ip: string): boolean {
+  // Normalizar IP (::ffff:127.0.0.1 → 127.0.0.1)
+  const normalizedIp = normalizeIp(ip);
+  
+  // Verificar IP exacta
+  if (WHITELISTED_IPS.includes(normalizedIp)) {
+    return true;
+  }
+  
+  // Verificar rangos de red interna (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+  if (normalizedIp.startsWith('192.168.') || normalizedIp.startsWith('10.') || normalizedIp.startsWith('172.')) {
+    const segments = normalizedIp.split('.');
+    if (segments.length === 4) {
+      const second = parseInt(segments[1]);
+      // 172.16.0.0 - 172.31.255.255 es rango privado
+      if (normalizedIp.startsWith('172.') && second >= 16 && second <= 31) {
+        return true;
+      }
+      // 192.168.x.x y 10.x.x.x son privadas
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
  * Configuraciones de rate limit por tipo de endpoint
  */
 export const RATE_LIMIT_CONFIGS = {
@@ -35,8 +99,8 @@ export const RATE_LIMIT_CONFIGS = {
   
   // APIs de importación/modificación (límite estricto)
   import: {
-    maxRequests: 20,
-    windowMs: 60000, // 1 minuto
+    maxRequests: 100,    // Aumentado de 20 a 100 para importaciones masivas
+    windowMs: 60000,     // 1 minuto
     message: 'Demasiadas peticiones de importación. Intenta de nuevo en 1 minuto.',
   },
   
@@ -124,6 +188,12 @@ export function checkRateLimit(
   console.log(`   - IP: ${ip}`);
   console.log(`   - Type: ${type}`);
   console.log(`   - Config: ${config.maxRequests} req / ${config.windowMs}ms`);
+  
+  // 🟢 BYPASS: IPs en whitelist no tienen rate limit
+  if (isWhitelistedIp(ip)) {
+    console.log(`   ✅ IP en whitelist - BYPASS rate limit`);
+    return true;
+  }
   
   // Generar clave única para este IP + endpoint
   const key = `${ip}:${type}`;
