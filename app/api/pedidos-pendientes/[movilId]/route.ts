@@ -17,50 +17,90 @@ export async function GET(
     const searchParams = request.nextUrl.searchParams;
     const escenarioId = searchParams.get('escenarioId') || '1';
 
-    // Consultar pedidos pendientes del móvil
-    const { data: pedidos, error } = await supabase
-      .from('pedidos')
-      .select(`
-        id,
-        escenario,
-        movil,
-        estado_nro,
-        cliente_ciudad,
-        cliente_direccion,
-        cliente_nombre,
-        cliente_nro,
-        cliente_tel,
-        cliente_obs,
-        detalle_html,
-        empresa_fletera_id,
-        fch_hora_max_ent_comp,
-        fch_para,
-        google_maps_url,
-        imp_bruto,
-        imp_flete,
-        pedido_obs,
-        precio,
-        prioridad,
-        producto_cant,
-        producto_cod,
-        producto_nom,
-        servicio_nombre,
-        tipo,
-        ubicacion,
-        zona_nro
-      `)
-      .eq('movil', movilId)
-      .eq('escenario', escenarioId)
-      .in('estado_nro', [1, 2, 3, 4, 5, 6, 7]) // Estados que representan pendientes
-      .not('latitud', 'is', null) // Solo pedidos con coordenadas
-      .not('longitud', 'is', null)
-      .order('prioridad', { ascending: false })
-      .order('fch_hora_para', { ascending: true});
+    // 🔧 RETRY LOGIC: Reintentar hasta 3 veces si falla por timeout
+    let pedidos = null;
+    let error = null;
+    let attempt = 0;
+    const maxRetries = 3;
 
-    if (error) {
-      console.error('Error al obtener pedidos pendientes:', error);
+    while (attempt < maxRetries && !pedidos) {
+      attempt++;
+      
+      try {
+        console.log(`🔄 Intento ${attempt}/${maxRetries} - Obteniendo pedidos pendientes para móvil ${movilId}`);
+        
+        // Consultar pedidos pendientes del móvil
+        const result = await supabase
+          .from('pedidos')
+          .select(`
+            id,
+            escenario,
+            movil,
+            estado_nro,
+            cliente_ciudad,
+            cliente_direccion,
+            cliente_nombre,
+            cliente_nro,
+            cliente_tel,
+            cliente_obs,
+            detalle_html,
+            empresa_fletera_id,
+            fch_hora_max_ent_comp,
+            fch_para,
+            google_maps_url,
+            imp_bruto,
+            imp_flete,
+            pedido_obs,
+            precio,
+            prioridad,
+            producto_cant,
+            producto_cod,
+            producto_nom,
+            servicio_nombre,
+            tipo,
+            ubicacion,
+            zona_nro
+          `)
+          .eq('movil', movilId)
+          .eq('escenario', escenarioId)
+          .in('estado_nro', [1, 2, 3, 4, 5, 6, 7]) // Estados que representan pendientes
+          .not('latitud', 'is', null) // Solo pedidos con coordenadas
+          .not('longitud', 'is', null)
+          .order('prioridad', { ascending: false })
+          .order('fch_hora_para', { ascending: true});
+
+        if (result.error) {
+          throw result.error;
+        }
+
+        pedidos = result.data;
+        console.log(`✅ Pedidos obtenidos exitosamente (${pedidos?.length || 0} registros)`);
+        
+      } catch (err: any) {
+        error = err;
+        const isTimeout = err.message?.includes('timeout') || err.message?.includes('Timeout') || err.message?.includes('fetch failed');
+        
+        if (isTimeout && attempt < maxRetries) {
+          const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+          console.error(`❌ Timeout en intento ${attempt}/${maxRetries} - Reintentando en ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else if (attempt >= maxRetries) {
+          console.error(`❌ Error después de ${maxRetries} intentos:`, {
+            message: err.message,
+            details: err.toString(),
+            hint: err.hint || '',
+            code: err.code || '',
+          });
+        } else {
+          // Error no relacionado con timeout, no reintentar
+          throw err;
+        }
+      }
+    }
+
+    if (error && !pedidos) {
       return NextResponse.json(
-        { error: 'Error al obtener pedidos pendientes' },
+        { error: 'Error al obtener pedidos pendientes', details: error.message },
         { status: 500 }
       );
     }
