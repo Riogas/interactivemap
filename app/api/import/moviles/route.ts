@@ -9,7 +9,7 @@ import { requireApiKey } from '@/lib/auth-middleware';
 function transformMovilToSupabase(movil: any) {
   return {
     id: movil.id || movil.IdentificadorId?.toString() || movil.Nro?.toString() || movil.nro?.toString(),
-    descripcion: movil.Descripcion || movil.descripcion,
+    descripcion: movil.Descripcion || movil.descripcion || `Móvil ${movil.IdentificadorId || movil.Nro || movil.nro || movil.id}`,
     detalle_html: movil.DetalleHTML || movil.detalle_html || '',
     distancia_max_mts_cump_pedidos: movil.DistanciaMaxMtsCumpPedidos ?? movil.distancia_max_mts_cump_pedidos ?? 0,
     empresa_fletera_id: movil.EFleteraId || movil.empresa_fletera_id,
