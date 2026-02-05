@@ -8,7 +8,7 @@ import { requireApiKey } from '@/lib/auth-middleware';
  */
 function transformMovilToSupabase(movil: any) {
   return {
-    id: movil.id || movil.Nro?.toString() || movil.nro?.toString(),
+    id: movil.id || movil.IdentificadorId?.toString() || movil.Nro?.toString() || movil.nro?.toString(),
     descripcion: movil.Descripcion || movil.descripcion,
     detalle_html: movil.DetalleHTML || movil.detalle_html || '',
     distancia_max_mts_cump_pedidos: movil.DistanciaMaxMtsCumpPedidos ?? movil.distancia_max_mts_cump_pedidos ?? 0,
@@ -20,7 +20,7 @@ function transformMovilToSupabase(movil: any) {
     fch_hora_upd_firestore: movil.FchHoraUPDFireStore || movil.fch_hora_upd_firestore,
     matricula: movil.Matricula || movil.matricula,
     mostrar_en_mapa: movil.MostrarEnMapa === 'S' || movil.mostrar_en_mapa === true,
-    nro: movil.Nro ?? movil.nro,
+    nro: movil.Nro ?? movil.IdentificadorId ?? movil.nro,
     obs: movil.Obs || movil.obs || '',
     pedidos_pendientes: movil.PedidosPendientes ?? movil.pedidos_pendientes ?? 0,
     permite_baja_momentanea: movil.PermiteBajaMomentanea === 'S' || movil.permite_baja_momentanea === true,
