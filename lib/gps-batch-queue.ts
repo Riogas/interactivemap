@@ -173,11 +173,25 @@ class GPSBatchQueue {
         // Detectar tipo de error
         const isTimeout = error.name === 'AbortError' || error.message.includes('timeout');
         const isNetwork = error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED');
+        const isForeignKey = error.message.includes('violates foreign key constraint') && error.message.includes('fk_gps_movil');
         
         if (isTimeout) {
           console.error(`   ⏱️ TIMEOUT: Supabase no respondió en 15 segundos`);
         } else if (isNetwork) {
           console.error(`   🌐 ERROR DE RED: No se pudo conectar a Supabase`);
+        } else if (isForeignKey) {
+          console.error(`   🔗 ERROR DE FK: Móvil no existe en base de datos`);
+          
+          // Intentar crear los móviles faltantes
+          const missingMoviles = await this.createMissingMoviles(batch);
+          if (missingMoviles.length > 0) {
+            console.log(`   ✅ Creados ${missingMoviles.length} móviles nuevos`);
+            // Forzar un reintento adicional después de crear los móviles
+            if (attempt === this.MAX_RETRIES) {
+              console.log(`   🔄 Permitiendo un reintento adicional después de crear móviles`);
+              attempt--; // Decrementar para permitir un reintento más
+            }
+          }
         }
 
         if (attempt < this.MAX_RETRIES) {
@@ -230,6 +244,97 @@ class GPSBatchQueue {
       batchSize: this.BATCH_SIZE,
       flushInterval: this.FLUSH_INTERVAL,
     };
+  }
+
+  /**
+   * Crear móviles faltantes usando el endpoint de importación
+   */
+  private async createMissingMoviles(batch: GPSRecord[]): Promise<string[]> {
+    try {
+      // Obtener IDs únicos de móviles en el batch
+      const movilIds = [...new Set(batch.map(record => record.movil_id))];
+      console.log(`🔍 Verificando ${movilIds.length} móviles únicos...`);
+      
+      // Verificar cuáles NO existen en Supabase
+      const { data: existingMoviles } = await supabase
+        .from('moviles')
+        .select('movil_id')
+        .in('movil_id', movilIds);
+      
+      const existingIds = new Set(existingMoviles?.map(m => m.movil_id) || []);
+      const missingIds = movilIds.filter(id => !existingIds.has(id));
+      
+      if (missingIds.length === 0) {
+        console.log(`   ✅ Todos los móviles ya existen`);
+        return [];
+      }
+      
+      console.log(`   ⚠️ Móviles faltantes: ${missingIds.join(', ')}`);
+      console.log(`   🔄 Creando móviles vía endpoint de importación...`);
+      
+      // Crear cada móvil faltante usando el endpoint interno
+      const createdMoviles: string[] = [];
+      
+      for (const movilId of missingIds) {
+        try {
+          console.log(`   📤 Creando móvil ${movilId}...`);
+          
+          // Llamar al endpoint interno de importación
+          const response = await fetch('http://localhost:3002/api/import/moviles', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              EscenarioId: 1000,
+              IdentificadorId: parseInt(movilId),
+              Accion: 'Publicar',
+              Entidad: 'Moviles',
+              ProcesarEn: 1,
+            }),
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`   ❌ Error al crear móvil ${movilId}: ${response.status} - ${errorText}`);
+            continue;
+          }
+          
+          const result = await response.json();
+          console.log(`   ✅ Móvil ${movilId} creado:`, result);
+          
+          // Esperar un momento para que se propague a Supabase
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Verificar que el móvil ahora existe en Supabase
+          const { data: verifyMovil } = await supabase
+            .from('moviles')
+            .select('movil_id')
+            .eq('movil_id', movilId)
+            .single();
+          
+          if (verifyMovil) {
+            console.log(`   ✅ Móvil ${movilId} verificado en Supabase`);
+            createdMoviles.push(movilId);
+          } else {
+            console.error(`   ⚠️ Móvil ${movilId} no encontrado en Supabase después de crear`);
+          }
+          
+        } catch (error: any) {
+          console.error(`   ❌ Error al crear móvil ${movilId}:`, error.message);
+        }
+      }
+      
+      if (createdMoviles.length > 0) {
+        console.log(`   ✅ Total móviles creados y verificados: ${createdMoviles.join(', ')}`);
+      }
+      
+      return createdMoviles;
+      
+    } catch (error: any) {
+      console.error(`   ❌ Error en createMissingMoviles:`, error.message);
+      return [];
+    }
   }
 
   /**

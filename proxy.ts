@@ -84,7 +84,9 @@ export function proxy(request: NextRequest) {
     console.log(`⚠️ Origin no en lista - usando fallback: ${allowedOrigins[0]}`);
     corsHeaders['Access-Control-Allow-Origin'] = allowedOrigins[0];
   } else {
-    console.warn('⚠️ No hay ALLOWED_ORIGINS configurados - usando wildcard (*)');
+    // En producción con NGINX, no necesitamos configurar ALLOWED_ORIGINS
+    // NGINX maneja el CORS correctamente
+    console.log('ℹ️ No hay ALLOWED_ORIGINS configurados - usando wildcard (NGINX maneja CORS)');
     corsHeaders['Access-Control-Allow-Origin'] = '*';
   }
 
