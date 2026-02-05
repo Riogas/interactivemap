@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
 import { fetchSlowOperation } from '@/lib/fetch-with-timeout';
+import { getGPSQueue } from '@/lib/gps-batch-queue';
 
 /**
  * Importa un móvil desde el servicio de sincronización de GeneXus
@@ -247,78 +248,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`📍 Insertando ${gpsArray.length} registro(s) GPS...`);
+    console.log(`� Agregando ${gpsArray.length} registro(s) GPS a la cola de batching...`);
 
     // Transformar campos a formato Supabase
     const transformedGps = gpsArray.map(transformGpsToSupabase);
 
-    // Intentar insertar
-    let { data, error } = await supabase
-      .from('gps_tracking_extended')
-      .insert(transformedGps)
-      .select();
+    // 🔄 BATCHING: Agregar a cola en vez de insertar directamente
+    // Esto evita sobrecarga de Supabase cuando llegan muchas coordenadas/segundo
+    const gpsQueue = getGPSQueue();
+    await gpsQueue.addBatch(transformedGps as any);
 
-    // Si hay error de foreign key (móvil no existe)
-    if (error && error.code === '23503' && error.message.includes('fk_gps_movil')) {
-      console.warn('⚠️ Error de integridad referencial detectado - móvil no existe');
-      
-      // Extraer el ID del móvil del mensaje de error
-      // Ejemplo: 'Key (movil_id)=(994) is not present in table "moviles".'
-      const match = error.details?.match(/\(movil_id\)=\((\d+)\)/);
-      
-      if (match && match[1]) {
-        const movilId = parseInt(match[1]);
-        console.log(`🔍 Móvil faltante identificado: ${movilId}`);
-        
-        // Intentar importar el móvil desde GeneXus
-        const imported = await importMovilFromGeneXus(movilId);
-        
-        if (imported) {
-          console.log(`🔄 Reintentando inserción de GPS después de importar móvil ${movilId}...`);
-          
-          // Reintentar la inserción
-          const retryResult = await supabase
-            .from('gps_tracking_extended')
-            .insert(transformedGps)
-            .select();
-          
-          data = retryResult.data;
-          error = retryResult.error;
-          
-          if (!retryResult.error) {
-            console.log(`✅ Inserción exitosa después de importar móvil ${movilId}`);
-          } else {
-            console.error(`❌ Error al reintentar inserción:`, retryResult.error);
-          }
-        } else {
-          console.error(`❌ No se pudo importar el móvil ${movilId}`);
-        }
-      } else {
-        console.error('❌ No se pudo extraer el ID del móvil del error');
-      }
-    }
-
-    // Si todavía hay error después del reintento
-    if (error) {
-      console.error('❌ Error al insertar GPS:', error);
-      return NextResponse.json(
-        { 
-          error: 'Error al insertar GPS', 
-          details: error.message,
-          code: error.code,
-          hint: error.hint 
-        },
-        { status: 500 }
-      );
-    }
-
-    console.log(`✅ ${data?.length || 0} registros GPS insertados`);
-
+    // Responder inmediatamente (la cola se encarga de insertar en lotes)
+    console.log(`✅ ${transformedGps.length} registros GPS encolados para procesamiento`);
+    
     return NextResponse.json({
       success: true,
-      message: `${data?.length || 0} registros GPS insertados correctamente`,
-      data,
-    });
+      message: `${transformedGps.length} registros GPS encolados para procesamiento`,
+      queued: transformedGps.length,
+      queueStats: gpsQueue.getStats()
+    }, { status: 202 }); // 202 Accepted (procesamiento asíncrono)
+
   } catch (error: any) {
     console.error('❌ Error inesperado:', error);
     return NextResponse.json(
