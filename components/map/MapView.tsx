@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase, CustomMarker } from '@/types';
@@ -10,6 +10,7 @@ import { PedidoInfoPopup } from './PedidoInfoPopup';
 import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
+import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from './MapOptimizations';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
@@ -40,22 +41,39 @@ interface MapViewProps {
   pedidos?: PedidoSupabase[]; // Nueva prop para mostrar pedidos en el mapa
   onPedidoClick?: (pedidoId: number | undefined) => void; // Callback para click en pedido
   popupPedido?: number; // Pedido con popup abierto
+  focusedPedidoId?: number; // ✅ NUEVO: ID del pedido a centralizar
+  focusedPuntoId?: string; // ✅ NUEVO: ID del punto de interés a centralizar
   isPlacingMarker?: boolean; // Prop externa para controlar el modo de colocación
   onPlacingMarkerChange?: (isPlacing: boolean) => void; // Callback para notificar cambios
   onMarkersChange?: (markers: CustomMarker[]) => void; // Callback para notificar cambios en los marcadores
 }
 
-function MapUpdater({ moviles, focusedMovil, selectedMovil, selectedMovilesCount }: { 
+function MapUpdater({ 
+  moviles, 
+  focusedMovil, 
+  selectedMovil, 
+  selectedMovilesCount,
+  focusedPedidoId,
+  focusedPuntoId,
+  pedidos,
+  customMarkers
+}: { 
   moviles: MovilData[]; 
   focusedMovil?: number; 
   selectedMovil?: number;
   selectedMovilesCount?: number;
+  focusedPedidoId?: number; // ✅ NUEVO
+  focusedPuntoId?: string; // ✅ NUEVO
+  pedidos?: PedidoSupabase[]; // ✅ NUEVO
+  customMarkers?: CustomMarker[]; // ✅ NUEVO
 }) {
   const map = useMap();
   const hasInitialized = useRef(false);
   const lastSelectedMovil = useRef<number | undefined>(undefined);
   const lastFocusedMovil = useRef<number | undefined>(undefined);
   const lastSelectedMovilesCount = useRef<number>(0);
+  const lastFocusedPedidoId = useRef<number | undefined>(undefined); // ✅ NUEVO
+  const lastFocusedPuntoId = useRef<string | undefined>(undefined); // ✅ NUEVO
   const userHasInteracted = useRef(false);
 
   // Detectar cuando el usuario mueve el mapa manualmente
@@ -73,6 +91,40 @@ function MapUpdater({ moviles, focusedMovil, selectedMovil, selectedMovilesCount
       map.off('zoomstart', handleUserInteraction);
     };
   }, [map]);
+
+  // ✅ NUEVO: Efecto para centrar el mapa en un pedido
+  useEffect(() => {
+    if (focusedPedidoId !== lastFocusedPedidoId.current) {
+      lastFocusedPedidoId.current = focusedPedidoId;
+      
+      if (focusedPedidoId && pedidos && pedidos.length > 0) {
+        const pedido = pedidos.find(p => p.id === focusedPedidoId);
+        if (pedido?.latitud && pedido?.longitud) {
+          console.log('📦 Centrando mapa en pedido:', pedido.id);
+          map.setView([pedido.latitud, pedido.longitud], 16, {
+            animate: true,
+          });
+        }
+      }
+    }
+  }, [map, focusedPedidoId, pedidos]);
+
+  // ✅ NUEVO: Efecto para centrar el mapa en un punto de interés
+  useEffect(() => {
+    if (focusedPuntoId !== lastFocusedPuntoId.current) {
+      lastFocusedPuntoId.current = focusedPuntoId;
+      
+      if (focusedPuntoId && customMarkers && customMarkers.length > 0) {
+        const punto = customMarkers.find(p => p.id === focusedPuntoId);
+        if (punto) {
+          console.log('📍 Centrando mapa en punto de interés:', punto.nombre);
+          map.setView([punto.latitud, punto.longitud], 16, {
+            animate: true,
+          });
+        }
+      }
+    }
+  }, [map, focusedPuntoId, customMarkers]);
 
   // Efecto para centrar el mapa SOLO la primera vez que se cargan móviles
   useEffect(() => {
@@ -290,6 +342,8 @@ export default function MapView({
   pedidos = [],
   onPedidoClick,
   popupPedido,
+  focusedPedidoId, // ✅ NUEVO
+  focusedPuntoId, // ✅ NUEVO
   isPlacingMarker: externalIsPlacingMarker = false,
   onPlacingMarkerChange,
   onMarkersChange
@@ -390,6 +444,42 @@ export default function MapView({
 
     loadMarkers();
   }, []);
+
+  // 🐛 DEBUG: Log de pedidos recibidos
+  useEffect(() => {
+    console.log('🔍 DEBUG PEDIDOS - useEffect disparado');
+    console.log('📦 Pedidos recibidos:', pedidos);
+    console.log('📊 Tipo de pedidos:', typeof pedidos);
+    console.log('📏 Es array?:', Array.isArray(pedidos));
+    
+    if (pedidos && pedidos.length > 0) {
+      console.log(`📦 MapView recibió ${pedidos.length} pedidos`);
+      console.log('📍 Primer pedido completo:', pedidos[0]);
+      console.log('📍 Latitud del primer pedido:', pedidos[0].latitud);
+      console.log('📍 Longitud del primer pedido:', pedidos[0].longitud);
+      
+      const conCoordenadas = pedidos.filter(p => p.latitud && p.longitud);
+      console.log(`📍 ${conCoordenadas.length} pedidos tienen coordenadas`);
+      
+      if (conCoordenadas.length > 0) {
+        console.log('📍 Primer pedido con coordenadas:', {
+          id: conCoordenadas[0].id,
+          latitud: conCoordenadas[0].latitud,
+          longitud: conCoordenadas[0].longitud,
+          cliente: conCoordenadas[0].cliente_nombre,
+          estado: conCoordenadas[0].estado_nro
+        });
+      }
+      
+      // DEBUG: Verificar si los pedidos se están filtrando correctamente
+      const pedidosFiltrados = pedidos.filter(p => p.latitud && p.longitud);
+      console.log('🎯 Pedidos que pasarán el filtro para renderizar:', pedidosFiltrados.length);
+      
+    } else {
+      console.log('⚠️ MapView: No hay pedidos o array vacío');
+      console.log('⚠️ Valor de pedidos:', pedidos);
+    }
+  }, [pedidos]);
 
   // Notificar al padre cuando cambien los marcadores
   useEffect(() => {
@@ -775,9 +865,91 @@ export default function MapView({
   // No necesitamos filtrar aquí nuevamente
   const movilesToShow = moviles;
 
-  const createCustomIcon = (color: string, movilId?: number, isInactive?: boolean) => {
-    // Si el móvil está inactivo, mostramos un ícono de alarma parpadeante
-    if (isInactive) {
+  // 🚀 OPTIMIZACIÓN: Usar useCallback para funciones de creación de iconos
+  const createCustomIcon = useCallback((color: string, movilId?: number, isInactive?: boolean) => {
+    const cacheKey = `custom-${color}-${movilId}-${isInactive}`;
+    
+    return getCachedIcon(cacheKey, () => {
+      // Si el móvil está inactivo, mostramos un ícono de alarma parpadeante
+      if (isInactive) {
+        return L.divIcon({
+          className: '', // Sin className para evitar conflictos CSS
+          html: `
+            <div style="
+              width: 46px;
+              height: 46px;
+              position: absolute;
+              left: -23px;
+              top: -23px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            ">
+              <!-- Círculo principal con ícono de alarma -->
+              <div style="
+                width: 40px;
+                height: 40px;
+                background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+                border: 3px solid white;
+                border-radius: 50%;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                animation: alarm-pulse 1.5s infinite, alarm-ring 0.3s infinite;
+              ">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));">
+                  <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                </svg>
+              </div>
+              <!-- Badge con número del móvil -->
+              ${movilId ? `
+              <div style="
+                position: absolute;
+                bottom: -6px;
+                background-color: white;
+                color: #DC2626;
+                border: 2px solid #EF4444;
+                border-radius: 10px;
+                padding: 2px 6px;
+                font-size: 11px;
+                font-weight: bold;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                white-space: nowrap;
+                line-height: 1;
+                animation: badge-pulse 1.5s infinite;
+              ">${movilId}</div>
+              ` : ''}
+            </div>
+            <style>
+              @keyframes alarm-pulse {
+                0%, 100% { 
+                  transform: scale(1); 
+                  box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
+                }
+                50% { 
+                  transform: scale(1.1); 
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.4), 0 0 0 10px rgba(239, 68, 68, 0);
+                }
+              }
+              @keyframes alarm-ring {
+                0%, 100% { transform: rotate(-3deg); }
+                50% { transform: rotate(3deg); }
+              }
+              @keyframes badge-pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.7; }
+              }
+            </style>
+          `,
+          iconSize: [46, 46],
+          iconAnchor: [23, 23],
+        });
+      }
+
+      // Ícono normal para móviles activos
       return L.divIcon({
         className: '', // Sin className para evitar conflictos CSS
         html: `
@@ -792,21 +964,21 @@ export default function MapView({
             align-items: center;
             justify-content: center;
           ">
-            <!-- Círculo principal con ícono de alarma -->
+            <!-- Círculo principal con ícono del auto -->
             <div style="
               width: 40px;
               height: 40px;
-              background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+              background-color: ${color};
               border: 3px solid white;
               border-radius: 50%;
-              box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
+              box-shadow: 0 4px 8px rgba(0,0,0,0.3);
               display: flex;
               align-items: center;
               justify-content: center;
-              animation: alarm-pulse 1.5s infinite, alarm-ring 0.3s infinite;
+              animation: pulse 2s infinite;
             ">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));">
-                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
               </svg>
             </div>
             <!-- Badge con número del móvil -->
@@ -815,8 +987,8 @@ export default function MapView({
               position: absolute;
               bottom: -6px;
               background-color: white;
-              color: #DC2626;
-              border: 2px solid #EF4444;
+              color: ${color};
+              border: 2px solid ${color};
               border-radius: 10px;
               padding: 2px 6px;
               font-size: 11px;
@@ -825,102 +997,25 @@ export default function MapView({
               box-shadow: 0 2px 4px rgba(0,0,0,0.2);
               white-space: nowrap;
               line-height: 1;
-              animation: badge-pulse 1.5s infinite;
             ">${movilId}</div>
             ` : ''}
           </div>
           <style>
-            @keyframes alarm-pulse {
-              0%, 100% { 
-                transform: scale(1); 
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
-              }
-              50% { 
-                transform: scale(1.1); 
-                box-shadow: 0 4px 12px rgba(0,0,0,0.4), 0 0 0 10px rgba(239, 68, 68, 0);
-              }
-            }
-            @keyframes alarm-ring {
-              0%, 100% { transform: rotate(-3deg); }
-              50% { transform: rotate(3deg); }
-            }
-            @keyframes badge-pulse {
-              0%, 100% { opacity: 1; }
-              50% { opacity: 0.7; }
+            @keyframes pulse {
+              0%, 100% { transform: scale(1); }
+              50% { transform: scale(1.05); }
             }
           </style>
         `,
         iconSize: [46, 46],
         iconAnchor: [23, 23],
       });
-    }
-
-    // Ícono normal para móviles activos
-    return L.divIcon({
-      className: '', // Sin className para evitar conflictos CSS
-      html: `
-        <div style="
-          width: 46px;
-          height: 46px;
-          position: absolute;
-          left: -23px;
-          top: -23px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-        ">
-          <!-- Círculo principal con ícono del auto -->
-          <div style="
-            width: 40px;
-            height: 40px;
-            background-color: ${color};
-            border: 3px solid white;
-            border-radius: 50%;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            animation: pulse 2s infinite;
-          ">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-              <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
-            </svg>
-          </div>
-          <!-- Badge con número del móvil -->
-          ${movilId ? `
-          <div style="
-            position: absolute;
-            bottom: -6px;
-            background-color: white;
-            color: ${color};
-            border: 2px solid ${color};
-            border-radius: 10px;
-            padding: 2px 6px;
-            font-size: 11px;
-            font-weight: bold;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            white-space: nowrap;
-            line-height: 1;
-          ">${movilId}</div>
-          ` : ''}
-        </div>
-        <style>
-          @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-          }
-        </style>
-      `,
-      iconSize: [46, 46],
-      iconAnchor: [23, 23],
     });
-  };
+  }, []);
 
-  // Iconos para pedidos (naranja) - MÁS GRANDE Y DISTINTIVO - LEGACY para animación
-  const createPedidoIcon = () => {
-    return L.divIcon({
+  // 🚀 OPTIMIZACIÓN: Iconos con cache
+  const createPedidoIcon = useCallback(() => {
+    return getCachedIcon('pedido-legacy', () => L.divIcon({
       className: '',
       html: `
         <div style="
@@ -945,64 +1040,68 @@ export default function MapView({
       `,
       iconSize: [32, 32],
       iconAnchor: [16, 16],
-    });
-  };
+    }));
+  }, []);
 
-  // Iconos para pedidos desde tabla - por estado
-  const createPedidoIconByEstado = (estadoNro: number | null) => {
-    // Colores según estado (mismo esquema que PedidoInfoPopup)
-    let color = '#EF4444'; // Rojo por defecto
-    let lightColor = '#FCA5A5';
-    let shadowColor = 'rgba(239, 68, 68, 0.3)';
+  // 🚀 OPTIMIZACIÓN: Iconos para pedidos desde tabla - por estado
+  const createPedidoIconByEstado = useCallback((estadoNro: number | null) => {
+    const cacheKey = `pedido-estado-${estadoNro}`;
     
-    if (estadoNro !== null && estadoNro <= 2) {
-      // Asignado - Azul
-      color = '#3B82F6';
-      lightColor = '#93C5FD';
-      shadowColor = 'rgba(59, 130, 246, 0.3)';
-    } else if (estadoNro !== null && estadoNro >= 3 && estadoNro <= 5) {
-      // En proceso - Amarillo
-      color = '#EAB308';
-      lightColor = '#FDE047';
-      shadowColor = 'rgba(234, 179, 8, 0.3)';
-    } else if (estadoNro === 7) {
-      // Completado - Verde
-      color = '#22C55E';
-      lightColor = '#86EFAC';
-      shadowColor = 'rgba(34, 197, 94, 0.3)';
-    }
+    return getCachedIcon(cacheKey, () => {
+      // Colores según estado (mismo esquema que PedidoInfoPopup)
+      let color = '#EF4444'; // Rojo por defecto
+      let lightColor = '#FCA5A5';
+      let shadowColor = 'rgba(239, 68, 68, 0.3)';
+      
+      if (estadoNro !== null && estadoNro <= 2) {
+        // Asignado - Azul
+        color = '#3B82F6';
+        lightColor = '#93C5FD';
+        shadowColor = 'rgba(59, 130, 246, 0.3)';
+      } else if (estadoNro !== null && estadoNro >= 3 && estadoNro <= 5) {
+        // En proceso - Amarillo
+        color = '#EAB308';
+        lightColor = '#FDE047';
+        shadowColor = 'rgba(234, 179, 8, 0.3)';
+      } else if (estadoNro === 7) {
+        // Completado - Verde
+        color = '#22C55E';
+        lightColor = '#86EFAC';
+        shadowColor = 'rgba(34, 197, 94, 0.3)';
+      }
 
-    return L.divIcon({
-      className: '',
-      html: `
-        <div style="
-          width: 32px;
-          height: 32px;
-          position: absolute;
-          left: -16px;
-          top: -16px;
-          background: linear-gradient(135deg, ${color} 0%, ${lightColor} 100%);
-          border: 3px solid white;
-          border-radius: 8px;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px ${shadowColor};
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-          cursor: pointer;
-          transition: transform 0.2s;
-        " 
-        onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">📦</div>
-      `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      return L.divIcon({
+        className: '',
+        html: `
+          <div style="
+            width: 32px;
+            height: 32px;
+            position: absolute;
+            left: -16px;
+            top: -16px;
+            background: linear-gradient(135deg, ${color} 0%, ${lightColor} 100%);
+            border: 3px solid white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px ${shadowColor};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.2s;
+          " 
+          onmouseover="this.style.transform='scale(1.15)'"
+          onmouseout="this.style.transform='scale(1)'">📦</div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      });
     });
-  };
+  }, []);
 
-  // Iconos para servicios (rojo) - MÁS GRANDE Y DISTINTIVO
-  const createServicioIcon = () => {
-    return L.divIcon({
+  // 🚀 OPTIMIZACIÓN: Iconos para servicios con cache
+  const createServicioIcon = useCallback(() => {
+    return getCachedIcon('servicio-legacy', () => L.divIcon({
       className: '',
       html: `
         <div style="
@@ -1027,23 +1126,26 @@ export default function MapView({
       `,
       iconSize: [32, 32],
       iconAnchor: [16, 16],
-    });
-  };
+    }));
+  }, []);
 
-  // Iconos para pedidos/servicios COMPLETADOS (verde) - Para mostrar durante animación
-  const createCompletadoIcon = (tipo: 'PEDIDO' | 'SERVICIO') => {
-    const emoji = tipo === 'PEDIDO' ? '✅' : '✔️';
-    return L.divIcon({
-      className: '',
-      html: `
-        <div style="
-          width: 28px;
-          height: 28px;
-          position: absolute;
-          left: -14px;
-          top: -14px;
-          background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-          border: 3px solid white;
+  // 🚀 OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
+  const createCompletadoIcon = useCallback((tipo: 'PEDIDO' | 'SERVICIO') => {
+    const cacheKey = `completado-${tipo}`;
+    
+    return getCachedIcon(cacheKey, () => {
+      const emoji = tipo === 'PEDIDO' ? '✅' : '✔️';
+      return L.divIcon({
+        className: '',
+        html: `
+          <div style="
+            width: 28px;
+            height: 28px;
+            position: absolute;
+            left: -14px;
+            top: -14px;
+            background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+            border: 3px solid white;
           border-radius: 50%;
           box-shadow: 0 3px 6px rgba(0,0,0,0.3), 0 0 0 2px rgba(16, 185, 129, 0.3);
           display: flex;
@@ -1058,10 +1160,11 @@ export default function MapView({
           ${emoji}
         </div>
       `,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
     });
-  };
+  }, []);
 
   // Funciones de control de animación
   const handlePlayPause = () => {
@@ -1204,7 +1307,7 @@ export default function MapView({
                 // Si no hay historial, solo mostrar el marcador actual
                 if (filteredHistory.length === 0) {
                   return (
-                    <Marker
+                    <OptimizedMarker
                       key={movil.id}
                       position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
                       icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
@@ -1222,15 +1325,23 @@ export default function MapView({
                           </p>
                         </div>
                       </Popup>
-                    </Marker>
+                    </OptimizedMarker>
                   );
                 }
                 
                 // Dibujar la línea del recorrido si tiene historial
                 const fullPathCoordinates = filteredHistory.map(coord => [coord.coordX, coord.coordY] as [number, number]);
 
+                // 🚀 OPTIMIZACIÓN: Simplificar el path completo para mejorar rendimiento
+                const optimizedFullPath = useMemo(() => {
+                  if (fullPathCoordinates.length > 300) {
+                    return optimizePath(fullPathCoordinates, 200);
+                  }
+                  return fullPathCoordinates;
+                }, [fullPathCoordinates.length]);
+
                 // Calcular cuántos puntos mostrar según el progreso de la animación
-                const totalPoints = fullPathCoordinates.length;
+                const totalPoints = optimizedFullPath.length;
                 const visiblePointsCount = Math.max(
                   1,
                   Math.ceil((animationProgress / 100) * totalPoints)
@@ -1238,8 +1349,8 @@ export default function MapView({
                 
                 // Coordenadas visibles durante la animación (desde el final hacia el principio, orden invertido)
                 const pathCoordinates = isAnimating || animationProgress > 0
-                  ? fullPathCoordinates.slice(Math.max(0, totalPoints - visiblePointsCount))
-                  : fullPathCoordinates;
+                  ? optimizedFullPath.slice(Math.max(0, totalPoints - visiblePointsCount))
+                  : optimizedFullPath;
 
                 // Punto animado actual (el más reciente de los visibles)
                 const animatedPointIndex = isAnimating || animationProgress > 0
@@ -1267,7 +1378,7 @@ export default function MapView({
                               return (
                                 <React.Fragment key={`simplified-${index}`}>
                                   {/* Sombra */}
-                                  <Polyline
+                                  <OptimizedPolyline
                                     positions={[coord, nextCoord]}
                                     pathOptions={{
                                       color: '#333',
@@ -1278,7 +1389,7 @@ export default function MapView({
                                     }}
                                   />
                                   {/* Línea principal */}
-                                  <Polyline
+                                  <OptimizedPolyline
                                     positions={[coord, nextCoord]}
                                     pathOptions={{
                                       color: movil.color,
@@ -1297,7 +1408,7 @@ export default function MapView({
                           /* MODO COMPLETO: Todas las líneas con difuminado progresivo */
                           <>
                             {/* Línea base (sombra) muy sutil */}
-                            <Polyline
+                            <OptimizedPolyline
                               positions={pathCoordinates}
                               pathOptions={{
                                 color: '#333',
@@ -1327,7 +1438,7 @@ export default function MapView({
                               const dashArray = isRecent ? '10, 8' : undefined;
                               
                               return (
-                                <Polyline
+                                <OptimizedPolyline
                                   key={`segment-${index}`}
                                   positions={[coord, nextCoord]}
                                   pathOptions={{
@@ -1346,7 +1457,8 @@ export default function MapView({
                       </>
                     )}
                     
-                    {/* Marcadores en cada punto del historial con numeración y estilos mejorados */}
+                    {/* 🚀 OPTIMIZACIÓN: Reducir marcadores del historial */}
+                    {/* Mostrar marcadores solo cada N puntos para mejor rendimiento */}
                     {filteredHistory.map((coord, index) => {
                       // Durante la animación, solo mostrar puntos ya "recorridos"
                       if ((isAnimating || animationProgress > 0) && index < animatedPointIndex) {
@@ -1360,18 +1472,24 @@ export default function MapView({
                       // Durante la animación, el punto actual es especial
                       const isAnimatedCurrent = (isAnimating || animationProgress > 0) && index === animatedPointIndex;
                       
+                      // 🚀 OPTIMIZACIÓN: Mostrar solo puntos importantes o cada 10 puntos
+                      const skipInterval = totalPoints > 100 ? 15 : 10;
+                      const shouldShow = isFirst || isLast || isAnimatedCurrent || index % skipInterval === 0;
+                      
+                      if (!shouldShow) return null;
+                      
                       // Tamaño progresivo
                       const size = isFirst ? 16 : isLast ? 14 : isAnimatedCurrent ? 14 : 8;
                       
                       // Opacidad que decrece con antigüedad
                       const opacity = isAnimatedCurrent ? 1 : 0.5 + (0.5 * (totalPoints - index) / totalPoints);
                       
-                      // Mostrar etiqueta cada 5 puntos o en puntos clave
-                      const showLabel = isFirst || isLast || isAnimatedCurrent || index % 5 === 0;
+                      // Mostrar etiqueta solo en puntos clave
+                      const showLabel = isFirst || isLast || isAnimatedCurrent;
                       const pointNumber = totalPoints - index; // Contar desde el inicio del día
                       
                       return (
-                        <Marker
+                        <OptimizedMarker
                           key={`${movil.id}-${index}`}
                           position={[coord.coordX, coord.coordY]}
                           icon={L.divIcon({
@@ -1483,12 +1601,12 @@ export default function MapView({
                               </div>
                             </div>
                           </Popup>
-                        </Marker>
+                        </OptimizedMarker>
                       );
                     })}
                     
                     {/* Marcador principal (posición actual) */}
-                    <Marker
+                    <OptimizedMarker
                       position={[movil.currentPosition!.coordX, movil.currentPosition!.coordY]}
                       icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
                     >
@@ -1516,7 +1634,7 @@ export default function MapView({
                           )}
                         </div>
                       </Popup>
-                    </Marker>
+                    </OptimizedMarker>
                   </div>
                 );
               })}
@@ -1530,7 +1648,7 @@ export default function MapView({
                   if (!item.x || !item.y) return null;
 
                   return (
-                    <Marker
+                    <OptimizedMarker
                       key={`${item.tipo}-${item.id}`}
                       position={[item.x, item.y]}
                       icon={item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon()}
@@ -1620,7 +1738,7 @@ export default function MapView({
                 }
                 
                 return (
-                  <Marker
+                  <OptimizedMarker
                     key={`completado-${item.tipo}-${item.id}-${estado}`}
                     position={[item.x, item.y]}
                     icon={icon}
@@ -1651,7 +1769,7 @@ export default function MapView({
               }
               
               return (
-                <Marker
+                <OptimizedMarker
                   key={movil.id}
                   position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
                   icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
@@ -1679,7 +1797,7 @@ export default function MapView({
                 if (!item.x || !item.y) return null;
 
                 return (
-                  <Marker
+                  <OptimizedMarker
                     key={`${item.tipo}-${item.id}-${movil.id}`}
                     position={[item.x, item.y]}
                     icon={item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon()}
@@ -1703,7 +1821,7 @@ export default function MapView({
               if (!item.x || !item.y) return null;
 
               return (
-                <Marker
+                <OptimizedMarker
                   key={`completado-${item.tipo}-${item.id}`}
                   position={[item.x, item.y]}
                   icon={createCompletadoIcon(item.tipo)}
@@ -1720,8 +1838,20 @@ export default function MapView({
         )}
         
         {/* Marcadores de Pedidos desde tabla - con coordenadas */}
-        {pedidos && pedidos.filter(p => p.latitud && p.longitud).map(pedido => (
-          <Marker
+        {(() => {
+          const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud);
+          console.log('🎨 RENDER: Pedidos a renderizar:', pedidosFiltrados?.length || 0);
+          if (pedidosFiltrados && pedidosFiltrados.length > 0) {
+            console.log('🎨 RENDER: Primer pedido a renderizar:', {
+              id: pedidosFiltrados[0].id,
+              lat: pedidosFiltrados[0].latitud,
+              lng: pedidosFiltrados[0].longitud,
+              estado: pedidosFiltrados[0].estado_nro
+            });
+          }
+          return pedidosFiltrados;
+        })()?.map(pedido => (
+          <OptimizedMarker
             key={`pedido-tabla-${pedido.id}`}
             position={[pedido.latitud!, pedido.longitud!]}
             icon={createPedidoIconByEstado(pedido.estado_nro)}
@@ -1738,7 +1868,7 @@ export default function MapView({
                 <div className="text-gray-600">{pedido.producto_nom}</div>
               </div>
             </Tooltip>
-          </Marker>
+          </OptimizedMarker>
         ))}
         
         <MapUpdater 
@@ -1746,6 +1876,10 @@ export default function MapView({
           focusedMovil={focusedMovil} 
           selectedMovil={selectedMovil}
           selectedMovilesCount={selectedMovilesCount}
+          focusedPedidoId={focusedPedidoId}
+          focusedPuntoId={focusedPuntoId}
+          pedidos={pedidos}
+          customMarkers={customMarkers}
         />
         <AnimationFollower 
           moviles={moviles}
@@ -1786,7 +1920,7 @@ export default function MapView({
           });
 
           return (
-            <Marker
+            <OptimizedMarker
               key={marker.id}
               position={[marker.latitud, marker.longitud]}
               icon={customIcon}
@@ -1831,7 +1965,7 @@ export default function MapView({
                   </div>
                 </div>
               </Popup>
-            </Marker>
+            </OptimizedMarker>
           );
         })}
       </MapContainer>

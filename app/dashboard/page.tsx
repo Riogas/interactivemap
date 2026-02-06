@@ -40,6 +40,8 @@ function DashboardContent() {
   const [selectedMovil, setSelectedMovil] = useState<number | undefined>(); // Móvil seleccionado para animación
   const [popupMovil, setPopupMovil] = useState<number | undefined>(); // Móvil con popup abierto
   const [popupPedido, setPopupPedido] = useState<number | undefined>(); // Pedido con popup abierto
+  const [focusedPedidoId, setFocusedPedidoId] = useState<number | undefined>(); // ✅ NUEVO: Pedido a centralizar
+  const [focusedPuntoId, setFocusedPuntoId] = useState<string | undefined>(); // ✅ NUEVO: Punto a centralizar
   const [showPendientes, setShowPendientes] = useState(false); // Mostrar marcadores de pedidos
   const [showCompletados, setShowCompletados] = useState(false); // Mostrar marcadores de completados
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -333,6 +335,7 @@ function DashboardContent() {
   const fetchPedidos = useCallback(async () => {
     try {
       console.log('📦 Fetching pedidos from API...');
+      console.log('📅 Selected date:', selectedDate);
       setIsLoadingPedidos(true);
       
       // Construir URL con filtros
@@ -343,17 +346,32 @@ function DashboardContent() {
       }
       
       const url = `/api/pedidos?${params.toString()}`;
+      console.log('🌐 Fetching URL:', url);
+      
       const response = await fetch(url);
+      console.log('📡 Response status:', response.status);
+      
       const result = await response.json();
+      console.log('📦 Response data:', result);
 
       if (result.success) {
         console.log(`✅ Loaded ${result.count} pedidos (con y sin coordenadas)`);
+        if (result.data && result.data.length > 0) {
+          console.log('📍 Primer pedido:', result.data[0]);
+          const conCoords = result.data.filter((p: any) => p.latitud && p.longitud);
+          console.log(`📍 ${conCoords.length} pedidos tienen coordenadas`);
+        }
         setPedidosIniciales(result.data || []);
       } else {
         console.error('❌ Error loading pedidos:', result.error);
       }
     } catch (err) {
       console.error('❌ Error fetching pedidos:', err);
+      console.error('❌ Error details:', {
+        name: (err as Error).name,
+        message: (err as Error).message,
+        stack: (err as Error).stack
+      });
     } finally {
       setIsLoadingPedidos(false);
     }
@@ -391,7 +409,7 @@ function DashboardContent() {
     
     if (!latestPosition) return;
     
-    const movilId = parseInt(latestPosition.movil);
+    const movilId = parseInt(latestPosition.movil_id); // ✅ Usar 'movil_id'
     console.log(`🔔 Actualización Realtime para móvil ${movilId}:`, latestPosition);
     
     setMoviles(prevMoviles => {
@@ -487,7 +505,7 @@ function DashboardContent() {
     
     if (!latestMovil) return;
     
-    const movilId = latestMovil.movil;
+    const movilId = parseInt(latestMovil.id); // ✅ Usar 'id' y convertir a number
     console.log(`🚗 Nuevo móvil detectado en tiempo real:`, latestMovil);
     
     setMoviles(prevMoviles => {
@@ -552,19 +570,20 @@ function DashboardContent() {
   // Función para cargar los pedidos pendientes de móviles seleccionados O todos
   const fetchPedidosPendientes = useCallback(async (movilesIds: number[]) => {
     try {
+      // selectedDate ya es un string en formato 'YYYY-MM-DD'
+      const fecha = selectedDate;
+      
       // CASO 1: Si NO hay móviles seleccionados, traer TODOS los pedidos del día
       if (movilesIds.length === 0) {
         console.log(`📦 Cargando TODOS los pedidos pendientes del día`);
         
-        // selectedDate ya es un string en formato 'YYYY-MM-DD'
-        const fecha = selectedDate;
         const response = await fetch(`/api/pedidos-pendientes?escenarioId=1&fecha=${fecha}`);
         const result = await response.json();
         
         if (result.pedidos && result.pedidos.length > 0) {
           console.log(`✅ Encontrados ${result.pedidos.length} pedidos pendientes en total`);
           
-          // Convertir todos los pedidos a formato PedidoServicio
+            // Convertir todos los pedidos a formato PedidoServicio
           const todosPedidos = result.pedidos.map((p: PedidoPendiente) => ({
             tipo: 'PEDIDO' as const,
             id: p.pedido_id,
@@ -575,16 +594,14 @@ function DashboardContent() {
             y: p.longitud,
             estado: p.estado || 0,
             subestado: 0,
-            zona: p.zona || '',
+            zona: String(p.zona || ''),
             producto_codigo: p.producto_codigo || '',
             producto_nombre: p.producto_nombre || '',
             producto_cantidad: p.producto_cantidad || 0,
             observacion: p.observacion || '',
             prioridad: p.prioridad || 0,
-            movilId: p.movil, // Mantener referencia al móvil
-          }));
-          
-          // Actualizar móviles agrupando pedidos por móvil
+            movilId: p.movil,
+          }));          // Actualizar móviles agrupando pedidos por móvil
           setMoviles(prevMoviles => {
             return prevMoviles.map(movil => {
               const pedidosDelMovil = todosPedidos.filter((p: any) => p.movilId === movil.id);
@@ -614,9 +631,9 @@ function DashboardContent() {
       // CASO 2: Si HAY móviles seleccionados, traer solo sus pedidos
       console.log(`📦 Cargando pedidos pendientes para móviles:`, movilesIds);
       
-      // Cargar pedidos para cada móvil seleccionado
+      // Cargar pedidos para cada móvil seleccionado (ahora con fecha)
       const pedidosPromises = movilesIds.map(async (movilId) => {
-        const response = await fetch(`/api/pedidos-pendientes/${movilId}?escenarioId=1`);
+        const response = await fetch(`/api/pedidos-pendientes/${movilId}?escenarioId=1&fecha=${fecha}`);
         const result = await response.json();
         return { movilId, pedidos: result.pedidos || [] };
       });
@@ -811,8 +828,67 @@ function DashboardContent() {
     // Actualizar/agregar pedidos de realtime (sobrescriben los iniciales si existen)
     pedidosRealtime.forEach(p => pedidosMap.set(p.id, p));
     
-    return Array.from(pedidosMap.values());
+    const resultado = Array.from(pedidosMap.values());
+    
+    // 🐛 DEBUG: Logging de pedidos completos
+    console.log('🔷 DASHBOARD: pedidosCompletos calculado');
+    console.log('📊 Total pedidos iniciales:', pedidosIniciales.length);
+    console.log('📊 Total pedidos realtime:', pedidosRealtime.length);
+    console.log('📊 Total pedidos completos:', resultado.length);
+    if (resultado.length > 0) {
+      console.log('📍 Primer pedido completo:', {
+        id: resultado[0].id,
+        latitud: resultado[0].latitud,
+        longitud: resultado[0].longitud,
+        cliente: resultado[0].cliente_nombre,
+        estado: resultado[0].estado_nro
+      });
+      const conCoords = resultado.filter(p => p.latitud && p.longitud);
+      console.log(`📍 ${conCoords.length} pedidos tienen coordenadas válidas`);
+    }
+    
+    return resultado;
   }, [pedidosIniciales, pedidosRealtime]);
+
+  // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
+  useEffect(() => {
+    // Estados que consideramos como "pedidos activos/asignados"
+    // Ajusta estos números según tu sistema de estados
+    const ESTADOS_ACTIVOS = [1, 2, 3, 4, 5]; // Pendiente, En camino, etc. (excluye entregados/cancelados)
+    
+    // Contar pedidos activos por móvil
+    const pedidosPorMovil = new Map<number, number>();
+    
+    pedidosCompletos.forEach(pedido => {
+      // Solo contar pedidos activos (no entregados ni cancelados)
+      if (pedido.movil && pedido.estado_nro && ESTADOS_ACTIVOS.includes(pedido.estado_nro)) {
+        const count = pedidosPorMovil.get(pedido.movil) || 0;
+        pedidosPorMovil.set(pedido.movil, count + 1);
+      }
+    });
+    
+    console.log('📦 Actualizando lote de móviles en tiempo real');
+    console.log('📊 Pedidos activos por móvil:', Object.fromEntries(pedidosPorMovil));
+    
+    // Actualizar móviles con el conteo de pedidos
+    setMoviles(prevMoviles => {
+      return prevMoviles.map(movil => {
+        const movilId = typeof movil.id === 'string' ? parseInt(movil.id) : movil.id;
+        const pedidosAsignados = pedidosPorMovil.get(movilId) || 0;
+        
+        // Solo actualizar si cambió
+        if (movil.pedidosAsignados !== pedidosAsignados) {
+          console.log(`🔄 Móvil ${movilId}: ${pedidosAsignados}/${movil.tamanoLote || 6} pedidos`);
+          return {
+            ...movil,
+            pedidosAsignados,
+          };
+        }
+        
+        return movil;
+      });
+    });
+  }, [pedidosCompletos]); // Se ejecuta cada vez que cambian los pedidos
 
   // Initial fetch
   useEffect(() => {
@@ -878,20 +954,21 @@ function DashboardContent() {
     // Convertir pedidos de Realtime a formato compatible
     const pedidosFormateados = pedidosRealtime.map(p => ({
       tipo: 'PEDIDO' as const,
-      id: p.pedido_id,
+      id: p.id,
       cliid: 0,
       clinom: p.cliente_nombre || 'Sin nombre',
-      fecha: p.fecha_para || '',
+      fecha: p.fch_para || '',
       x: p.latitud,
       y: p.longitud,
-      estado: p.estado || 0,
+      estado: p.estado_nro || 0,
       subestado: 0,
-      zona: p.zona || '',
-      producto_codigo: p.producto_codigo || '',
-      producto_nombre: p.producto_nombre || '',
-      producto_cantidad: p.producto_cantidad || 0,
-      observacion: p.observacion || '',
+      zona: String(p.zona_nro || ''),
+      producto_codigo: p.producto_cod || '',
+      producto_nombre: p.producto_nom || '',
+      producto_cantidad: p.producto_cant || 0,
+      observacion: p.pedido_obs || '',
       prioridad: p.prioridad || 0,
+      movilId: p.movil || undefined, // ✅ Usar 'movil' del schema
     }));
     
     // Actualizar móviles con los nuevos pedidos
@@ -899,9 +976,8 @@ function DashboardContent() {
       return prevMoviles.map(movil => {
         // Filtrar pedidos que pertenecen a este móvil
         const pedidosDelMovil = pedidosFormateados.filter(p => {
-          // Buscar el pedido original para obtener el movil
-          const pedidoOriginal = pedidosRealtime.find(pr => pr.pedido_id === p.id);
-          return pedidoOriginal?.movil === movil.id;
+          // Los pedidos formateados ahora tienen movilId
+          return p.movilId === movil.id;
         });
         
         if (pedidosDelMovil.length > 0) {

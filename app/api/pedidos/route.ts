@@ -54,10 +54,13 @@ export async function GET(request: NextRequest) {
       query = query.eq('estado_nro', parseInt(estado));
     }
 
-    // Si se especifica fecha, mostrar pedidos de esa fecha O sin fecha O con fecha anterior (atrasados)
-    // Esto permite ver pedidos pendientes que deberían haberse entregado antes
+    // ✅ CORREGIDO: Filtrar por fch_hora_para (campo timestamp con fecha real)
+    // en lugar de fch_para (campo date que puede estar desactualizado)
     if (fecha) {
-      query = query.or(`fch_para.eq.${fecha},fch_para.is.null,fch_para.lte.${fecha}`);
+      // Convertir fecha YYYY-MM-DD a rango de timestamp para todo el día
+      const fechaInicio = `${fecha}T00:00:00`;
+      const fechaFin = `${fecha}T23:59:59`;
+      query = query.gte('fch_hora_para', fechaInicio).lte('fch_hora_para', fechaFin);
     }
 
     if (empresaFleteraId) {

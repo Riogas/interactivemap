@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     console.log(`📦 Obteniendo TODOS los pedidos pendientes del día ${fecha}`);
 
-    // Consultar TODOS los pedidos pendientes (sin filtro estricto de fecha)
+    // Consultar TODOS los pedidos pendientes filtrando por fecha exacta
     const { data: pedidos, error } = await supabase
       .from('pedidos')
       .select(`
@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
         empresa_fletera_id
       `)
       .eq('escenario', escenarioId)
+      .eq('fch_para', fecha) // ✅ FILTRAR POR FECHA EXACTA
       .in('estado_nro', [1, 2]) // Solo pedidos pendientes (Asignado y En camino)
       .not('latitud', 'is', null) // Solo pedidos con coordenadas
       .not('longitud', 'is', null)

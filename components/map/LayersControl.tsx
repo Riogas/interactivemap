@@ -17,6 +17,11 @@ export default function LayersControl({ defaultLayer = 'streets' }: LayersContro
   const map = useMap();
 
   useEffect(() => {
+    // ✅ Esperar a que el mapa esté completamente inicializado
+    if (!map || !map.getContainer()) {
+      return;
+    }
+
     // Definir capas base disponibles
     const baseLayers: { [key: string]: L.TileLayer } = {
       '🗺️ Calles': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -63,27 +68,50 @@ export default function LayersControl({ defaultLayer = 'streets' }: LayersContro
       'light': '🌞 Light Mode',
     };
 
-    // Agregar la capa por defecto según preferencia
-    const defaultLayerName = layerMap[defaultLayer] || '🗺️ Calles';
-    baseLayers[defaultLayerName].addTo(map);
+    // ✅ Usar setTimeout para asegurar que el mapa esté completamente renderizado
+    const timeoutId = setTimeout(() => {
+      try {
+        // Agregar la capa por defecto según preferencia
+        const defaultLayerName = layerMap[defaultLayer] || '🗺️ Calles';
+        baseLayers[defaultLayerName].addTo(map);
 
-    // Crear control de capas
-    const layersControl = L.control.layers(baseLayers, undefined, {
-      position: 'bottomright',
-      collapsed: true,
-    });
+        // Crear control de capas
+        const layersControl = L.control.layers(baseLayers, undefined, {
+          position: 'bottomright',
+          collapsed: true,
+        });
 
-    // Agregar control al mapa
-    layersControl.addTo(map);
+        // Agregar control al mapa
+        layersControl.addTo(map);
+        
+        // Guardar referencia para cleanup
+        (map as any)._layersControl = layersControl;
+      } catch (error) {
+        console.error('Error al agregar control de capas:', error);
+      }
+    }, 100);
 
     // Cleanup: remover control cuando el componente se desmonte
     return () => {
-      map.removeControl(layersControl);
+      clearTimeout(timeoutId);
+      
+      const layersControl = (map as any)._layersControl;
+      if (layersControl) {
+        try {
+          map.removeControl(layersControl);
+        } catch (e) {
+          // El control ya fue removido
+        }
+      }
       
       // Remover todas las capas del mapa
       Object.values(baseLayers).forEach(layer => {
         if (map.hasLayer(layer)) {
-          map.removeLayer(layer);
+          try {
+            map.removeLayer(layer);
+          } catch (e) {
+            // La capa ya fue removida
+          }
         }
       });
     };

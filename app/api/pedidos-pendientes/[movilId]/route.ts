@@ -16,6 +16,7 @@ export async function GET(
     // Obtener parámetros de query
     const searchParams = request.nextUrl.searchParams;
     const escenarioId = searchParams.get('escenarioId') || '1';
+    const fecha = searchParams.get('fecha'); // ✅ NUEVO: Obtener fecha del query param
 
     // 🔧 RETRY LOGIC: Reintentar hasta 3 veces si falla por timeout
     let pedidos = null;
@@ -29,8 +30,8 @@ export async function GET(
       try {
         console.log(`🔄 Intento ${attempt}/${maxRetries} - Obteniendo pedidos pendientes para móvil ${movilId}`);
         
-        // Consultar pedidos pendientes del móvil
-        const result = await supabase
+        // Construir query de pedidos pendientes del móvil
+        let query = supabase
           .from('pedidos')
           .select(`
             id,
@@ -65,9 +66,18 @@ export async function GET(
           .eq('escenario', escenarioId)
           .in('estado_nro', [1, 2, 3, 4, 5, 6, 7]) // Estados que representan pendientes
           .not('latitud', 'is', null) // Solo pedidos con coordenadas
-          .not('longitud', 'is', null)
+          .not('longitud', 'is', null);
+
+        // ✅ Filtrar por fecha si se proporciona
+        if (fecha) {
+          query = query.eq('fch_para', fecha);
+        }
+
+        query = query
           .order('prioridad', { ascending: false })
           .order('fch_hora_para', { ascending: true});
+
+        const result = await query;
 
         if (result.error) {
           throw result.error;
