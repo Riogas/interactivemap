@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase, CustomMarker } from '@/types';
+import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase, CustomMarker, MovilFilters } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
@@ -61,6 +61,12 @@ function DashboardContent() {
   // Estado para empresas fleteras
   const [empresas, setEmpresas] = useState<EmpresaFleteraSupabase[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
+  
+  // 🆕 Estado para filtros de móviles (recibidos desde MovilSelector)
+  const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
+    capacidad: 'all', 
+    estado: [] 
+  });
   
   // 🔥 NUEVO: Hook para escuchar cambios en pedidos en tiempo real
   const { 
@@ -129,6 +135,44 @@ function DashboardContent() {
       };
     });
   }, [preferences.showActiveMovilesOnly, preferences.maxCoordinateDelayMinutes]);
+
+  // 🆕 Aplicar filtros avanzados de estado a los móviles
+  const applyAdvancedFilters = useCallback((moviles: MovilData[]): MovilData[] => {
+    // Si no hay filtros de estado activos, retornar todos
+    if (movilesFilters.estado.length === 0) {
+      return moviles;
+    }
+
+    return moviles.filter(movil => {
+      const tamanoLote = movil.tamanoLote || 6;
+      const pedidosAsignados = movil.pedidosAsignados || 0;
+      const capacidadRestante = tamanoLote - pedidosAsignados;
+
+      // Verificar cada estado seleccionado
+      return movilesFilters.estado.some(estado => {
+        switch (estado) {
+          case 'no_reporta_gps':
+            // Móviles sin posición o inactivos
+            return !movil.currentPosition || movil.isInactive;
+          
+          case 'baja_momentanea':
+            // Móviles con baja momentánea (sin historial reciente)
+            return movil.currentPosition && !movil.history?.length;
+          
+          case 'con_capacidad':
+            // Móviles con capacidad disponible (> 0)
+            return capacidadRestante > 0;
+          
+          case 'sin_capacidad':
+            // Móviles sin capacidad (0% disponible)
+            return capacidadRestante === 0;
+          
+          default:
+            return true;
+        }
+      });
+    });
+  }, [movilesFilters.estado]);
 
   // Cargar empresas fleteras al montar el componente
   useEffect(() => {
@@ -1133,6 +1177,7 @@ function DashboardContent() {
                   onPedidoClick={handlePedidoClick}
                   puntosInteres={puntosInteres}
                   onPuntoInteresClick={handlePuntoInteresClick}
+                  onFiltersChange={setMovilesFilters}
                 />
               </div>
             </motion.div>
@@ -1175,7 +1220,7 @@ function DashboardContent() {
               className="w-full h-full"
             >
               <MapView 
-                moviles={markInactiveMoviles(moviles).filter(m => selectedMoviles.length === 0 || selectedMoviles.includes(m.id))}
+                moviles={applyAdvancedFilters(markInactiveMoviles(moviles)).filter(m => selectedMoviles.length === 0 || selectedMoviles.includes(m.id))}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
                 popupMovil={popupMovil}

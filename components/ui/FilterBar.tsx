@@ -7,6 +7,7 @@ interface FilterBarProps {
   searchPlaceholder?: string;
   filters?: FilterOption[];
   onFilterChange?: (filterId: string, value: string) => void;
+  customFilters?: React.ReactNode; // ✅ NUEVO: Contenido personalizado para filtros avanzados
 }
 
 interface FilterOption {
@@ -23,6 +24,7 @@ export default function FilterBar({
   searchPlaceholder = 'Buscar...',
   filters = [],
   onFilterChange,
+  customFilters, // ✅ NUEVO
 }: FilterBarProps) {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
@@ -60,8 +62,8 @@ export default function FilterBar({
             )}
           </div>
 
-          {/* Botón de filtros (solo si hay filtros disponibles) */}
-          {filters.length > 0 && (
+          {/* Botón de filtros (solo si hay filtros disponibles O customFilters) */}
+          {(filters.length > 0 || customFilters) && (
             <button
               onClick={() => setShowFiltersModal(!showFiltersModal)}
               className="px-3 py-2 bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 rounded-lg transition-colors relative"
@@ -80,7 +82,7 @@ export default function FilterBar({
 
         {/* Panel de filtros desplegable */}
         <AnimatePresence>
-          {showFiltersModal && filters.length > 0 && (
+          {showFiltersModal && (filters.length > 0 || customFilters) && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
@@ -120,6 +122,9 @@ export default function FilterBar({
                     </select>
                   </div>
                 ))}
+                
+                {/* ✅ NUEVO: Contenido personalizado de filtros */}
+                {customFilters}
               </div>
             </motion.div>
           )}

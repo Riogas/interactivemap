@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, CustomMarker } from '@/types';
 import clsx from 'clsx';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import FilterBar from './FilterBar';
 
 interface MovilSelectorProps {
@@ -16,6 +16,7 @@ interface MovilSelectorProps {
   onPedidoClick?: (pedidoId: number) => void; // Callback para click en pedido
   puntosInteres?: CustomMarker[]; // Nueva prop para puntos de interés
   onPuntoInteresClick?: (puntoId: string) => void; // Callback para click en punto
+  onFiltersChange?: (filters: MovilFilters) => void; // 🆕 Callback para comunicar filtros activos
 }
 
 // Definir las categorías del árbol
@@ -38,6 +39,7 @@ export default function MovilSelector({
   onPedidoClick,
   puntosInteres = [],
   onPuntoInteresClick,
+  onFiltersChange, // 🆕 Recibir el callback
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   
@@ -51,12 +53,22 @@ export default function MovilSelector({
   const [poisSearch, setPoisSearch] = useState('');
   
   // Estados de filtros por categoría
-  const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ capacidad: 'all' });
+  const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
+    capacidad: 'all',
+    estado: [] // Inicialmente ningún filtro de estado activo
+  });
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: 'all' });
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ 
     atraso: 'all', 
     tipoServicio: 'all' 
   });
+
+  // 🆕 Notificar al padre cuando cambien los filtros de móviles
+  useEffect(() => {
+    if (onFiltersChange) {
+      onFiltersChange(movilesFilters);
+    }
+  }, [movilesFilters, onFiltersChange]);
 
   // Filtrar y ordenar móviles
   const filteredMoviles = useMemo(() => {
@@ -83,6 +95,41 @@ export default function MovilSelector({
           case '10+': return capacidad > 10;
           default: return true;
         }
+      });
+    }
+    
+    // 🆕 Filtrar por estado (multi-selección)
+    if (movilesFilters.estado.length > 0) {
+      result = result.filter(movil => {
+        const tamanoLote = movil.tamanoLote || 6;
+        const pedidosAsignados = movil.pedidosAsignados || 0;
+        const capacidadRestante = tamanoLote - pedidosAsignados;
+        const porcentajeDisponible = (capacidadRestante / tamanoLote) * 100;
+        
+        // Verificar cada estado seleccionado
+        return movilesFilters.estado.some(estado => {
+          switch (estado) {
+            case 'no_reporta_gps':
+              // Móviles sin posición o inactivos
+              return !movil.currentPosition || movil.isInactive;
+            
+            case 'baja_momentanea':
+              // Móviles con baja momentánea (puedes definir tu lógica aquí)
+              // Por ahora, consideramos móviles sin historial reciente
+              return movil.currentPosition && !movil.history?.length;
+            
+            case 'con_capacidad':
+              // Móviles con capacidad disponible (> 0%)
+              return capacidadRestante > 0;
+            
+            case 'sin_capacidad':
+              // Móviles sin capacidad (0% disponible)
+              return capacidadRestante === 0;
+            
+            default:
+              return true;
+          }
+        });
       });
     }
     
@@ -155,28 +202,8 @@ export default function MovilSelector({
           searchValue: movilesSearch,
           onSearchChange: setMovilesSearch,
           searchPlaceholder: 'Buscar móvil por número...',
-          filters: [
-            {
-              id: 'capacidad',
-              label: 'Capacidad',
-              options: [
-                { value: 'all', label: 'Todas las capacidades' },
-                { value: '1-3', label: '1-3 garrafas' },
-                { value: '4-6', label: '4-6 garrafas' },
-                { value: '7-10', label: '7-10 garrafas' },
-                { value: '10+', label: '10+ garrafas' },
-              ],
-              value: movilesFilters.capacidad,
-            }
-          ],
-          onFilterChange: (filterId: string, value: string) => {
-            if (filterId === 'capacidad') {
-              setMovilesFilters(prev => ({ 
-                ...prev, 
-                capacidad: value as 'all' | '1-3' | '4-6' | '7-10' | '10+' 
-              }));
-            }
-          }
+          filters: [], // ✅ Quitamos el filtro de capacidad
+          onFilterChange: () => {}, // No hay filtros normales
         };
 
       case 'services':
@@ -294,13 +321,75 @@ export default function MovilSelector({
             transition={{ duration: 0.2 }}
             className="mb-4 overflow-hidden"
           >
+            {/* Barra de filtros con filtros avanzados integrados */}
             <FilterBar
               searchValue={contextualFilters.searchValue}
               onSearchChange={contextualFilters.onSearchChange}
               searchPlaceholder={contextualFilters.searchPlaceholder}
               filters={contextualFilters.filters}
               onFilterChange={contextualFilters.onFilterChange}
+              customFilters={
+                activeCategory === 'moviles' ? (
+                  <div className="mt-3 pt-3 border-t border-gray-300">
+                    <h5 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" />
+                      </svg>
+                      Filtros Avanzados
+                    </h5>
+                    <div className="space-y-2">
+                      {[
+                        { value: 'no_reporta_gps', label: 'No reporta GPS', icon: '📡', color: 'text-red-600' },
+                        { value: 'baja_momentanea', label: 'Baja Momentánea', icon: '⏸️', color: 'text-orange-600' },
+                        { value: 'con_capacidad', label: 'Con Capacidad de Entrega', icon: '🟢', color: 'text-green-600' },
+                        { value: 'sin_capacidad', label: 'Sin Capacidad de Entrega', icon: '⚫', color: 'text-gray-700' },
+                      ].map((opcion) => {
+                        const isChecked = movilesFilters.estado.includes(opcion.value);
+                        return (
+                          <label
+                            key={opcion.value}
+                            className={clsx(
+                              "flex items-center gap-3 p-2 rounded-md cursor-pointer transition-all",
+                              isChecked
+                                ? "bg-blue-50 border border-blue-300"
+                                : "hover:bg-gray-50"
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const newChecked = e.target.checked;
+                                setMovilesFilters(prev => ({
+                                  ...prev,
+                                  estado: newChecked
+                                    ? [...prev.estado, opcion.value]
+                                    : prev.estado.filter(v => v !== opcion.value)
+                                }));
+                              }}
+                              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <span className="text-lg">{opcion.icon}</span>
+                            <span className={clsx("text-sm font-medium flex-1", opcion.color)}>
+                              {opcion.label}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {movilesFilters.estado.length > 0 && (
+                      <button
+                        onClick={() => setMovilesFilters(prev => ({ ...prev, estado: [] }))}
+                        className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        Limpiar filtros avanzados
+                      </button>
+                    )}
+                  </div>
+                ) : undefined
+              }
             />
+            
             {activeCategory === 'moviles' && contextualFilters.searchValue && (
               <p className="text-xs text-gray-500 mt-2">
                 {filteredMoviles.length} móvil(es) encontrado(s)

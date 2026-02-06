@@ -258,6 +258,7 @@ export interface PuntoInteresData {
 // Filtros para cada categoría
 export interface MovilFilters {
   capacidad: 'all' | '1-3' | '4-6' | '7-10' | '10+';
+  estado: string[]; // Filtro multi-selección de estados
 }
 
 export interface ServiceFilters {
