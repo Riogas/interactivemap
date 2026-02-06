@@ -479,7 +479,7 @@ export default function MovilSelector({
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => onToggleMovil(movil.id)}
                                 className={clsx(
-                                  'w-full p-3 rounded-lg font-medium transition-all duration-200 border-2',
+                                  'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2',
                                   isSelected
                                     ? 'text-white shadow-md border-transparent'
                                     : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
@@ -526,14 +526,11 @@ export default function MovilSelector({
                                         style={{ backgroundColor: movil.color }}
                                       />
                                     )}
-                                    {/* 🔥 Formato compacto: NroMovil – PedAsignados/Capacidad – Matricula */}
+                                    {/* 🔥 Formato compacto: NroMovil – PedAsignados/Capacidad */}
                                     <span className="text-sm font-medium leading-tight">
                                       {movil.id}
                                       {' – '}
                                       {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}
-                                      {movil.matricula && movil.matricula.trim() && (
-                                        <> – {movil.matricula.trim()}</>
-                                      )}
                                     </span>
                                   </span>
                                   {movil.currentPosition && (
