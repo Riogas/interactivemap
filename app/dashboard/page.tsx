@@ -922,18 +922,33 @@ function DashboardContent() {
       }
     });
     
-    console.log('📦 Actualizando lote de móviles en tiempo real');
-    console.log('📊 Pedidos activos por móvil:', Object.fromEntries(pedidosPorMovil));
+    // Serializar para comparación
+    const pedidosKey = JSON.stringify(Array.from(pedidosPorMovil.entries()).sort());
     
-    // Actualizar móviles con el conteo de pedidos
+    // Solo actualizar si realmente cambió el conteo
     setMoviles(prevMoviles => {
-      return prevMoviles.map(movil => {
+      // Calcular key actual
+      const currentKey = JSON.stringify(
+        prevMoviles.map(m => [m.id, m.pedidosAsignados || 0]).sort()
+      );
+      
+      // Si no cambió nada, no actualizar (prevenir loop)
+      if (currentKey === pedidosKey) {
+        return prevMoviles;
+      }
+      
+      console.log('📦 Actualizando lote de móviles en tiempo real');
+      console.log('📊 Pedidos activos por móvil:', Object.fromEntries(pedidosPorMovil));
+      
+      let cambios = false;
+      const updated = prevMoviles.map(movil => {
         const movilId = typeof movil.id === 'string' ? parseInt(movil.id) : movil.id;
         const pedidosAsignados = pedidosPorMovil.get(movilId) || 0;
         
         // Solo actualizar si cambió
         if (movil.pedidosAsignados !== pedidosAsignados) {
           console.log(`🔄 Móvil ${movilId}: ${pedidosAsignados}/${movil.tamanoLote || 6} pedidos`);
+          cambios = true;
           return {
             ...movil,
             pedidosAsignados,
@@ -942,6 +957,9 @@ function DashboardContent() {
         
         return movil;
       });
+      
+      // Solo retornar nuevo array si hubo cambios
+      return cambios ? updated : prevMoviles;
     });
   }, [pedidosCompletos, isTabVisible]); // Se ejecuta cada vez que cambian los pedidos o visibilidad
 
