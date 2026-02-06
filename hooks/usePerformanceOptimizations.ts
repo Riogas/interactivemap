@@ -28,8 +28,10 @@ export function useBatchedUpdates<T>(items: T[]): T[] {
     const now = Date.now();
     const timeSinceLastUpdate = now - lastUpdateTime.current;
     
-    // Si pasó menos de 500ms, agrupar updates
-    if (timeSinceLastUpdate < 500) {
+    // 🚀 OPTIMIZADO: Con >50 items, usar throttle más agresivo (1s en vez de 500ms)
+    const throttleMs = items.length > 50 ? 1000 : 500;
+    
+    if (timeSinceLastUpdate < throttleMs) {
       rafRef.current = requestAnimationFrame(() => {
         setBatchedItems(pendingItems.current);
         lastUpdateTime.current = Date.now();

@@ -12,9 +12,19 @@ import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
 import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from './MapOptimizations';
 import { configureTileCache, registerTileCacheServiceWorker } from './TileCacheConfig';
+import dynamic from 'next/dynamic';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
+import './MarkerCluster.css';
+import './MapAnimations.css';
+
+// 🚀 Lazy load del MarkerClusterGroup (solo se carga cuando se necesita)
+const MarkerClusterGroup = dynamic(() => import('./MarkerClusterGroup'), { ssr: false });
+
+// 🚀 Constantes para umbrales de rendimiento
+const HIGH_DENSITY_THRESHOLD = 80; // Activar modo alta densidad con >80 marcadores totales
+const DISABLE_ANIMATIONS_THRESHOLD = 150; // Deshabilitar animaciones CSS con >150 marcadores
 
 // Fix for default marker icons in Next.js
 const iconPrototype = L.Icon.Default.prototype as unknown as { _getIconUrl?: string };
@@ -340,6 +350,10 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.defaultMapLayer === next.defaultMapLayer &&
     prev.selectedMovilesCount === next.selectedMovilesCount &&
     prev.isPlacingMarker === next.isPlacingMarker &&
+    prev.focusedPedidoId === next.focusedPedidoId &&
+    prev.focusedPuntoId === next.focusedPuntoId &&
+    // 🚀 Comparar pedidos por cantidad (evitar deep comparison costosa)
+    (prev.pedidos?.length ?? 0) === (next.pedidos?.length ?? 0) &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id)
   );
@@ -470,41 +484,13 @@ const MapView = memo(function MapView({
     loadMarkers();
   }, []);
 
-  // 🐛 DEBUG: Log de pedidos recibidos
+  // � DEBUG: Solo log mínimo en desarrollo
   useEffect(() => {
-    console.log('🔍 DEBUG PEDIDOS - useEffect disparado');
-    console.log('📦 Pedidos recibidos:', pedidos);
-    console.log('📊 Tipo de pedidos:', typeof pedidos);
-    console.log('📏 Es array?:', Array.isArray(pedidos));
-    
-    if (pedidos && pedidos.length > 0) {
-      console.log(`📦 MapView recibió ${pedidos.length} pedidos`);
-      console.log('📍 Primer pedido completo:', pedidos[0]);
-      console.log('📍 Latitud del primer pedido:', pedidos[0].latitud);
-      console.log('📍 Longitud del primer pedido:', pedidos[0].longitud);
-      
+    if (process.env.NODE_ENV === 'development' && pedidos?.length > 0) {
       const conCoordenadas = pedidos.filter(p => p.latitud && p.longitud);
-      console.log(`📍 ${conCoordenadas.length} pedidos tienen coordenadas`);
-      
-      if (conCoordenadas.length > 0) {
-        console.log('📍 Primer pedido con coordenadas:', {
-          id: conCoordenadas[0].id,
-          latitud: conCoordenadas[0].latitud,
-          longitud: conCoordenadas[0].longitud,
-          cliente: conCoordenadas[0].cliente_nombre,
-          estado: conCoordenadas[0].estado_nro
-        });
-      }
-      
-      // DEBUG: Verificar si los pedidos se están filtrando correctamente
-      const pedidosFiltrados = pedidos.filter(p => p.latitud && p.longitud);
-      console.log('🎯 Pedidos que pasarán el filtro para renderizar:', pedidosFiltrados.length);
-      
-    } else {
-      console.log('⚠️ MapView: No hay pedidos o array vacío');
-      console.log('⚠️ Valor de pedidos:', pedidos);
+      console.log(`📦 MapView: ${pedidos.length} pedidos (${conCoordenadas.length} con coords)`);
     }
-  }, [pedidos]);
+  }, [pedidos?.length]);
 
   // Notificar al padre cuando cambien los marcadores
   useEffect(() => {
@@ -713,36 +699,15 @@ const MapView = memo(function MapView({
   // Extraer pedidos/servicios completados del historial de coordenadas
   // Ahora los completados están en LOGCOORDMOVIL con ORIGEN='UPDPEDIDOS' o 'DYLPEDIDOS'
   const pedidosCompletados = useMemo(() => {
-    console.log('🔄 pedidosCompletados useMemo ejecutándose...', { selectedMovil, movilesCount: moviles.length });
-    
     if (!selectedMovil) {
-      console.log('⚠️ No hay selectedMovil, retornando []');
       return [];
     }
     
     const movilData = moviles.find(m => m.id === selectedMovil);
-    console.log(`🔍 Buscando móvil ${selectedMovil} en array de ${moviles.length} móviles`);
-    console.log(`🔍 Móvil encontrado:`, movilData ? `✅ id=${movilData.id}, history=${movilData.history ? movilData.history.length + ' registros' : 'undefined'}` : '❌ NO ENCONTRADO');
     
     if (!movilData?.history) {
-      console.log(`⚠️ Móvil ${selectedMovil} no tiene history, retornando []`);
       return [];
     }
-
-    console.log(`🔍 Móvil ${selectedMovil} tiene ${movilData.history.length} registros en history`);
-    
-    // Debug: ver los primeros 5 registros para entender la estructura
-    console.log(`🔍 Primeros 5 registros del history:`, movilData.history.slice(0, 5));
-    
-    // Debug: ver todos los ORIGEN únicos
-    const origenesUnicos = [...new Set(movilData.history.map(coord => coord.origen?.trim()))];
-    console.log(`🔍 ORIGEN únicos encontrados:`, origenesUnicos);
-
-    // Debug: ver todos los registros con UPDPEDIDOS/DYLPEDIDOS
-    const registrosOrigen = movilData.history.filter(coord => 
-      coord.origen?.trim() === 'UPDPEDIDOS' || coord.origen?.trim() === 'DYLPEDIDOS'
-    );
-    console.log(`🔍 Found ${registrosOrigen.length} registros con ORIGEN UPDPEDIDOS/DYLPEDIDOS:`, registrosOrigen);
 
     // Filtrar coordenadas con origen UPDPEDIDOS o DYLPEDIDOS que tengan coordenadas válidas
     const completados = movilData.history
@@ -768,7 +733,7 @@ const MapView = memo(function MapView({
           clienteYNum && !isNaN(clienteYNum) && clienteYNum !== 0;
 
         if (esOrigenCorrecto && tienePedidoId && !tieneCoordenadasValidas) {
-          console.log(`⚠️ Pedido ${coord.pedidoId} sin coordenadas válidas:`, { clienteX: coord.clienteX, clienteY: coord.clienteY });
+          console.log(`⚠️ Pedido ${coord.pedidoId} sin coordenadas válidas`);
         }
 
         return esOrigenCorrecto && tienePedidoId && tieneCoordenadasValidas;
@@ -804,7 +769,6 @@ const MapView = memo(function MapView({
       return acc;
     }, [] as PedidoServicio[]);
 
-    console.log(`✅ Extracted ${completados.length} registros, deduplicados a ${deduplicados.length} pedidos/servicios únicos:`, deduplicados);
     return deduplicados;
   }, [moviles, selectedMovil]);
 
@@ -873,7 +837,6 @@ const MapView = memo(function MapView({
       return acc;
     }, [] as PedidoServicio[]);
 
-    console.log(`✅ Completados para móvil ${focusedMovil}: ${deduplicados.length} pedidos/servicios`);
     return deduplicados;
   }, [moviles, focusedMovil, showCompletados]);
 
@@ -972,26 +935,6 @@ const MapView = memo(function MapView({
               ">${movilId}</div>
               ` : ''}
             </div>
-            <style>
-              @keyframes alarm-pulse {
-                0%, 100% { 
-                  transform: scale(1); 
-                  box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
-                }
-                50% { 
-                  transform: scale(1.1); 
-                  box-shadow: 0 4px 12px rgba(0,0,0,0.4), 0 0 0 10px rgba(239, 68, 68, 0);
-                }
-              }
-              @keyframes alarm-ring {
-                0%, 100% { transform: rotate(-3deg); }
-                50% { transform: rotate(3deg); }
-              }
-              @keyframes badge-pulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.7; }
-              }
-            </style>
           `,
           iconSize: [46, 46],
           iconAnchor: [23, 23],
@@ -1049,12 +992,6 @@ const MapView = memo(function MapView({
             ">${movilId}</div>
             ` : ''}
           </div>
-          <style>
-            @keyframes pulse {
-              0%, 100% { transform: scale(1); }
-              50% { transform: scale(1.05); }
-            }
-          </style>
         `,
         iconSize: [46, 46],
         iconAnchor: [23, 23],
@@ -1330,16 +1267,27 @@ const MapView = memo(function MapView({
     animationStartTime.current = 0;
   }, [selectedMovil]);
 
+  // 🚀 OPTIMIZACIÓN: Calcular densidad total de marcadores para adaptar rendimiento
+  const totalMarkerCount = useMemo(() => {
+    const movilesCount = moviles.filter(m => m.currentPosition).length;
+    const pedidosCount = pedidos?.filter(p => p.latitud && p.longitud).length ?? 0;
+    const customCount = customMarkers.filter(m => m.visible).length;
+    return movilesCount + pedidosCount + customCount;
+  }, [moviles.length, pedidos?.length, customMarkers.length]);
+
+  const isHighDensity = totalMarkerCount > HIGH_DENSITY_THRESHOLD;
+  const shouldDisableAnimations = totalMarkerCount > DISABLE_ANIMATIONS_THRESHOLD;
+
   return (
-    <div className="h-full w-full rounded-xl overflow-hidden shadow-2xl relative">
+    <div className={`h-full w-full rounded-xl overflow-hidden shadow-2xl relative ${isHighDensity ? 'high-density-map' : ''}`}>
       <MapContainer
         center={defaultCenter}
         zoom={13}
-        className={`h-full w-full ${isPlacingMarker ? 'cursor-crosshair' : ''}`}
+        className={`h-full w-full ${isPlacingMarker ? 'cursor-crosshair' : ''} ${isHighDensity ? 'high-density' : ''}`}
         zoomControl={true}
         // 🚀 OPTIMIZACIONES DE PERFORMANCE
         preferCanvas={true}        // Usar Canvas en lugar de SVG (2-3x más rápido con muchos marcadores)
-        zoomAnimation={true}       // Mantener animación de zoom (mejor UX)
+        zoomAnimation={!shouldDisableAnimations} // Deshabilitar animación de zoom en alta densidad
         fadeAnimation={false}      // Deshabilitar fade (ahorra GPU)
         markerZoomAnimation={false} // Deshabilitar animación de marcadores (ahorra CPU)
         zoomSnap={0.5}            // Granularidad de zoom
@@ -1604,23 +1552,6 @@ const MapView = memo(function MapView({
                                     font-family: system-ui, -apple-system, sans-serif;
                                   ">${isAnimatedCurrent ? '🚗 EN RUTA' : isFirst ? '🎯 ACTUAL' : isLast ? '🏁 INICIO' : `#${pointNumber}`}</div>
                                 ` : ''}
-                                
-                                <style>
-                                  @keyframes pulse-marker {
-                                    0%, 100% { transform: scale(1); opacity: ${opacity}; }
-                                    50% { transform: scale(1.3); opacity: 1; }
-                                  }
-                                  @keyframes ripple {
-                                    0% { 
-                                      transform: scale(0.8);
-                                      opacity: 1;
-                                    }
-                                    100% { 
-                                      transform: scale(1.5);
-                                      opacity: 0;
-                                    }
-                                  }
-                                </style>
                               </div>
                             `,
                             iconSize: [size, size],
@@ -1894,39 +1825,34 @@ const MapView = memo(function MapView({
           </>
         )}
         
-        {/* Marcadores de Pedidos desde tabla - con coordenadas */}
+        {/* Marcadores de Pedidos desde tabla - con coordenadas - CLUSTERIZADOS */}
         {(() => {
           const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud);
-          console.log('🎨 RENDER: Pedidos a renderizar:', pedidosFiltrados?.length || 0);
-          if (pedidosFiltrados && pedidosFiltrados.length > 0) {
-            console.log('🎨 RENDER: Primer pedido a renderizar:', {
-              id: pedidosFiltrados[0].id,
-              lat: pedidosFiltrados[0].latitud,
-              lng: pedidosFiltrados[0].longitud,
-              estado: pedidosFiltrados[0].estado_nro
-            });
-          }
           return pedidosFiltrados;
-        })()?.map(pedido => (
-          <OptimizedMarker
-            key={`pedido-tabla-${pedido.id}`}
-            position={[pedido.latitud!, pedido.longitud!]}
-            icon={createPedidoIconByEstado(pedido.estado_nro)}
-            eventHandlers={{
-              click: () => {
-                onPedidoClick && onPedidoClick(pedido.id);
-              }
-            }}
-          >
-            <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
-              <div className="text-xs">
-                <div className="font-bold">Pedido #{pedido.id}</div>
-                <div>{pedido.cliente_nombre}</div>
-                <div className="text-gray-600">{pedido.producto_nom}</div>
-              </div>
-            </Tooltip>
-          </OptimizedMarker>
-        ))}
+        })()?.length ? (
+          <MarkerClusterGroup>
+            {pedidos.filter(p => p.latitud && p.longitud).map(pedido => (
+              <OptimizedMarker
+                key={`pedido-tabla-${pedido.id}`}
+                position={[pedido.latitud!, pedido.longitud!]}
+                icon={createPedidoIconByEstado(pedido.estado_nro)}
+                eventHandlers={{
+                  click: () => {
+                    onPedidoClick && onPedidoClick(pedido.id);
+                  }
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+                  <div className="text-xs">
+                    <div className="font-bold">Pedido #{pedido.id}</div>
+                    <div>{pedido.cliente_nombre}</div>
+                    <div className="text-gray-600">{pedido.producto_nom}</div>
+                  </div>
+                </Tooltip>
+              </OptimizedMarker>
+            ))}
+          </MarkerClusterGroup>
+        ) : null}
         
         <MapUpdater 
           moviles={moviles} 

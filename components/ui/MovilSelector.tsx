@@ -3,8 +3,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, CustomMarker } from '@/types';
 import clsx from 'clsx';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import FilterBar from './FilterBar';
+import { VirtualList } from './VirtualList';
 
 interface MovilSelectorProps {
   moviles: MovilData[];
@@ -43,8 +44,8 @@ export default function MovilSelector({
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   
-  // 🔍 DEBUG: Log pedidos recibidos
-  console.log('📦 MovilSelector recibió pedidos:', pedidos.length, pedidos);
+  // Ref para calcular altura del contenedor virtual  
+  const listContainerRef = useRef<HTMLDivElement>(null);
   
   // Estados de búsqueda por categoría
   const [movilesSearch, setMovilesSearch] = useState('');
@@ -141,7 +142,6 @@ export default function MovilSelector({
 
   // Filtrar y ordenar pedidos
   const filteredPedidos = useMemo(() => {
-    console.log('🔍 Filtrando pedidos - Input:', pedidos.length);
     let result = [...pedidos];
     
     // 🔥 FILTRO: Eliminar pedidos sin móvil asignado
@@ -170,7 +170,6 @@ export default function MovilSelector({
       return 0;
     });
     
-    console.log('✅ Pedidos filtrados - Output:', sorted.length, sorted.map(p => `#${p.id}`));
     return sorted;
   }, [pedidos, pedidosSearch, pedidosFilters]);
 
@@ -567,54 +566,57 @@ export default function MovilSelector({
                         </div>
                       )}
 
-                      {/* Contenido de Pedidos */}
+                      {/* Contenido de Pedidos - 🚀 VIRTUALIZADO para 600+ pedidos */}
                       {category.key === 'pedidos' && (
-                        <div className="space-y-1 max-h-[calc(100vh-280px)] overflow-y-auto">
+                        <div ref={listContainerRef}>
                           {filteredPedidos.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
                               <p>📦 Sin pedidos</p>
                               <p className="text-xs mt-1">No hay pedidos para mostrar</p>
                             </div>
                           ) : (
-                            filteredPedidos.map((pedido) => {
-                              // Determinar color según estado
-                              const getEstadoColor = () => {
-                                if (!pedido.estado_nro) return 'bg-gray-100 hover:bg-gray-200 border-gray-300';
-                                if (pedido.estado_nro <= 2) return 'bg-blue-50 hover:bg-blue-100 border-blue-300';
-                                if (pedido.estado_nro <= 5) return 'bg-yellow-50 hover:bg-yellow-100 border-yellow-300';
-                                if (pedido.estado_nro === 7) return 'bg-green-50 hover:bg-green-100 border-green-300';
-                                return 'bg-red-50 hover:bg-red-100 border-red-300';
-                              };
+                            <VirtualList
+                              items={filteredPedidos}
+                              height={Math.min(filteredPedidos.length * 38, Math.max(300, window.innerHeight - 350))}
+                              itemHeight={38}
+                              overscanCount={8}
+                              renderItem={(pedido, _index) => {
+                                const getEstadoColor = () => {
+                                  if (!pedido.estado_nro) return 'bg-gray-100 hover:bg-gray-200 border-gray-300';
+                                  if (pedido.estado_nro <= 2) return 'bg-blue-50 hover:bg-blue-100 border-blue-300';
+                                  if (pedido.estado_nro <= 5) return 'bg-yellow-50 hover:bg-yellow-100 border-yellow-300';
+                                  if (pedido.estado_nro === 7) return 'bg-green-50 hover:bg-green-100 border-green-300';
+                                  return 'bg-red-50 hover:bg-red-100 border-red-300';
+                                };
 
-                              return (
-                                <motion.button
-                                  key={pedido.id}
-                                  onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
-                                  className={clsx(
-                                    'w-full text-left px-2.5 py-1.5 rounded-lg transition-all duration-200 border',
-                                    getEstadoColor()
-                                  )}
-                                  whileHover={{ scale: 1.02 }}
-                                  whileTap={{ scale: 0.98 }}
-                                >
-                                                                    <div className="flex items-center gap-2 text-xs">
-                                    <span className="font-bold text-gray-900">#{pedido.id}</span>
-                                    {(!pedido.latitud || !pedido.longitud) && (
-                                      <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
-                                        📍❌
-                                      </span>
+                                return (
+                                  <button
+                                    key={pedido.id}
+                                    onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
+                                    className={clsx(
+                                      'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
+                                      getEstadoColor()
                                     )}
-                                    <span className="text-gray-700">🚗{pedido.movil}</span>
-                                    {pedido.servicio_nombre && (
-                                      <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
-                                    )}
-                                    {pedido.cliente_tel && (
-                                      <span className="text-gray-600 text-[10px]">📞{pedido.cliente_tel}</span>
-                                    )}
-                                  </div>
-                                </motion.button>
-                              );
-                            })
+                                  >
+                                    <div className="flex items-center gap-2 text-xs">
+                                      <span className="font-bold text-gray-900">#{pedido.id}</span>
+                                      {(!pedido.latitud || !pedido.longitud) && (
+                                        <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
+                                          📍❌
+                                        </span>
+                                      )}
+                                      <span className="text-gray-700">🚗{pedido.movil}</span>
+                                      {pedido.servicio_nombre && (
+                                        <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
+                                      )}
+                                      {pedido.cliente_tel && (
+                                        <span className="text-gray-600 text-[10px]">📞{pedido.cliente_tel}</span>
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              }}
+                            />
                           )}
                         </div>
                       )}

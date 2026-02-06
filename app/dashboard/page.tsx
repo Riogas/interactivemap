@@ -249,7 +249,7 @@ function DashboardContent() {
           result.data.map((item: ExtendedData) => [item.id, item])
         );
 
-        console.log('📊 Extended data map:', Array.from(extendedDataMap.entries()).slice(0, 2)); // Ver primeros 2 móviles
+        console.log('📊 Extended data map size:', extendedDataMap.size);
 
         const enrichedMoviles = moviles.map(movil => {
           // Convertir movil.id a string para buscar en el map
@@ -261,26 +261,18 @@ function DashboardContent() {
               extendedData.tamanoLote
             );
             
-            console.log(`✅ Enriching movil ${movil.id}:`, {
-              tamanoLote: extendedData.tamanoLote,
-              pedidosAsignados: extendedData.pedidosAsignados,
-              matricula: extendedData.matricula,
-              color: calculatedColor
-            });
             return {
               ...movil,
               tamanoLote: extendedData.tamanoLote,
               pedidosAsignados: extendedData.pedidosAsignados,
               matricula: extendedData.matricula,
-              color: calculatedColor, // Usar el color calculado en lugar del del API
+              color: calculatedColor,
             };
           }
-          console.warn(`⚠️ No extended data for movil ${movil.id}`);
           return movil;
         });
 
-        console.log(`✅ Enriched ${enrichedMoviles.length} moviles with extended data`);
-        console.log('📊 Sample enriched movil:', enrichedMoviles[0]);
+        console.log(`✅ Enriched ${enrichedMoviles.length} moviles`);
         return enrichedMoviles;
       }
 
@@ -383,33 +375,24 @@ function DashboardContent() {
   // Función para cargar pedidos desde API
   const fetchPedidos = useCallback(async () => {
     try {
-      console.log('📦 Fetching pedidos from API...');
-      console.log('📅 Selected date:', selectedDate);
+      console.log('📦 Fetching pedidos...');
       setIsLoadingPedidos(true);
       
       // Construir URL con filtros
       const params = new URLSearchParams();
-      params.append('escenario', '1000'); // Escenario (ajustar según tu base de datos)
+      params.append('escenario', '1000');
       if (selectedDate) {
         params.append('fecha', selectedDate);
       }
       
       const url = `/api/pedidos?${params.toString()}`;
-      console.log('🌐 Fetching URL:', url);
       
       const response = await fetch(url);
-      console.log('📡 Response status:', response.status);
       
       const result = await response.json();
-      console.log('📦 Response data:', result);
 
       if (result.success) {
-        console.log(`✅ Loaded ${result.count} pedidos (con y sin coordenadas)`);
-        if (result.data && result.data.length > 0) {
-          console.log('📍 Primer pedido:', result.data[0]);
-          const conCoords = result.data.filter((p: any) => p.latitud && p.longitud);
-          console.log(`📍 ${conCoords.length} pedidos tienen coordenadas`);
-        }
+        console.log(`✅ Loaded ${result.count} pedidos`);
         setPedidosIniciales(result.data || []);
       } else {
         console.error('❌ Error loading pedidos:', result.error);
@@ -459,7 +442,7 @@ function DashboardContent() {
     if (!latestPosition) return;
     
     const movilId = parseInt(latestPosition.movil_id); // ✅ Usar 'movil_id'
-    console.log(`🔔 Actualización Realtime para móvil ${movilId}:`, latestPosition);
+      console.log(`🔔 Actualización Realtime para móvil ${movilId}`);
     
     setMoviles(prevMoviles => {
       // Buscar si el móvil ya existe en la lista

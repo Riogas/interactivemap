@@ -363,17 +363,11 @@ export function usePedidosRealtime(
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('🔄 Iniciando suscripción a pedidos pendientes...', {
-      escenarioId,
-      movilIds,
-      hasMovilFilter: movilIds && movilIds.length > 0
-    });
+    console.log('🔄 Suscripción pedidos realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
 
     const setupChannel = () => {
       const channelName = `pedidos-realtime-${escenarioId}-${Date.now()}`;
-      
-      console.log(`📡 Creando canal de Realtime: ${channelName}`);
       
       channel = supabase
         .channel(channelName, {
@@ -391,7 +385,6 @@ export function usePedidosRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
-            console.log('📦 Nuevo pedido recibido:', payload.new);
             const newPedido = payload.new as PedidoSupabase;
             
             // Filtrar por móvil si se especifica (o mostrar todos si no hay filtro)
@@ -418,14 +411,12 @@ export function usePedidosRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
-            console.log('📦 Pedido actualizado:', payload.new);
             const updatedPedido = payload.new as PedidoSupabase;
             
             // Filtrar por móvil si se especifica (o mostrar todos si no hay filtro)
             if (!movilIds || movilIds.length === 0 || (updatedPedido.movil && movilIds.includes(updatedPedido.movil))) {
               setPedidos(prev => {
                 const updated = new Map(prev);
-                // Actualizar el pedido (con o sin coordenadas)
                 updated.set(updatedPedido.id, updatedPedido);
                 return updated;
               });
@@ -445,7 +436,6 @@ export function usePedidosRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
-            console.log('📦 Pedido eliminado:', payload.old);
             const deletedPedido = payload.old as PedidoSupabase;
             
             setPedidos(prev => {
@@ -460,23 +450,16 @@ export function usePedidosRealtime(
           }
         )
         .subscribe((status) => {
-          console.log('📡 Estado de suscripción pedidos:', status);
-          
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
             setError(null);
             console.log('✅ Conectado a Realtime Pedidos');
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
-            const errorMsg = `Error de conexión con Realtime Pedidos: ${status}`;
-            setError(errorMsg);
+            setError(`Error de conexión con Realtime Pedidos: ${status}`);
             console.warn('⚠️ Error en suscripción de pedidos:', status);
-            console.warn('💡 Verifica que Realtime esté habilitado en Supabase para la tabla pedidos');
-            console.warn('💡 Ejecuta: ALTER PUBLICATION supabase_realtime ADD TABLE pedidos;');
-            console.warn('💡 La aplicación seguirá funcionando sin actualizaciones en tiempo real de pedidos');
           } else if (status === 'CLOSED') {
             setIsConnected(false);
-            console.log('🔌 Suscripción pedidos cerrada');
           }
         });
     };
