@@ -13,6 +13,7 @@ import { useRealtime } from '@/components/providers/RealtimeProvider';
 import { useUserPreferences, UserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { usePedidosRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
+import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -36,6 +37,10 @@ function DashboardContent() {
   
   const [moviles, setMoviles] = useState<MovilData[]>([]);
   const [selectedMoviles, setSelectedMoviles] = useState<number[]>([]); // Array de móviles seleccionados
+  
+  // 🚀 Optimización: Detectar visibilidad de tab para pausar updates
+  const isTabVisible = useTabVisibility();
+  
   const [focusedMovil, setFocusedMovil] = useState<number | undefined>(); // Móvil enfocado en el mapa (para centrar)
   const [selectedMovil, setSelectedMovil] = useState<number | undefined>(); // Móvil seleccionado para animación
   const [popupMovil, setPopupMovil] = useState<number | undefined>(); // Móvil con popup abierto
@@ -896,6 +901,12 @@ function DashboardContent() {
 
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
   useEffect(() => {
+    // 🚀 Pausar actualizaciones si la tab no está visible (ahorro de CPU)
+    if (!isTabVisible) {
+      console.log('🙈 Tab oculto - pausando actualización de lote');
+      return;
+    }
+    
     // Estados que consideramos como "pedidos activos/asignados"
     // Ajusta estos números según tu sistema de estados
     const ESTADOS_ACTIVOS = [1, 2, 3, 4, 5]; // Pendiente, En camino, etc. (excluye entregados/cancelados)
@@ -932,7 +943,7 @@ function DashboardContent() {
         return movil;
       });
     });
-  }, [pedidosCompletos]); // Se ejecuta cada vez que cambian los pedidos
+  }, [pedidosCompletos, isTabVisible]); // Se ejecuta cada vez que cambian los pedidos o visibilidad
 
   // Initial fetch
   useEffect(() => {

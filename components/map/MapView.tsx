@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase, CustomMarker } from '@/types';
@@ -11,6 +11,7 @@ import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
 import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from './MapOptimizations';
+import { configureTileCache, registerTileCacheServiceWorker } from './TileCacheConfig';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
@@ -325,7 +326,26 @@ function MapClickHandler({
   return null;
 }
 
-export default function MapView({ 
+// Función de comparación para React.memo
+const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
+  // Solo re-renderizar si cambian datos críticos
+  return (
+    prev.moviles.length === next.moviles.length &&
+    prev.selectedMovil === next.selectedMovil &&
+    prev.focusedMovil === next.focusedMovil &&
+    prev.showPendientes === next.showPendientes &&
+    prev.showCompletados === next.showCompletados &&
+    prev.popupMovil === next.popupMovil &&
+    prev.popupPedido === next.popupPedido &&
+    prev.defaultMapLayer === next.defaultMapLayer &&
+    prev.selectedMovilesCount === next.selectedMovilesCount &&
+    prev.isPlacingMarker === next.isPlacingMarker &&
+    // Comparación de IDs de móviles (más barato que deep equal)
+    prev.moviles.every((m, i) => m.id === next.moviles[i]?.id)
+  );
+};
+
+const MapView = memo(function MapView({ 
   moviles, 
   focusedMovil, 
   selectedMovil, 
@@ -372,6 +392,11 @@ export default function MapView({
   const animationRef = useRef<number | null>(null);
   const animationStartTime = useRef<number>(0); // Timestamp de inicio de animación
   const lastProgressUpdate = useRef<number>(0); // Último progreso guardado
+
+  // 🚀 Registrar Service Worker para cache de tiles (reduce CPU y network)
+  useEffect(() => {
+    registerTileCacheServiceWorker();
+  }, []);
 
   // Cargar marcadores personalizados desde la API
   useEffect(() => {
@@ -1312,6 +1337,14 @@ export default function MapView({
         zoom={13}
         className={`h-full w-full ${isPlacingMarker ? 'cursor-crosshair' : ''}`}
         zoomControl={true}
+        // 🚀 OPTIMIZACIONES DE PERFORMANCE
+        preferCanvas={true}        // Usar Canvas en lugar de SVG (2-3x más rápido con muchos marcadores)
+        zoomAnimation={true}       // Mantener animación de zoom (mejor UX)
+        fadeAnimation={false}      // Deshabilitar fade (ahorra GPU)
+        markerZoomAnimation={false} // Deshabilitar animación de marcadores (ahorra CPU)
+        zoomSnap={0.5}            // Granularidad de zoom
+        zoomDelta={0.5}           // Delta de zoom con botones
+        wheelPxPerZoomLevel={120} // Sensibilidad de scroll
       >
         {/* Control de capas base (calles, satélite, terreno, etc.) */}
         <LayersControl defaultLayer={defaultMapLayer} />
@@ -2075,4 +2108,6 @@ export default function MapView({
       />
     </div>
   );
-}
+}, arePropsEqual);
+
+export default MapView;
