@@ -865,6 +865,30 @@ export default function MapView({
   // No necesitamos filtrar aquí nuevamente
   const movilesToShow = moviles;
 
+  // 🎨 NUEVO: Calcular color del móvil basado en capacidad del lote
+  const getMovilColor = useCallback((movil: MovilData) => {
+    const tamanoLote = movil.tamanoLote || 6;
+    const pedidosAsignados = movil.pedidosAsignados || 0;
+    
+    // Calcular capacidad restante
+    const capacidadRestante = tamanoLote - pedidosAsignados;
+    const porcentajeDisponible = (capacidadRestante / tamanoLote) * 100;
+    
+    // Determinar color según reglas:
+    // Negro - Capacidad = 0 (lote completo)
+    if (capacidadRestante === 0) {
+      return '#1F2937'; // Negro/Gris oscuro
+    }
+    
+    // Amarillo - Capacidad < 50% (poco espacio)
+    if (porcentajeDisponible < 50) {
+      return '#F59E0B'; // Amarillo/Ámbar
+    }
+    
+    // Verde - Capacidad >= 50% (buen espacio)
+    return '#22C55E'; // Verde
+  }, []);
+
   // 🚀 OPTIMIZACIÓN: Usar useCallback para funciones de creación de iconos
   const createCustomIcon = useCallback((color: string, movilId?: number, isInactive?: boolean) => {
     const cacheKey = `custom-${color}-${movilId}-${isInactive}`;
@@ -1310,11 +1334,11 @@ export default function MapView({
                     <OptimizedMarker
                       key={movil.id}
                       position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
-                      icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
+                      icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive)}
                     >
                       <Popup>
                         <div className="p-2">
-                          <h3 className="font-bold text-lg" style={{ color: movil.color }}>
+                          <h3 className="font-bold text-lg" style={{ color: getMovilColor(movil) }}>
                             {movil.name}
                           </h3>
                           <p className="text-sm text-gray-600">
@@ -1608,11 +1632,11 @@ export default function MapView({
                     {/* Marcador principal (posición actual) */}
                     <OptimizedMarker
                       position={[movil.currentPosition!.coordX, movil.currentPosition!.coordY]}
-                      icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
+                      icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive)}
                     >
                       <Popup>
                         <div className="p-2">
-                          <h3 className="font-bold text-lg" style={{ color: movil.color }}>
+                          <h3 className="font-bold text-lg" style={{ color: getMovilColor(movil) }}>
                             {movil.name}
                           </h3>
                           <p className="text-sm text-gray-600">
@@ -1772,7 +1796,7 @@ export default function MapView({
                 <OptimizedMarker
                   key={movil.id}
                   position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
-                  icon={createCustomIcon(movil.color, movil.id, movil.isInactive)}
+                  icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive)}
                   eventHandlers={{
                     click: () => {
                       // Cerrar popup de pedido/servicio si está abierto
