@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     // Obtener parámetros de query
     const searchParams = request.nextUrl.searchParams;
-    const escenarioId = searchParams.get('escenarioId') || '1';
+    const escenarioId = parseInt(searchParams.get('escenarioId') || '1000');
     const fecha = searchParams.get('fecha') || new Date().toISOString().split('T')[0];
 
     console.log(`📦 Obteniendo TODOS los pedidos pendientes del día ${fecha}`);

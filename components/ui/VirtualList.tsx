@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useCallback, memo } from 'react';
+import React, { useCallback, memo, forwardRef } from 'react';
 import { List } from 'react-window';
 
 /**
- * 🚀 VIRTUAL SCROLLING LIST
+ * 🚀 VIRTUAL SCROLLING LIST (react-window v2 API)
  * 
  * Renderiza solo los items visibles en el viewport del scroll.
  * Con 600 pedidos, en lugar de renderizar 600 elementos DOM,
@@ -22,23 +22,22 @@ interface VirtualListProps<T> {
   overscanCount?: number;
 }
 
-// Row renderer wrapper
-const RowRenderer = memo(function RowRenderer({ 
-  data, 
-  index, 
-  style 
-}: {
-  data: { items: any[]; renderItem: (item: any, index: number) => React.ReactNode };
-  index: number;
-  style: React.CSSProperties;
-}) {
-  const { items, renderItem } = data;
+// react-window v2 Row component receives { rowIndex, style, data, ...rowProps }
+const VirtualRow = memo(forwardRef<HTMLDivElement, any>(function VirtualRow(props, ref) {
+  const { index, style, data, ...rest } = props;
+  const items = data?.items;
+  const renderItem = data?.renderItem;
+  
+  if (!items || !renderItem || index == null || index < 0 || index >= items.length || !items[index]) {
+    return <div ref={ref} style={style} />;
+  }
+
   return (
-    <div style={style}>
+    <div ref={ref} style={style}>
       {renderItem(items[index], index)}
     </div>
   );
-});
+}));
 
 export function VirtualList<T>({
   items,
@@ -48,16 +47,17 @@ export function VirtualList<T>({
   className = '',
   overscanCount = 5,
 }: VirtualListProps<T>) {
-  const itemData = { items, renderItem };
-
-  if (items.length === 0) {
+  if (!items || items.length === 0) {
     return null;
   }
+
+  // Altura segura (mínimo 100px, nunca NaN)
+  const safeHeight = Math.max(100, Number.isFinite(height) ? height : 400);
 
   // Si hay pocos items (<30), no usar virtualización (overhead innecesario)
   if (items.length < 30) {
     return (
-      <div className={className} style={{ maxHeight: height, overflowY: 'auto' }}>
+      <div className={className} style={{ maxHeight: safeHeight, overflowY: 'auto' }}>
         {items.map((item, index) => (
           <div key={index}>
             {renderItem(item, index)}
@@ -69,16 +69,14 @@ export function VirtualList<T>({
 
   return (
     <List
-      height={height}
-      itemCount={items.length}
-      itemSize={itemHeight}
-      width="100%"
+      height={safeHeight}
+      rowCount={items.length}
+      rowHeight={itemHeight}
       className={className}
       overscanCount={overscanCount}
-      itemData={itemData}
-    >
-      {RowRenderer}
-    </List>
+      rowComponent={VirtualRow}
+      rowProps={{ data: { items, renderItem } }}
+    />
   );
 }
 

@@ -15,7 +15,7 @@ export async function GET(
 
     // Obtener parámetros de query
     const searchParams = request.nextUrl.searchParams;
-    const escenarioId = searchParams.get('escenarioId') || '1';
+    const escenarioId = parseInt(searchParams.get('escenarioId') || '1000');
     const fecha = searchParams.get('fecha'); // ✅ NUEVO: Obtener fecha del query param
 
     // 🔧 RETRY LOGIC: Reintentar hasta 3 veces si falla por timeout

@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, CustomMarker } from '@/types';
+import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import clsx from 'clsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import FilterBar from './FilterBar';
@@ -146,8 +147,16 @@ export default function MovilSelector({
   const filteredPedidos = useMemo(() => {
     let result = [...pedidos];
     
-    // 🔥 FILTRO: Eliminar pedidos sin móvil asignado
-    result = result.filter(pedido => pedido.movil && pedido.movil > 0);
+    // Filtrar pedidos pendientes (estado 1) con móvil asignado
+    result = result.filter(pedido => {
+      const estado = Number(pedido.estado_nro);
+      return estado === 1 && pedido.movil && Number(pedido.movil) > 0;
+    });
+    
+    // 🔥 FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
+    if (selectedMoviles.length > 0) {
+      result = result.filter(pedido => pedido.movil && selectedMoviles.some(id => Number(id) === Number(pedido.movil)));
+    }
     
     // Filtrar por búsqueda
     if (pedidosSearch.trim()) {
@@ -159,21 +168,15 @@ export default function MovilSelector({
       );
     }
     
-    // Ordenar por prioridad (desc) y fecha (asc)
+    // Ordenar por mayor atraso primero (menor delay = más atrasado)
     const sorted = result.sort((a, b) => {
-      // Primero por prioridad (mayor a menor)
-      const prioridadDiff = (b.prioridad || 0) - (a.prioridad || 0);
-      if (prioridadDiff !== 0) return prioridadDiff;
-      
-      // Luego por fecha
-      if (a.fch_hora_para && b.fch_hora_para) {
-        return new Date(a.fch_hora_para).getTime() - new Date(b.fch_hora_para).getTime();
-      }
-      return 0;
+      const delayA = computeDelayMinutes(a.fch_hora_max_ent_comp);
+      const delayB = computeDelayMinutes(b.fch_hora_max_ent_comp);
+      return delayA - delayB; // Más negativo (más atrasado) primero
     });
     
     return sorted;
-  }, [pedidos, pedidosSearch, pedidosFilters]);
+  }, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles]);
 
   // Categorías disponibles
   const categories: Category[] = [
@@ -604,17 +607,13 @@ export default function MovilSelector({
                           ) : (
                             <VirtualList
                               items={filteredPedidos}
-                              height={Math.min(filteredPedidos.length * 38, Math.max(300, window.innerHeight - 350))}
+                              height={Math.min(filteredPedidos.length * 38, Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 350))}
                               itemHeight={38}
                               overscanCount={8}
                               renderItem={(pedido, _index) => {
-                                const getEstadoColor = () => {
-                                  if (!pedido.estado_nro) return 'bg-gray-100 hover:bg-gray-200 border-gray-300';
-                                  if (pedido.estado_nro <= 2) return 'bg-blue-50 hover:bg-blue-100 border-blue-300';
-                                  if (pedido.estado_nro <= 5) return 'bg-yellow-50 hover:bg-yellow-100 border-yellow-300';
-                                  if (pedido.estado_nro === 7) return 'bg-green-50 hover:bg-green-100 border-green-300';
-                                  return 'bg-red-50 hover:bg-red-100 border-red-300';
-                                };
+                                if (!pedido) return null;
+                                const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
+                                const delayInfo = getDelayInfo(delayMins);
 
                                 return (
                                   <button
@@ -622,7 +621,7 @@ export default function MovilSelector({
                                     onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
                                     className={clsx(
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
-                                      getEstadoColor()
+                                      delayInfo.bgClass
                                     )}
                                   >
                                     <div className="flex items-center gap-2 text-xs">
@@ -636,9 +635,16 @@ export default function MovilSelector({
                                       {pedido.servicio_nombre && (
                                         <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
                                       )}
-                                      {pedido.cliente_tel && (
-                                        <span className="text-gray-600 text-[10px]">📞{pedido.cliente_tel}</span>
-                                      )}
+                                      <span 
+                                        className={clsx(
+                                          'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
+                                          delayInfo.textColor
+                                        )}
+                                        style={{ backgroundColor: `${delayInfo.color}22` }}
+                                        title={delayInfo.label}
+                                      >
+                                        ⏱{delayInfo.badgeText}
+                                      </span>
                                     </div>
                                   </button>
                                 );

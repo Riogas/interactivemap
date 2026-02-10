@@ -5,6 +5,7 @@ import { PedidoSupabase } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 
 interface PedidoInfoPopupProps {
   pedido: PedidoSupabase | null;
@@ -27,6 +28,10 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
   };
 
   const estadoColor = getEstadoColor(pedido.estado_nro);
+
+  // Calcular atraso/demora
+  const delayMinutes = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
+  const delayInfo = getDelayInfo(delayMinutes);
 
   // Formatear precio con símbolo de peso
   const formatPrecio = (precio: number | null) => {
@@ -78,6 +83,30 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
 
           {/* Contenido */}
           <div className="p-3 space-y-2.5">
+            {/* Etiqueta de Atraso/Demora */}
+            <div 
+              className="flex items-center justify-between rounded-lg px-3 py-2 border"
+              style={{ 
+                backgroundColor: `${delayInfo.color}15`,
+                borderColor: `${delayInfo.color}40`,
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-3 h-3 rounded-full" 
+                  style={{ backgroundColor: delayInfo.color }}
+                />
+                <span className="text-xs font-bold" style={{ color: delayInfo.color }}>
+                  {delayInfo.label}
+                </span>
+              </div>
+              <span 
+                className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                style={{ backgroundColor: delayInfo.color }}
+              >
+                ⏱ {delayInfo.badgeText}
+              </span>
+            </div>
             {/* Cliente */}
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cliente</h4>

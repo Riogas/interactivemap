@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from '
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase, CustomMarker } from '@/types';
+import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
 import { PedidoInfoPopup } from './PedidoInfoPopup';
@@ -1065,33 +1066,14 @@ const MapView = memo(function MapView({
     }));
   }, []);
 
-  // 🚀 OPTIMIZACIÓN: Iconos para pedidos desde tabla - por estado
-  const createPedidoIconByEstado = useCallback((estadoNro: number | null) => {
-    const cacheKey = `pedido-estado-${estadoNro}`;
+  // 🚀 OPTIMIZACIÓN: Iconos para pedidos desde tabla - por atraso/demora
+  const createPedidoIconByDelay = useCallback((fchHoraMaxEntComp: string | null) => {
+    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
+    const info = getDelayInfo(delayMinutes);
+    // Cache key basado en el rango de color (no en minutos exactos para reusar iconos)
+    const cacheKey = `pedido-delay-${info.label}`;
     
     return getCachedIcon(cacheKey, () => {
-      // Colores según estado (mismo esquema que PedidoInfoPopup)
-      let color = '#EF4444'; // Rojo por defecto
-      let lightColor = '#FCA5A5';
-      let shadowColor = 'rgba(239, 68, 68, 0.3)';
-      
-      if (estadoNro !== null && estadoNro <= 2) {
-        // Asignado - Azul
-        color = '#3B82F6';
-        lightColor = '#93C5FD';
-        shadowColor = 'rgba(59, 130, 246, 0.3)';
-      } else if (estadoNro !== null && estadoNro >= 3 && estadoNro <= 5) {
-        // En proceso - Amarillo
-        color = '#EAB308';
-        lightColor = '#FDE047';
-        shadowColor = 'rgba(234, 179, 8, 0.3)';
-      } else if (estadoNro === 7) {
-        // Completado - Verde
-        color = '#22C55E';
-        lightColor = '#86EFAC';
-        shadowColor = 'rgba(34, 197, 94, 0.3)';
-      }
-
       return L.divIcon({
         className: '',
         html: `
@@ -1101,10 +1083,10 @@ const MapView = memo(function MapView({
             position: absolute;
             left: -16px;
             top: -16px;
-            background: linear-gradient(135deg, ${color} 0%, ${lightColor} 100%);
+            background: linear-gradient(135deg, ${info.color} 0%, ${info.lightColor} 100%);
             border: 3px solid white;
             border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px ${shadowColor};
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px ${info.shadowColor};
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1864,11 +1846,14 @@ const MapView = memo(function MapView({
           return pedidosFiltrados;
         })()?.length ? (
           <MarkerClusterGroup>
-            {pedidos.filter(p => p.latitud && p.longitud).map(pedido => (
+            {pedidos.filter(p => p.latitud && p.longitud).map(pedido => {
+              const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
+              const delayInfo = getDelayInfo(delayMins);
+              return (
               <OptimizedMarker
                 key={`pedido-tabla-${pedido.id}`}
                 position={[pedido.latitud!, pedido.longitud!]}
-                icon={createPedidoIconByEstado(pedido.estado_nro)}
+                icon={createPedidoIconByDelay(pedido.fch_hora_max_ent_comp)}
                 eventHandlers={{
                   click: () => {
                     onPedidoClick && onPedidoClick(pedido.id);
@@ -1880,10 +1865,14 @@ const MapView = memo(function MapView({
                     <div className="font-bold">Pedido #{pedido.id}</div>
                     <div>{pedido.cliente_nombre}</div>
                     <div className="text-gray-600">{pedido.producto_nom}</div>
+                    <div style={{ color: delayInfo.color, fontWeight: 'bold' }}>
+                      {delayInfo.label}: {delayInfo.badgeText}
+                    </div>
                   </div>
                 </Tooltip>
               </OptimizedMarker>
-            ))}
+              );
+            })}
           </MarkerClusterGroup>
         ) : null}
         

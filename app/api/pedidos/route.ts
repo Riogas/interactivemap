@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     
     const escenario = searchParams.get('escenario');
     const movil = searchParams.get('movil');
+    const moviles = searchParams.get('moviles'); // Comma-separated list for IN clause
     const estado = searchParams.get('estado');
     const fecha = searchParams.get('fecha');
     const empresaFleteraId = searchParams.get('empresa_fletera_id');
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
     console.log('📦 GET /api/pedidos - Parámetros:', {
       escenario,
       movil,
+      moviles,
       estado,
       fecha,
       empresaFleteraId,
@@ -46,7 +48,13 @@ export async function GET(request: NextRequest) {
       query = query.eq('escenario', parseInt(escenario));
     }
 
-    if (movil) {
+    if (moviles) {
+      // Soporte para múltiples móviles: moviles=472,473,474
+      const movilesArray = moviles.split(',').map(m => parseInt(m)).filter(m => !isNaN(m));
+      if (movilesArray.length > 0) {
+        query = query.in('movil', movilesArray);
+      }
+    } else if (movil) {
       query = query.eq('movil', parseInt(movil));
     }
 

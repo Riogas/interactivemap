@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase, CustomMarker, MovilFilters } from '@/types';
@@ -385,13 +385,14 @@ function DashboardContent() {
     }
   }, [selectedEmpresas, empresas.length, isInitialLoad, enrichMovilesWithExtendedData, removeDuplicateMoviles]);
 
-  // Función para cargar pedidos desde API
+  // Función para cargar TODOS los pedidos del día desde API
+  // El filtrado por móviles seleccionados se hace client-side en MovilSelector y MapView
   const fetchPedidos = useCallback(async () => {
     try {
-      console.log('📦 Fetching pedidos...');
+      console.log('📦 Fetching pedidos para fecha:', selectedDate);
       setIsLoadingPedidos(true);
       
-      // Construir URL con filtros
+      // Construir URL - traer TODOS los pedidos del día (sin filtrar por móvil)
       const params = new URLSearchParams();
       params.append('escenario', '1000');
       if (selectedDate) {
@@ -622,7 +623,7 @@ function DashboardContent() {
       if (movilesIds.length === 0) {
         console.log(`📦 Cargando TODOS los pedidos pendientes del día`);
         
-        const response = await fetch(`/api/pedidos-pendientes?escenarioId=1&fecha=${fecha}`);
+        const response = await fetch(`/api/pedidos-pendientes?escenarioId=1000&fecha=${fecha}`);
         const result = await response.json();
         
         if (result.pedidos && result.pedidos.length > 0) {
@@ -678,7 +679,7 @@ function DashboardContent() {
       
       // Cargar pedidos para cada móvil seleccionado (ahora con fecha)
       const pedidosPromises = movilesIds.map(async (movilId) => {
-        const response = await fetch(`/api/pedidos-pendientes/${movilId}?escenarioId=1&fecha=${fecha}`);
+        const response = await fetch(`/api/pedidos-pendientes/${movilId}?escenarioId=1000&fecha=${fecha}`);
         const result = await response.json();
         return { movilId, pedidos: result.pedidos || [] };
       });
@@ -943,6 +944,9 @@ function DashboardContent() {
   }, [pedidosIniciales, pedidosRealtime]);
 
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
+  // Ref para rastrear el último key de pedidos y evitar loops infinitos
+  const prevPedidosKeyRef = useRef<string>('');
+  
   useEffect(() => {
     // 🚀 Pausar actualizaciones si la tab no está visible (ahorro de CPU)
     if (!isTabVisible) {
@@ -951,44 +955,36 @@ function DashboardContent() {
     }
     
     // Estados que consideramos como "pedidos activos/asignados"
-    // Ajusta estos números según tu sistema de estados
     const ESTADOS_ACTIVOS = [1, 2, 3, 4, 5]; // Pendiente, En camino, etc. (excluye entregados/cancelados)
     
     // Contar pedidos activos por móvil
     const pedidosPorMovil = new Map<number, number>();
     
     pedidosCompletos.forEach(pedido => {
-      // Solo contar pedidos activos (no entregados ni cancelados)
       if (pedido.movil && pedido.estado_nro && ESTADOS_ACTIVOS.includes(pedido.estado_nro)) {
         const count = pedidosPorMovil.get(pedido.movil) || 0;
         pedidosPorMovil.set(pedido.movil, count + 1);
       }
     });
     
-    // Serializar para comparación
-    const pedidosKey = JSON.stringify(Array.from(pedidosPorMovil.entries()).sort());
+    // Serializar para comparación estable (sort por key numérico)
+    const pedidosKey = JSON.stringify(Array.from(pedidosPorMovil.entries()).sort((a, b) => a[0] - b[0]));
     
-    // Solo actualizar si realmente cambió el conteo
+    // Si el key no cambió desde la última vez, no hacer nada (prevenir loop)
+    if (pedidosKey === prevPedidosKeyRef.current) {
+      return;
+    }
+    prevPedidosKeyRef.current = pedidosKey;
+    
+    console.log('📦 Actualizando lote de móviles en tiempo real');
+    console.log('📊 Pedidos activos por móvil:', Object.fromEntries(pedidosPorMovil));
+    
     setMoviles(prevMoviles => {
-      // Calcular key actual
-      const currentKey = JSON.stringify(
-        prevMoviles.map(m => [m.id, m.pedidosAsignados || 0]).sort()
-      );
-      
-      // Si no cambió nada, no actualizar (prevenir loop)
-      if (currentKey === pedidosKey) {
-        return prevMoviles;
-      }
-      
-      console.log('📦 Actualizando lote de móviles en tiempo real');
-      console.log('📊 Pedidos activos por móvil:', Object.fromEntries(pedidosPorMovil));
-      
       let cambios = false;
       const updated = prevMoviles.map(movil => {
         const movilId = typeof movil.id === 'string' ? parseInt(movil.id) : movil.id;
         const pedidosAsignados = pedidosPorMovil.get(movilId) || 0;
         
-        // Solo actualizar si cambió
         if (movil.pedidosAsignados !== pedidosAsignados) {
           console.log(`🔄 Móvil ${movilId}: ${pedidosAsignados}/${movil.tamanoLote || 6} pedidos`);
           cambios = true;
@@ -1001,16 +997,19 @@ function DashboardContent() {
         return movil;
       });
       
-      // Solo retornar nuevo array si hubo cambios
       return cambios ? updated : prevMoviles;
     });
   }, [pedidosCompletos, isTabVisible]); // Se ejecuta cada vez que cambian los pedidos o visibilidad
 
-  // Initial fetch
+  // Initial fetch - posiciones
   useEffect(() => {
     fetchPositions();
-    fetchPedidos(); // Cargar pedidos iniciales
-  }, [fetchPositions, fetchPedidos]);
+  }, [fetchPositions]);
+
+  // Fetch pedidos cuando cambian los móviles seleccionados o la fecha
+  useEffect(() => {
+    fetchPedidos();
+  }, [fetchPedidos]);
 
   // Reset focusedMovil when date or selected companies change
   useEffect(() => {
@@ -1062,8 +1061,15 @@ function DashboardContent() {
   }, [selectedMoviles, fetchPedidosPendientes]);
 
   // 🔥 NUEVO: Actualizar pedidos en tiempo real cuando lleguen del hook
+  const prevRealtimeKeyRef = useRef<string>('');
+  
   useEffect(() => {
     if (pedidosRealtime.length === 0) return;
+    
+    // Crear key estable para comparar si realmente cambió algo
+    const realtimeKey = JSON.stringify(pedidosRealtime.map(p => `${p.id}-${p.movil}-${p.estado_nro}`).sort());
+    if (realtimeKey === prevRealtimeKeyRef.current) return;
+    prevRealtimeKeyRef.current = realtimeKey;
     
     console.log(`📦 Actualizando ${pedidosRealtime.length} pedidos desde Realtime`);
     
@@ -1084,38 +1090,34 @@ function DashboardContent() {
       producto_cantidad: p.producto_cant || 0,
       observacion: p.pedido_obs || '',
       prioridad: p.prioridad || 0,
-      movilId: p.movil || undefined, // ✅ Usar 'movil' del schema
+      movilId: p.movil || undefined,
     }));
     
     // Actualizar móviles con los nuevos pedidos
     setMoviles(prevMoviles => {
-      return prevMoviles.map(movil => {
-        // Filtrar pedidos que pertenecen a este móvil
-        const pedidosDelMovil = pedidosFormateados.filter(p => {
-          // Los pedidos formateados ahora tienen movilId
-          return p.movilId === movil.id;
-        });
+      let cambios = false;
+      const updated = prevMoviles.map(movil => {
+        const pedidosDelMovil = pedidosFormateados.filter(p => p.movilId === movil.id);
         
         if (pedidosDelMovil.length > 0) {
-          // Actualizar el conteo de pedidos asignados
           const newPedidosAsignados = pedidosDelMovil.length;
+          const newColor = getMovilColorByOccupancy(newPedidosAsignados, movil.tamanoLote || 0);
           
-          // Recalcular el color basado en la nueva ocupación
-          const newColor = getMovilColorByOccupancy(
-            newPedidosAsignados,
-            movil.tamanoLote || 0
-          );
-          
-          return {
-            ...movil,
-            pedidos: pedidosDelMovil,
-            pedidosAsignados: newPedidosAsignados,
-            color: newColor, // Actualizar el color dinámicamente
-          };
+          if (movil.pedidosAsignados !== newPedidosAsignados || movil.color !== newColor) {
+            cambios = true;
+            return {
+              ...movil,
+              pedidos: pedidosDelMovil,
+              pedidosAsignados: newPedidosAsignados,
+              color: newColor,
+            };
+          }
         }
         
         return movil;
       });
+      
+      return cambios ? updated : prevMoviles;
     });
   }, [pedidosRealtime, getMovilColorByOccupancy]);
 
@@ -1337,7 +1339,7 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => p.movil && selectedMoviles.includes(p.movil)) : pedidosCompletos).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
+                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1)).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
                 isPlacingMarker={isPlacingMarker}
