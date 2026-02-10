@@ -83,20 +83,6 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
               </div>
             </div>
 
-            {/* Información GPS */}
-            <div>
-              <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Información GPS</h4>
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-2.5 border border-green-200">
-                <div className="flex items-center justify-between">
-                  <div className="text-[9px] text-green-600 font-semibold">📏 Distancia Recorrida</div>
-                  <div className="text-lg font-bold text-green-900">
-                    {(movil.currentPosition.distRecorrida / 1000).toFixed(2)}
-                    <span className="text-[10px] font-normal text-green-600 ml-0.5">km</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Pedidos y Servicios Pendientes */}
             {totalPendientes > 0 && (
               <div>
