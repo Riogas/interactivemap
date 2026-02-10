@@ -14,32 +14,28 @@ export async function GET(
     const resolvedParams = await params;
     const movilId = parseInt(resolvedParams.movilId);
     const searchParams = request.nextUrl.searchParams;
-    const escenarioId = searchParams.get('escenario_id') || '1000'; // Cambiado a 1000
-    const fechaDesde = searchParams.get('fechaDesde');
+    const escenarioId = searchParams.get('escenario_id') || '1000';
+    // Obtener fecha: param 'fecha' o default a hoy
+    const fecha = searchParams.get('fecha') || new Date().toISOString().split('T')[0];
 
     const supabase = getServerSupabaseClient();
     
-    // Obtener pedidos pendientes (estados 1 y 2 = pendientes)
-    // Estado 1: Asignado, Estado 2: En camino
-    let query = supabase
+    // Obtener pedidos pendientes - Solo estado 1 (Asignado) del día exacto
+    const { data: pedidos, error } = await supabase
       .from('pedidos')
       .select('*')
       .eq('movil', movilId)
-      .eq('escenario', escenarioId)
-      .in('estado_nro', [1, 2]); // Solo pedidos pendientes
-    
-    if (fechaDesde) {
-      query = query.gte('fch_para', fechaDesde);
-    }
-    
-    const { data: pedidos, error } = await query.order('prioridad', { ascending: false });
+      .eq('escenario', parseInt(escenarioId))
+      .in('estado_nro', [1])
+      .eq('fch_para', fecha) // Filtrar por fecha exacta del día
+      .order('prioridad', { ascending: false });
     
     if (error) throw error;
     
     const result = {
       success: true,
       movilId,
-      fechaDesde: fechaDesde || new Date().toISOString().split('T')[0],
+      fecha,
       total: pedidos?.length || 0,
       pedidosPendientes: pedidos?.length || 0,
       serviciosPendientes: 0, // Puede ajustarse según tu lógica de negocio

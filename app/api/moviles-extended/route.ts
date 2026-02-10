@@ -28,12 +28,14 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // 2. Contar pedidos asignados por móvil
+    // 2. Contar pedidos asignados por móvil (solo estado=1 y fecha de hoy)
+    const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     const { data: pedidosCount, error: pedidosError } = await supabase
       .from('pedidos')
       .select('movil')
-      .eq('escenario', 1)
-      .in('estado_nro', [1, 2, 3, 4, 5, 6, 7]) // Estados pendientes
+      .eq('escenario', 1000)
+      .in('estado_nro', [1]) // Solo estado 1 (Pendiente/Asignado)
+      .eq('fch_para', hoy) // Solo pedidos del día actual
       .not('movil', 'is', null);
 
     if (pedidosError) {

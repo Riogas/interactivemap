@@ -100,6 +100,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
   if (!movil || !movil.currentPosition) return null;
 
   const totalPendientes = (movil.pedidosPendientes || 0) + (movil.serviciosPendientes || 0);
+  const isLoadingPendientes = movil.pedidosPendientes === undefined;
   const canShowAnimation = selectedMovilesCount === 1;
 
   // Historial ordenado ascendente por fecha
@@ -372,29 +373,38 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
             </div>
 
             {/* Pedidos y Servicios Pendientes */}
-            {totalPendientes > 0 && (
+            {(totalPendientes > 0 || isLoadingPendientes) && (
               <div>
                 <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Pendientes del Día</h4>
                 <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-2.5 border-2 border-orange-300">
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <div className="text-center bg-white bg-opacity-60 rounded-lg p-1.5">
-                      <div className="text-xl font-bold text-orange-600">{movil.pedidosPendientes || 0}</div>
-                      <div className="text-[9px] text-gray-700 font-semibold flex items-center justify-center gap-0.5">
-                        <span>📦</span>
-                        <span>Pedidos</span>
-                      </div>
+                  {isLoadingPendientes ? (
+                    <div className="text-center py-2">
+                      <div className="animate-spin inline-block w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full" />
+                      <div className="text-[9px] text-gray-500 mt-1">Cargando...</div>
                     </div>
-                    <div className="text-center bg-white bg-opacity-60 rounded-lg p-1.5">
-                      <div className="text-xl font-bold text-red-600">{movil.serviciosPendientes || 0}</div>
-                      <div className="text-[9px] text-gray-700 font-semibold flex items-center justify-center gap-0.5">
-                        <span>🔧</span>
-                        <span>Servicios</span>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div className="text-center bg-white bg-opacity-60 rounded-lg p-1.5">
+                          <div className="text-xl font-bold text-orange-600">{movil.pedidosPendientes || 0}</div>
+                          <div className="text-[9px] text-gray-700 font-semibold flex items-center justify-center gap-0.5">
+                            <span>📦</span>
+                            <span>Pedidos</span>
+                          </div>
+                        </div>
+                        <div className="text-center bg-white bg-opacity-60 rounded-lg p-1.5">
+                          <div className="text-xl font-bold text-red-600">{movil.serviciosPendientes || 0}</div>
+                          <div className="text-[9px] text-gray-700 font-semibold flex items-center justify-center gap-0.5">
+                            <span>🔧</span>
+                            <span>Servicios</span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <div className="text-[9px] text-center text-gray-600 bg-white bg-opacity-60 rounded-lg py-1 px-2">
-                    💡 Visibles en el mapa como puntos naranjas y rojos
-                  </div>
+                      <div className="text-[9px] text-center text-gray-600 bg-white bg-opacity-60 rounded-lg py-1 px-2">
+                        💡 Visibles en el mapa como puntos naranjas y rojos
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -425,7 +435,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
             </div>
 
             {/* Botones de acción */}
-            <div className={`grid gap-2 pt-1 ${canShowAnimation && totalPendientes > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className={`grid gap-2 pt-1 ${canShowAnimation && (totalPendientes > 0 || isLoadingPendientes) ? 'grid-cols-2' : 'grid-cols-1'}`}>
               {/* Botón para ver animación del recorrido - Solo si hay 1 móvil seleccionado */}
               {onShowAnimation && canShowAnimation && (
                 <button
@@ -441,15 +451,16 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
               )}
 
               {/* Botón para ver pedidos pendientes */}
-              {totalPendientes > 0 && onShowPendientes && (
+              {(totalPendientes > 0 || isLoadingPendientes) && onShowPendientes && (
                 <button
                   onClick={onShowPendientes}
-                  className="py-2.5 px-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-lg font-semibold text-xs transition-all duration-200 flex items-center justify-center gap-1.5 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+                  disabled={isLoadingPendientes}
+                  className="py-2.5 px-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 disabled:opacity-60 text-white rounded-lg font-semibold text-xs transition-all duration-200 flex items-center justify-center gap-1.5 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                   </svg>
-                  <span>Pendientes ({totalPendientes})</span>
+                  <span>{isLoadingPendientes ? 'Cargando...' : `Pendientes (${totalPendientes})`}</span>
                 </button>
               )}
             </div>

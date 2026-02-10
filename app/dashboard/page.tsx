@@ -630,33 +630,34 @@ function DashboardContent() {
           console.log(`✅ Encontrados ${result.pedidos.length} pedidos pendientes en total`);
           
             // Convertir todos los pedidos a formato PedidoServicio
-          const todosPedidos = result.pedidos.map((p: PedidoPendiente) => ({
+          const todosPedidos = result.pedidos.map((p: any) => ({
             tipo: 'PEDIDO' as const,
-            id: p.pedido_id,
+            id: p.id || p.pedido_id,
             cliid: 0,
             clinom: p.cliente_nombre || 'Sin nombre',
-            fecha: p.fecha_para || '',
+            fecha: p.fecha_para || p.fch_para || '',
             x: p.latitud,
             y: p.longitud,
-            estado: p.estado || 0,
+            estado: Number(p.estado_nro ?? p.estado ?? 0),
             subestado: 0,
-            zona: String(p.zona || ''),
-            producto_codigo: p.producto_codigo || '',
-            producto_nombre: p.producto_nombre || '',
-            producto_cantidad: p.producto_cantidad || 0,
-            observacion: p.observacion || '',
+            zona: String(p.zona_nro ?? p.zona ?? ''),
+            producto_codigo: p.producto_cod ?? p.producto_codigo ?? '',
+            producto_nombre: p.producto_nom ?? p.producto_nombre ?? '',
+            producto_cantidad: p.producto_cant ?? p.producto_cantidad ?? 0,
+            observacion: p.pedido_obs ?? p.observacion ?? '',
             prioridad: p.prioridad || 0,
             movilId: p.movil,
           }));          // Actualizar móviles agrupando pedidos por móvil
           setMoviles(prevMoviles => {
             return prevMoviles.map(movil => {
               const pedidosDelMovil = todosPedidos.filter((p: any) => p.movilId === movil.id);
+              const pedidosEstado1 = pedidosDelMovil.filter((p: any) => p.estado === 1);
               
               if (pedidosDelMovil.length > 0) {
                 return {
                   ...movil,
                   pendientes: pedidosDelMovil,
-                  pedidosPendientes: pedidosDelMovil.length,
+                  pedidosPendientes: pedidosEstado1.length,
                 };
               }
               
@@ -692,30 +693,31 @@ function DashboardContent() {
           const movilPedidos = results.find(r => r.movilId === movil.id);
           if (movilPedidos) {
             // Convertir pedidos a formato PedidoServicio para compatibilidad
-            const pendientes = movilPedidos.pedidos.map((p: PedidoPendiente) => ({
+            const pendientes = movilPedidos.pedidos.map((p: any) => ({
               tipo: 'PEDIDO' as const,
-              id: p.pedido_id,
+              id: p.id || p.pedido_id,
               cliid: 0,
               clinom: p.cliente_nombre || 'Sin nombre',
-              fecha: p.fecha_para || '',
+              fecha: p.fecha_para || p.fch_para || '',
               x: p.latitud,
               y: p.longitud,
-              estado: p.estado || 0,
+              estado: Number(p.estado_nro ?? p.estado ?? 0),
               subestado: 0,
-              zona: p.zona || '',
-              producto_codigo: p.producto_codigo || '',
-              producto_nombre: p.producto_nombre || '',
-              producto_cantidad: p.producto_cantidad || 0,
-              observacion: p.observacion || '',
+              zona: String(p.zona_nro ?? p.zona ?? ''),
+              producto_codigo: p.producto_cod ?? p.producto_codigo ?? '',
+              producto_nombre: p.producto_nom ?? p.producto_nombre ?? '',
+              producto_cantidad: p.producto_cant ?? p.producto_cantidad ?? 0,
+              observacion: p.pedido_obs ?? p.observacion ?? '',
               prioridad: p.prioridad || 0,
             }));
 
-            console.log(`✅ Móvil ${movil.id}: ${pendientes.length} pedidos pendientes`);
+            const pendientesEstado1 = pendientes.filter((p: any) => p.estado === 1);
+            console.log(`✅ Móvil ${movil.id}: ${pendientesEstado1.length} pedidos pendientes (estado=1)`);
             
             return {
               ...movil,
               pendientes,
-              pedidosPendientes: pendientes.length,
+              pedidosPendientes: pendientesEstado1.length,
             };
           }
           return movil;
@@ -770,7 +772,7 @@ function DashboardContent() {
       // Cargar pedidos y servicios pendientes
       try {
         console.log(`📦 Fetching pendientes for móvil ${movilId}...`);
-        const url = `/api/pedidos-servicios-pendientes/${movilId}${selectedDate ? `?fecha_desde=${selectedDate} 00:00:00` : ''}`;
+        const url = `/api/pedidos-servicios-pendientes/${movilId}?fecha=${selectedDate || new Date().toISOString().split('T')[0]}`;
         const response = await fetch(url);
         const result = await response.json();
 
@@ -954,16 +956,18 @@ function DashboardContent() {
       return;
     }
     
-    // Estados que consideramos como "pedidos activos/asignados"
-    const ESTADOS_ACTIVOS = [1, 2, 3, 4, 5]; // Pendiente, En camino, etc. (excluye entregados/cancelados)
+    // Solo contar pedidos con estado 1 (Pendiente/Asignado) para consistencia
+    const ESTADOS_ACTIVOS = [1];
     
     // Contar pedidos activos por móvil
     const pedidosPorMovil = new Map<number, number>();
     
     pedidosCompletos.forEach(pedido => {
-      if (pedido.movil && pedido.estado_nro && ESTADOS_ACTIVOS.includes(pedido.estado_nro)) {
-        const count = pedidosPorMovil.get(pedido.movil) || 0;
-        pedidosPorMovil.set(pedido.movil, count + 1);
+      const estadoNum = Number(pedido.estado_nro);
+      if (pedido.movil && estadoNum && ESTADOS_ACTIVOS.includes(estadoNum)) {
+        const movilNum = Number(pedido.movil);
+        const count = pedidosPorMovil.get(movilNum) || 0;
+        pedidosPorMovil.set(movilNum, count + 1);
       }
     });
     
@@ -982,7 +986,7 @@ function DashboardContent() {
     setMoviles(prevMoviles => {
       let cambios = false;
       const updated = prevMoviles.map(movil => {
-        const movilId = typeof movil.id === 'string' ? parseInt(movil.id) : movil.id;
+        const movilId = Number(movil.id);
         const pedidosAsignados = pedidosPorMovil.get(movilId) || 0;
         
         if (movil.pedidosAsignados !== pedidosAsignados) {
@@ -1098,9 +1102,10 @@ function DashboardContent() {
       let cambios = false;
       const updated = prevMoviles.map(movil => {
         const pedidosDelMovil = pedidosFormateados.filter(p => p.movilId === movil.id);
+        const pedidosEstado1 = pedidosDelMovil.filter(p => p.estado === 1);
         
         if (pedidosDelMovil.length > 0) {
-          const newPedidosAsignados = pedidosDelMovil.length;
+          const newPedidosAsignados = pedidosEstado1.length;
           const newColor = getMovilColorByOccupancy(newPedidosAsignados, movil.tamanoLote || 0);
           
           if (movil.pedidosAsignados !== newPedidosAsignados || movil.color !== newColor) {
