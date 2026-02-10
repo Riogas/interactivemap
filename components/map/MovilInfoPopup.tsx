@@ -1,17 +1,30 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MovilData } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+interface SessionHistorial {
+  chofer: string;
+  inicio: string;
+}
+
+interface SessionData {
+  chofer: string | null;
+  telefono: string | null;
+  fechaInicio: string | null;
+  idTerminal: string | null;
+  historial: SessionHistorial[];
+}
 
 interface MovilInfoPopupProps {
   movil: MovilData | null;
   onClose: () => void;
   onShowAnimation?: () => void;
   onShowPendientes?: () => void;
-  selectedMovilesCount?: number; // Número de móviles seleccionados
+  selectedMovilesCount?: number;
 }
 
 export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({ 
@@ -21,17 +34,48 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
   onShowPendientes,
   selectedMovilesCount = 0
 }) => {
+  const [sessionData, setSessionData] = useState<SessionData | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [historialOpen, setHistorialOpen] = useState(false);
+
+  // Fetch session data when popup opens
+  useEffect(() => {
+    if (!movil) return;
+
+    const fetchSession = async () => {
+      setSessionLoading(true);
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const res = await fetch(`/api/movil-session/${movil.id}?fecha=${today}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSessionData({
+            chofer: data.chofer,
+            telefono: data.telefono,
+            fechaInicio: data.fechaInicio,
+            idTerminal: data.idTerminal,
+            historial: data.historial || [],
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching session data:', err);
+      } finally {
+        setSessionLoading(false);
+      }
+    };
+
+    fetchSession();
+  }, [movil?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!movil || !movil.currentPosition) return null;
 
   const totalPendientes = (movil.pedidosPendientes || 0) + (movil.serviciosPendientes || 0);
-  const canShowAnimation = selectedMovilesCount === 1; // Solo si hay exactamente 1 seleccionado
+  const canShowAnimation = selectedMovilesCount === 1;
 
-  // Batería del móvil (por ahora valor por defecto, luego vendrá de API)
-  const batteryLevel = movil.batteryLevel ?? 85;
-  const batteryColor = batteryLevel > 60 ? '#22c55e' : batteryLevel > 25 ? '#f59e0b' : '#ef4444';
-  const batteryBg = batteryLevel > 60 ? 'from-green-50 to-emerald-50' : batteryLevel > 25 ? 'from-yellow-50 to-amber-50' : 'from-red-50 to-rose-50';
-  const batteryBorder = batteryLevel > 60 ? 'border-green-300' : batteryLevel > 25 ? 'border-yellow-300' : 'border-red-300';
-  const batteryTextColor = batteryLevel > 60 ? 'text-green-700' : batteryLevel > 25 ? 'text-yellow-700' : 'text-red-700';
+  // Historial ordenado ascendente por fecha
+  const sortedHistorial = sessionData?.historial
+    ? [...sessionData.historial].sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime())
+    : [];
 
   return (
     <AnimatePresence>
@@ -88,26 +132,137 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
               </div>
             </div>
 
-            {/* Batería del Móvil */}
-            <div className={`bg-gradient-to-br ${batteryBg} rounded-lg p-2.5 border ${batteryBorder}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {/* Icono de batería realista */}
-                  <div className="relative flex items-center">
-                    <div className="w-10 h-5 rounded-[3px] border-2 relative overflow-hidden" style={{ borderColor: batteryColor }}>
-                      <div
-                        className="absolute left-0 top-0 bottom-0 rounded-[1px] transition-all duration-500"
-                        style={{ width: `${batteryLevel}%`, backgroundColor: batteryColor, opacity: 0.85 }}
-                      />
+            {/* Datos de Sesión del Chofer */}
+            <div>
+              <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Sesión del Chofer</h4>
+              {sessionLoading ? (
+                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-gray-500">Cargando datos de sesión...</span>
+                </div>
+              ) : sessionData?.chofer ? (
+                <div className="space-y-2">
+                  {/* Chofer actual + Teléfono */}
+                  <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-2.5 border border-indigo-200">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[9px] text-indigo-600 font-semibold">Chofer</div>
+                        <div className="font-bold text-indigo-900 text-xs truncate">{sessionData.chofer}</div>
+                      </div>
+                      {sessionData.telefono && (
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-[9px] text-gray-500">📞 Teléfono</div>
+                          <div className="text-[10px] font-semibold text-gray-800">{sessionData.telefono}</div>
+                        </div>
+                      )}
                     </div>
-                    <div className="w-[3px] h-2.5 rounded-r-sm -ml-[1px]" style={{ backgroundColor: batteryColor }} />
+                    {/* Hora de inicio de sesión */}
+                    {sessionData.fechaInicio && (
+                      <div className="mt-2 pt-2 border-t border-indigo-200 flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-[9px] text-indigo-500">Inicio de sesión:</span>
+                        <span className="text-[10px] font-bold text-indigo-800">
+                          {format(new Date(sessionData.fechaInicio), "HH:mm", { locale: es })}
+                        </span>
+                        <span className="text-[9px] text-indigo-400">
+                          ({format(new Date(sessionData.fechaInicio), "dd/MM/yyyy", { locale: es })})
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-[9px] font-semibold" style={{ color: batteryColor }}>Batería</div>
+
+                  {/* Historial de sesiones - Colapsable */}
+                  {sortedHistorial.length > 1 && (
+                    <div className="rounded-lg border border-gray-200 overflow-hidden">
+                      <button
+                        onClick={() => setHistorialOpen(!historialOpen)}
+                        className="w-full flex items-center justify-between px-2.5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-[10px] font-semibold text-gray-600">
+                            Sesiones del día
+                          </span>
+                          <span className="text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
+                            {sortedHistorial.length}
+                          </span>
+                        </div>
+                        <svg
+                          className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${historialOpen ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      <AnimatePresence>
+                        {historialOpen && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="border-t border-gray-200">
+                              <table className="w-full text-[10px]">
+                                <thead>
+                                  <tr className="bg-gray-50">
+                                    <th className="text-left py-1.5 px-2.5 text-gray-500 font-semibold">#</th>
+                                    <th className="text-left py-1.5 px-2.5 text-gray-500 font-semibold">Chofer</th>
+                                    <th className="text-right py-1.5 px-2.5 text-gray-500 font-semibold">Hora Inicio</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sortedHistorial.map((h, idx) => (
+                                    <tr
+                                      key={idx}
+                                      className={`border-t border-gray-100 ${
+                                        idx === sortedHistorial.length - 1
+                                          ? 'bg-indigo-50'
+                                          : idx % 2 === 0
+                                          ? 'bg-white'
+                                          : 'bg-gray-50'
+                                      }`}
+                                    >
+                                      <td className="py-1.5 px-2.5 text-gray-400 font-mono">{idx + 1}</td>
+                                      <td className="py-1.5 px-2.5 font-medium text-gray-800 truncate max-w-[160px]">
+                                        {h.chofer}
+                                        {idx === sortedHistorial.length - 1 && (
+                                          <span className="ml-1 text-[8px] bg-indigo-200 text-indigo-700 px-1 py-0.5 rounded font-bold">
+                                            ACTUAL
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-1.5 px-2.5 text-right font-mono text-gray-600">
+                                        {format(new Date(h.inicio), "HH:mm", { locale: es })}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
                 </div>
-                <div className={`text-lg font-bold ${batteryTextColor}`}>
-                  {batteryLevel}<span className="text-[10px] font-normal ml-0.5">%</span>
+              ) : (
+                <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-200 text-center">
+                  <span className="text-[10px] text-gray-400">Sin datos de sesión disponibles</span>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Pedidos y Servicios Pendientes */}

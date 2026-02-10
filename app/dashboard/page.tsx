@@ -146,6 +146,13 @@ function DashboardContent() {
   }, [preferences.showActiveMovilesOnly, preferences.maxCoordinateDelayMinutes]);
 
   // 🆕 Aplicar filtros avanzados de estado a los móviles
+  // Filtro geográfico: solo mostrar datos dentro de Uruguay
+  const URUGUAY_BOUNDS = { latMin: -35.8, latMax: -30.0, lngMin: -58.5, lngMax: -53.0 };
+  const isInUruguay = useCallback((lat: number, lng: number): boolean => {
+    return lat >= URUGUAY_BOUNDS.latMin && lat <= URUGUAY_BOUNDS.latMax &&
+           lng >= URUGUAY_BOUNDS.lngMin && lng <= URUGUAY_BOUNDS.lngMax;
+  }, []);
+
   const applyAdvancedFilters = useCallback((moviles: MovilData[]): MovilData[] => {
     // Si no hay filtros de estado activos, retornar todos
     if (movilesFilters.estado.length === 0) {
@@ -1317,7 +1324,7 @@ function DashboardContent() {
               className="w-full h-full"
             >
               <MapView 
-                moviles={applyAdvancedFilters(markInactiveMoviles(moviles)).filter(m => selectedMoviles.includes(m.id))}
+                moviles={applyAdvancedFilters(markInactiveMoviles(moviles)).filter(m => selectedMoviles.includes(m.id) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
                 popupMovil={popupMovil}
@@ -1330,7 +1337,7 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={selectedMoviles.length > 0 ? pedidosCompletos.filter(p => p.movil && selectedMoviles.includes(p.movil)) : pedidosCompletos}
+                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => p.movil && selectedMoviles.includes(p.movil)) : pedidosCompletos).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
                 isPlacingMarker={isPlacingMarker}
