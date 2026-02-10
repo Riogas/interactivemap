@@ -41,6 +41,10 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
   const [smsMessage, setSmsMessage] = useState('');
   const [smsSending, setSmsSending] = useState(false);
   const [smsSent, setSmsSent] = useState(false);
+  
+  // Estado local para pendientes del popup (evita race conditions con setMoviles)
+  const [pendientesData, setPendientesData] = useState<{ pedidos: number; servicios: number } | null>(null);
+  const [pendientesLoading, setPendientesLoading] = useState(false);
 
   // Enviar SMS al móvil
   const handleSendSms = async () => {
@@ -97,10 +101,47 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
     fetchSession();
   }, [movil?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fetch pendientes data directly in the popup (self-contained, no race conditions)
+  useEffect(() => {
+    if (!movil) {
+      setPendientesData(null);
+      return;
+    }
+
+    const fetchPendientes = async () => {
+      setPendientesLoading(true);
+      setPendientesData(null);
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const res = await fetch(`/api/pedidos-servicios-pendientes/${movil.id}?fecha=${today}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setPendientesData({
+              pedidos: data.pedidosPendientes || 0,
+              servicios: data.serviciosPendientes || 0,
+            });
+          } else {
+            setPendientesData({ pedidos: 0, servicios: 0 });
+          }
+        } else {
+          setPendientesData({ pedidos: 0, servicios: 0 });
+        }
+      } catch (err) {
+        console.error('Error fetching pendientes:', err);
+        setPendientesData({ pedidos: 0, servicios: 0 });
+      } finally {
+        setPendientesLoading(false);
+      }
+    };
+
+    fetchPendientes();
+  }, [movil?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!movil || !movil.currentPosition) return null;
 
-  const totalPendientes = (movil.pedidosPendientes || 0) + (movil.serviciosPendientes || 0);
-  const isLoadingPendientes = movil.pedidosPendientes === undefined;
+  const totalPendientes = pendientesData ? (pendientesData.pedidos + pendientesData.servicios) : 0;
+  const isLoadingPendientes = pendientesLoading || pendientesData === null;
   const canShowAnimation = selectedMovilesCount === 1;
 
   // Historial ordenado ascendente por fecha
@@ -386,14 +427,14 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                     <>
                       <div className="grid grid-cols-2 gap-2 mb-2">
                         <div className="text-center bg-white bg-opacity-60 rounded-lg p-1.5">
-                          <div className="text-xl font-bold text-orange-600">{movil.pedidosPendientes || 0}</div>
+                          <div className="text-xl font-bold text-orange-600">{pendientesData?.pedidos ?? 0}</div>
                           <div className="text-[9px] text-gray-700 font-semibold flex items-center justify-center gap-0.5">
                             <span>📦</span>
                             <span>Pedidos</span>
                           </div>
                         </div>
                         <div className="text-center bg-white bg-opacity-60 rounded-lg p-1.5">
-                          <div className="text-xl font-bold text-red-600">{movil.serviciosPendientes || 0}</div>
+                          <div className="text-xl font-bold text-red-600">{pendientesData?.servicios ?? 0}</div>
                           <div className="text-[9px] text-gray-700 font-semibold flex items-center justify-center gap-0.5">
                             <span>🔧</span>
                             <span>Servicios</span>
