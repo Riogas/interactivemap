@@ -1234,7 +1234,7 @@ function DashboardContent() {
               className="w-full h-full"
             >
               <MapView 
-                moviles={applyAdvancedFilters(markInactiveMoviles(moviles)).filter(m => selectedMoviles.length === 0 || selectedMoviles.includes(m.id))}
+                moviles={applyAdvancedFilters(markInactiveMoviles(moviles)).filter(m => selectedMoviles.includes(m.id))}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
                 popupMovil={popupMovil}
@@ -1247,7 +1247,7 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={pedidosCompletos}
+                pedidos={selectedMoviles.length > 0 ? pedidosCompletos.filter(p => p.movil && selectedMoviles.includes(p.movil)) : pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
                 isPlacingMarker={isPlacingMarker}

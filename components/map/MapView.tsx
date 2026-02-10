@@ -137,21 +137,37 @@ function MapUpdater({
     }
   }, [map, focusedPuntoId, customMarkers]);
 
-  // Efecto para centrar el mapa SOLO la primera vez que se cargan móviles
+  // Efecto para centrar el mapa SOLO la primera vez que se cargan datos
   useEffect(() => {
-    if (!hasInitialized.current && moviles.length > 0 && !selectedMovil && !focusedMovil) {
-      const movilesConPosicion = moviles.filter(m => m.currentPosition);
-      
-      if (movilesConPosicion.length > 0) {
-        const bounds = movilesConPosicion.map(m => 
-          [m.currentPosition!.coordX, m.currentPosition!.coordY] as [number, number]
-        );
-        console.log('📍 Ajuste inicial del mapa a bounds de', movilesConPosicion.length, 'móviles');
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
-        hasInitialized.current = true;
-      }
+    if (hasInitialized.current) return;
+    if (selectedMovil || focusedMovil) return;
+
+    const allBounds: [number, number][] = [];
+
+    // Agregar móviles con posición
+    moviles.filter(m => m.currentPosition).forEach(m => {
+      allBounds.push([m.currentPosition!.coordX, m.currentPosition!.coordY]);
+    });
+
+    // Agregar pedidos con coordenadas
+    if (pedidos) {
+      pedidos.filter(p => p.latitud && p.longitud).forEach(p => {
+        allBounds.push([p.latitud!, p.longitud!]);
+      });
     }
-  }, [map, moviles.length]); // Solo cuando cambia la cantidad de móviles (primera carga)
+
+    // Agregar puntos de interés
+    if (customMarkers) {
+      customMarkers.filter(m => m.latitud && m.longitud).forEach(m => {
+        allBounds.push([m.latitud, m.longitud]);
+      });
+    }
+
+    if (allBounds.length > 0) {
+      map.fitBounds(allBounds, { padding: [50, 50], maxZoom: 13 });
+      hasInitialized.current = true;
+    }
+  }, [map, moviles.length, pedidos?.length, customMarkers?.length]);
 
   // Efecto para centrar el mapa SOLO cuando cambia la selección (no por actualizaciones GPS)
   useEffect(() => {
@@ -173,34 +189,47 @@ function MapUpdater({
       return;
     }
 
-    // Si no hay móviles para mostrar, no hacer nada
-    if (moviles.length === 0) {
-      return;
-    }
-
     const movilesConPosicion = moviles.filter(m => m.currentPosition);
-    
-    if (movilesConPosicion.length === 0) {
-      return;
-    }
 
-    // Si hay múltiples móviles, ajustar bounds para mostrar todos
     if (movilesConPosicion.length > 1) {
+      // Múltiples móviles seleccionados: ajustar bounds para mostrar todos
       const bounds = movilesConPosicion.map(m => 
         [m.currentPosition!.coordX, m.currentPosition!.coordY] as [number, number]
       );
-      console.log('📍 Ajustando mapa para mostrar', movilesConPosicion.length, 'móviles seleccionados');
-      console.log('📍 IDs de móviles:', movilesConPosicion.map(m => m.id).join(', '));
       map.fitBounds(bounds, { padding: [80, 80], maxZoom: 15 });
     } else if (movilesConPosicion.length === 1) {
-      // Si solo hay un móvil con posición, centrar en él
+      // Un solo móvil: centrar en él
       const movil = movilesConPosicion[0];
-      console.log('📍 Centrando mapa en único móvil visible:', movil.id);
       map.setView([movil.currentPosition!.coordX, movil.currentPosition!.coordY], 15, {
         animate: true,
       });
+    } else {
+      // Sin móviles seleccionados: centrar en pedidos + POIs visibles
+      const allBounds: [number, number][] = [];
+
+      // Agregar pedidos con coordenadas
+      if (pedidos) {
+        pedidos.forEach(p => {
+          if (p.latitud && p.longitud) {
+            allBounds.push([p.latitud, p.longitud]);
+          }
+        });
+      }
+
+      // Agregar puntos de interés
+      if (customMarkers) {
+        customMarkers.forEach(m => {
+          if (m.latitud && m.longitud) {
+            allBounds.push([m.latitud, m.longitud]);
+          }
+        });
+      }
+
+      if (allBounds.length > 0) {
+        map.fitBounds(allBounds, { padding: [80, 80], maxZoom: 13 });
+      }
     }
-  }, [map, selectedMovilesCount, moviles, selectedMovil]); // Solo depende de selectedMovilesCount para cambios de selección
+  }, [map, selectedMovilesCount, moviles, selectedMovil, pedidos, customMarkers]);
 
   // Efecto para centrar el mapa cuando se enfoca un móvil desde la lista
   useEffect(() => {
