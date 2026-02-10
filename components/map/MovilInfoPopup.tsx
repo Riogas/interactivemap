@@ -111,7 +111,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
               </div>
             )}
 
-            {/* Timestamp - Última Actualización */}
+            {/* Timestamp - Último envío de Coordenadas */}
             <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-2.5 border border-gray-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -121,7 +121,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                     </svg>
                   </div>
                   <div>
-                    <div className="text-[9px] text-gray-500 font-semibold">Última Actualización</div>
+                    <div className="text-[9px] text-gray-500 font-semibold">Último envío de Coordenadas</div>
                     <div className="text-xs font-bold text-gray-900">
                       {format(new Date(movil.currentPosition.fechaInsLog), "HH:mm:ss", { locale: es })}
                     </div>
