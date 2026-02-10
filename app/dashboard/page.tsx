@@ -242,6 +242,7 @@ function DashboardContent() {
           pedidosAsignados: number;
           matricula: string;
           descripcion: string;
+          estadoDesc: string;
         }
 
         // Mapear por ID (que es TEXT), no por nro
@@ -266,6 +267,7 @@ function DashboardContent() {
               tamanoLote: extendedData.tamanoLote,
               pedidosAsignados: extendedData.pedidosAsignados,
               matricula: extendedData.matricula,
+              estadoDesc: extendedData.estadoDesc,
               color: calculatedColor,
             };
           }

@@ -72,7 +72,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-2 border border-blue-200">
                   <div className="text-[9px] text-blue-600 font-semibold mb-0.5">Estado</div>
-                  <div className="font-bold text-blue-900 text-xs">{movil.currentPosition.auxIn2}</div>
+                  <div className="font-bold text-blue-900 text-xs">{movil.estadoDesc || 'Sin estado'}</div>
                 </div>
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-2 border border-purple-200">
                   <div className="text-[9px] text-purple-600 font-semibold mb-0.5">Lote</div>

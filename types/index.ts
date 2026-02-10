@@ -28,6 +28,7 @@ export interface MovilData {
   tamanoLote?: number;        // Capacidad del móvil (desde tabla moviles)
   pedidosAsignados?: number;  // Cantidad de pedidos asignados (count desde tabla pedidos)
   matricula?: string;         // Matrícula del móvil
+  estadoDesc?: string;        // Descripción del estado (ACTIVO, INACTIVO, etc.)
 }
 
 export interface EmpresaFletera {
