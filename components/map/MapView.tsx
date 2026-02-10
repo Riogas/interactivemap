@@ -57,6 +57,9 @@ interface MapViewProps {
   isPlacingMarker?: boolean; // Prop externa para controlar el modo de colocación
   onPlacingMarkerChange?: (isPlacing: boolean) => void; // Callback para notificar cambios
   onMarkersChange?: (markers: CustomMarker[]) => void; // Callback para notificar cambios en los marcadores
+  allMoviles?: MovilData[]; // Todos los móviles (para selector en panel de animación)
+  selectedDate?: string; // Fecha seleccionada actual
+  onMovilDateChange?: (movilId: number, date: string) => void; // Cambiar móvil/fecha desde panel animación
 }
 
 function MapUpdater({ 
@@ -167,7 +170,8 @@ function MapUpdater({
       map.fitBounds(allBounds, { padding: [50, 50], maxZoom: 13 });
       hasInitialized.current = true;
     }
-  }, [map, moviles.length, pedidos?.length, customMarkers?.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, moviles.length, pedidos, customMarkers]);
 
   // Efecto para centrar el mapa SOLO cuando cambia la selección (no por actualizaciones GPS)
   useEffect(() => {
@@ -409,7 +413,10 @@ const MapView = memo(function MapView({
   focusedPuntoId, // ✅ NUEVO
   isPlacingMarker: externalIsPlacingMarker = false,
   onPlacingMarkerChange,
-  onMarkersChange
+  onMarkersChange,
+  allMoviles = [],
+  selectedDate = '',
+  onMovilDateChange,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -1367,12 +1374,9 @@ const MapView = memo(function MapView({
                 const fullPathCoordinates = filteredHistory.map(coord => [coord.coordX, coord.coordY] as [number, number]);
 
                 // 🚀 OPTIMIZACIÓN: Simplificar el path completo para mejorar rendimiento
-                const optimizedFullPath = useMemo(() => {
-                  if (fullPathCoordinates.length > 300) {
-                    return optimizePath(fullPathCoordinates, 200);
-                  }
-                  return fullPathCoordinates;
-                }, [fullPathCoordinates.length]);
+                const optimizedFullPath = fullPathCoordinates.length > 300
+                  ? optimizePath(fullPathCoordinates, 200)
+                  : fullPathCoordinates;
 
                 // Calcular cuántos puntos mostrar según el progreso de la animación
                 const totalPoints = optimizedFullPath.length;
@@ -1997,6 +2001,10 @@ const MapView = memo(function MapView({
           onTimeRangeChange={handleTimeRangeChange}
           simplifiedPath={simplifiedPath}
           onSimplifiedPathChange={setSimplifiedPath}
+          allMoviles={allMoviles}
+          selectedMovilId={selectedMovil}
+          selectedDate={selectedDate}
+          onMovilDateChange={onMovilDateChange}
         />
       )}
 

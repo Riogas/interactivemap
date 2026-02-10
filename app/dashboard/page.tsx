@@ -14,6 +14,7 @@ import { useUserPreferences, UserPreferences } from '@/components/ui/Preferences
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { usePedidosRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
+import TrackingModal from '@/components/ui/TrackingModal';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -56,6 +57,9 @@ function DashboardContent() {
   
   // Estado para marcadores personalizados
   const [isPlacingMarker, setIsPlacingMarker] = useState(false);
+  
+  // Estado para modal de tracking
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
   
   // Estado para puntos de interés
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
@@ -835,6 +839,53 @@ function DashboardContent() {
     setSelectedMovil(undefined); // Desactiva la animación
   }, []);
 
+  // Handler para confirmar tracking desde el modal
+  const handleTrackingConfirm = useCallback(async (movilId: number, date: string) => {
+    console.log(`🎬 Tracking desde modal: móvil ${movilId}, fecha ${date}`);
+    setIsTrackingModalOpen(false);
+    
+    // Si la fecha es diferente a la actual, actualizar y recargar historial
+    if (date !== selectedDate) {
+      setSelectedDate(date);
+    }
+    
+    // Seleccionar solo este móvil
+    if (!selectedMoviles.includes(movilId)) {
+      setSelectedMoviles([movilId]);
+    } else if (selectedMoviles.length > 1) {
+      setSelectedMoviles([movilId]);
+    }
+    
+    setPopupMovil(undefined);
+    setShowPendientes(false);
+    setShowCompletados(false);
+    
+    // Forzar recarga del historial con la fecha seleccionada
+    try {
+      const url = `/api/movil/${movilId}?startDate=${date}`;
+      const response = await fetch(url);
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log(`✅ Historial cargado: ${result.count} registros para fecha ${date}`);
+        setMoviles(prevMoviles => prevMoviles.map(movil => {
+          if (movil.id === movilId) {
+            return {
+              ...movil,
+              history: result.data,
+              currentPosition: result.data[0] || movil.currentPosition,
+            };
+          }
+          return movil;
+        }));
+      }
+    } catch (err) {
+      console.error(`❌ Error cargando historial:`, err);
+    }
+    
+    setSelectedMovil(movilId);
+  }, [selectedDate, selectedMoviles]);
+
   // Handler para click en pedido
   const handlePedidoClick = useCallback((pedidoId: number | undefined) => {
     setPopupPedido(pedidoId); // Abre/cierra popup de pedido
@@ -1088,8 +1139,30 @@ function DashboardContent() {
         }}
       />
 
-      {/* Botón para activar modo de colocación de marcadores */}
-      <div className="fixed top-3 right-16 z-[9999]">
+      {/* Botones flotantes: Tracking + POI */}
+      <div className="fixed top-3 right-16 z-[9999] flex items-center gap-2">
+        {/* Botón de Tracking */}
+        <button
+          onClick={() => setIsTrackingModalOpen(true)}
+          className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
+          title="Ver recorrido de un móvil"
+        >
+          <svg 
+            className="w-5 h-5 text-white"
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" 
+            />
+          </svg>
+        </button>
+
+        {/* Botón para activar modo de colocación de marcadores (POI) */}
         <button
           onClick={() => setIsPlacingMarker(!isPlacingMarker)}
           className={`
@@ -1123,6 +1196,16 @@ function DashboardContent() {
           </svg>
         </button>
       </div>
+
+      {/* Modal de Tracking */}
+      <TrackingModal
+        isOpen={isTrackingModalOpen}
+        onClose={() => setIsTrackingModalOpen(false)}
+        onConfirm={handleTrackingConfirm}
+        moviles={moviles}
+        selectedDate={selectedDate}
+        selectedMovil={selectedMoviles.length === 1 ? selectedMoviles[0] : undefined}
+      />
 
       {/* Indicador de conexión Realtime - Alineado a la derecha en el borde header/mapa */}
       <div className="absolute right-4 top-[68px] z-50">
@@ -1253,6 +1336,9 @@ function DashboardContent() {
                 isPlacingMarker={isPlacingMarker}
                 onPlacingMarkerChange={setIsPlacingMarker}
                 onMarkersChange={setPuntosInteres}
+                allMoviles={moviles}
+                selectedDate={selectedDate}
+                onMovilDateChange={handleTrackingConfirm}
               />
             </motion.div>
           </>
