@@ -70,7 +70,9 @@ export default function RouteAnimationControl({
   return (
     <motion.div
       initial={{ y: 100, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
+      animate={{ y: 0, opacity: isPlaying ? 0.35 : 1 }}
+      whileHover={{ opacity: 1 }}
+      transition={{ opacity: { duration: 0.4 } }}
       className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[1000]"
     >
       <div className="bg-white rounded-2xl shadow-2xl p-4 min-w-[600px] border-2 border-blue-500">
