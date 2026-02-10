@@ -26,6 +26,13 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
   const totalPendientes = (movil.pedidosPendientes || 0) + (movil.serviciosPendientes || 0);
   const canShowAnimation = selectedMovilesCount === 1; // Solo si hay exactamente 1 seleccionado
 
+  // Batería del móvil (por ahora valor por defecto, luego vendrá de API)
+  const batteryLevel = movil.batteryLevel ?? 85;
+  const batteryColor = batteryLevel > 60 ? '#22c55e' : batteryLevel > 25 ? '#f59e0b' : '#ef4444';
+  const batteryBg = batteryLevel > 60 ? 'from-green-50 to-emerald-50' : batteryLevel > 25 ? 'from-yellow-50 to-amber-50' : 'from-red-50 to-rose-50';
+  const batteryBorder = batteryLevel > 60 ? 'border-green-300' : batteryLevel > 25 ? 'border-yellow-300' : 'border-red-300';
+  const batteryTextColor = batteryLevel > 60 ? 'text-green-700' : batteryLevel > 25 ? 'text-yellow-700' : 'text-red-700';
+
   return (
     <AnimatePresence>
       <motion.div
@@ -79,6 +86,28 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   <div className="font-bold text-purple-900 text-xs">
                     {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Batería del Móvil */}
+            <div className={`bg-gradient-to-br ${batteryBg} rounded-lg p-2.5 border ${batteryBorder}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {/* Icono de batería realista */}
+                  <div className="relative flex items-center">
+                    <div className="w-10 h-5 rounded-[3px] border-2 relative overflow-hidden" style={{ borderColor: batteryColor }}>
+                      <div
+                        className="absolute left-0 top-0 bottom-0 rounded-[1px] transition-all duration-500"
+                        style={{ width: `${batteryLevel}%`, backgroundColor: batteryColor, opacity: 0.85 }}
+                      />
+                    </div>
+                    <div className="w-[3px] h-2.5 rounded-r-sm -ml-[1px]" style={{ backgroundColor: batteryColor }} />
+                  </div>
+                  <div className="text-[9px] font-semibold" style={{ color: batteryColor }}>Batería</div>
+                </div>
+                <div className={`text-lg font-bold ${batteryTextColor}`}>
+                  {batteryLevel}<span className="text-[10px] font-normal ml-0.5">%</span>
                 </div>
               </div>
             </div>
