@@ -37,6 +37,36 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [historialOpen, setHistorialOpen] = useState(false);
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [smsMessage, setSmsMessage] = useState('');
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsSent, setSmsSent] = useState(false);
+
+  // Enviar SMS al móvil
+  const handleSendSms = async () => {
+    if (!smsMessage.trim() || !movil) return;
+    setSmsSending(true);
+    try {
+      // TODO: Integrar con API real de envío SMS
+      const res = await fetch(`/api/movil-sms/${movil.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mensaje: smsMessage.trim() }),
+      });
+      if (res.ok) {
+        setSmsSent(true);
+        setSmsMessage('');
+        setTimeout(() => {
+          setSmsSent(false);
+          setSmsOpen(false);
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Error enviando SMS:', err);
+    } finally {
+      setSmsSending(false);
+    }
+  };
 
   // Fetch session data when popup opens
   useEffect(() => {
@@ -104,16 +134,92 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   <p className="text-[10px] opacity-90">Móvil #{movil.id}</p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="w-7 h-7 rounded-full bg-white hover:bg-gray-100 transition-all flex items-center justify-center shadow-md"
-              >
-                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* Botón enviar mensaje */}
+                <button
+                  onClick={() => { setSmsOpen(!smsOpen); setSmsSent(false); }}
+                  className={`w-7 h-7 rounded-full transition-all flex items-center justify-center shadow-md ${
+                    smsOpen ? 'bg-green-500 hover:bg-green-600' : 'bg-white bg-opacity-90 hover:bg-white'
+                  }`}
+                  title="Enviar mensaje al móvil"
+                >
+                  <svg className={`w-3.5 h-3.5 ${smsOpen ? 'text-white' : 'text-gray-700'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                </button>
+                {/* Botón cerrar */}
+                <button
+                  onClick={onClose}
+                  className="w-7 h-7 rounded-full bg-white hover:bg-gray-100 transition-all flex items-center justify-center shadow-md"
+                >
+                  <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Panel de envío de SMS - colapsable */}
+          <AnimatePresence>
+            {smsOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden border-t border-gray-200"
+              >
+                <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50">
+                  {smsSent ? (
+                    <div className="flex items-center justify-center gap-2 py-2">
+                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-sm font-semibold text-green-700">Mensaje enviado</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                        <span className="text-[10px] font-semibold text-green-700">Enviar mensaje al móvil #{movil.id}</span>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={smsMessage}
+                          onChange={(e) => setSmsMessage(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !smsSending) handleSendSms(); }}
+                          placeholder="Escribe tu mensaje..."
+                          maxLength={160}
+                          className="flex-1 text-xs border border-green-300 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent bg-white placeholder-gray-400"
+                          disabled={smsSending}
+                        />
+                        <button
+                          onClick={handleSendSms}
+                          disabled={!smsMessage.trim() || smsSending}
+                          className="px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-1 shadow-md hover:shadow-lg"
+                        >
+                          {smsSending ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] text-gray-400">{smsMessage.length}/160 caracteres</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Contenido */}
           <div className="p-3 space-y-2.5">
