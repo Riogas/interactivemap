@@ -1364,6 +1364,7 @@ const MapView = memo(function MapView({
       <MapContainer
         center={defaultCenter}
         zoom={13}
+        maxZoom={19}
         className={`h-full w-full ${isPlacingMarker ? 'cursor-crosshair' : ''} ${isHighDensity ? 'high-density' : ''}`}
         zoomControl={true}
         // 🚀 OPTIMIZACIONES DE PERFORMANCE
