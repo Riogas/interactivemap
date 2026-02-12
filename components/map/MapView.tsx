@@ -291,6 +291,7 @@ interface AnimationFollowerProps {
   isAnimating: boolean;
   startTime: string;
   endTime: string;
+  unifiedTimeRange?: { minTime: number; maxTime: number } | null;
 }
 
 function AnimationFollower({ 
@@ -300,7 +301,8 @@ function AnimationFollower({
   animationProgress, 
   isAnimating,
   startTime,
-  endTime
+  endTime,
+  unifiedTimeRange
 }: AnimationFollowerProps) {
   const map = useMap();
   const lastFollowedPoint = useRef<string | null>(null);
@@ -324,11 +326,35 @@ function AnimationFollower({
       }
     });
 
+    // Calcular el tiempo actual de la animación
+    const currentAnimTime = unifiedTimeRange
+      ? unifiedTimeRange.minTime + (animationProgress / 100) * (unifiedTimeRange.maxTime - unifiedTimeRange.minTime)
+      : null;
+
     const getAnimatedPoint = (movilId: number): [number, number] | null => {
       const movilData = moviles.find(m => m.id === movilId);
       if (!movilData?.history || movilData.history.length === 0) return null;
       const filtered = timeFilter(movilData.history);
       if (filtered.length === 0) return null;
+
+      // Si tenemos rango unificado, usar tiempo real
+      if (currentAnimTime !== null) {
+        // filtered está ordenado del más reciente (0) al más antiguo (last)
+        // Buscar las coordenadas cuyo timestamp <= currentAnimTime
+        // Recorrer desde el final (más antiguo) buscando la última que entra en el rango
+        let latestVisible: any = null;
+        for (let i = filtered.length - 1; i >= 0; i--) {
+          const ts = new Date(filtered[i].fechaInsLog).getTime();
+          if (ts <= currentAnimTime) {
+            latestVisible = filtered[i];
+          } else {
+            break; // Ya pasamos del tiempo actual (están más recientes)
+          }
+        }
+        return latestVisible ? [latestVisible.coordX, latestVisible.coordY] : null;
+      }
+
+      // Fallback: progreso por porcentaje (cuando hay 1 solo móvil)
       const fullPath = filtered.map((c: any) => [c.coordX, c.coordY] as [number, number]);
       const optimized = fullPath.length > 300 ? optimizePath(fullPath, 200) : fullPath;
       const total = optimized.length;
@@ -347,7 +373,6 @@ function AnimationFollower({
     lastFollowedPoint.current = pointsKey;
 
     if (point1 && point2) {
-      // Dos móviles: fitBounds para mantener ambos visibles
       const bounds = L.latLngBounds(
         [L.latLng(point1[0], point1[1]), L.latLng(point2[0], point2[1])]
       ).pad(0.15);
@@ -356,7 +381,7 @@ function AnimationFollower({
       const center = point1 || point2!;
       map.setView(center, map.getZoom(), { animate: false });
     }
-  }, [map, isAnimating, selectedMovil, secondaryMovil, animationProgress, moviles, startTime, endTime]);
+  }, [map, isAnimating, selectedMovil, secondaryMovil, animationProgress, moviles, startTime, endTime, unifiedTimeRange]);
 
   return null;
 }
@@ -839,6 +864,48 @@ const MapView = memo(function MapView({
 
     return deduplicados;
   }, [moviles, selectedMovil, secondaryAnimMovil]);
+
+  // 🕐 Rango de tiempo unificado para animación sincronizada de 2 móviles
+  // Recorre los historiales de ambos móviles y calcula el minTime/maxTime global
+  const unifiedTimeRange = useMemo(() => {
+    const animMovilIds = [selectedMovil, secondaryAnimMovil].filter(Boolean) as number[];
+    if (animMovilIds.length < 2) return null; // Solo necesario para 2 móviles
+
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+
+    for (const movilId of animMovilIds) {
+      const movilData = moviles.find(m => m.id === movilId);
+      if (!movilData?.history) continue;
+      const filtered = filterHistoryByTime(movilData.history);
+      for (const coord of filtered) {
+        if (!coord.fechaInsLog) continue;
+        const ts = new Date(coord.fechaInsLog).getTime();
+        if (!isNaN(ts)) {
+          if (ts < minTime) minTime = ts;
+          if (ts > maxTime) maxTime = ts;
+        }
+      }
+    }
+
+    if (minTime === Infinity || maxTime === -Infinity || minTime >= maxTime) return null;
+    return { minTime, maxTime };
+  }, [moviles, selectedMovil, secondaryAnimMovil, startTime, endTime]);
+
+  // Tiempo actual de la animación (derivado del progreso y rango unificado)
+  const currentAnimTime = useMemo(() => {
+    if (!unifiedTimeRange) return null;
+    return unifiedTimeRange.minTime + (animationProgress / 100) * (unifiedTimeRange.maxTime - unifiedTimeRange.minTime);
+  }, [unifiedTimeRange, animationProgress]);
+
+  // String formateado para mostrar en el control de animación
+  const currentAnimTimeStr = useMemo(() => {
+    if (currentAnimTime === null) return '';
+    try {
+      const d = new Date(currentAnimTime);
+      return d.toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch { return ''; }
+  }, [currentAnimTime]);
 
   // Extraer pedidos completados del móvil enfocado (para mostrar sin animación)
   const pedidosCompletadosFocused = useMemo(() => {
@@ -1440,33 +1507,70 @@ const MapView = memo(function MapView({
                   ? optimizePath(fullPathCoordinates, 200)
                   : fullPathCoordinates;
 
-                // Calcular cuántos puntos mostrar según el progreso de la animación
                 const totalPoints = optimizedFullPath.length;
-                const visiblePointsCount = Math.max(
-                  1,
-                  Math.ceil((animationProgress / 100) * totalPoints)
-                );
-                
-                // Coordenadas visibles durante la animación (desde el final hacia el principio, orden invertido)
-                const pathCoordinates = isAnimating || animationProgress > 0
-                  ? optimizedFullPath.slice(Math.max(0, totalPoints - visiblePointsCount))
-                  : optimizedFullPath;
+                const duringAnimation = isAnimating || animationProgress > 0;
 
-                // Punto animado actual (el más reciente de los visibles) — desde optimizedFullPath
-                const animatedPointIndex = isAnimating || animationProgress > 0
-                  ? totalPoints - visiblePointsCount
-                  : 0;
+                // ========== CÁLCULO DE VISIBILIDAD ==========
+                // Si hay rango unificado (2 móviles), usar tiempo real; sino, porcentaje
+                let visiblePointsCount: number;
+                let pathCoordinates: [number, number][];
+                let animatedCurrentCoord: [number, number] | null = null;
+                let filteredHistoryAnimatedIndex: number = 0;
+                let movilVisible = true; // ¿El móvil ya apareció en la línea de tiempo?
 
-                // Coordenada exacta del punto animado (desde optimizedFullPath, misma fuente que AnimationFollower)
-                const animatedCurrentCoord = (isAnimating || animationProgress > 0) && animatedPointIndex >= 0 && animatedPointIndex < optimizedFullPath.length
-                  ? optimizedFullPath[animatedPointIndex]
-                  : null;
+                if (duringAnimation && currentAnimTime !== null) {
+                  // === MODO TIEMPO REAL (2 móviles) ===
+                  // filteredHistory está ordenado: index 0 = más reciente, last = más antiguo
+                  // Contar cuántas coordenadas tienen timestamp <= currentAnimTime
+                  // (o sea, ya "sucedieron" en la línea de tiempo)
+                  const filteredHistoryTotal = filteredHistory.length;
+                  let visibleHistoryCount = 0;
+                  for (let i = filteredHistoryTotal - 1; i >= 0; i--) {
+                    const ts = new Date(filteredHistory[i].fechaInsLog).getTime();
+                    if (ts <= currentAnimTime) {
+                      visibleHistoryCount++;
+                    } else {
+                      break;
+                    }
+                  }
 
-                // Índice equivalente en filteredHistory para ocultar puntos no recorridos
-                const filteredHistoryTotal = filteredHistory.length;
-                const filteredHistoryAnimatedIndex = isAnimating || animationProgress > 0
-                  ? Math.max(0, filteredHistoryTotal - Math.ceil((animationProgress / 100) * filteredHistoryTotal))
-                  : 0;
+                  if (visibleHistoryCount === 0) {
+                    // Este móvil aún no tiene coordenadas en el tiempo actual
+                    movilVisible = false;
+                    visiblePointsCount = 0;
+                    pathCoordinates = [];
+                    filteredHistoryAnimatedIndex = filteredHistoryTotal;
+                  } else {
+                    // Mapear la proporción de historial visible a optimizedFullPath
+                    const ratio = visibleHistoryCount / filteredHistoryTotal;
+                    visiblePointsCount = Math.max(1, Math.ceil(ratio * totalPoints));
+                    pathCoordinates = optimizedFullPath.slice(Math.max(0, totalPoints - visiblePointsCount));
+                    
+                    const animatedPointIndex = totalPoints - visiblePointsCount;
+                    animatedCurrentCoord = animatedPointIndex >= 0 && animatedPointIndex < totalPoints
+                      ? optimizedFullPath[animatedPointIndex]
+                      : null;
+                    
+                    filteredHistoryAnimatedIndex = Math.max(0, filteredHistoryTotal - visibleHistoryCount);
+                  }
+                } else if (duringAnimation) {
+                  // === MODO PORCENTAJE (1 móvil) ===
+                  visiblePointsCount = Math.max(1, Math.ceil((animationProgress / 100) * totalPoints));
+                  pathCoordinates = optimizedFullPath.slice(Math.max(0, totalPoints - visiblePointsCount));
+                  const animatedPointIndex = totalPoints - visiblePointsCount;
+                  animatedCurrentCoord = animatedPointIndex >= 0 && animatedPointIndex < totalPoints
+                    ? optimizedFullPath[animatedPointIndex]
+                    : null;
+                  const filteredHistoryTotal = filteredHistory.length;
+                  filteredHistoryAnimatedIndex = Math.max(0, filteredHistoryTotal - Math.ceil((animationProgress / 100) * filteredHistoryTotal));
+                } else {
+                  // === SIN ANIMACIÓN ===
+                  visiblePointsCount = totalPoints;
+                  pathCoordinates = optimizedFullPath;
+                }
+
+                // Si el móvil aún no apareció en la línea de tiempo, no renderizar nada
+                if (!movilVisible) return null;
 
                 return (
                   <div key={movil.id}>
@@ -2093,6 +2197,7 @@ const MapView = memo(function MapView({
           isAnimating={isAnimating}
           startTime={startTime}
           endTime={endTime}
+          unifiedTimeRange={unifiedTimeRange}
         />
 
         {/* Handler para capturar clics en el mapa */}
@@ -2196,6 +2301,7 @@ const MapView = memo(function MapView({
           onSecondaryMovilChange={onSecondaryAnimMovilChange}
           selectedDate={selectedDate}
           onMovilDateChange={onMovilDateChange}
+          currentAnimTimeStr={currentAnimTimeStr}
         />
       )}
 

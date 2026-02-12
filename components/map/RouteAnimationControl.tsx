@@ -24,6 +24,7 @@ interface RouteAnimationControlProps {
   onSecondaryMovilChange?: (movilId: number | undefined) => void;
   selectedDate?: string;
   onMovilDateChange?: (movilId: number, date: string) => void;
+  currentAnimTimeStr?: string; // Hora actual de la animación (modo timeline unificado)
 }
 
 const SPEED_OPTIONS = [
@@ -55,6 +56,7 @@ export default function RouteAnimationControl({
   onSecondaryMovilChange,
   selectedDate = '',
   onMovilDateChange,
+  currentAnimTimeStr = '',
 }: RouteAnimationControlProps) {
   const [movilSearch, setMovilSearch] = useState('');
   const [isMovilDropdownOpen, setIsMovilDropdownOpen] = useState(false);
@@ -102,6 +104,11 @@ export default function RouteAnimationControl({
             <h3 className="font-bold text-gray-800">Animación del Recorrido</h3>
           </div>
           <div className="flex items-center gap-3">
+            {currentAnimTimeStr && (
+              <div className="text-xs font-bold text-blue-700 bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200">
+                🕓 {currentAnimTimeStr}
+              </div>
+            )}
             <div className="text-xs text-gray-600 font-semibold">
               {progress.toFixed(1)}% completado
             </div>
