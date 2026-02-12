@@ -76,7 +76,15 @@ function DashboardContent() {
   const [empresas, setEmpresas] = useState<EmpresaFleteraSupabase[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
   
-  // 🆕 Estado para filtros de móviles (recibidos desde MovilSelector)
+  // � Móviles filtrados por empresas fleteras seleccionadas
+  const movilesFiltered = useMemo(() => {
+    if (selectedEmpresas.length === 0) return moviles;
+    return moviles.filter(m => 
+      m.empresaFleteraId && selectedEmpresas.includes(m.empresaFleteraId)
+    );
+  }, [moviles, selectedEmpresas]);
+  
+  // �🆕 Estado para filtros de móviles (recibidos desde MovilSelector)
   const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
     capacidad: 'all', 
     estado: [] 
@@ -491,17 +499,18 @@ function DashboardContent() {
     // 1. Hay móviles cargados
     // 2. No hay ningún móvil seleccionado (primera carga o después de limpiar)
     // 3. Es la primera carga (isInitialLoad es false significa que ya terminó la carga inicial)
-    if (moviles.length > 0 && selectedMoviles.length === 0 && !isInitialLoad) {
-      console.log('✅ Auto-selección: Marcando todos los móviles por defecto:', moviles.length);
-      setSelectedMoviles(moviles.map(m => m.id));
+    if (movilesFiltered.length > 0 && selectedMoviles.length === 0 && !isInitialLoad) {
+      console.log('✅ Auto-selección: Marcando todos los móviles por defecto:', movilesFiltered.length);
+      setSelectedMoviles(movilesFiltered.map(m => m.id));
     }
-  }, [moviles.length, isInitialLoad]); // Depende de la cantidad de móviles y si es carga inicial
+  }, [movilesFiltered.length, isInitialLoad]); // Depende de la cantidad de móviles y si es carga inicial
 
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
     if (!isLoadingEmpresas) {
       console.log('🏢 Empresas o fecha cambiaron - Forzando recarga completa');
       setIsInitialLoad(true); // Forzar recarga completa cuando cambian las empresas o la fecha
+      setSelectedMoviles([]); // Limpiar selección para que auto-selección re-seleccione los filtrados
       fetchPositions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -811,9 +820,9 @@ function DashboardContent() {
 
   // Handler para seleccionar todos los móviles
   const handleSelectAll = useCallback(() => {
-    setSelectedMoviles(moviles.map(m => m.id));
+    setSelectedMoviles(movilesFiltered.map(m => m.id));
     setFocusedMovil(undefined);
-  }, [moviles]);
+  }, [movilesFiltered]);
 
   // Handler para deseleccionar todos los móviles
   const handleClearAll = useCallback(() => {
@@ -1217,7 +1226,7 @@ function DashboardContent() {
         <NavbarSimple>
           {/* Dashboard Indicators Component */}
           <DashboardIndicators
-            moviles={moviles}
+            moviles={movilesFiltered}
             pedidos={pedidosCompletos}
             services={servicesCompletos}
             selectedDate={selectedDate}
@@ -1301,7 +1310,7 @@ function DashboardContent() {
         isOpen={isTrackingModalOpen}
         onClose={() => setIsTrackingModalOpen(false)}
         onConfirm={handleTrackingConfirm}
-        moviles={moviles}
+        moviles={movilesFiltered}
         selectedDate={selectedDate}
         selectedMovil={selectedMoviles.length === 1 ? selectedMoviles[0] : undefined}
       />
@@ -1364,7 +1373,7 @@ function DashboardContent() {
               {/* Selector de Móviles - Full height */}
               <div className="flex-1 overflow-hidden">
                 <MovilSelector
-                  moviles={markInactiveMoviles(moviles)}
+                  moviles={markInactiveMoviles(movilesFiltered)}
                   selectedMoviles={selectedMoviles}
                   onToggleMovil={handleToggleMovil}
                   onSelectAll={handleSelectAll}
@@ -1418,7 +1427,7 @@ function DashboardContent() {
               className="w-full h-full"
             >
               <MapView 
-                moviles={applyAdvancedFilters(markInactiveMoviles(moviles)).filter(m => selectedMoviles.includes(m.id) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
+                moviles={applyAdvancedFilters(markInactiveMoviles(movilesFiltered)).filter(m => selectedMoviles.includes(m.id) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
                 popupMovil={popupMovil}
@@ -1442,7 +1451,7 @@ function DashboardContent() {
                 isPlacingMarker={isPlacingMarker}
                 onPlacingMarkerChange={setIsPlacingMarker}
                 onMarkersChange={setPuntosInteres}
-                allMoviles={moviles}
+                allMoviles={movilesFiltered}
                 selectedDate={selectedDate}
                 onMovilDateChange={handleTrackingConfirm}
               />
