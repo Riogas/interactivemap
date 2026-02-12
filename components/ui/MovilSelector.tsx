@@ -510,7 +510,7 @@ export default function MovilSelector({
                 </div>
                 <div className="flex items-center gap-1">
                   {/* Botón de ayuda */}
-                  {category.key === 'moviles' && (
+                  {(category.key === 'moviles' || category.key === 'pedidos') && (
                     <span
                       role="button"
                       tabIndex={0}
