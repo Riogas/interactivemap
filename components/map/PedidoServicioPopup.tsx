@@ -10,6 +10,8 @@ interface PedidoServicioPopupProps {
   onClose: () => void;
 }
 
+import { getEstadoDescripcion } from '@/utils/estadoPedido';
+
 export default function PedidoServicioPopup({ item, onClose }: PedidoServicioPopupProps) {
   if (!item) return null;
 
@@ -75,13 +77,13 @@ export default function PedidoServicioPopup({ item, onClose }: PedidoServicioPop
                 <div className="flex items-center gap-2">
                   <div className={`w-3 h-3 rounded-full ${item.estado === 1 ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
                   <div className="font-bold text-green-900">
-                    {item.estado === 1 ? 'Pendiente' : `Estado ${item.estado}`}
+                    {getEstadoDescripcion(item.subestado, String(item.estado))}
                   </div>
                 </div>
               </div>
               <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3">
                 <div className="text-xs text-gray-600 mb-1">SubEstado</div>
-                <div className="font-bold text-purple-900">{item.subestado}</div>
+                <div className="font-bold text-purple-900">{getEstadoDescripcion(item.subestado, String(item.estado))}</div>
               </div>
             </div>
 

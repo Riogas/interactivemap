@@ -268,6 +268,6 @@ export interface ServiceFilters {
 }
 
 export interface PedidoFilters {
-  atraso: 'all' | 'sin_atraso' | '1-3_dias' | '4-7_dias' | '7+_dias';
+  atraso: string[]; // Multi-selección: 'en_hora' | 'limite_cercana' | 'atrasado' | 'muy_atrasado' | 'sin_hora'
   tipoServicio: 'all' | 'urgente' | 'especial' | 'normal';
 }

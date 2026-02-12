@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, CustomMarker } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
+import { getEstadoDescripcion } from '@/utils/estadoPedido';
 import clsx from 'clsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import FilterBar from './FilterBar';
@@ -63,7 +64,7 @@ export default function MovilSelector({
   });
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: 'all' });
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ 
-    atraso: 'all', 
+    atraso: [], 
     tipoServicio: 'all' 
   });
 
@@ -168,6 +169,24 @@ export default function MovilSelector({
       );
     }
     
+    // Filtrar por atraso (multi-selección)
+    if (pedidosFilters.atraso.length > 0) {
+      result = result.filter(pedido => {
+        const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
+        const info = getDelayInfo(delayMins);
+        // Mapear label de getDelayInfo a value del filtro
+        const categoryMap: Record<string, string> = {
+          'En Hora': 'en_hora',
+          'Hora Límite Cercana': 'limite_cercana',
+          'Atrasado': 'atrasado',
+          'Muy Atrasado': 'muy_atrasado',
+          'Sin hora': 'sin_hora',
+        };
+        const category = categoryMap[info.label] || 'sin_hora';
+        return pedidosFilters.atraso.includes(category);
+      });
+    }
+    
     // Ordenar por mayor atraso primero (menor delay = más atrasado)
     const sorted = result.sort((a, b) => {
       const delayA = computeDelayMinutes(a.fch_hora_max_ent_comp);
@@ -246,18 +265,6 @@ export default function MovilSelector({
           searchPlaceholder: 'Buscar pedido...',
           filters: [
             {
-              id: 'atraso',
-              label: 'Atraso',
-              options: [
-                { value: 'all', label: 'Todos' },
-                { value: 'sin_atraso', label: 'Sin atraso' },
-                { value: '1-3_dias', label: '1-3 días' },
-                { value: '4-7_dias', label: '4-7 días' },
-                { value: '7+_dias', label: 'Más de 7 días' },
-              ],
-              value: pedidosFilters.atraso,
-            },
-            {
               id: 'tipoServicio',
               label: 'Tipo de Servicio',
               options: [
@@ -268,16 +275,42 @@ export default function MovilSelector({
               value: pedidosFilters.tipoServicio,
             }
           ],
+          multiSelectFilters: [
+            {
+              id: 'atraso',
+              label: 'Estado de Atraso',
+              options: [
+                { value: 'muy_atrasado', label: 'Muy Atrasado', color: '#EF4444' },
+                { value: 'atrasado', label: 'Atrasado', color: '#EC4899' },
+                { value: 'limite_cercana', label: 'Hora Límite Cercana', color: '#EAB308' },
+                { value: 'en_hora', label: 'En Hora', color: '#22C55E' },
+                { value: 'sin_hora', label: 'Sin hora', color: '#6B7280' },
+              ],
+              values: pedidosFilters.atraso,
+            }
+          ],
+          infoBadges: selectedMoviles.length > 0
+            ? [{
+                label: selectedMoviles.length === moviles.length
+                  ? '🚗 Móviles: Todos'
+                  : `🚗 Móviles: ${selectedMoviles.length <= 5 ? selectedMoviles.join(', ') : `${selectedMoviles.slice(0, 5).join(', ')} +${selectedMoviles.length - 5}`}`,
+                color: 'bg-indigo-100 text-indigo-700',
+                onClear: onClearAll,
+              }]
+            : [],
           onFilterChange: (filterId: string, value: string) => {
-            if (filterId === 'atraso') {
-              setPedidosFilters(prev => ({ 
-                ...prev, 
-                atraso: value as 'all' | 'sin_atraso' | '1-3_dias' | '4-7_dias' | '7+_dias' 
-              }));
-            } else if (filterId === 'tipoServicio') {
+            if (filterId === 'tipoServicio') {
               setPedidosFilters(prev => ({ 
                 ...prev, 
                 tipoServicio: value as 'all' | 'urgente' | 'especial' 
+              }));
+            }
+          },
+          onMultiSelectFilterChange: (filterId: string, values: string[]) => {
+            if (filterId === 'atraso') {
+              setPedidosFilters(prev => ({ 
+                ...prev, 
+                atraso: values 
               }));
             }
           }
@@ -313,6 +346,57 @@ export default function MovilSelector({
           {selectedMoviles.length} seleccionado{selectedMoviles.length !== 1 ? 's' : ''}
         </span>
       </h2>
+
+      {/* Badges de filtros activos - siempre visibles */}
+      {(() => {
+        const badges: { label: string; color?: string; onClear?: () => void }[] = [];
+        
+        // Badge de móviles seleccionados
+        if (selectedMoviles.length > 0) {
+          badges.push({
+            label: selectedMoviles.length === moviles.length
+              ? '🚗 Móviles: Todos'
+              : `🚗 Móviles: ${selectedMoviles.length <= 5 ? selectedMoviles.join(', ') : `${selectedMoviles.slice(0, 5).join(', ')} +${selectedMoviles.length - 5}`}`,
+            color: 'bg-indigo-100 text-indigo-700',
+            onClear: onClearAll,
+          });
+        }
+        
+        // Badge de filtros de atraso
+        if (pedidosFilters.atraso.length > 0) {
+          const atrasosLabels: Record<string, string> = {
+            'muy_atrasado': 'Muy Atrasado',
+            'atrasado': 'Atrasado',
+            'limite_cercana': 'Hora Límite Cercana',
+            'en_hora': 'En Hora',
+            'sin_hora': 'Sin hora',
+          };
+          badges.push({
+            label: `Estado de Atraso: ${pedidosFilters.atraso.map(v => atrasosLabels[v] || v).join(', ')}`,
+            color: 'bg-green-100 text-green-700',
+            onClear: () => setPedidosFilters(prev => ({ ...prev, atraso: [] })),
+          });
+        }
+        
+        if (badges.length === 0) return null;
+        
+        return (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {badges.map((badge, i) => (
+              <span key={i} className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${badge.color || 'bg-gray-100 text-gray-700'}`}>
+                {badge.label}
+                {badge.onClear && (
+                  <button onClick={badge.onClear} className="ml-0.5 hover:opacity-70">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
       
       {/* Buscador y Filtros Contextuales - Cambian según la categoría activa */}
       <AnimatePresence mode="wait">
@@ -331,7 +415,9 @@ export default function MovilSelector({
               onSearchChange={contextualFilters.onSearchChange}
               searchPlaceholder={contextualFilters.searchPlaceholder}
               filters={contextualFilters.filters}
+              multiSelectFilters={(contextualFilters as any).multiSelectFilters}
               onFilterChange={contextualFilters.onFilterChange}
+              onMultiSelectFilterChange={(contextualFilters as any).onMultiSelectFilterChange}
               customFilters={
                 activeCategory === 'moviles' ? (
                   <div className="mt-3 pt-3 border-t border-gray-300">
