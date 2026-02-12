@@ -865,48 +865,6 @@ const MapView = memo(function MapView({
     return deduplicados;
   }, [moviles, selectedMovil, secondaryAnimMovil]);
 
-  // 🕐 Rango de tiempo unificado para animación sincronizada de 2 móviles
-  // Recorre los historiales de ambos móviles y calcula el minTime/maxTime global
-  const unifiedTimeRange = useMemo(() => {
-    const animMovilIds = [selectedMovil, secondaryAnimMovil].filter(Boolean) as number[];
-    if (animMovilIds.length < 2) return null; // Solo necesario para 2 móviles
-
-    let minTime = Infinity;
-    let maxTime = -Infinity;
-
-    for (const movilId of animMovilIds) {
-      const movilData = moviles.find(m => m.id === movilId);
-      if (!movilData?.history) continue;
-      const filtered = filterHistoryByTime(movilData.history);
-      for (const coord of filtered) {
-        if (!coord.fechaInsLog) continue;
-        const ts = new Date(coord.fechaInsLog).getTime();
-        if (!isNaN(ts)) {
-          if (ts < minTime) minTime = ts;
-          if (ts > maxTime) maxTime = ts;
-        }
-      }
-    }
-
-    if (minTime === Infinity || maxTime === -Infinity || minTime >= maxTime) return null;
-    return { minTime, maxTime };
-  }, [moviles, selectedMovil, secondaryAnimMovil, startTime, endTime]);
-
-  // Tiempo actual de la animación (derivado del progreso y rango unificado)
-  const currentAnimTime = useMemo(() => {
-    if (!unifiedTimeRange) return null;
-    return unifiedTimeRange.minTime + (animationProgress / 100) * (unifiedTimeRange.maxTime - unifiedTimeRange.minTime);
-  }, [unifiedTimeRange, animationProgress]);
-
-  // String formateado para mostrar en el control de animación
-  const currentAnimTimeStr = useMemo(() => {
-    if (currentAnimTime === null) return '';
-    try {
-      const d = new Date(currentAnimTime);
-      return d.toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch { return ''; }
-  }, [currentAnimTime]);
-
   // Extraer pedidos completados del móvil enfocado (para mostrar sin animación)
   const pedidosCompletadosFocused = useMemo(() => {
     if (!focusedMovil || !showCompletados) {
@@ -1349,6 +1307,48 @@ const MapView = memo(function MapView({
       }
     });
   };
+
+  // 🕐 Rango de tiempo unificado para animación sincronizada de 2 móviles
+  // Recorre los historiales de ambos móviles y calcula el minTime/maxTime global
+  const unifiedTimeRange = useMemo(() => {
+    const animMovilIds = [selectedMovil, secondaryAnimMovil].filter(Boolean) as number[];
+    if (animMovilIds.length < 2) return null; // Solo necesario para 2 móviles
+
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+
+    for (const movilId of animMovilIds) {
+      const movilData = moviles.find(m => m.id === movilId);
+      if (!movilData?.history) continue;
+      const filtered = filterHistoryByTime(movilData.history);
+      for (const coord of filtered) {
+        if (!coord.fechaInsLog) continue;
+        const ts = new Date(coord.fechaInsLog).getTime();
+        if (!isNaN(ts)) {
+          if (ts < minTime) minTime = ts;
+          if (ts > maxTime) maxTime = ts;
+        }
+      }
+    }
+
+    if (minTime === Infinity || maxTime === -Infinity || minTime >= maxTime) return null;
+    return { minTime, maxTime };
+  }, [moviles, selectedMovil, secondaryAnimMovil, startTime, endTime]);
+
+  // Tiempo actual de la animación (derivado del progreso y rango unificado)
+  const currentAnimTime = useMemo(() => {
+    if (!unifiedTimeRange) return null;
+    return unifiedTimeRange.minTime + (animationProgress / 100) * (unifiedTimeRange.maxTime - unifiedTimeRange.minTime);
+  }, [unifiedTimeRange, animationProgress]);
+
+  // String formateado para mostrar en el control de animación
+  const currentAnimTimeStr = useMemo(() => {
+    if (currentAnimTime === null) return '';
+    try {
+      const d = new Date(currentAnimTime);
+      return d.toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch { return ''; }
+  }, [currentAnimTime]);
 
   // Efecto de animación
   useEffect(() => {
