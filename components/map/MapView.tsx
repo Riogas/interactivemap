@@ -1535,6 +1535,18 @@ const MapView = memo(function MapView({
                   pathCoordinates = optimizedFullPath;
                 }
 
+                // Hora del punto animado (para etiqueta del marcador en movimiento)
+                let animatedCurrentTimeStr = '';
+                if (duringAnimation && animatedCurrentCoord) {
+                  const animTimeCoord = filteredHistory[filteredHistoryAnimatedIndex];
+                  if (animTimeCoord?.fechaInsLog) {
+                    try {
+                      const d = new Date(animTimeCoord.fechaInsLog);
+                      animatedCurrentTimeStr = d.toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' });
+                    } catch { /* ignore */ }
+                  }
+                }
+
                 // Si el móvil aún no apareció en la línea de tiempo, no renderizar nada
                 if (!movilVisible) return null;
 
@@ -1685,7 +1697,7 @@ const MapView = memo(function MapView({
                                 box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                                 pointer-events: none;
                                 font-family: system-ui, -apple-system, sans-serif;
-                              ">🚗 #${movil.id}</div>
+                              ">🚗 #${movil.id}${animatedCurrentTimeStr ? ' - ' + animatedCurrentTimeStr : ''}</div>
                             </div>
                           `,
                           iconSize: [18, 18],
@@ -1718,18 +1730,9 @@ const MapView = memo(function MapView({
                       // Opacidad que decrece con antigüedad
                       const opacity = 0.5 + (0.5 * (totalPoints - index) / totalPoints);
                       
-                      // Mostrar etiqueta: siempre en primero/último, y HORA durante animación
+                      // Mostrar etiqueta: siempre en primero/último
                       const showLabel = isFirst || isLast;
                       const pointNumber = totalPoints - index;
-
-                      // Hora del punto GPS (para etiqueta durante animación)
-                      let timeLabel = '';
-                      if (duringAnimation && coord.fechaInsLog) {
-                        try {
-                          const d = new Date(coord.fechaInsLog);
-                          timeLabel = d.toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' });
-                        } catch { timeLabel = ''; }
-                      }
                       
                       return (
                         <OptimizedMarker
@@ -1775,27 +1778,6 @@ const MapView = memo(function MapView({
                                     pointer-events: none;
                                     font-family: system-ui, -apple-system, sans-serif;
                                   ">${isFirst ? `🎯 #${movil.id} ACTUAL` : isLast ? `🏁 #${movil.id} INICIO` : `#${pointNumber}`}</div>
-                                ` : ''}
-
-                                ${(duringAnimation && timeLabel && !isFirst && !isLast) ? `
-                                  <!-- Hora GPS durante animación -->
-                                  <div style="
-                                    position: absolute;
-                                    top: ${size + 2}px;
-                                    left: 50%;
-                                    transform: translateX(-50%);
-                                    background: ${routeColorLabel};
-                                    color: white;
-                                    border-radius: 4px;
-                                    padding: 1px 4px;
-                                    font-size: 8px;
-                                    font-weight: 600;
-                                    white-space: nowrap;
-                                    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-                                    pointer-events: none;
-                                    font-family: system-ui, -apple-system, sans-serif;
-                                    opacity: 0.85;
-                                  ">${timeLabel}</div>
                                 ` : ''}
                               </div>
                             `,
