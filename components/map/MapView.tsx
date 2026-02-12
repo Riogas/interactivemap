@@ -1042,27 +1042,27 @@ const MapView = memo(function MapView({
       className: '',
       html: `
         <div style="
-          width: 32px;
-          height: 32px;
+          width: 20px;
+          height: 20px;
           position: absolute;
-          left: -16px;
-          top: -16px;
+          left: -10px;
+          top: -10px;
           background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
-          border: 3px solid white;
-          border-radius: 8px;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px rgba(249, 115, 22, 0.3);
+          border: 2px solid white;
+          border-radius: 5px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px rgba(249, 115, 22, 0.3);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 18px;
+          font-size: 11px;
           cursor: pointer;
           transition: transform 0.2s;
         " 
         onmouseover="this.style.transform='scale(1.15)'"
         onmouseout="this.style.transform='scale(1)'">📦</div>
       `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
     }));
   }, []);
 
@@ -1078,27 +1078,27 @@ const MapView = memo(function MapView({
         className: '',
         html: `
           <div style="
-            width: 32px;
-            height: 32px;
+            width: 20px;
+            height: 20px;
             position: absolute;
-            left: -16px;
-            top: -16px;
+            left: -10px;
+            top: -10px;
             background: linear-gradient(135deg, ${info.color} 0%, ${info.lightColor} 100%);
-            border: 3px solid white;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px ${info.shadowColor};
+            border: 2px solid white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px ${info.shadowColor};
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
+            font-size: 11px;
             cursor: pointer;
             transition: transform 0.2s;
           " 
           onmouseover="this.style.transform='scale(1.15)'"
           onmouseout="this.style.transform='scale(1)'">📦</div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
       });
     });
   }, []);
@@ -1109,27 +1109,27 @@ const MapView = memo(function MapView({
       className: '',
       html: `
         <div style="
-          width: 32px;
-          height: 32px;
+          width: 20px;
+          height: 20px;
           position: absolute;
-          left: -16px;
-          top: -16px;
+          left: -10px;
+          top: -10px;
           background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
-          border: 3px solid white;
-          border-radius: 8px;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 0 2px rgba(239, 68, 68, 0.3);
+          border: 2px solid white;
+          border-radius: 5px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px rgba(239, 68, 68, 0.3);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 18px;
+          font-size: 11px;
           cursor: pointer;
           transition: transform 0.2s;
         "
         onmouseover="this.style.transform='scale(1.15)'"
         onmouseout="this.style.transform='scale(1)'">🔧</div>
       `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
     }));
   }, []);
 
@@ -1143,19 +1143,19 @@ const MapView = memo(function MapView({
         className: '',
         html: `
           <div style="
-            width: 28px;
-            height: 28px;
+            width: 18px;
+            height: 18px;
             position: absolute;
-            left: -14px;
-            top: -14px;
+            left: -9px;
+            top: -9px;
             background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-            border: 3px solid white;
+            border: 2px solid white;
           border-radius: 50%;
-          box-shadow: 0 3px 6px rgba(0,0,0,0.3), 0 0 0 2px rgba(16, 185, 129, 0.3);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 0 0 1px rgba(16, 185, 129, 0.3);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 14px;
+          font-size: 9px;
           cursor: pointer;
           transition: transform 0.2s;
         "
@@ -1164,8 +1164,8 @@ const MapView = memo(function MapView({
           ${emoji}
         </div>
       `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
       });
     });
   }, []);
