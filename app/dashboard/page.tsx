@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase, CustomMarker, MovilFilters } from '@/types';
+import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
@@ -12,7 +12,7 @@ import MovilesSinGPS from '@/components/dashboard/MovilesSinGPS';
 import { useRealtime } from '@/components/providers/RealtimeProvider';
 import { useUserPreferences, UserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { usePedidosRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
+import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import TrackingModal from '@/components/ui/TrackingModal';
 
@@ -46,6 +46,7 @@ function DashboardContent() {
   const [selectedMovil, setSelectedMovil] = useState<number | undefined>(); // Móvil seleccionado para animación
   const [popupMovil, setPopupMovil] = useState<number | undefined>(); // Móvil con popup abierto
   const [popupPedido, setPopupPedido] = useState<number | undefined>(); // Pedido con popup abierto
+  const [popupService, setPopupService] = useState<number | undefined>(); // Service con popup abierto
   const [focusedPedidoId, setFocusedPedidoId] = useState<number | undefined>(); // ✅ NUEVO: Pedido a centralizar
   const [focusedPuntoId, setFocusedPuntoId] = useState<string | undefined>(); // ✅ NUEVO: Punto a centralizar
   const [showPendientes, setShowPendientes] = useState(false); // Mostrar marcadores de pedidos
@@ -86,10 +87,24 @@ function DashboardContent() {
     1000, // escenarioId (ajustar según tu base de datos)
     undefined // Cargar TODOS los pedidos (sin filtrar por móvil)
   );
+
+  // 🔧 Hook para escuchar cambios en services en tiempo real
+  const { 
+    services: servicesRealtime, 
+    isConnected: servicesConnected,
+    error: servicesError 
+  } = useServicesRealtime(
+    1000,
+    undefined
+  );
   
   // Estado para pedidos cargados inicialmente
   const [pedidosIniciales, setPedidosIniciales] = useState<PedidoSupabase[]>([]);
   const [isLoadingPedidos, setIsLoadingPedidos] = useState(true);
+
+  // Estado para services cargados inicialmente
+  const [servicesIniciales, setServicesIniciales] = useState<ServiceSupabase[]>([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(true);
   
   const [isLoadingEmpresas, setIsLoadingEmpresas] = useState(true);
   
@@ -420,6 +435,35 @@ function DashboardContent() {
       });
     } finally {
       setIsLoadingPedidos(false);
+    }
+  }, [selectedDate]);
+
+  // Función para cargar TODOS los services del día desde API
+  const fetchServices = useCallback(async () => {
+    try {
+      console.log('🔧 Fetching services para fecha:', selectedDate);
+      setIsLoadingServices(true);
+      
+      const params = new URLSearchParams();
+      params.append('escenario', '1000');
+      if (selectedDate) {
+        params.append('fecha', selectedDate);
+      }
+      
+      const url = `/api/services?${params.toString()}`;
+      const response = await fetch(url);
+      const result = await response.json();
+
+      if (result.success) {
+        console.log(`✅ Loaded ${result.count} services`);
+        setServicesIniciales(result.data || []);
+      } else {
+        console.error('❌ Error loading services:', result.error);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching services:', err);
+    } finally {
+      setIsLoadingServices(false);
     }
   }, [selectedDate]);
 
@@ -898,7 +942,14 @@ function DashboardContent() {
 
   // Handler para click en pedido
   const handlePedidoClick = useCallback((pedidoId: number | undefined) => {
-    setPopupPedido(pedidoId); // Abre/cierra popup de pedido
+    setPopupService(undefined); // Cerrar popup de service si estaba abierto
+    setPopupPedido(pedidoId);
+  }, []);
+
+  // Handler para click en service
+  const handleServiceClick = useCallback((serviceId: number | undefined) => {
+    setPopupPedido(undefined); // Cerrar popup de pedido si estaba abierto
+    setPopupService(serviceId);
   }, []);
 
   // Handler para click en punto de interés
@@ -944,6 +995,16 @@ function DashboardContent() {
     
     return resultado;
   }, [pedidosIniciales, pedidosRealtime]);
+
+  // Combinar services iniciales con updates de realtime
+  const servicesCompletos = useMemo(() => {
+    const servicesMap = new Map<number, ServiceSupabase>();
+    servicesIniciales.forEach(s => servicesMap.set(s.id, s));
+    servicesRealtime.forEach(s => servicesMap.set(s.id, s));
+    const resultado = Array.from(servicesMap.values());
+    console.log(`🔧 DASHBOARD: servicesCompletos: ${resultado.length}`);
+    return resultado;
+  }, [servicesIniciales, servicesRealtime]);
 
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
@@ -1014,6 +1075,11 @@ function DashboardContent() {
   useEffect(() => {
     fetchPedidos();
   }, [fetchPedidos]);
+
+  // Fetch services cuando cambia la fecha
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
 
   // Reset focusedMovil when date or selected companies change
   useEffect(() => {
@@ -1285,7 +1351,9 @@ function DashboardContent() {
                   onSelectAll={handleSelectAll}
                   onClearAll={handleClearAll}
                   pedidos={pedidosCompletos}
+                  services={servicesCompletos}
                   onPedidoClick={handlePedidoClick}
+                  onServiceClick={handleServiceClick}
                   puntosInteres={puntosInteres}
                   onPuntoInteresClick={handlePuntoInteresClick}
                   onFiltersChange={setMovilesFilters}
@@ -1345,8 +1413,13 @@ function DashboardContent() {
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
                 pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1)).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
+                allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
+                services={(selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud))}
+                allServices={servicesCompletos}
+                onServiceClick={handleServiceClick}
+                popupService={popupService}
                 isPlacingMarker={isPlacingMarker}
                 onPlacingMarkerChange={setIsPlacingMarker}
                 onMarkersChange={setPuntosInteres}

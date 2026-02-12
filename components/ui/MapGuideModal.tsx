@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 
-type GuideCategory = 'moviles' | 'pedidos' | 'services' | 'pois';
+type GuideCategory = 'moviles' | 'pedidos' | 'pedidosFinalizados' | 'services' | 'servicesFinalizados' | 'pois';
 
 interface MapGuideModalProps {
   isOpen: boolean;
@@ -300,10 +300,152 @@ function PedidosGuide() {
   );
 }
 
+// Guía visual de Services
+function ServicesGuide() {
+  return (
+    <div className="space-y-5">
+      {/* Título */}
+      <div className="text-center">
+        <h3 className="text-lg font-bold text-gray-800">Guía de Iconos de Services</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Referencia visual de cómo se muestran los services en el mapa
+        </p>
+      </div>
+
+      {/* Sección 1: Services por Atraso */}
+      <div>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <span className="w-5 h-5 rounded bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">1</span>
+          Services por Atraso — Color según hora de entrega
+        </h4>
+        <p className="text-xs text-gray-500 mb-3">Los services se colorean según la diferencia con la hora máxima de entrega.</p>
+        <div className="space-y-2.5">
+          {/* En Hora - Verde */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-green-50 border border-green-200">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #22C55E 0%, #86EFAC 100%)', border: '2px solid white' }}>
+                <span className="text-base">🔧</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-green-800 text-sm">Verde — En Hora</p>
+              <p className="text-xs text-green-700">Faltan 10 minutos o más para la hora límite. El service va bien.</p>
+            </div>
+          </div>
+
+          {/* Hora Límite Cercana - Amarillo */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-yellow-50 border border-yellow-200">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #EAB308 0%, #FDE047 100%)', border: '2px solid white' }}>
+                <span className="text-base">🔧</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-yellow-800 text-sm">Amarillo — Hora Límite Cercana</p>
+              <p className="text-xs text-yellow-700">Faltan entre 0 y 9 minutos para la hora límite. Atención.</p>
+            </div>
+          </div>
+
+          {/* Atrasado - Rosa */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-pink-50 border border-pink-200">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #EC4899 0%, #F9A8D4 100%)', border: '2px solid white' }}>
+                <span className="text-base">🔧</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-pink-800 text-sm">Rosa — Atrasado</p>
+              <p className="text-xs text-pink-700">Se pasó entre 1 y 10 minutos de la hora límite.</p>
+            </div>
+          </div>
+
+          {/* Muy Atrasado - Rojo */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-red-50 border border-red-200">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #EF4444 0%, #FCA5A5 100%)', border: '2px solid white' }}>
+                <span className="text-base">🔧</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-red-800 text-sm">Rojo — Muy Atrasado</p>
+              <p className="text-xs text-red-700">Se pasó más de 10 minutos de la hora límite. Requiere atención urgente.</p>
+            </div>
+          </div>
+
+          {/* Sin hora - Gris */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 border border-gray-200">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #6B7280 0%, #D1D5DB 100%)', border: '2px solid white' }}>
+                <span className="text-base">🔧</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 text-sm">Gris — Sin Hora Asignada</p>
+              <p className="text-xs text-gray-600">El service no tiene hora máxima de entrega definida.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sección 2: Completados */}
+      <div>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <span className="w-5 h-5 rounded bg-emerald-100 flex items-center justify-center text-emerald-600 text-xs font-bold">2</span>
+          Completados
+        </h4>
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)', border: '2px solid white' }}>
+                <span className="text-sm">🔧</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-emerald-800 text-sm">Verde Circular — Service Completado</p>
+              <p className="text-xs text-emerald-700">Service finalizado exitosamente. El ícono circular lo distingue de los pendientes.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sección 3: Agrupamiento */}
+      <div>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <span className="w-5 h-5 rounded bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold">3</span>
+          Agrupamiento (Cluster)
+        </h4>
+        <div className="flex items-center gap-3 p-2.5 rounded-lg bg-indigo-50 border border-indigo-200">
+          <div className="flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center shadow-md text-white font-bold text-sm">
+              8
+            </div>
+          </div>
+          <div>
+            <p className="font-semibold text-indigo-800 text-sm">Número en Círculo — Services Agrupados</p>
+            <p className="text-xs text-indigo-700">Cuando hay muchos services cercanos, se agrupan en un cluster que muestra la cantidad. Haga zoom para verlos individualmente.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Nota adicional */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <p className="text-xs text-blue-800 flex items-start gap-2">
+          <svg className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
+          <span>
+            <strong>Consejo:</strong> Los iconos cuadrados (con bordes redondeados) son services pendientes.
+            Los iconos circulares verdes son completados. Al hacer clic en cualquier icono se abre un popup con detalles del defecto.
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // Placeholder para futuras guías
 function DefaultGuide({ category }: { category: string }) {
   const labels: Record<string, string> = {
-    services: 'Services',
     pois: 'Puntos de Interés',
   };
   return (
@@ -319,7 +461,9 @@ export default function MapGuideModal({ isOpen, onClose, category }: MapGuideMod
   const guideContent: Record<GuideCategory, React.ReactNode> = {
     moviles: <MovilesGuide />,
     pedidos: <PedidosGuide />,
-    services: <DefaultGuide category="services" />,
+    pedidosFinalizados: <PedidosGuide />,
+    services: <ServicesGuide />,
+    servicesFinalizados: <ServicesGuide />,
     pois: <DefaultGuide category="pois" />,
   };
 

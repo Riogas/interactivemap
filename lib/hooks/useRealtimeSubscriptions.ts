@@ -6,6 +6,7 @@ import type {
   GPSTrackingSupabase, 
   MovilSupabase, 
   PedidoSupabase,
+  ServiceSupabase,
   EmpresaFleteraSupabase 
 } from '@/types';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -475,6 +476,121 @@ export function usePedidosRealtime(
 
   return { 
     pedidos: Array.from(pedidos.values()), 
+    isConnected, 
+    error 
+  };
+}
+
+/**
+ * Hook para escuchar cambios en services en tiempo real via Supabase Realtime
+ */
+export function useServicesRealtime(
+  escenarioId: number = 1,
+  movilIds?: number[],
+  onUpdate?: (service: ServiceSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void
+) {
+  const [services, setServices] = useState<Map<number, ServiceSupabase>>(new Map());
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    console.log('🔄 Suscripción services realtime - escenario:', escenarioId);
+    let channel: RealtimeChannel | null = null;
+
+    const setupChannel = () => {
+      const channelName = `services-realtime-${escenarioId}-${Date.now()}`;
+      
+      channel = supabase
+        .channel(channelName, {
+          config: {
+            broadcast: { self: false },
+            presence: { key: '' },
+          },
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'services',
+            filter: `escenario=eq.${escenarioId}`,
+          },
+          (payload) => {
+            const newService = payload.new as ServiceSupabase;
+            if (!movilIds || movilIds.length === 0 || (newService.movil && movilIds.includes(newService.movil))) {
+              setServices(prev => {
+                const updated = new Map(prev);
+                updated.set(newService.id, newService);
+                return updated;
+              });
+              if (onUpdate) onUpdate(newService, 'INSERT');
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'services',
+            filter: `escenario=eq.${escenarioId}`,
+          },
+          (payload) => {
+            const updatedService = payload.new as ServiceSupabase;
+            if (!movilIds || movilIds.length === 0 || (updatedService.movil && movilIds.includes(updatedService.movil))) {
+              setServices(prev => {
+                const updated = new Map(prev);
+                updated.set(updatedService.id, updatedService);
+                return updated;
+              });
+              if (onUpdate) onUpdate(updatedService, 'UPDATE');
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'services',
+            filter: `escenario=eq.${escenarioId}`,
+          },
+          (payload) => {
+            const deletedService = payload.old as ServiceSupabase;
+            setServices(prev => {
+              const updated = new Map(prev);
+              updated.delete(deletedService.id);
+              return updated;
+            });
+            if (onUpdate) onUpdate(deletedService, 'DELETE');
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            setIsConnected(true);
+            setError(null);
+            console.log('✅ Conectado a Realtime Services');
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            setIsConnected(false);
+            setError(`Error de conexión con Realtime Services: ${status}`);
+            console.warn('⚠️ Error en suscripción de services:', status);
+          } else if (status === 'CLOSED') {
+            setIsConnected(false);
+          }
+        });
+    };
+
+    setupChannel();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [escenarioId, movilIds?.join(',')]);
+
+  return { 
+    services: Array.from(services.values()), 
     isConnected, 
     error 
   };

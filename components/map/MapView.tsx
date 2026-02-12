@@ -3,11 +3,12 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase, CustomMarker } from '@/types';
+import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
 import { PedidoInfoPopup } from './PedidoInfoPopup';
+import { ServiceInfoPopup } from './ServiceInfoPopup';
 import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
@@ -51,8 +52,13 @@ interface MapViewProps {
   onShowPendientes?: () => void;
   onShowCompletados?: () => void;
   pedidos?: PedidoSupabase[]; // Nueva prop para mostrar pedidos en el mapa
+  allPedidos?: PedidoSupabase[]; // Todos los pedidos (incluyendo finalizados) para lookup de popup
+  services?: ServiceSupabase[]; // Services para mostrar en el mapa
+  allServices?: ServiceSupabase[]; // Todos los services (incluyendo finalizados) para lookup de popup
   onPedidoClick?: (pedidoId: number | undefined) => void; // Callback para click en pedido
+  onServiceClick?: (serviceId: number | undefined) => void; // Callback para click en service
   popupPedido?: number; // Pedido con popup abierto
+  popupService?: number; // Service con popup abierto
   focusedPedidoId?: number; // ✅ NUEVO: ID del pedido a centralizar
   focusedPuntoId?: string; // ✅ NUEVO: ID del punto de interés a centralizar
   isPlacingMarker?: boolean; // Prop externa para controlar el modo de colocación
@@ -381,6 +387,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.showCompletados === next.showCompletados &&
     prev.popupMovil === next.popupMovil &&
     prev.popupPedido === next.popupPedido &&
+    prev.popupService === next.popupService &&
     prev.defaultMapLayer === next.defaultMapLayer &&
     prev.selectedMovilesCount === next.selectedMovilesCount &&
     prev.isPlacingMarker === next.isPlacingMarker &&
@@ -388,6 +395,9 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.focusedPuntoId === next.focusedPuntoId &&
     // 🚀 Comparar pedidos por cantidad (evitar deep comparison costosa)
     (prev.pedidos?.length ?? 0) === (next.pedidos?.length ?? 0) &&
+    (prev.allPedidos?.length ?? 0) === (next.allPedidos?.length ?? 0) &&
+    (prev.services?.length ?? 0) === (next.services?.length ?? 0) &&
+    (prev.allServices?.length ?? 0) === (next.allServices?.length ?? 0) &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id)
   );
@@ -408,8 +418,13 @@ const MapView = memo(function MapView({
   onShowPendientes, 
   onShowCompletados,
   pedidos = [],
+  allPedidos = [],
+  services = [],
+  allServices = [],
   onPedidoClick,
+  onServiceClick,
   popupPedido,
+  popupService,
   focusedPedidoId, // ✅ NUEVO
   focusedPuntoId, // ✅ NUEVO
   isPlacingMarker: externalIsPlacingMarker = false,
@@ -421,6 +436,18 @@ const MapView = memo(function MapView({
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
+
+  // 🔧 DEBUG: Log services recibidos en MapView
+  useEffect(() => {
+    const conCoords = services.filter(s => s.latitud && s.longitud);
+    console.log(`🔧 MapView: ${services.length} services recibidos, ${conCoords.length} con coordenadas`);
+    if (conCoords.length > 0) {
+      console.log('🔧 Primer service con coords:', { id: conCoords[0].id, lat: conCoords[0].latitud, lng: conCoords[0].longitud, defecto: conCoords[0].defecto });
+    }
+    if (services.length > 0 && conCoords.length === 0) {
+      console.log('🔧 Services sin coordenadas - ejemplo:', { id: services[0].id, lat: services[0].latitud, lng: services[0].longitud, movil: services[0].movil, estado: services[0].estado_nro });
+    }
+  }, [services]);
   
   // Estado para controlar la animación del recorrido
   const [isAnimating, setIsAnimating] = useState(false);
@@ -1133,7 +1160,43 @@ const MapView = memo(function MapView({
     }));
   }, []);
 
-  // 🚀 OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
+  // � Iconos para services desde tabla - por atraso/demora (llavecita)
+  const createServiceIconByDelay = useCallback((fchHoraMaxEntComp: string | null) => {
+    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
+    const info = getDelayInfo(delayMinutes);
+    const cacheKey = `service-delay-${info.label}`;
+    
+    return getCachedIcon(cacheKey, () => {
+      return L.divIcon({
+        className: '',
+        html: `
+          <div style="
+            width: 20px;
+            height: 20px;
+            position: absolute;
+            left: -10px;
+            top: -10px;
+            background: linear-gradient(135deg, ${info.color} 0%, ${info.lightColor} 100%);
+            border: 2px solid white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px ${info.shadowColor};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            cursor: pointer;
+            transition: transform 0.2s;
+          " 
+          onmouseover="this.style.transform='scale(1.15)'"
+          onmouseout="this.style.transform='scale(1)'">🔧</div>
+        `,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+    });
+  }, []);
+
+  // �🚀 OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
   const createCompletadoIcon = useCallback((tipo: 'PEDIDO' | 'SERVICIO') => {
     const cacheKey = `completado-${tipo}`;
     
@@ -1875,6 +1938,42 @@ const MapView = memo(function MapView({
             })}
           </MarkerClusterGroup>
         ) : null}
+
+        {/* Marcadores de Services desde tabla - con coordenadas - CLUSTERIZADOS */}
+        {(() => {
+          const servicesFiltrados = services && services.filter(s => s.latitud && s.longitud);
+          return servicesFiltrados;
+        })()?.length ? (
+          <MarkerClusterGroup>
+            {services.filter(s => s.latitud && s.longitud).map(service => {
+              const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
+              const delayInfo = getDelayInfo(delayMins);
+              return (
+              <OptimizedMarker
+                key={`service-tabla-${service.id}`}
+                position={[service.latitud!, service.longitud!]}
+                icon={createServiceIconByDelay(service.fch_hora_max_ent_comp)}
+                eventHandlers={{
+                  click: () => {
+                    onServiceClick && onServiceClick(service.id);
+                  }
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+                  <div className="text-xs">
+                    <div className="font-bold">Service #{service.id}</div>
+                    <div>{service.cliente_nombre}</div>
+                    <div className="text-gray-600">{service.defecto}</div>
+                    <div style={{ color: delayInfo.color, fontWeight: 'bold' }}>
+                      {delayInfo.label}: {delayInfo.badgeText}
+                    </div>
+                  </div>
+                </Tooltip>
+              </OptimizedMarker>
+              );
+            })}
+          </MarkerClusterGroup>
+        ) : null}
         
         <MapUpdater 
           moviles={moviles} 
@@ -2025,10 +2124,22 @@ const MapView = memo(function MapView({
       {/* Popup de información del pedido */}
       {popupPedido && (
         <PedidoInfoPopup 
-          pedido={pedidos.find(p => p.id === popupPedido) || null}
+          pedido={(allPedidos.length > 0 ? allPedidos : pedidos).find(p => p.id === popupPedido) || null}
           onClose={() => {
             if (onPedidoClick) {
               onPedidoClick(undefined);
+            }
+          }}
+        />
+      )}
+
+      {/* Popup de información del service */}
+      {popupService && (
+        <ServiceInfoPopup 
+          service={(allServices.length > 0 ? allServices : services).find(s => s.id === popupService) || null}
+          onClose={() => {
+            if (onServiceClick) {
+              onServiceClick(undefined);
             }
           }}
         />

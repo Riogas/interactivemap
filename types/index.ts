@@ -80,12 +80,14 @@ import type { Database } from './supabase';
 // Tipos de las tablas de Supabase
 export type MovilSupabase = Database['public']['Tables']['moviles']['Row'];
 export type PedidoSupabase = Database['public']['Tables']['pedidos']['Row'];
+export type ServiceSupabase = Database['public']['Tables']['services']['Row'];
 export type EmpresaFleteraSupabase = Database['public']['Tables']['empresas_fleteras']['Row'];
 export type GPSTrackingSupabase = Database['public']['Tables']['gps_tracking_extended']['Row'];
 
 // Tipos para inserciones
 export type MovilInsert = Database['public']['Tables']['moviles']['Insert'];
 export type PedidoInsert = Database['public']['Tables']['pedidos']['Insert'];
+export type ServiceInsert = Database['public']['Tables']['services']['Insert'];
 export type EmpresaFleteraInsert = Database['public']['Tables']['empresas_fleteras']['Insert'];
 export type GPSTrackingInsert = Database['public']['Tables']['gps_tracking_extended']['Insert'];
 
@@ -264,7 +266,7 @@ export interface MovilFilters {
 }
 
 export interface ServiceFilters {
-  atraso: 'all' | 'sin_atraso' | '1-3_dias' | '4-7_dias' | '7+_dias';
+  atraso: string[]; // Multi-selección: 'en_hora' | 'limite_cercana' | 'atrasado' | 'muy_atrasado' | 'sin_hora'
 }
 
 export interface PedidoFilters {
