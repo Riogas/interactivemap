@@ -305,13 +305,15 @@ function AnimationFollower({
   unifiedTimeRange
 }: AnimationFollowerProps) {
   const map = useMap();
-  const lastFollowedPoint = useRef<string | null>(null);
+  const hasCenteredRef = useRef<boolean>(false);
 
+  // Centrar el mapa UNA vez al iniciar animación: fitBounds en TODO el recorrido
   useEffect(() => {
-    if (!isAnimating || !selectedMovil) {
-      lastFollowedPoint.current = null;
+    if (!isAnimating) {
+      hasCenteredRef.current = false;
       return;
     }
+    if (hasCenteredRef.current) return; // Ya centró
 
     const timeFilter = (history: any[]) => history.filter((coord: any) => {
       if (!coord.fechaInsLog) return true;
@@ -326,62 +328,26 @@ function AnimationFollower({
       }
     });
 
-    // Calcular el tiempo actual de la animación
-    const currentAnimTime = unifiedTimeRange
-      ? unifiedTimeRange.minTime + (animationProgress / 100) * (unifiedTimeRange.maxTime - unifiedTimeRange.minTime)
-      : null;
+    // Recopilar TODOS los puntos de todos los móviles seleccionados
+    const allPoints: [number, number][] = [];
+    const movilIds = [selectedMovil, secondaryMovil].filter(Boolean) as number[];
 
-    const getAnimatedPoint = (movilId: number): [number, number] | null => {
+    for (const movilId of movilIds) {
       const movilData = moviles.find(m => m.id === movilId);
-      if (!movilData?.history || movilData.history.length === 0) return null;
+      if (!movilData?.history) continue;
       const filtered = timeFilter(movilData.history);
-      if (filtered.length === 0) return null;
-
-      // Si tenemos rango unificado, usar tiempo real
-      if (currentAnimTime !== null) {
-        // filtered está ordenado del más reciente (0) al más antiguo (last)
-        // Buscar las coordenadas cuyo timestamp <= currentAnimTime
-        // Recorrer desde el final (más antiguo) buscando la última que entra en el rango
-        let latestVisible: any = null;
-        for (let i = filtered.length - 1; i >= 0; i--) {
-          const ts = new Date(filtered[i].fechaInsLog).getTime();
-          if (ts <= currentAnimTime) {
-            latestVisible = filtered[i];
-          } else {
-            break; // Ya pasamos del tiempo actual (están más recientes)
-          }
-        }
-        return latestVisible ? [latestVisible.coordX, latestVisible.coordY] : null;
+      for (const coord of filtered) {
+        allPoints.push([coord.coordX, coord.coordY]);
       }
-
-      // Fallback: progreso por porcentaje (cuando hay 1 solo móvil)
-      const fullPath = filtered.map((c: any) => [c.coordX, c.coordY] as [number, number]);
-      const optimized = fullPath.length > 300 ? optimizePath(fullPath, 200) : fullPath;
-      const total = optimized.length;
-      const visible = Math.max(1, Math.ceil((animationProgress / 100) * total));
-      const idx = total - visible;
-      return optimized[idx] || null;
-    };
-
-    const point1 = getAnimatedPoint(selectedMovil);
-    const point2 = secondaryMovil ? getAnimatedPoint(secondaryMovil) : null;
-
-    if (!point1 && !point2) return;
-
-    const pointsKey = `${point1?.[0]},${point1?.[1]}-${point2?.[0]},${point2?.[1]}`;
-    if (pointsKey === lastFollowedPoint.current) return;
-    lastFollowedPoint.current = pointsKey;
-
-    if (point1 && point2) {
-      const bounds = L.latLngBounds(
-        [L.latLng(point1[0], point1[1]), L.latLng(point2[0], point2[1])]
-      ).pad(0.15);
-      map.fitBounds(bounds, { animate: false, maxZoom: 15 });
-    } else {
-      const center = point1 || point2!;
-      map.setView(center, map.getZoom(), { animate: false });
     }
-  }, [map, isAnimating, selectedMovil, secondaryMovil, animationProgress, moviles, startTime, endTime, unifiedTimeRange]);
+
+    if (allPoints.length === 0) return;
+
+    // FitBounds con todos los puntos de ambos recorridos
+    const bounds = L.latLngBounds(allPoints.map(p => L.latLng(p[0], p[1])));
+    map.fitBounds(bounds.pad(0.1), { animate: true, maxZoom: 15 });
+    hasCenteredRef.current = true;
+  }, [map, isAnimating, selectedMovil, secondaryMovil, moviles, startTime, endTime]);
 
   return null;
 }

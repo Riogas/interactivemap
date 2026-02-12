@@ -91,11 +91,69 @@ export default function RouteAnimationControl({
   return (
     <motion.div
       initial={{ y: 100, opacity: 0 }}
-      animate={{ y: 0, opacity: isPlaying ? 0.35 : 1 }}
-      whileHover={{ opacity: 1 }}
-      transition={{ opacity: { duration: 0.4 } }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
       className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[1000]"
     >
+      {/* ========== MODO COLAPSADO (durante play) ========== */}
+      {isPlaying ? (
+        <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl px-5 py-3 border-2 border-blue-400 flex items-center gap-4 min-w-[420px]">
+          {/* Pausa */}
+          <button
+            onClick={onPlayPause}
+            className="flex items-center justify-center w-10 h-10 bg-blue-600 hover:bg-blue-700 rounded-full transition-all hover:scale-110 active:scale-95 shadow-lg flex-shrink-0"
+            title="Pausar"
+          >
+            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+            </svg>
+          </button>
+
+          {/* Barra de progreso */}
+          <div className="flex-1">
+            <div className="relative h-2.5 bg-gray-200 rounded-full overflow-hidden">
+              <motion.div
+                className="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
+                style={{ width: `${progress}%` }}
+                initial={false}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.1 }}
+              />
+            </div>
+          </div>
+
+          {/* Hora actual de la animación */}
+          {currentAnimTimeStr && (
+            <div className="text-xs font-bold text-blue-700 bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 flex-shrink-0">
+              🕓 {currentAnimTimeStr}
+            </div>
+          )}
+
+          {/* Porcentaje */}
+          <div className="text-xs text-gray-600 font-bold flex-shrink-0 min-w-[52px] text-right">
+            {progress.toFixed(1)}%
+          </div>
+
+          {/* Velocidad actual */}
+          <div className="text-xs text-gray-500 font-medium flex-shrink-0">
+            {speed}x
+          </div>
+
+          {/* Cerrar */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 transition-all flex items-center justify-center shadow-sm flex-shrink-0"
+              title="Cerrar animación"
+            >
+              <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      ) : (
+      /* ========== MODO EXPANDIDO (pausado / detenido) ========== */
       <div className="bg-white rounded-2xl shadow-2xl p-4 min-w-[600px] border-2 border-blue-500">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
@@ -393,6 +451,7 @@ export default function RouteAnimationControl({
             : 'La animación muestra el recorrido del vehículo desde el inicio del día'}
         </div>
       </div>
+      )}
     </motion.div>
   );
 }
