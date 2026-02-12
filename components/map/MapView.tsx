@@ -328,26 +328,32 @@ function AnimationFollower({
 
     if (filteredHistory.length === 0) return;
 
-    // Calcular el índice del punto actual basado en el progreso
-    const totalPoints = filteredHistory.length;
-    const currentIndex = Math.min(
-      Math.floor((animationProgress / 100) * totalPoints),
-      totalPoints - 1
-    );
+    // Convertir a coordenadas y aplicar MISMA optimización que el rendering
+    const fullPathCoordinates = filteredHistory.map(coord => [coord.coordX, coord.coordY] as [number, number]);
+    const optimizedPath = fullPathCoordinates.length > 300
+      ? optimizePath(fullPathCoordinates, 200)
+      : fullPathCoordinates;
 
-    const currentPoint = filteredHistory[totalPoints - 1 - currentIndex]; // Orden inverso
+    // Calcular el punto actual con MISMA fórmula que el rendering
+    const totalPoints = optimizedPath.length;
+    const visiblePointsCount = Math.max(
+      1,
+      Math.ceil((animationProgress / 100) * totalPoints)
+    );
+    const animatedPointIndex = totalPoints - visiblePointsCount;
+    const currentPoint = optimizedPath[animatedPointIndex];
+
     if (currentPoint) {
-      const newCenter: [number, number] = [currentPoint.coordX, currentPoint.coordY];
+      const newCenter: [number, number] = [currentPoint[0], currentPoint[1]];
       
       // Solo mover el mapa si el punto cambió significativamente
       if (!lastFollowedPoint.current || 
           Math.abs(lastFollowedPoint.current[0] - newCenter[0]) > 0.0001 ||
           Math.abs(lastFollowedPoint.current[1] - newCenter[1]) > 0.0001) {
         
-        map.panTo(newCenter, {
-          animate: true,
-          duration: 0.5,
-          noMoveStart: true
+        // setView sin animación para sincronía perfecta con el marcador
+        map.setView(newCenter, map.getZoom(), {
+          animate: false
         });
         
         lastFollowedPoint.current = newCenter;
