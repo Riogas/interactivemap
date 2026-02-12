@@ -1442,9 +1442,20 @@ const MapView = memo(function MapView({
                   ? optimizedFullPath.slice(Math.max(0, totalPoints - visiblePointsCount))
                   : optimizedFullPath;
 
-                // Punto animado actual (el más reciente de los visibles)
+                // Punto animado actual (el más reciente de los visibles) — desde optimizedFullPath
                 const animatedPointIndex = isAnimating || animationProgress > 0
                   ? totalPoints - visiblePointsCount
+                  : 0;
+
+                // Coordenada exacta del punto animado (desde optimizedFullPath, misma fuente que AnimationFollower)
+                const animatedCurrentCoord = (isAnimating || animationProgress > 0) && animatedPointIndex >= 0 && animatedPointIndex < optimizedFullPath.length
+                  ? optimizedFullPath[animatedPointIndex]
+                  : null;
+
+                // Índice equivalente en filteredHistory para ocultar puntos no recorridos
+                const filteredHistoryTotal = filteredHistory.length;
+                const filteredHistoryAnimatedIndex = isAnimating || animationProgress > 0
+                  ? Math.max(0, filteredHistoryTotal - Math.ceil((animationProgress / 100) * filteredHistoryTotal))
                   : 0;
 
                 return (
@@ -1547,11 +1558,66 @@ const MapView = memo(function MapView({
                       </>
                     )}
                     
-                    {/* 🚀 OPTIMIZACIÓN: Reducir marcadores del historial */}
-                    {/* Mostrar marcadores solo cada N puntos para mejor rendimiento */}
+                    {/* Marcador animado EN RUTA — renderizado desde optimizedFullPath para sync con mapa */}
+                    {animatedCurrentCoord && (
+                      <OptimizedMarker
+                        key={`${movil.id}-animated-current`}
+                        position={[animatedCurrentCoord[0], animatedCurrentCoord[1]]}
+                        icon={L.divIcon({
+                          className: '',
+                          html: `
+                            <div style="position: relative;">
+                              <div style="
+                                width: 14px;
+                                height: 14px;
+                                background-color: ${movil.color};
+                                border: 2px solid #ff6b6b;
+                                border-radius: 50%;
+                                box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+                                position: absolute;
+                                left: -7px;
+                                top: -7px;
+                                animation: pulse-marker 2s ease-in-out infinite;
+                              "></div>
+                              <div style="
+                                position: absolute;
+                                left: -14px;
+                                top: -14px;
+                                width: 28px;
+                                height: 28px;
+                                border: 3px solid ${movil.color};
+                                border-radius: 50%;
+                                animation: ripple 1.5s ease-out infinite;
+                              "></div>
+                              <div style="
+                                position: absolute;
+                                top: 18px;
+                                left: 50%;
+                                transform: translateX(-50%);
+                                background: #ff6b6b;
+                                color: white;
+                                border: 1px solid ${movil.color};
+                                border-radius: 6px;
+                                padding: 2px 6px;
+                                font-size: 9px;
+                                font-weight: bold;
+                                white-space: nowrap;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                                pointer-events: none;
+                                font-family: system-ui, -apple-system, sans-serif;
+                              ">🚗 EN RUTA</div>
+                            </div>
+                          `,
+                          iconSize: [14, 14],
+                          iconAnchor: [7, 7],
+                        })}
+                      />
+                    )}
+
+                    {/* Marcadores del historial (puntos recorridos) */}
                     {filteredHistory.map((coord, index) => {
                       // Durante la animación, solo mostrar puntos ya "recorridos"
-                      if ((isAnimating || animationProgress > 0) && index < animatedPointIndex) {
+                      if ((isAnimating || animationProgress > 0) && index < filteredHistoryAnimatedIndex) {
                         return null; // No mostrar este punto aún
                       }
 
@@ -1559,23 +1625,20 @@ const MapView = memo(function MapView({
                       const isLast = index === filteredHistory.length - 1; // Inicio del día
                       const totalPoints = filteredHistory.length;
                       
-                      // Durante la animación, el punto actual es especial
-                      const isAnimatedCurrent = (isAnimating || animationProgress > 0) && index === animatedPointIndex;
-                      
                       // 🚀 OPTIMIZACIÓN: Mostrar solo puntos importantes o cada 10 puntos
                       const skipInterval = totalPoints > 100 ? 15 : 10;
-                      const shouldShow = isFirst || isLast || isAnimatedCurrent || index % skipInterval === 0;
+                      const shouldShow = isFirst || isLast || index % skipInterval === 0;
                       
                       if (!shouldShow) return null;
                       
                       // Tamaño progresivo
-                      const size = isFirst ? 16 : isLast ? 14 : isAnimatedCurrent ? 14 : 8;
+                      const size = isFirst ? 16 : isLast ? 14 : 8;
                       
                       // Opacidad que decrece con antigüedad
-                      const opacity = isAnimatedCurrent ? 1 : 0.5 + (0.5 * (totalPoints - index) / totalPoints);
+                      const opacity = 0.5 + (0.5 * (totalPoints - index) / totalPoints);
                       
                       // Mostrar etiqueta solo en puntos clave
-                      const showLabel = isFirst || isLast || isAnimatedCurrent;
+                      const showLabel = isFirst || isLast;
                       const pointNumber = totalPoints - index; // Contar desde el inicio del día
                       
                       return (
@@ -1591,31 +1654,17 @@ const MapView = memo(function MapView({
                                   width: ${size}px;
                                   height: ${size}px;
                                   background-color: ${movil.color};
-                                  border: 2px solid ${isFirst ? '#fff' : isLast ? '#ffd700' : isAnimatedCurrent ? '#ff6b6b' : 'rgba(255,255,255,0.9)'};
+                                  border: 2px solid ${isFirst ? '#fff' : isLast ? '#ffd700' : 'rgba(255,255,255,0.9)'};
                                   border-radius: 50%;
                                   box-shadow: 0 2px 6px rgba(0,0,0,${opacity * 0.5});
                                   position: absolute;
                                   left: -${size/2}px;
                                   top: -${size/2}px;
                                   opacity: ${opacity};
-                                  ${isFirst || isAnimatedCurrent ? `
+                                  ${isFirst ? `
                                     animation: pulse-marker 2s ease-in-out infinite;
                                   ` : ''}
                                 "></div>
-                                
-                                ${isAnimatedCurrent ? `
-                                  <!-- Anillo de animación para el punto actual -->
-                                  <div style="
-                                    position: absolute;
-                                    left: -${size}px;
-                                    top: -${size}px;
-                                    width: ${size * 2}px;
-                                    height: ${size * 2}px;
-                                    border: 3px solid ${movil.color};
-                                    border-radius: 50%;
-                                    animation: ripple 1.5s ease-out infinite;
-                                  "></div>
-                                ` : ''}
                                 
                                 ${showLabel ? `
                                   <!-- Etiqueta con número/texto -->
@@ -1624,8 +1673,8 @@ const MapView = memo(function MapView({
                                     top: ${size + 4}px;
                                     left: 50%;
                                     transform: translateX(-50%);
-                                    background: ${isAnimatedCurrent ? '#ff6b6b' : isFirst ? '#22c55e' : isLast ? '#eab308' : 'white'};
-                                    color: ${isAnimatedCurrent || isFirst || isLast ? 'white' : movil.color};
+                                    background: ${isFirst ? '#22c55e' : isLast ? '#eab308' : 'white'};
+                                    color: ${isFirst || isLast ? 'white' : movil.color};
                                     border: 1px solid ${movil.color};
                                     border-radius: 6px;
                                     padding: 2px 6px;
@@ -1635,7 +1684,7 @@ const MapView = memo(function MapView({
                                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                                     pointer-events: none;
                                     font-family: system-ui, -apple-system, sans-serif;
-                                  ">${isAnimatedCurrent ? '🚗 EN RUTA' : isFirst ? '🎯 ACTUAL' : isLast ? '🏁 INICIO' : `#${pointNumber}`}</div>
+                                  ">${isFirst ? '🎯 ACTUAL' : isLast ? '🏁 INICIO' : `#${pointNumber}`}</div>
                                 ` : ''}
                               </div>
                             `,
