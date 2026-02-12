@@ -10,9 +10,10 @@ interface NavbarProps {
   selectedEmpresas?: number[];
   onEmpresasChange?: (empresas: number[]) => void;
   isLoadingEmpresas?: boolean;
+  showEmpresaSelector?: boolean;
 }
 
-export default function Navbar({ children, empresas, selectedEmpresas, onEmpresasChange, isLoadingEmpresas }: NavbarProps) {
+export default function Navbar({ children, empresas, selectedEmpresas, onEmpresasChange, isLoadingEmpresas, showEmpresaSelector = true }: NavbarProps) {
   return (
     <nav className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-800 shadow-xl sticky top-0 z-50">
       <div className="w-full px-3">
@@ -36,7 +37,7 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
             </div>
 
             {/* Selector de Empresas Fleteras - junto al logo */}
-            {empresas && selectedEmpresas && onEmpresasChange && (
+            {showEmpresaSelector && empresas && selectedEmpresas && onEmpresasChange && (
               <div className="hidden md:block">
                 {isLoadingEmpresas ? (
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-lg">
@@ -55,7 +56,7 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
           </div>
 
           {/* Indicadores - Centrados */}
-          <div className="flex items-center flex-1 justify-center ml-3 mr-12 min-w-0">
+          <div className="flex items-center flex-1 justify-center ml-2 mr-10 min-w-0">
             {children}
           </div>
         </div>

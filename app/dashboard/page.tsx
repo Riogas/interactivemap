@@ -1228,6 +1228,7 @@ function DashboardContent() {
           selectedEmpresas={selectedEmpresas}
           onEmpresasChange={setSelectedEmpresas}
           isLoadingEmpresas={isLoadingEmpresas}
+          showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
         >
           <DashboardIndicators
             moviles={movilesFiltered}

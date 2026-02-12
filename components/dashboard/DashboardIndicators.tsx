@@ -113,7 +113,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {pedidosStats.cantAtrasados > 0 && (
           <Indicator
             icon="⏰"
-            label="Pedidos Atrasados"
+            label="Ped. Atrasados"
             value={pedidosStats.cantAtrasados}
             subtitle={`${pedidosStats.porcentajeAtrasados}%`}
             color="red"
@@ -125,7 +125,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {pedidosStats.masAtrasadoMins > 0 && (
           <Indicator
             icon="🔴"
-            label="Más Atrasado"
+            label="Ped. +Atrasado"
             value={`${pedidosStats.masAtrasadoMins} min`}
             color="red"
           />
@@ -135,7 +135,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {servicesStats.cantAtrasados > 0 && (
           <Indicator
             icon="⏱️"
-            label="Services Atrasados"
+            label="Svc. Atrasados"
             value={servicesStats.cantAtrasados}
             subtitle={`${servicesStats.porcentajeAtrasados}%`}
             color="red"
@@ -147,7 +147,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {servicesStats.masAtrasadoMins > 0 && (
           <Indicator
             icon="🔴"
-            label="Service + Atrasado"
+            label="Svc. +Atrasado"
             value={`${servicesStats.masAtrasadoMins} min`}
             color="red"
           />
@@ -164,7 +164,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {/* Pedidos Pendientes */}
         <Indicator
           icon="📦"
-          label="Pedidos Pendientes"
+          label="Ped. Pend."
           value={pedidosStats.pendientes}
           color="blue"
         />
@@ -172,7 +172,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {/* Services Pendientes */}
         <Indicator
           icon="🔧"
-          label="Services Pendientes"
+          label="Svc. Pend."
           value={servicesStats.pendientes}
           color="purple"
         />
@@ -186,7 +186,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {/* Móviles Activos */}
         <Indicator
           icon="🚗"
-          label="Móviles Activos"
+          label="Móviles"
           value={movilesStats.activos}
           color="green"
         />
@@ -195,7 +195,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {movilesStats.sinCoordenadas > 0 && (
           <Indicator
             icon="📡"
-            label="Sin Coordenadas"
+            label="Sin Coord."
             value={movilesStats.sinCoordenadas}
             color="orange"
           />
