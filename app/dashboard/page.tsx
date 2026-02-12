@@ -12,6 +12,7 @@ import MovilesSinGPS from '@/components/dashboard/MovilesSinGPS';
 import { useRealtime } from '@/components/providers/RealtimeProvider';
 import { useUserPreferences, UserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import TrackingModal from '@/components/ui/TrackingModal';
@@ -30,6 +31,9 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
 });
 
 function DashboardContent() {
+  // Hook de autenticación (para obtener empresas permitidas)
+  const { user } = useAuth();
+  
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
   const { latestPosition, latestMovil, isConnected } = useRealtime();
   
@@ -214,10 +218,24 @@ function DashboardContent() {
         const result = await response.json();
         
         if (result.success) {
-          setEmpresas(result.data);
-          // Por defecto, seleccionar todas las empresas
-          setSelectedEmpresas(result.data.map((e: EmpresaFleteraSupabase) => e.empresa_fletera_id));
-          console.log(`✅ Loaded ${result.data.length} empresas fleteras`);
+          let empresasData: EmpresaFleteraSupabase[] = result.data;
+          
+          // 🔑 Si el usuario NO es root y tiene empresas permitidas, filtrar
+          if (user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
+            const allowedIds = user.allowedEmpresas;
+            const empresasFiltradas = empresasData.filter(
+              (e: EmpresaFleteraSupabase) => allowedIds.includes(e.empresa_fletera_id)
+            );
+            console.log(`🔐 Usuario ${user.username}: ${empresasFiltradas.length}/${empresasData.length} empresas permitidas (IDs: ${allowedIds.join(', ')})`);
+            empresasData = empresasFiltradas;
+          } else {
+            console.log(`👑 Usuario ${user?.username || 'unknown'}: acceso a todas las empresas (${empresasData.length})`);
+          }
+          
+          setEmpresas(empresasData);
+          // Por defecto, seleccionar todas las empresas (filtradas o no)
+          setSelectedEmpresas(empresasData.map((e: EmpresaFleteraSupabase) => e.empresa_fletera_id));
+          console.log(`✅ Loaded ${empresasData.length} empresas fleteras`);
         }
       } catch (err) {
         console.error('❌ Error loading empresas:', err);
@@ -227,7 +245,7 @@ function DashboardContent() {
     };
     
     loadEmpresas();
-  }, []);
+  }, [user?.allowedEmpresas]);
 
   // 🎨 Función para calcular el color del móvil según ocupación
   const getMovilColorByOccupancy = useCallback((pedidosAsignados: number, capacidad: number): string => {

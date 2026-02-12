@@ -16,6 +16,7 @@ interface User {
   }>;
   loginTime: string;
   token: string;
+  allowedEmpresas: number[] | null; // null = root/sin restricción, array = IDs permitidos
 }
 
 interface AuthContextType {
@@ -50,9 +51,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error('Invalid user data structure');
         }
         
+        // Cargar empresas permitidas desde localStorage
+        const savedEmpresas = localStorage.getItem('trackmovil_allowed_empresas');
+        let allowedEmpresas: number[] | null = null;
+        if (savedEmpresas) {
+          try {
+            allowedEmpresas = JSON.parse(savedEmpresas);
+          } catch (e) {
+            console.warn('⚠️ Error parsing allowed empresas:', e);
+          }
+        }
+        
         setUser({
           ...parsedUser,
           token: savedToken,
+          allowedEmpresas,
         });
       } catch (e) {
         console.error('Error al cargar sesión, limpiando localStorage:', e);
@@ -73,6 +86,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.success && response.user && response.user.id && response.user.username) {
         console.log('✅ Login GeneXus exitoso');
         
+        const isRoot = response.user.isRoot === 'S';
+        
+        // 🔑 Si NO es root, obtener empresas permitidas de getAtributos
+        let allowedEmpresas: number[] | null = null;
+        if (!isRoot) {
+          try {
+            console.log('🔑 Usuario no es root, obteniendo atributos...');
+            const attrResponse = await fetch('/api/user-atributos', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${response.token}`,
+              },
+              body: JSON.stringify({ User: username }),
+            });
+            
+            if (attrResponse.ok) {
+              const attrData = await attrResponse.json();
+              if (attrData.success && attrData.allowedEmpresas) {
+                allowedEmpresas = attrData.allowedEmpresas.map((e: { id: number }) => e.id);
+                console.log(`✅ Empresas permitidas: ${allowedEmpresas?.join(', ')}`);
+                localStorage.setItem('trackmovil_allowed_empresas', JSON.stringify(allowedEmpresas));
+              } else {
+                console.warn('⚠️ No se obtuvieron empresas del atributo, cargando todas');
+                localStorage.removeItem('trackmovil_allowed_empresas');
+              }
+            } else {
+              console.warn('⚠️ Error obteniendo atributos, cargando todas las empresas');
+              localStorage.removeItem('trackmovil_allowed_empresas');
+            }
+          } catch (attrError) {
+            console.warn('⚠️ Error obteniendo atributos:', attrError);
+            localStorage.removeItem('trackmovil_allowed_empresas');
+          }
+        } else {
+          console.log('👑 Usuario root - acceso a todas las empresas');
+          localStorage.removeItem('trackmovil_allowed_empresas');
+        }
+        
         const newUser: User = {
           id: response.user.id,
           username: response.user.username,
@@ -82,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           roles: response.user.roles || [],
           loginTime: new Date().toISOString(),
           token: response.token,
+          allowedEmpresas,
         };
         
         // 🔄 SINCRONIZAR CON SUPABASE
@@ -158,6 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('🔐 Limpiando sesión local...');
     setUser(null);
     authService.logout();
+    localStorage.removeItem('trackmovil_allowed_empresas');
     console.log('✅ Sesión cerrada completamente');
   };
 
