@@ -1390,6 +1390,17 @@ const MapView = memo(function MapView({
             {moviles
               .filter(m => m.id === selectedMovil || m.id === secondaryAnimMovil)
               .map((movil) => {
+                // Determinar si es el primario o secundario
+                const isPrimary = movil.id === selectedMovil;
+                const hasTwoMoviles = !!(selectedMovil && secondaryAnimMovil);
+                // Colores diferenciados para cada ruta cuando hay 2 móviles
+                const routeColor = hasTwoMoviles
+                  ? (isPrimary ? '#3b82f6' : '#f97316') // Azul vs Naranja
+                  : movil.color;
+                const routeColorLabel = hasTwoMoviles
+                  ? (isPrimary ? '#2563eb' : '#ea580c')
+                  : movil.color;
+
                 // Si no tiene posición actual, no renderizar nada
                 if (!movil.currentPosition) return null;
                 
@@ -1492,7 +1503,7 @@ const MapView = memo(function MapView({
                                   <OptimizedPolyline
                                     positions={[coord, nextCoord]}
                                     pathOptions={{
-                                      color: movil.color,
+                                      color: routeColor,
                                       weight: 4,
                                       opacity: 0.9,
                                       dashArray: '10, 8',
@@ -1529,20 +1540,20 @@ const MapView = memo(function MapView({
                               const distanceFromEnd = totalLines - index;
                               const isRecent = distanceFromEnd <= 3;
                               
-                              // Opacidad: últimas 3 = 0.9, anteriores casi transparentes (0.05-0.15)
+                              // Opacidad: últimas 3 = 0.9, anteriores con gradiente suave
                               const opacity = isRecent 
                                 ? 0.9 
-                                : Math.max(0.05, 0.15 * (index / (totalLines - 3)));
+                                : Math.max(0.08, 0.25 * (index / (totalLines - 3)));
                               
-                              const weight = isRecent ? 4 : 2;
+                              const weight = isRecent ? 4 : 2.5;
                               const dashArray = isRecent ? '10, 8' : undefined;
                               
                               return (
                                 <OptimizedPolyline
-                                  key={`segment-${index}`}
+                                  key={`segment-${movil.id}-${index}`}
                                   positions={[coord, nextCoord]}
                                   pathOptions={{
-                                    color: movil.color,
+                                    color: routeColor,
                                     weight: weight,
                                     opacity: opacity,
                                     dashArray: dashArray,
@@ -1567,48 +1578,48 @@ const MapView = memo(function MapView({
                           html: `
                             <div style="position: relative;">
                               <div style="
-                                width: 14px;
-                                height: 14px;
-                                background-color: ${movil.color};
-                                border: 2px solid #ff6b6b;
+                                width: 18px;
+                                height: 18px;
+                                background-color: ${routeColor};
+                                border: 3px solid white;
                                 border-radius: 50%;
-                                box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.5);
                                 position: absolute;
-                                left: -7px;
-                                top: -7px;
+                                left: -9px;
+                                top: -9px;
                                 animation: pulse-marker 2s ease-in-out infinite;
                               "></div>
                               <div style="
                                 position: absolute;
-                                left: -14px;
-                                top: -14px;
-                                width: 28px;
-                                height: 28px;
-                                border: 3px solid ${movil.color};
+                                left: -16px;
+                                top: -16px;
+                                width: 32px;
+                                height: 32px;
+                                border: 3px solid ${routeColor};
                                 border-radius: 50%;
                                 animation: ripple 1.5s ease-out infinite;
                               "></div>
                               <div style="
                                 position: absolute;
-                                top: 18px;
+                                top: 20px;
                                 left: 50%;
                                 transform: translateX(-50%);
-                                background: #ff6b6b;
+                                background: ${routeColorLabel};
                                 color: white;
-                                border: 1px solid ${movil.color};
+                                border: 1px solid white;
                                 border-radius: 6px;
-                                padding: 2px 6px;
-                                font-size: 9px;
+                                padding: 2px 8px;
+                                font-size: 10px;
                                 font-weight: bold;
                                 white-space: nowrap;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                                 pointer-events: none;
                                 font-family: system-ui, -apple-system, sans-serif;
-                              ">🚗 EN RUTA</div>
+                              ">🚗 #${movil.id}</div>
                             </div>
                           `,
-                          iconSize: [14, 14],
-                          iconAnchor: [7, 7],
+                          iconSize: [18, 18],
+                          iconAnchor: [9, 9],
                         })}
                       />
                     )}
@@ -1616,7 +1627,8 @@ const MapView = memo(function MapView({
                     {/* Marcadores del historial (puntos recorridos) */}
                     {filteredHistory.map((coord, index) => {
                       // Durante la animación, solo mostrar puntos ya "recorridos"
-                      if ((isAnimating || animationProgress > 0) && index < filteredHistoryAnimatedIndex) {
+                      const duringAnimation = isAnimating || animationProgress > 0;
+                      if (duringAnimation && index < filteredHistoryAnimatedIndex) {
                         return null; // No mostrar este punto aún
                       }
 
@@ -1624,7 +1636,7 @@ const MapView = memo(function MapView({
                       const isLast = index === filteredHistory.length - 1; // Inicio del día
                       const totalPoints = filteredHistory.length;
                       
-                      // 🚀 OPTIMIZACIÓN: Mostrar solo puntos importantes o cada 10 puntos
+                      // 🚀 OPTIMIZACIÓN: Mostrar solo puntos importantes o cada N puntos
                       const skipInterval = totalPoints > 100 ? 15 : 10;
                       const shouldShow = isFirst || isLast || index % skipInterval === 0;
                       
@@ -1636,9 +1648,18 @@ const MapView = memo(function MapView({
                       // Opacidad que decrece con antigüedad
                       const opacity = 0.5 + (0.5 * (totalPoints - index) / totalPoints);
                       
-                      // Mostrar etiqueta solo en puntos clave
+                      // Mostrar etiqueta: siempre en primero/último, y HORA durante animación
                       const showLabel = isFirst || isLast;
-                      const pointNumber = totalPoints - index; // Contar desde el inicio del día
+                      const pointNumber = totalPoints - index;
+
+                      // Hora del punto GPS (para etiqueta durante animación)
+                      let timeLabel = '';
+                      if (duringAnimation && coord.fechaInsLog) {
+                        try {
+                          const d = new Date(coord.fechaInsLog);
+                          timeLabel = d.toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' });
+                        } catch { timeLabel = ''; }
+                      }
                       
                       return (
                         <OptimizedMarker
@@ -1652,7 +1673,7 @@ const MapView = memo(function MapView({
                                 <div style="
                                   width: ${size}px;
                                   height: ${size}px;
-                                  background-color: ${movil.color};
+                                  background-color: ${routeColor};
                                   border: 2px solid ${isFirst ? '#fff' : isLast ? '#ffd700' : 'rgba(255,255,255,0.9)'};
                                   border-radius: 50%;
                                   box-shadow: 0 2px 6px rgba(0,0,0,${opacity * 0.5});
@@ -1666,15 +1687,15 @@ const MapView = memo(function MapView({
                                 "></div>
                                 
                                 ${showLabel ? `
-                                  <!-- Etiqueta con número/texto -->
+                                  <!-- Etiqueta INICIO/ACTUAL -->
                                   <div style="
                                     position: absolute;
                                     top: ${size + 4}px;
                                     left: 50%;
                                     transform: translateX(-50%);
                                     background: ${isFirst ? '#22c55e' : isLast ? '#eab308' : 'white'};
-                                    color: ${isFirst || isLast ? 'white' : movil.color};
-                                    border: 1px solid ${movil.color};
+                                    color: ${isFirst || isLast ? 'white' : routeColor};
+                                    border: 1px solid ${routeColor};
                                     border-radius: 6px;
                                     padding: 2px 6px;
                                     font-size: 9px;
@@ -1683,7 +1704,28 @@ const MapView = memo(function MapView({
                                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                                     pointer-events: none;
                                     font-family: system-ui, -apple-system, sans-serif;
-                                  ">${isFirst ? '🎯 ACTUAL' : isLast ? '🏁 INICIO' : `#${pointNumber}`}</div>
+                                  ">${isFirst ? `🎯 #${movil.id} ACTUAL` : isLast ? `🏁 #${movil.id} INICIO` : `#${pointNumber}`}</div>
+                                ` : ''}
+
+                                ${(duringAnimation && timeLabel && !isFirst && !isLast) ? `
+                                  <!-- Hora GPS durante animación -->
+                                  <div style="
+                                    position: absolute;
+                                    top: ${size + 2}px;
+                                    left: 50%;
+                                    transform: translateX(-50%);
+                                    background: ${routeColorLabel};
+                                    color: white;
+                                    border-radius: 4px;
+                                    padding: 1px 4px;
+                                    font-size: 8px;
+                                    font-weight: 600;
+                                    white-space: nowrap;
+                                    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+                                    pointer-events: none;
+                                    font-family: system-ui, -apple-system, sans-serif;
+                                    opacity: 0.85;
+                                  ">${timeLabel}</div>
                                 ` : ''}
                               </div>
                             `,
