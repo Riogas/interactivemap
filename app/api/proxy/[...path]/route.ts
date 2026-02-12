@@ -291,7 +291,15 @@ async function proxyRequest(
       // Si viene "RespuestaLogin" o cualquier campo que termine en "Respuesta" como string, parsearlo
       if (data.RespuestaLogin && typeof data.RespuestaLogin === 'string') {
         try {
-          const parsedLogin = JSON.parse(data.RespuestaLogin);
+          // GeneXus agrega texto basura después del JSON (ej: "} sgm.glp.riogas.com.uy443...")
+          // Truncar en el último '}' para obtener JSON válido
+          let rawLogin = data.RespuestaLogin;
+          const lastBrace = rawLogin.lastIndexOf('}');
+          if (lastBrace !== -1 && lastBrace < rawLogin.length - 1) {
+            console.log('🔧 Truncando texto extra después del JSON:', rawLogin.substring(lastBrace + 1));
+            rawLogin = rawLogin.substring(0, lastBrace + 1);
+          }
+          const parsedLogin = JSON.parse(rawLogin);
           console.log('🔄 RespuestaLogin parseado:', parsedLogin);
           data = parsedLogin; // Reemplazar con el objeto parseado
         } catch (e) {

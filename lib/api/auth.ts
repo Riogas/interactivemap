@@ -102,7 +102,14 @@ export const authService = {
       
       if (typeof response.data === 'string' || response.data.RespuestaLogin) {
         // Caso legacy: RespuestaLogin viene como string (no debería pasar con proxy actualizado)
-        const rawData = typeof response.data === 'string' ? response.data : response.data.RespuestaLogin;
+        let rawData = typeof response.data === 'string' ? response.data : response.data.RespuestaLogin;
+        // GeneXus agrega texto basura después del JSON - truncar en el último '}'
+        if (typeof rawData === 'string') {
+          const lastBrace = rawData.lastIndexOf('}');
+          if (lastBrace !== -1 && lastBrace < rawData.length - 1) {
+            rawData = rawData.substring(0, lastBrace + 1);
+          }
+        }
         parsedResponse = JSON.parse(rawData);
       } else {
         // Caso nuevo: El proxy ya devolvió el objeto parseado
