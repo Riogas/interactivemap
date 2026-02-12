@@ -2,28 +2,18 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { EmpresaFleteraSupabase } from '@/types';
-import EmpresaSelector from '@/components/ui/EmpresaSelector';
 import PreferencesModal, { UserPreferences } from '@/components/ui/PreferencesModal';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface FloatingToolbarProps {
   selectedDate: string;
   onDateChange: (date: string) => void;
-  empresas: EmpresaFleteraSupabase[];
-  selectedEmpresas: number[];
-  onEmpresasChange: (empresas: number[]) => void;
-  isLoadingEmpresas: boolean;
   onPreferencesChange?: (preferences: UserPreferences) => void;
 }
 
 export default function FloatingToolbar({
   selectedDate,
   onDateChange,
-  empresas,
-  selectedEmpresas,
-  onEmpresasChange,
-  isLoadingEmpresas,
   onPreferencesChange,
 }: FloatingToolbarProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -89,12 +79,7 @@ export default function FloatingToolbar({
             )}
           </svg>
           
-          {/* Badge de notificación (opcional) */}
-          {selectedEmpresas.length < empresas.length && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">
-              !
-            </span>
-          )}
+
         </button>
 
         {/* Panel Expandible */}
@@ -135,31 +120,7 @@ export default function FloatingToolbar({
               />
             </div>
 
-            {/* Separador */}
-            <div className="border-t border-gray-200"></div>
 
-            {/* Selector de Empresas */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <span className="text-lg">🏢</span>
-                Empresas
-                <span className="ml-auto text-xs text-gray-500">
-                  {selectedEmpresas.length} de {empresas.length}
-                </span>
-              </label>
-              {isLoadingEmpresas ? (
-                <div className="flex items-center justify-center gap-2 py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-3 border-blue-500 border-t-transparent" />
-                  <span className="text-gray-600 text-sm">Cargando empresas...</span>
-                </div>
-              ) : (
-                <EmpresaSelector
-                  empresas={empresas}
-                  selectedEmpresas={selectedEmpresas}
-                  onSelectionChange={onEmpresasChange}
-                />
-              )}
-            </div>
 
             {/* Separador */}
             <div className="border-t border-gray-200"></div>

@@ -1223,8 +1223,12 @@ function DashboardContent() {
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 relative">
       {/* Navbar Simple - Solo logo y espacio para indicadores */}
       <div className="flex-shrink-0">
-        <NavbarSimple>
-          {/* Dashboard Indicators Component */}
+        <NavbarSimple
+          empresas={empresas}
+          selectedEmpresas={selectedEmpresas}
+          onEmpresasChange={setSelectedEmpresas}
+          isLoadingEmpresas={isLoadingEmpresas}
+        >
           <DashboardIndicators
             moviles={movilesFiltered}
             pedidos={pedidosCompletos}
@@ -1238,10 +1242,6 @@ function DashboardContent() {
       <FloatingToolbar
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
-        empresas={empresas}
-        selectedEmpresas={selectedEmpresas}
-        onEmpresasChange={setSelectedEmpresas}
-        isLoadingEmpresas={isLoadingEmpresas}
         onPreferencesChange={(newPrefs) => {
           updatePreferences(newPrefs);
         }}
