@@ -41,6 +41,7 @@ interface MapViewProps {
   moviles: MovilData[];
   focusedMovil?: number; // Móvil enfocado desde la lista (solo visual)
   selectedMovil?: number; // Móvil seleccionado para animación
+  secondaryAnimMovil?: number; // Segundo móvil para animación dual (máx 2)
   popupMovil?: number; // Móvil con popup abierto
   showPendientes?: boolean; // Mostrar marcadores de pendientes
   showCompletados?: boolean; // Mostrar solo marcadores de completados (sin animación)
@@ -67,6 +68,7 @@ interface MapViewProps {
   allMoviles?: MovilData[]; // Todos los móviles (para selector en panel de animación)
   selectedDate?: string; // Fecha seleccionada actual
   onMovilDateChange?: (movilId: number, date: string) => void; // Cambiar móvil/fecha desde panel animación
+  onSecondaryAnimMovilChange?: (movilId: number | undefined) => void; // Cambiar 2do móvil animación
 }
 
 function MapUpdater({ 
@@ -284,6 +286,7 @@ function MapUpdater({
 interface AnimationFollowerProps {
   moviles: MovilData[];
   selectedMovil?: number;
+  secondaryMovil?: number;
   animationProgress: number;
   isAnimating: boolean;
   startTime: string;
@@ -293,13 +296,14 @@ interface AnimationFollowerProps {
 function AnimationFollower({ 
   moviles, 
   selectedMovil, 
+  secondaryMovil,
   animationProgress, 
   isAnimating,
   startTime,
   endTime
 }: AnimationFollowerProps) {
   const map = useMap();
-  const lastFollowedPoint = useRef<[number, number] | null>(null);
+  const lastFollowedPoint = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isAnimating || !selectedMovil) {
@@ -307,13 +311,7 @@ function AnimationFollower({
       return;
     }
 
-    const selectedMovilData = moviles.find(m => m.id === selectedMovil);
-    if (!selectedMovilData?.history || selectedMovilData.history.length === 0) {
-      return;
-    }
-
-    // Filtrar historial por rango de tiempo (misma lógica que en el componente principal)
-    const filteredHistory = selectedMovilData.history.filter(coord => {
+    const timeFilter = (history: any[]) => history.filter((coord: any) => {
       if (!coord.fechaInsLog) return true;
       try {
         const coordDate = new Date(coord.fechaInsLog);
@@ -326,40 +324,39 @@ function AnimationFollower({
       }
     });
 
-    if (filteredHistory.length === 0) return;
+    const getAnimatedPoint = (movilId: number): [number, number] | null => {
+      const movilData = moviles.find(m => m.id === movilId);
+      if (!movilData?.history || movilData.history.length === 0) return null;
+      const filtered = timeFilter(movilData.history);
+      if (filtered.length === 0) return null;
+      const fullPath = filtered.map((c: any) => [c.coordX, c.coordY] as [number, number]);
+      const optimized = fullPath.length > 300 ? optimizePath(fullPath, 200) : fullPath;
+      const total = optimized.length;
+      const visible = Math.max(1, Math.ceil((animationProgress / 100) * total));
+      const idx = total - visible;
+      return optimized[idx] || null;
+    };
 
-    // Convertir a coordenadas y aplicar MISMA optimización que el rendering
-    const fullPathCoordinates = filteredHistory.map(coord => [coord.coordX, coord.coordY] as [number, number]);
-    const optimizedPath = fullPathCoordinates.length > 300
-      ? optimizePath(fullPathCoordinates, 200)
-      : fullPathCoordinates;
+    const point1 = getAnimatedPoint(selectedMovil);
+    const point2 = secondaryMovil ? getAnimatedPoint(secondaryMovil) : null;
 
-    // Calcular el punto actual con MISMA fórmula que el rendering
-    const totalPoints = optimizedPath.length;
-    const visiblePointsCount = Math.max(
-      1,
-      Math.ceil((animationProgress / 100) * totalPoints)
-    );
-    const animatedPointIndex = totalPoints - visiblePointsCount;
-    const currentPoint = optimizedPath[animatedPointIndex];
+    if (!point1 && !point2) return;
 
-    if (currentPoint) {
-      const newCenter: [number, number] = [currentPoint[0], currentPoint[1]];
-      
-      // Solo mover el mapa si el punto cambió significativamente
-      if (!lastFollowedPoint.current || 
-          Math.abs(lastFollowedPoint.current[0] - newCenter[0]) > 0.0001 ||
-          Math.abs(lastFollowedPoint.current[1] - newCenter[1]) > 0.0001) {
-        
-        // setView sin animación para sincronía perfecta con el marcador
-        map.setView(newCenter, map.getZoom(), {
-          animate: false
-        });
-        
-        lastFollowedPoint.current = newCenter;
-      }
+    const pointsKey = `${point1?.[0]},${point1?.[1]}-${point2?.[0]},${point2?.[1]}`;
+    if (pointsKey === lastFollowedPoint.current) return;
+    lastFollowedPoint.current = pointsKey;
+
+    if (point1 && point2) {
+      // Dos móviles: fitBounds para mantener ambos visibles
+      const bounds = L.latLngBounds(
+        [L.latLng(point1[0], point1[1]), L.latLng(point2[0], point2[1])]
+      ).pad(0.15);
+      map.fitBounds(bounds, { animate: false, maxZoom: 15 });
+    } else {
+      const center = point1 || point2!;
+      map.setView(center, map.getZoom(), { animate: false });
     }
-  }, [map, isAnimating, selectedMovil, animationProgress, moviles, startTime, endTime]);
+  }, [map, isAnimating, selectedMovil, secondaryMovil, animationProgress, moviles, startTime, endTime]);
 
   return null;
 }
@@ -388,6 +385,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
   return (
     prev.moviles.length === next.moviles.length &&
     prev.selectedMovil === next.selectedMovil &&
+    prev.secondaryAnimMovil === next.secondaryAnimMovil &&
     prev.focusedMovil === next.focusedMovil &&
     prev.showPendientes === next.showPendientes &&
     prev.showCompletados === next.showCompletados &&
@@ -413,6 +411,7 @@ const MapView = memo(function MapView({
   moviles, 
   focusedMovil, 
   selectedMovil, 
+  secondaryAnimMovil,
   popupMovil, 
   showPendientes, 
   showCompletados, 
@@ -439,6 +438,7 @@ const MapView = memo(function MapView({
   allMoviles = [],
   selectedDate = '',
   onMovilDateChange,
+  onSecondaryAnimMovilChange,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -769,78 +769,74 @@ const MapView = memo(function MapView({
   // Extraer pedidos/servicios completados del historial de coordenadas
   // Ahora los completados están en LOGCOORDMOVIL con ORIGEN='UPDPEDIDOS' o 'DYLPEDIDOS'
   const pedidosCompletados = useMemo(() => {
-    if (!selectedMovil) {
-      return [];
-    }
+    const animMovilIds = [selectedMovil, secondaryAnimMovil].filter(Boolean) as number[];
+    if (animMovilIds.length === 0) return [];
     
-    const movilData = moviles.find(m => m.id === selectedMovil);
+    const allCompletados: (PedidoServicio & { sourceMovilId: number })[] = [];
     
-    if (!movilData?.history) {
-      return [];
+    for (const movilId of animMovilIds) {
+      const movilData = moviles.find(m => m.id === movilId);
+      if (!movilData?.history) continue;
+
+      const completados = movilData.history
+        .filter(coord => {
+          const origen = coord.origen?.trim();
+          const esOrigenCorrecto = origen === 'UPDPEDIDOS' || origen === 'DYLPEDIDOS';
+          const tienePedidoId = coord.pedidoId && coord.pedidoId > 0;
+          
+          const clienteXNum = typeof coord.clienteX === 'string'
+            ? parseFloat((coord.clienteX as string).trim())
+            : typeof coord.clienteX === 'number'
+              ? coord.clienteX
+              : 0;
+          const clienteYNum = typeof coord.clienteY === 'string'
+            ? parseFloat((coord.clienteY as string).trim())
+            : typeof coord.clienteY === 'number'
+              ? coord.clienteY
+              : 0;
+          
+          const tieneCoordenadasValidas = 
+            clienteXNum && !isNaN(clienteXNum) && clienteXNum !== 0 &&
+            clienteYNum && !isNaN(clienteYNum) && clienteYNum !== 0;
+
+          return esOrigenCorrecto && tienePedidoId && tieneCoordenadasValidas;
+        })
+        .map(coord => {
+          const clienteXNum = typeof coord.clienteX === 'string'
+            ? parseFloat((coord.clienteX as string).trim())
+            : coord.clienteX!;
+          const clienteYNum = typeof coord.clienteY === 'string'
+            ? parseFloat((coord.clienteY as string).trim())
+            : coord.clienteY!;
+
+          return {
+            tipo: coord.obs?.trim() === 'Services' ? 'SERVICIO' as const : 'PEDIDO' as const,
+            id: coord.pedidoId!,
+            cliid: 0,
+            clinom: '',
+            fecha: coord.fechaInsLog,
+            x: clienteXNum,
+            y: clienteYNum,
+            estado: 2,
+            subestado: 0,
+            sourceMovilId: movilId,
+          } as PedidoServicio & { sourceMovilId: number };
+        });
+
+      allCompletados.push(...completados);
     }
 
-    // Filtrar coordenadas con origen UPDPEDIDOS o DYLPEDIDOS que tengan coordenadas válidas
-    const completados = movilData.history
-      .filter(coord => {
-        const origen = coord.origen?.trim();
-        const esOrigenCorrecto = origen === 'UPDPEDIDOS' || origen === 'DYLPEDIDOS';
-        const tienePedidoId = coord.pedidoId && coord.pedidoId > 0;
-        
-        // Las coordenadas del cliente pueden venir como números o strings
-        const clienteXNum = typeof coord.clienteX === 'string'
-          ? parseFloat((coord.clienteX as string).trim())
-          : typeof coord.clienteX === 'number'
-            ? coord.clienteX
-            : 0;
-        const clienteYNum = typeof coord.clienteY === 'string'
-          ? parseFloat((coord.clienteY as string).trim())
-          : typeof coord.clienteY === 'number'
-            ? coord.clienteY
-            : 0;
-        
-        const tieneCoordenadasValidas = 
-          clienteXNum && !isNaN(clienteXNum) && clienteXNum !== 0 &&
-          clienteYNum && !isNaN(clienteYNum) && clienteYNum !== 0;
-
-        if (esOrigenCorrecto && tienePedidoId && !tieneCoordenadasValidas) {
-          console.log(`⚠️ Pedido ${coord.pedidoId} sin coordenadas válidas`);
-        }
-
-        return esOrigenCorrecto && tienePedidoId && tieneCoordenadasValidas;
-      })
-      .map(coord => {
-        const clienteXNum = typeof coord.clienteX === 'string'
-          ? parseFloat((coord.clienteX as string).trim())
-          : coord.clienteX!;
-        const clienteYNum = typeof coord.clienteY === 'string'
-          ? parseFloat((coord.clienteY as string).trim())
-          : coord.clienteY!;
-
-        return {
-          tipo: coord.obs?.trim() === 'Services' ? 'SERVICIO' as const : 'PEDIDO' as const,
-          id: coord.pedidoId!,
-          cliid: 0, // No disponible en este punto
-          clinom: '', // Se obtendrá al hacer click
-          fecha: coord.fechaInsLog,
-          x: clienteXNum,
-          y: clienteYNum,
-          estado: 2, // Completado
-          subestado: 0,
-        } as PedidoServicio;
-      });
-
-    // Deduplicar por pedidoId - el mismo pedido puede tener UPDPEDIDOS y DYLPEDIDOS
-    // Mantenemos el primero que encontramos (que es el más reciente por orden de la consulta)
-    const deduplicados = completados.reduce((acc, curr) => {
+    // Deduplicar por pedidoId
+    const deduplicados = allCompletados.reduce((acc, curr) => {
       const existe = acc.find(item => item.id === curr.id);
       if (!existe) {
         acc.push(curr);
       }
       return acc;
-    }, [] as PedidoServicio[]);
+    }, [] as (PedidoServicio & { sourceMovilId: number })[]);
 
     return deduplicados;
-  }, [moviles, selectedMovil]);
+  }, [moviles, selectedMovil, secondaryAnimMovil]);
 
   // Extraer pedidos completados del móvil enfocado (para mostrar sin animación)
   const pedidosCompletadosFocused = useMemo(() => {
@@ -1352,7 +1348,7 @@ const MapView = memo(function MapView({
     setAnimationProgress(0);
     lastProgressUpdate.current = 0;
     animationStartTime.current = 0;
-  }, [selectedMovil]);
+  }, [selectedMovil, secondaryAnimMovil]);
 
   // 🚀 OPTIMIZACIÓN: Calcular densidad total de marcadores para adaptar rendimiento
   const totalMarkerCount = useMemo(() => {
@@ -1385,11 +1381,11 @@ const MapView = memo(function MapView({
         {/* Control de capas base (calles, satélite, terreno, etc.) */}
         <LayersControl defaultLayer={defaultMapLayer} />
         
-        {selectedMovil ? (
-          // Mostrar SOLO el móvil seleccionado con su recorrido
+        {(selectedMovil || secondaryAnimMovil) ? (
+          // Mostrar los móviles seleccionados con su recorrido
           <>
             {moviles
-              .filter(m => m.id === selectedMovil)
+              .filter(m => m.id === selectedMovil || m.id === secondaryAnimMovil)
               .map((movil) => {
                 // Si no tiene posición actual, no renderizar nada
                 if (!movil.currentPosition) return null;
@@ -1763,7 +1759,7 @@ const MapView = memo(function MapView({
 
             {/* Marcadores de Pedidos y Servicios Pendientes para móvil seleccionado */}
             {moviles
-              .filter(m => m.id === selectedMovil && m.pendientes && m.pendientes.length > 0)
+              .filter(m => (m.id === selectedMovil || m.id === secondaryAnimMovil) && m.pendientes && m.pendientes.length > 0)
               .map((movil) => (
                 movil.pendientes!.map((item) => {
                   // Validar que tenga coordenadas válidas
@@ -1797,8 +1793,11 @@ const MapView = memo(function MapView({
                 // Validar que tenga coordenadas válidas
                 if (!item.x || !item.y) return null;
                 
-                // Obtener el móvil seleccionado
-                const movilData = moviles.find(m => m.id === selectedMovil);
+                // Obtener el móvil fuente de este pedido
+                const sourceId = (item as any).sourceMovilId;
+                const movilData = sourceId
+                  ? moviles.find(m => m.id === sourceId)
+                  : moviles.find(m => m.id === selectedMovil);
                 if (!movilData || !movilData.history || movilData.history.length === 0) {
                   return null;
                 }
@@ -2044,6 +2043,7 @@ const MapView = memo(function MapView({
         <AnimationFollower 
           moviles={moviles}
           selectedMovil={selectedMovil}
+          secondaryMovil={secondaryAnimMovil}
           animationProgress={animationProgress}
           isAnimating={isAnimating}
           startTime={startTime}
@@ -2147,6 +2147,8 @@ const MapView = memo(function MapView({
           onSimplifiedPathChange={setSimplifiedPath}
           allMoviles={allMoviles}
           selectedMovilId={selectedMovil}
+          secondaryMovilId={secondaryAnimMovil}
+          onSecondaryMovilChange={onSecondaryAnimMovilChange}
           selectedDate={selectedDate}
           onMovilDateChange={onMovilDateChange}
         />

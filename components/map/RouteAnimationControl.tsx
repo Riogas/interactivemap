@@ -17,9 +17,11 @@ interface RouteAnimationControlProps {
   onTimeRangeChange?: (startTime: string, endTime: string) => void;
   simplifiedPath?: boolean;
   onSimplifiedPathChange?: (value: boolean) => void;
-  // Nuevas props para cambiar móvil y fecha
+  // Props para cambiar móvil y fecha
   allMoviles?: MovilData[];
   selectedMovilId?: number;
+  secondaryMovilId?: number;
+  onSecondaryMovilChange?: (movilId: number | undefined) => void;
   selectedDate?: string;
   onMovilDateChange?: (movilId: number, date: string) => void;
 }
@@ -49,23 +51,40 @@ export default function RouteAnimationControl({
   onSimplifiedPathChange,
   allMoviles = [],
   selectedMovilId,
+  secondaryMovilId,
+  onSecondaryMovilChange,
   selectedDate = '',
   onMovilDateChange,
 }: RouteAnimationControlProps) {
   const [movilSearch, setMovilSearch] = useState('');
   const [isMovilDropdownOpen, setIsMovilDropdownOpen] = useState(false);
+  const [isSecondaryDropdownOpen, setIsSecondaryDropdownOpen] = useState(false);
+  const [secondarySearch, setSecondarySearch] = useState('');
 
   const filteredMoviles = useMemo(() => {
     if (!movilSearch.trim()) return allMoviles;
     const q = movilSearch.toLowerCase();
     return allMoviles.filter(m =>
       String(m.id).includes(q) ||
-      (m.descripcion && m.descripcion.toLowerCase().includes(q)) ||
-      (m.patente && m.patente.toLowerCase().includes(q))
+      (m.name && m.name.toLowerCase().includes(q)) ||
+      (m.matricula && m.matricula.toLowerCase().includes(q))
     );
   }, [allMoviles, movilSearch]);
 
   const currentMovil = allMoviles.find(m => m.id === selectedMovilId);
+  const secondaryMovil = allMoviles.find(m => m.id === secondaryMovilId);
+
+  // Filtrar móviles para el dropdown secundario (excluir el primario)
+  const filteredSecondaryMoviles = useMemo(() => {
+    const available = allMoviles.filter(m => m.id !== selectedMovilId);
+    if (!secondarySearch.trim()) return available;
+    const q = secondarySearch.toLowerCase();
+    return available.filter(m =>
+      String(m.id).includes(q) ||
+      (m.name && m.name.toLowerCase().includes(q)) ||
+      (m.matricula && m.matricula.toLowerCase().includes(q))
+    );
+  }, [allMoviles, selectedMovilId, secondarySearch]);
 
   return (
     <motion.div
@@ -114,7 +133,7 @@ export default function RouteAnimationControl({
                   >
                     <span className="text-purple-600">🚗</span>
                     <span className="flex-1 truncate text-gray-700">
-                      {currentMovil ? `${currentMovil.id} — ${currentMovil.descripcion || 'Sin desc.'}` : 'Seleccionar móvil'}
+                      {currentMovil ? `${currentMovil.id} — ${currentMovil.name || 'Sin desc.'}` : 'Seleccionar móvil'}
                     </span>
                     <svg className={`w-4 h-4 text-purple-400 transition-transform ${isMovilDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -151,7 +170,7 @@ export default function RouteAnimationControl({
                             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
                               m.id === selectedMovilId ? 'bg-purple-500 text-white' : 'bg-gray-200 text-gray-600'
                             }`}>{m.id}</span>
-                            <span className="flex-1 truncate text-gray-700">{m.descripcion || `Móvil ${m.id}`}</span>
+                            <span className="flex-1 truncate text-gray-700">{m.name || `Móvil ${m.id}`}</span>
                             {m.id === selectedMovilId && (
                               <svg className="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -179,6 +198,69 @@ export default function RouteAnimationControl({
                     className="px-2 py-1.5 border-2 border-purple-300 rounded-lg text-sm font-medium bg-purple-50 focus:border-purple-500 focus:outline-none transition-colors"
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Selector de 2do Móvil (máx 2 simultáneos) */}
+            {onSecondaryMovilChange && allMoviles.length > 1 && (
+              <div className="flex items-center gap-2 mb-3">
+                {secondaryMovilId && secondaryMovil ? (
+                  <div className="flex-1 flex items-center gap-2 px-3 py-1.5 border-2 border-teal-300 rounded-lg bg-teal-50 text-sm font-medium">
+                    <span className="text-teal-600">🚗</span>
+                    <span className="flex-1 truncate text-gray-700">
+                      2do: {secondaryMovil.id} — {secondaryMovil.name || 'Sin desc.'}
+                    </span>
+                    <button
+                      onClick={() => onSecondaryMovilChange(undefined)}
+                      className="w-5 h-5 rounded-full bg-teal-200 hover:bg-red-300 flex items-center justify-center transition-colors"
+                      title="Quitar 2do móvil"
+                    >
+                      <svg className="w-3 h-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative flex-1">
+                    <button
+                      onClick={() => setIsSecondaryDropdownOpen(!isSecondaryDropdownOpen)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 border-2 border-dashed border-teal-300 rounded-lg text-sm font-medium bg-white hover:bg-teal-50 transition-colors text-teal-600"
+                    >
+                      <span>➕</span>
+                      <span>Agregar 2do móvil (comparar)</span>
+                    </button>
+                    {isSecondaryDropdownOpen && (
+                      <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border-2 border-teal-300 rounded-xl shadow-2xl z-50 max-h-[250px] overflow-hidden flex flex-col">
+                        <div className="p-2 border-b border-gray-100">
+                          <input
+                            type="text"
+                            value={secondarySearch}
+                            onChange={(e) => setSecondarySearch(e.target.value)}
+                            placeholder="Buscar 2do móvil..."
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:border-teal-400 focus:outline-none"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="overflow-y-auto max-h-[200px]">
+                          {filteredSecondaryMoviles.map(m => (
+                            <button
+                              key={m.id}
+                              onClick={() => {
+                                onSecondaryMovilChange(m.id);
+                                setIsSecondaryDropdownOpen(false);
+                                setSecondarySearch('');
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors hover:bg-teal-50"
+                            >
+                              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-teal-100 text-teal-700">{m.id}</span>
+                              <span className="flex-1 truncate text-gray-700">{m.name || `Móvil ${m.id}`}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

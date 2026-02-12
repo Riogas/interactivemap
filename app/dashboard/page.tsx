@@ -48,6 +48,7 @@ function DashboardContent() {
   
   const [focusedMovil, setFocusedMovil] = useState<number | undefined>(); // Móvil enfocado en el mapa (para centrar)
   const [selectedMovil, setSelectedMovil] = useState<number | undefined>(); // Móvil seleccionado para animación
+  const [selectedMovil2, setSelectedMovil2] = useState<number | undefined>(); // 2do móvil para animación dual
   const [popupMovil, setPopupMovil] = useState<number | undefined>(); // Móvil con popup abierto
   const [popupPedido, setPopupPedido] = useState<number | undefined>(); // Pedido con popup abierto
   const [popupService, setPopupService] = useState<number | undefined>(); // Service con popup abierto
@@ -912,12 +913,14 @@ function DashboardContent() {
     setShowCompletados(true); // Muestra los marcadores de completados
     setShowPendientes(false); // Oculta pendientes
     setSelectedMovil(undefined); // Desactiva animación si estaba activa
+    setSelectedMovil2(undefined); // Limpiar 2do móvil
     setPopupMovil(undefined); // Cierra el popup
   }, []);
 
   // Handler para cerrar el panel de animación
   const handleCloseAnimation = useCallback(() => {
     setSelectedMovil(undefined); // Desactiva la animación
+    setSelectedMovil2(undefined); // Limpiar 2do móvil
   }, []);
 
   // Handler para confirmar tracking desde el modal
@@ -1137,10 +1140,14 @@ function DashboardContent() {
         console.log(`📜 Refreshing history for móvil ${selectedMovil}`);
         fetchMovilHistory(selectedMovil);
       }
+      if (selectedMovil2) {
+        console.log(`📜 Refreshing history for 2nd móvil ${selectedMovil2}`);
+        fetchMovilHistory(selectedMovil2);
+      }
     }, REALTIME_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [fetchPositions, preferences.realtimeEnabled, selectedMovil, fetchMovilHistory]);
+  }, [fetchPositions, preferences.realtimeEnabled, selectedMovil, selectedMovil2, fetchMovilHistory]);
 
   // Cargar pedidos pendientes cuando se seleccionan móviles O cuando se carga el dashboard
   useEffect(() => {
@@ -1431,6 +1438,7 @@ function DashboardContent() {
                 moviles={applyAdvancedFilters(markInactiveMoviles(movilesFiltered)).filter(m => selectedMoviles.includes(m.id) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
+                secondaryAnimMovil={selectedMovil2}
                 popupMovil={popupMovil}
                 showPendientes={showPendientes}
                 showCompletados={showCompletados}
@@ -1455,6 +1463,16 @@ function DashboardContent() {
                 allMoviles={movilesFiltered}
                 selectedDate={selectedDate}
                 onMovilDateChange={handleTrackingConfirm}
+                onSecondaryAnimMovilChange={async (movilId) => {
+                  if (movilId) {
+                    // Cargar historial del 2do móvil si no está cargado
+                    const movilData = moviles.find(m => m.id === movilId);
+                    if (!movilData?.history || movilData.history.length === 0) {
+                      await fetchMovilHistory(movilId);
+                    }
+                  }
+                  setSelectedMovil2(movilId);
+                }}
               />
             </motion.div>
           </>
