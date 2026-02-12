@@ -1435,7 +1435,7 @@ function DashboardContent() {
               className="w-full h-full"
             >
               <MapView 
-                moviles={applyAdvancedFilters(markInactiveMoviles(movilesFiltered)).filter(m => selectedMoviles.includes(m.id) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
+                moviles={applyAdvancedFilters(markInactiveMoviles(movilesFiltered)).filter(m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
                 secondaryAnimMovil={selectedMovil2}

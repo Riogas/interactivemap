@@ -403,7 +403,9 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     (prev.services?.length ?? 0) === (next.services?.length ?? 0) &&
     (prev.allServices?.length ?? 0) === (next.allServices?.length ?? 0) &&
     // Comparación de IDs de móviles (más barato que deep equal)
-    prev.moviles.every((m, i) => m.id === next.moviles[i]?.id)
+    prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
+    // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
+    prev.moviles.every((m, i) => (m.history?.length ?? 0) === (next.moviles[i]?.history?.length ?? 0))
   );
 };
 
@@ -1342,13 +1344,14 @@ const MapView = memo(function MapView({
     };
   }, [isAnimating, animationSpeed, moviles, selectedMovil, startTime, endTime]);
 
-  // Resetear animación cuando cambia el móvil seleccionado
+  // Resetear animación cuando cambia el móvil PRIMARIO seleccionado
+  // NO incluir secondaryAnimMovil — agregar un 2do no debe resetear la animación
   useEffect(() => {
     setIsAnimating(false);
     setAnimationProgress(0);
     lastProgressUpdate.current = 0;
     animationStartTime.current = 0;
-  }, [selectedMovil, secondaryAnimMovil]);
+  }, [selectedMovil]);
 
   // 🚀 OPTIMIZACIÓN: Calcular densidad total de marcadores para adaptar rendimiento
   const totalMarkerCount = useMemo(() => {
