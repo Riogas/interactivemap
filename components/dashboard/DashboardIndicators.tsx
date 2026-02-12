@@ -1,161 +1,109 @@
 'use client';
 
 import { useMemo } from 'react';
-import { MovilData, PedidoSupabase } from '@/types';
+import { MovilData, PedidoSupabase, ServiceSupabase } from '@/types';
+import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { motion } from 'framer-motion';
 
 interface DashboardIndicatorsProps {
   moviles: MovilData[];
   pedidos: PedidoSupabase[];
+  services: ServiceSupabase[];
   selectedDate: string;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, selectedDate }: DashboardIndicatorsProps) {
-  // ============= CÁLCULOS DE MÓVILES =============
-  const movilesStats = useMemo(() => {
-    const activos = moviles.filter(m => !m.isInactive).length;
-    const sinReportar = moviles.filter(m => m.isInactive).length;
-    
-    // Móviles con pedidos atrasados
-    const conPedidosAtrasados = moviles.filter(m => {
-      // Revisar si tiene pedidos pendientes y si alguno está atrasado
-      const pedidosMovil = pedidos.filter(p => p.movil === m.id);
-      return pedidosMovil.some(p => {
-        if (!p.fch_para || (p.estado_nro !== 1 && p.estado_nro !== 2)) return false;
-        const fechaPara = new Date(p.fch_para);
-        const ahora = new Date();
-        const diffMins = (ahora.getTime() - fechaPara.getTime()) / (1000 * 60);
-        return diffMins > 30; // Más de 30 mins atrasado
-      });
-    }).length;
-    
-    // Móviles ociosos (sin pedidos asignados)
-    const ociosos = moviles.filter(m => {
-      const pedidosMovil = pedidos.filter(p => p.movil === m.id);
-      return pedidosMovil.length === 0;
-    }).length;
-    
-    // Capacidad máxima de entrega (tamaño de lote)
-    const capacidadMax = moviles.reduce((sum, m) => sum + (m.tamanoLote || 10), 0);
-    
-    // Capacidad ocupada (pedidos activos asignados)
-    const capacidadOcupada = moviles.reduce((sum, m) => {
-      const pedidosMovil = pedidos.filter(p => p.movil === m.id && (p.estado_nro === 1 || p.estado_nro === 2));
-      return sum + pedidosMovil.length;
-    }, 0);
-    
-    const porcentajeCapacidad = capacidadMax > 0 ? (capacidadOcupada / capacidadMax * 100).toFixed(0) : '0';
-    
-    return {
-      activos,
-      sinReportar,
-      conPedidosAtrasados,
-      ociosos,
-      capacidadMax,
-      capacidadOcupada,
-      porcentajeCapacidad,
-    };
-  }, [moviles, pedidos]);
-
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate }: DashboardIndicatorsProps) {
+  
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
-    // Filtrar por estados (ajusta según tu esquema)
-    const pendientes = pedidos.filter(p => 
-      p.estado_nro === 1 || p.estado_nro === 2 // Estados pendientes
-    ).length;
-    
-    const entregados = pedidos.filter(p => 
-      p.estado_nro === 4 || p.sub_estado_desc?.toLowerCase().includes('entregado')
-    ).length;
-    
-    const noEntregados = pedidos.filter(p => 
-      p.estado_nro === 5 || p.sub_estado_desc?.toLowerCase().includes('cancelado')
-    ).length;
-    
+    const pendientes = pedidos.filter(p => Number(p.estado_nro) === 1);
+    const entregados = pedidos.filter(p => Number(p.estado_nro) === 2);
     const total = pedidos.length;
-    const porcentajeEntregados = total > 0 ? (entregados / total * 100).toFixed(0) : '0';
     
-    // Pedidos atrasados (ejemplo: más de X horas desde fch_para)
-    const ahora = new Date();
-    const atrasados = pedidos.filter(p => {
-      if (!p.fch_para) return false;
-      const fechaPara = new Date(p.fch_para);
-      const diffMins = (ahora.getTime() - fechaPara.getTime()) / (1000 * 60);
-      return diffMins > 30 && (p.estado_nro === 1 || p.estado_nro === 2); // Más de 30 mins atrasado
+    // Atrasados: pedidos pendientes con delay "Atrasado" o "Muy Atrasado"
+    const atrasados = pendientes.filter(p => {
+      const delayMins = computeDelayMinutes(p.fch_hora_max_ent_comp);
+      const info = getDelayInfo(delayMins);
+      return info.label === 'Atrasado' || info.label === 'Muy Atrasado';
     });
     
     const cantAtrasados = atrasados.length;
-    const porcentajeAtrasados = pendientes > 0 ? (cantAtrasados / pendientes * 100).toFixed(0) : '0';
+    const porcentajeAtrasados = pendientes.length > 0 
+      ? Math.round(cantAtrasados / pendientes.length * 100) 
+      : 0;
     
-    // Pedido más atrasado en minutos
-    const masAtrasadoMins = atrasados.length > 0
-      ? Math.max(...atrasados.map(p => {
-          const fechaPara = new Date(p.fch_para!);
-          return (ahora.getTime() - fechaPara.getTime()) / (1000 * 60);
-        })).toFixed(0)
-      : '0';
+    // Pedido más atrasado en minutos (el más negativo de computeDelayMinutes)
+    let masAtrasadoMins = 0;
+    pendientes.forEach(p => {
+      const delayMins = computeDelayMinutes(p.fch_hora_max_ent_comp);
+      if (delayMins !== null && delayMins < 0) {
+        const absMin = Math.abs(delayMins);
+        if (absMin > masAtrasadoMins) masAtrasadoMins = absMin;
+      }
+    });
     
     return {
-      pendientes,
-      entregados,
-      noEntregados,
+      pendientes: pendientes.length,
+      entregados: entregados.length,
       cantAtrasados,
       porcentajeAtrasados,
-      masAtrasadoMins,
-      porcentajeEntregados,
+      masAtrasadoMins: Math.round(masAtrasadoMins),
+      total,
     };
   }, [pedidos]);
 
   // ============= CÁLCULOS DE SERVICES =============
   const servicesStats = useMemo(() => {
-    // Filtrar services (tipo = 'SERVICE' o similar)
-    const services = pedidos.filter(p => p.tipo?.toUpperCase() === 'SERVICE');
-    
-    const pendientes = services.filter(s => 
-      s.estado_nro === 1 || s.estado_nro === 2
-    ).length;
-    
-    const realizados = services.filter(s => 
-      s.estado_nro === 4 || s.sub_estado_desc?.toLowerCase().includes('realizado')
-    ).length;
-    
-    const noRealizados = services.filter(s => 
-      s.estado_nro === 5 || s.sub_estado_desc?.toLowerCase().includes('cancelado')
-    ).length;
-    
+    const pendientes = services.filter(s => Number(s.estado_nro) === 1);
+    const realizados = services.filter(s => Number(s.estado_nro) === 2);
     const total = services.length;
-    const porcentajeRealizados = total > 0 ? (realizados / total * 100).toFixed(0) : '0';
     
-    // Services atrasados
-    const ahora = new Date();
-    const atrasados = services.filter(s => {
-      if (!s.fch_para) return false;
-      const fechaPara = new Date(s.fch_para);
-      const diffMins = (ahora.getTime() - fechaPara.getTime()) / (1000 * 60);
-      return diffMins > 30 && (s.estado_nro === 1 || s.estado_nro === 2);
+    // Atrasados: services pendientes con delay "Atrasado" o "Muy Atrasado"
+    const atrasados = pendientes.filter(s => {
+      const delayMins = computeDelayMinutes(s.fch_hora_max_ent_comp);
+      const info = getDelayInfo(delayMins);
+      return info.label === 'Atrasado' || info.label === 'Muy Atrasado';
     });
     
     const cantAtrasados = atrasados.length;
-    const porcentajeAtrasados = pendientes > 0 ? (cantAtrasados / pendientes * 100).toFixed(0) : '0';
+    const porcentajeAtrasados = pendientes.length > 0 
+      ? Math.round(cantAtrasados / pendientes.length * 100) 
+      : 0;
     
     // Service más atrasado en minutos
-    const masAtrasadoMins = atrasados.length > 0
-      ? Math.max(...atrasados.map(s => {
-          const fechaPara = new Date(s.fch_para!);
-          return (ahora.getTime() - fechaPara.getTime()) / (1000 * 60);
-        })).toFixed(0)
-      : '0';
+    let masAtrasadoMins = 0;
+    pendientes.forEach(s => {
+      const delayMins = computeDelayMinutes(s.fch_hora_max_ent_comp);
+      if (delayMins !== null && delayMins < 0) {
+        const absMin = Math.abs(delayMins);
+        if (absMin > masAtrasadoMins) masAtrasadoMins = absMin;
+      }
+    });
     
     return {
-      pendientes,
-      realizados,
-      noRealizados,
+      pendientes: pendientes.length,
+      realizados: realizados.length,
       cantAtrasados,
       porcentajeAtrasados,
-      masAtrasadoMins,
-      porcentajeRealizados,
+      masAtrasadoMins: Math.round(masAtrasadoMins),
+      total,
     };
-  }, [pedidos]);
+  }, [services]);
+
+  // ============= CÁLCULOS DE MÓVILES =============
+  const movilesStats = useMemo(() => {
+    const total = moviles.length;
+    
+    // Sin coordenadas: móviles que no reportaron GPS (sin posición actual o inactivos)
+    const sinCoordenadas = moviles.filter(m => !m.currentPosition || m.isInactive).length;
+    const activos = total - sinCoordenadas;
+    
+    return {
+      total,
+      activos,
+      sinCoordenadas,
+    };
+  }, [moviles]);
 
   return (
     <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
@@ -174,7 +122,7 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
         )}
         
         {/* Pedido Más Atrasado */}
-        {parseInt(pedidosStats.masAtrasadoMins) > 0 && (
+        {pedidosStats.masAtrasadoMins > 0 && (
           <Indicator
             icon="🔴"
             label="Más Atrasado"
@@ -196,41 +144,23 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
         )}
         
         {/* Service Más Atrasado */}
-        {parseInt(servicesStats.masAtrasadoMins) > 0 && (
+        {servicesStats.masAtrasadoMins > 0 && (
           <Indicator
-            icon="�"
+            icon="🔴"
             label="Service + Atrasado"
             value={`${servicesStats.masAtrasadoMins} min`}
-            color="red"
-          />
-        )}
-        
-        {/* Móviles con Pedidos Atrasados */}
-        {movilesStats.conPedidosAtrasados > 0 && (
-          <Indicator
-            icon="�"
-            label="Móviles con Atrasos"
-            value={movilesStats.conPedidosAtrasados}
             color="red"
           />
         )}
       </div>
 
       {/* Separador */}
-      {(pedidosStats.cantAtrasados > 0 || servicesStats.cantAtrasados > 0 || movilesStats.conPedidosAtrasados > 0) && (
+      {(pedidosStats.cantAtrasados > 0 || servicesStats.cantAtrasados > 0) && (
         <div className="h-6 w-px bg-white/30" />
       )}
 
       {/* ========== OPERACIONES ACTIVAS ========== */}
       <div className="flex items-center gap-1.5">
-        {/* Pedidos Sin Asignar */}
-        <Indicator
-          icon="📋"
-          label="Pedidos Sin Asignar"
-          value={0}
-          color="orange"
-        />
-        
         {/* Pedidos Pendientes */}
         <Indicator
           icon="📦"
@@ -261,32 +191,15 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
           color="green"
         />
         
-        {/* Móviles sin Reportar */}
-        {movilesStats.sinReportar > 0 && (
+        {/* Móviles sin coordenadas */}
+        {movilesStats.sinCoordenadas > 0 && (
           <Indicator
-            icon="⚠️"
-            label="Sin Reportar"
-            value={movilesStats.sinReportar}
+            icon="📡"
+            label="Sin Coordenadas"
+            value={movilesStats.sinCoordenadas}
             color="orange"
           />
         )}
-        
-        {/* Móviles Ociosos */}
-        <Indicator
-          icon="💤"
-          label="Ociosos"
-          value={movilesStats.ociosos}
-          color="gray"
-        />
-        
-        {/* Capacidad */}
-        <Indicator
-          icon="📊"
-          label="Capacidad"
-          value={`${movilesStats.capacidadOcupada}/${movilesStats.capacidadMax}`}
-          subtitle={`${movilesStats.porcentajeCapacidad}%`}
-          color={parseInt(movilesStats.porcentajeCapacidad) > 80 ? 'red' : 'blue'}
-        />
       </div>
 
       {/* Separador */}
@@ -299,38 +212,16 @@ export default function DashboardIndicators({ moviles, pedidos, selectedDate }: 
           icon="✅"
           label="Entregados"
           value={pedidosStats.entregados}
-          subtitle={`${pedidosStats.porcentajeEntregados}%`}
           color="green"
         />
         
-        {/* Pedidos NO Entregados */}
-        {pedidosStats.noEntregados > 0 && (
-          <Indicator
-            icon="❌"
-            label="NO Entregados"
-            value={pedidosStats.noEntregados}
-            color="red"
-          />
-        )}
-        
-        {/* Services Realizados */}
+        {/* Services OK */}
         <Indicator
           icon="✔️"
           label="Services OK"
           value={servicesStats.realizados}
-          subtitle={`${servicesStats.porcentajeRealizados}%`}
           color="green"
         />
-        
-        {/* Services NO Realizados */}
-        {servicesStats.noRealizados > 0 && (
-          <Indicator
-            icon="✖️"
-            label="Services NO"
-            value={servicesStats.noRealizados}
-            color="red"
-          />
-        )}
       </div>
     </div>
   );

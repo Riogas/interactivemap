@@ -1201,6 +1201,7 @@ function DashboardContent() {
           <DashboardIndicators
             moviles={moviles}
             pedidos={pedidosCompletos}
+            services={servicesCompletos}
             selectedDate={selectedDate}
           />
         </NavbarSimple>
