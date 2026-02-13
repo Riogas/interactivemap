@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`📦 Importando ${zonasArray.length} zona(s)...`);
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('zonas')
       .insert(zonasArray)
       .select();
@@ -91,10 +91,10 @@ export async function PUT(request: NextRequest) {
 
     console.log(`🔄 Actualizando ${zonasArray.length} zona(s)...`);
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('zonas')
       .upsert(zonasArray, {
-        onConflict: 'zona_id', // Ajusta según tu columna única
+        onConflict: 'zona_id',
       })
       .select();
 
@@ -144,7 +144,7 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`🗑️ Eliminando ${zona_ids.length} zonas...`);
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('zonas')
       .delete()
       .in('zona_id', zona_ids)

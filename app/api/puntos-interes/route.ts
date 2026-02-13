@@ -300,13 +300,13 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Actualizar el punto
-    const { data, error: updateError } = await supabase
+    const { data, error: updateError } = await (supabase as any)
       .from('puntos_interes')
-      .update(updates as any)
+      .update(updates)
       .eq('id', id)
       .eq('usuario_email', usuario_email)
       .select()
-      .single() as any;
+      .single();
 
     if (updateError) {
       console.error('❌ Error al actualizar:', updateError);

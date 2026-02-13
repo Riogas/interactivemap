@@ -12,7 +12,7 @@ import { useState, useEffect, useRef } from 'react';
  */
 export function useBatchedUpdates<T>(items: T[]): T[] {
   const [batchedItems, setBatchedItems] = useState<T[]>(items);
-  const rafRef = useRef<number | undefined>();
+  const rafRef = useRef<number | undefined>(undefined);
   const pendingItems = useRef<T[]>(items);
   const lastUpdateTime = useRef<number>(Date.now());
 
@@ -134,7 +134,7 @@ export function useThrottle<T extends (...args: any[]) => any>(
   delay: number = 500
 ): T {
   const lastRun = useRef<number>(Date.now());
-  const timeoutRef = useRef<NodeJS.Timeout | undefined>();
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const throttled = useRef((...args: Parameters<T>) => {
     const now = Date.now();

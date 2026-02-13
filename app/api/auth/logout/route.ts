@@ -13,7 +13,7 @@ import { cookies } from 'next/headers';
  * - ✅ Rate limiting aplicado por proxy.ts
  */
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   console.log('\n🚪 ═══════════════════════════════════════════════════════');
   console.log('🚪 LOGOUT - Iniciando cierre de sesión');
   console.log('🚪 ═══════════════════════════════════════════════════════');

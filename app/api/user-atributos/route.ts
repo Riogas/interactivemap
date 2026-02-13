@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         'Authorization': authHeader,
       },
       body: JSON.stringify({ User: body.User }),
-      // @ts-ignore - Node.js fetch acepta agent
+      // @ts-expect-error - Node.js fetch acepta agent
       agent: url.startsWith('https:') ? httpsAgent : undefined,
     });
 

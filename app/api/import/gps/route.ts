@@ -1,122 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { requireApiKey } from '@/lib/auth-middleware';
-import { fetchSlowOperation } from '@/lib/fetch-with-timeout';
 import { getGPSQueue } from '@/lib/gps-batch-queue';
-
-/**
- * Importa un móvil desde el servicio de sincronización de GeneXus
- * cuando no existe en la base de datos
- */
-async function importMovilFromGeneXus(movilId: number): Promise<boolean> {
-  try {
-    console.log(`🔄 Importando móvil ${movilId} desde GeneXus...`);
-    
-    // Usar la URL de producción (no dev)
-    const importUrl = 'https://sgm.glp.riogas.com.uy/tracking/importacion';
-    
-    const payload = {
-      EscenarioId: 1000,
-      IdentificadorId: movilId,
-      Accion: 'Publicar',
-      Entidad: 'Moviles',
-      ProcesarEn: 1,
-    };
-    
-    console.log(`📤 Enviando a ${importUrl}:`, JSON.stringify(payload));
-    
-    // 🔧 TIMEOUT + REINTENTOS: fetchSlowOperation usa 60s timeout y 1 reintento
-    const response = await fetchSlowOperation(importUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const responseText = await response.text();
-    console.log(`📥 Respuesta (${response.status}):`, responseText.substring(0, 200));
-
-    if (!response.ok) {
-      console.error(`❌ Error al importar móvil ${movilId}: HTTP ${response.status}`);
-      console.error(`📄 Respuesta completa:`, responseText);
-      
-      // Si falla la importación de GeneXus, crear un registro básico en Supabase
-      console.log(`⚠️ Creando registro básico del móvil ${movilId} en Supabase...`);
-      const { error: insertError } = await supabase
-        .from('moviles')
-        .upsert({
-          id: movilId.toString(),
-          nro: movilId,
-          descripcion: `Móvil ${movilId}`,
-          empresa_fletera_id: 0,
-          mostrar_en_mapa: true,
-          estado_nro: 1,
-        }, {
-          onConflict: 'id'
-        });
-      
-      if (insertError) {
-        console.error(`❌ Error al crear registro básico:`, insertError);
-        return false;
-      }
-      
-      console.log(`✅ Registro básico creado para móvil ${movilId}`);
-      return true;
-    }
-
-    // Intentar parsear como JSON
-    let result;
-    try {
-      result = JSON.parse(responseText);
-      console.log(`✅ Móvil ${movilId} importado exitosamente:`, result);
-    } catch {
-      console.log(`✅ Móvil ${movilId} importado (respuesta no-JSON):`, responseText.substring(0, 100));
-    }
-    
-    // Espera más tiempo para que se procese la importación (1.5 segundos)
-    console.log(`⏱️ Esperando 1500ms para que se procese la importación...`);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Verificar que el móvil ahora existe en Supabase
-    const { data: movilExiste } = await supabase
-      .from('moviles')
-      .select('id, descripcion')
-      .eq('id', movilId.toString())
-      .single();
-    
-    if (!movilExiste) {
-      console.warn(`⚠️ Móvil ${movilId} importado pero no aparece en Supabase, creando registro básico...`);
-      const { error: insertError } = await supabase
-        .from('moviles')
-        .upsert({
-          id: movilId.toString(),
-          nro: movilId,
-          descripcion: `Móvil ${movilId}`,
-          empresa_fletera_id: 0,
-          mostrar_en_mapa: true,
-          estado_nro: 1,
-        }, {
-          onConflict: 'id'
-        });
-      
-      if (insertError) {
-        console.error(`❌ Error al crear registro básico:`, insertError);
-        return false;
-      }
-      
-      console.log(`✅ Registro básico creado para móvil ${movilId}`);
-    } else {
-      console.log(`✅ Móvil ${movilId} existe en Supabase:`, movilExiste);
-    }
-    
-    return true;
-  } catch (error: any) {
-    console.error(`❌ Error al importar móvil ${movilId}:`, error);
-    console.error(`❌ Error stack:`, error.stack);
-    return false;
-  }
-}
 
 /**
  * Transforma campos del body a formato de base de datos
@@ -212,7 +96,8 @@ function transformGpsToSupabase(gps: any) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    let { gps, token } = body;
+    const { token } = body;
+    let { gps } = body;
     
     // 🔒 AUTENTICACIÓN FLEXIBLE
     // Opción 1: Validar API Key en header (uso interno)
@@ -314,7 +199,7 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`🗑️ Eliminando ${gps_ids.length} registros GPS...`);
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('gps_tracking_extended')
       .delete()
       .in('id', gps_ids)

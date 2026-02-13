@@ -204,7 +204,7 @@ export default function FilterBar({
           <div className="flex flex-wrap gap-1">
             {searchValue && (
               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                Búsqueda: "{searchValue}"
+                Búsqueda: &quot;{searchValue}&quot;
               </span>
             )}
             {infoBadges.map((badge, i) => (

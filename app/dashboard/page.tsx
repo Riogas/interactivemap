@@ -3,14 +3,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { MovilData, EmpresaFleteraSupabase, PedidoPendiente, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters } from '@/types';
+import { MovilData, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
 import DashboardIndicators from '@/components/dashboard/DashboardIndicators';
-import MovilesSinGPS from '@/components/dashboard/MovilesSinGPS';
 import { useRealtime } from '@/components/providers/RealtimeProvider';
-import { useUserPreferences, UserPreferences } from '@/components/ui/PreferencesModal';
+import { useUserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
@@ -365,7 +364,7 @@ function DashboardContent() {
         
         if (isInitialLoad) {
           // PRIMERA CARGA: Crear array completo de móviles
-          let newMoviles: MovilData[] = result.data.map((item: { 
+          const newMoviles: MovilData[] = result.data.map((item: { 
             movilId: number; 
             movilName: string; 
             color: string;

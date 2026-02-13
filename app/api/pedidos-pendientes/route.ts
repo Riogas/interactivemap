@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     console.log(`✅ Encontrados ${pedidos?.length || 0} pedidos pendientes para el día ${fecha}`);
 
     return NextResponse.json({
-      escenarioId: parseInt(escenarioId),
+      escenarioId,
       fecha,
       pedidos: pedidos || [],
       total: pedidos?.length || 0,

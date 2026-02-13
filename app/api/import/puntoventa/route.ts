@@ -29,10 +29,10 @@ export async function PUT(request: NextRequest) {
     console.log(`🔄 Actualizando ${puntoventaArray.length} punto(s) de venta...`);
 
     const supabase = getServerSupabaseClient();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('puntoventa')
       .upsert(puntoventaArray, {
-        onConflict: 'puntoventa_id',
+        onConflict: 'punto_venta_id',
       })
       .select();
 
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     console.log(`📦 Importando ${puntoventaArray.length} punto(s) de venta...`);
 
     const supabase = getServerSupabaseClient();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('puntoventa')
       .insert(puntoventaArray)
       .select();
@@ -135,7 +135,7 @@ export async function DELETE(request: NextRequest) {
     console.log(`🗑️ Eliminando ${puntoventa_ids.length} puntos de venta...`);
 
     const supabase = getServerSupabaseClient();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('puntoventa')
       .delete()
       .in('puntoventa_id', puntoventa_ids)

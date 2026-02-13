@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(body),
       credentials: 'include', // Importante para cookies
-      // @ts-ignore - Node.js fetch acepta agent
+      // @ts-expect-error - Node.js fetch acepta agent
       agent: loginUrl.startsWith('https:') ? httpsAgent : undefined,
     });
 

@@ -29,7 +29,7 @@ export async function PUT(request: NextRequest) {
     console.log(`🔄 Actualizando ${demorasArray.length} demora(s)...`);
 
     const supabase = getServerSupabaseClient();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('demoras')
       .upsert(demorasArray, {
         onConflict: 'demora_id',
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     console.log(`📦 Importando ${demorasArray.length} demora(s)...`);
 
     const supabase = getServerSupabaseClient();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('demoras')
       .insert(demorasArray)
       .select();
@@ -135,7 +135,7 @@ export async function DELETE(request: NextRequest) {
     console.log(`🗑️ Eliminando ${demora_ids.length} demoras...`);
 
     const supabase = getServerSupabaseClient();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('demoras')
       .delete()
       .in('demora_id', demora_ids)

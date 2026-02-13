@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { MovilData, PedidoServicio, PedidoPendiente, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
+import { MovilData, PedidoServicio, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
@@ -13,9 +13,8 @@ import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
 import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from './MapOptimizations';
-import { configureTileCache, registerTileCacheServiceWorker } from './TileCacheConfig';
+import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import dynamic from 'next/dynamic';
-import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 import './MarkerCluster.css';

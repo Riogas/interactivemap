@@ -39,12 +39,12 @@ export async function GET(
     
     const { data: coordinates, error } = await supabase
       .from('gps_tracking_extended')
-      .select('*')
-      .eq('movil_id', movilId.toString()) // Nombre correcto de la columna
+      .select('id, latitud, longitud, fecha_hora, velocidad, distancia_recorrida, movil_id')
+      .eq('movil_id', movilId.toString())
       .gte('fecha_hora', startDateTime)
       .lte('fecha_hora', endDateTime)
       .order('fecha_hora', { ascending: false })
-      .limit(500); // Más registros para animación
+      .limit(500) as any;
     
     if (error) {
       console.error(`❌ Error en query:`, error);
@@ -54,7 +54,7 @@ export async function GET(
     console.log(`📊 Registros encontrados: ${coordinates?.length || 0}`);
     
     // Transformar al formato esperado por el frontend
-    const history = (coordinates || []).map(coord => ({
+    const history = (coordinates || []).map((coord: any) => ({
       identificador: coord.id,
       origen: 'SUPABASE',
       coordX: parseFloat(coord.latitud.toString()),

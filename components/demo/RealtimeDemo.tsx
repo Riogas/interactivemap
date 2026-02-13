@@ -22,7 +22,7 @@ export default function RealtimeDemo() {
     isConnected: gpsConnected, 
     error: gpsError 
   } = useGPSTracking(escenarioId, undefined, (newPosition) => {
-    addLog(`📍 GPS: Móvil ${newPosition.movil} - Lat: ${newPosition.latitud}, Lon: ${newPosition.longitud}`);
+    addLog(`📍 GPS: Móvil ${newPosition.movil_id} - Lat: ${newPosition.latitud}, Lon: ${newPosition.longitud}`);
   });
   
   // Hook de Móviles
@@ -30,7 +30,7 @@ export default function RealtimeDemo() {
     moviles, 
     isConnected: movilesConnected 
   } = useMoviles(escenarioId, undefined, (movil) => {
-    addLog(`🚗 Móvil actualizado: ${movil.movil} - Matrícula: ${movil.matricula}`);
+    addLog(`🚗 Móvil actualizado: ${movil.descripcion} - Matrícula: ${movil.matricula}`);
   });
   
   // Hook de Pedidos
@@ -38,7 +38,7 @@ export default function RealtimeDemo() {
     pedidos, 
     isConnected: pedidosConnected 
   } = usePedidos(escenarioId, undefined, (pedido) => {
-    addLog(`📦 Pedido ${pedido.pedido_id} - Estado: ${pedido.estado} - Cliente: ${pedido.cliente_nombre}`);
+    addLog(`📦 Pedido ${pedido.id} - Estado: ${pedido.estado_nro} - Cliente: ${pedido.cliente_nombre}`);
   });
   
   const addLog = (message: string) => {

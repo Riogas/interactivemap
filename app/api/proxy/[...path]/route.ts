@@ -198,7 +198,7 @@ async function proxyRequest(
             console.log(`   - Type: ${typeof requestBody}`);
             console.log(`   - Keys: [${Object.keys(requestBody).join(', ')}]`);
             console.log(`   - Values:`, requestBody);
-          } catch (parseError) {
+          } catch (_parseError) {
             console.warn(`⚠️ Body no es JSON válido, enviando como texto`);
           }
           
@@ -246,7 +246,7 @@ async function proxyRequest(
         body,
         credentials: 'include',
         signal: controller.signal,
-        // @ts-ignore - Node.js fetch acepta agent
+        // @ts-expect-error - Node.js fetch acepta agent
         agent: fullUrl.startsWith('https:') ? httpsAgent : undefined,
       });
       clearTimeout(timeoutId);

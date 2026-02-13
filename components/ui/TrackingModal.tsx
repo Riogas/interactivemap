@@ -38,8 +38,8 @@ export default function TrackingModal({
     const q = search.toLowerCase();
     return moviles.filter(m => 
       String(m.id).includes(q) ||
-      (m.descripcion && m.descripcion.toLowerCase().includes(q)) ||
-      (m.patente && m.patente.toLowerCase().includes(q))
+      (m.name && m.name.toLowerCase().includes(q)) ||
+      (m.matricula && m.matricula.toLowerCase().includes(q))
     );
   }, [moviles, search]);
 
@@ -146,10 +146,10 @@ export default function TrackingModal({
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-gray-800 truncate">
-                            {m.descripcion || `Móvil ${m.id}`}
+                            {m.name || `Móvil ${m.id}`}
                           </div>
                           <div className="text-xs text-gray-400 truncate">
-                            {m.patente || 'Sin patente'} • {m.isInactive ? '⚠️ Sin reportar' : '🟢 Activo'}
+                            {m.matricula || 'Sin patente'} • {m.isInactive ? '⚠️ Sin reportar' : '🟢 Activo'}
                           </div>
                         </div>
                         {movilId === m.id && (
@@ -187,12 +187,12 @@ export default function TrackingModal({
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-purple-600 font-semibold">Seleccionado:</span>
                     <span className="text-gray-700">
-                      Móvil {selectedMovilData.id} — {selectedMovilData.descripcion || 'Sin descripción'}
+                      Móvil {selectedMovilData.id} — {selectedMovilData.name || 'Sin descripción'}
                     </span>
                   </div>
-                  {selectedMovilData.patente && (
+                  {selectedMovilData.matricula && (
                     <div className="text-xs text-gray-500 mt-1">
-                      Patente: {selectedMovilData.patente}
+                      Patente: {selectedMovilData.matricula}
                     </div>
                   )}
                 </motion.div>

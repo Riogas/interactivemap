@@ -1,8 +1,6 @@
 // Configuración de cache para tiles de OpenStreetMap
 // Mejora performance del mapa reduciendo requests HTTP y uso de CPU
 
-import L from 'leaflet';
-
 /**
  * Configuración optimizada para TileLayer con cache agresivo
  */

@@ -117,7 +117,7 @@ export async function GET(
 
     return NextResponse.json({
       movilId: parseInt(movilId),
-      escenarioId: parseInt(escenarioId),
+      escenarioId,
       pedidos: pedidos || [],
       total: pedidos?.length || 0,
     });

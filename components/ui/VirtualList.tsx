@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, memo, forwardRef } from 'react';
+import React from 'react';
 import { List } from 'react-window';
 
 /**
@@ -22,22 +22,32 @@ interface VirtualListProps<T> {
   overscanCount?: number;
 }
 
-// react-window v2 Row component receives { rowIndex, style, data, ...rowProps }
-const VirtualRow = memo(forwardRef<HTMLDivElement, any>(function VirtualRow(props, ref) {
-  const { index, style, data, ...rest } = props;
+interface VirtualRowData<T> {
+  items: T[];
+  renderItem: (item: T, index: number) => React.ReactNode;
+}
+
+// react-window v2 rowComponent: plain function matching expected signature
+function VirtualRow<T>(props: {
+  ariaAttributes: { 'aria-posinset': number; 'aria-setsize': number; role: 'listitem' };
+  index: number;
+  style: React.CSSProperties;
+  data: VirtualRowData<T>;
+}) {
+  const { index, style, data } = props;
   const items = data?.items;
   const renderItem = data?.renderItem;
-  
-  if (!items || !renderItem || index == null || index < 0 || index >= items.length || !items[index]) {
-    return <div ref={ref} style={style} />;
+
+  if (!items || !renderItem || index < 0 || index >= items.length || !items[index]) {
+    return <div style={style} />;
   }
 
   return (
-    <div ref={ref} style={style}>
+    <div style={style}>
       {renderItem(items[index], index)}
     </div>
   );
-}));
+}
 
 export function VirtualList<T>({
   items,
@@ -67,8 +77,11 @@ export function VirtualList<T>({
     );
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ListAny = List as any;
+
   return (
-    <List
+    <ListAny
       height={safeHeight}
       rowCount={items.length}
       rowHeight={itemHeight}
