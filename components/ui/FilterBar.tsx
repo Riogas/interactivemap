@@ -200,25 +200,13 @@ export default function FilterBar({
         </AnimatePresence>
 
         {/* Indicadores de búsqueda/filtros activos */}
-        {(searchValue || filters.some(f => f.value !== 'all' && f.value !== '') || multiSelectFilters.some(f => f.values.length > 0) || infoBadges.length > 0) && (
+        {(searchValue || filters.some(f => f.value !== 'all' && f.value !== '')) && (
           <div className="flex flex-wrap gap-1">
             {searchValue && (
               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
                 Búsqueda: &quot;{searchValue}&quot;
               </span>
             )}
-            {infoBadges.map((badge, i) => (
-              <span key={i} className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${badge.color || 'bg-indigo-100 text-indigo-700'}`}>
-                {badge.label}
-                {badge.onClear && (
-                  <button onClick={badge.onClear} className="ml-0.5 hover:opacity-70">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </span>
-            ))}
             {filters
               .filter(f => f.value !== 'all' && f.value !== '')
               .map(f => {
@@ -229,13 +217,6 @@ export default function FilterBar({
                   </span>
                 );
               })}
-            {multiSelectFilters
-              .filter(f => f.values.length > 0)
-              .map(f => (
-                <span key={f.id} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                  {f.label}: {f.values.map(v => f.options.find(o => o.value === v)?.label).join(', ')}
-                </span>
-              ))}
           </div>
         )}
       </div>

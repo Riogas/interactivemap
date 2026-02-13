@@ -437,15 +437,6 @@ export default function MovilSelector({
               values: pedidosFilters.atraso,
             }
           ],
-          infoBadges: selectedMoviles.length > 0
-            ? [{
-                label: selectedMoviles.length === moviles.length
-                  ? '🚗 Móviles: Todos'
-                  : `🚗 Móviles: ${selectedMoviles.length <= 5 ? selectedMoviles.join(', ') : `${selectedMoviles.slice(0, 5).join(', ')} +${selectedMoviles.length - 5}`}`,
-                color: 'bg-indigo-100 text-indigo-700',
-                onClear: onClearAll,
-              }]
-            : [],
           onFilterChange: (filterId: string, value: string) => {
             if (filterId === 'tipoServicio') {
               setPedidosFilters(prev => ({ 
