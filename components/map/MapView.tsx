@@ -913,10 +913,14 @@ const MapView = memo(function MapView({
 
   // 🎨 NUEVO: Calcular color del móvil basado en capacidad del lote
   const getMovilColor = useCallback((movil: MovilData) => {
-    // 🆕 Si el móvil NO está activo (estado_nro 3 o 4), color gris
+    // 🆕 Si el móvil NO está activo (estado_nro 3), color gris
     const estadoNro = movil.estadoNro;
-    if (estadoNro !== undefined && estadoNro !== null && [3, 4].includes(estadoNro)) {
+    if (estadoNro === 3) {
       return '#9CA3AF'; // Gris (NO ACTIVO)
+    }
+    // 🆕 Si el móvil está en BAJA MOMENTÁNEA (estado_nro 4), color naranja
+    if (estadoNro === 4) {
+      return '#F97316'; // Naranja (BAJA MOMENTÁNEA)
     }
 
     const tamanoLote = movil.tamanoLote || 6;
@@ -942,11 +946,69 @@ const MapView = memo(function MapView({
   }, []);
 
   // 🚀 OPTIMIZACIÓN: Usar useCallback para funciones de creación de iconos
-  const createCustomIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean) => {
-    const cacheKey = `custom-${color}-${movilId}-${isInactive}-${isNoActivo}`;
+  const createCustomIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
+    const cacheKey = `custom-${color}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}`;
     
     return getCachedIcon(cacheKey, () => {
-      // 🆕 Si el móvil tiene estado NO ACTIVO (estado_nro 3 o 4), ícono gris con pausa
+      // 🆕 Si el móvil tiene BAJA MOMENTÁNEA (estado_nro 4), ícono naranja con pausa
+      if (isBajaMomentanea) {
+        return L.divIcon({
+          className: '',
+          html: `
+            <div style="
+              width: 46px;
+              height: 46px;
+              position: absolute;
+              left: -23px;
+              top: -23px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            ">
+              <!-- Círculo principal naranja con ícono de pausa -->
+              <div style="
+                width: 40px;
+                height: 40px;
+                background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+                border: 3px solid white;
+                border-radius: 50%;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0.9;
+              ">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="white" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));">
+                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                </svg>
+              </div>
+              <!-- Badge con número del móvil -->
+              ${movilId ? `
+              <div style="
+                position: absolute;
+                bottom: -6px;
+                background-color: white;
+                color: #EA580C;
+                border: 2px solid #F97316;
+                border-radius: 10px;
+                padding: 2px 6px;
+                font-size: 11px;
+                font-weight: bold;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                white-space: nowrap;
+                line-height: 1;
+              ">${movilId}</div>
+              ` : ''}
+            </div>
+          `,
+          iconSize: [46, 46],
+          iconAnchor: [23, 23],
+        });
+      }
+
+      // 🆕 Si el móvil tiene estado NO ACTIVO (estado_nro 3), ícono gris con X
       if (isNoActivo) {
         return L.divIcon({
           className: '',
@@ -976,7 +1038,7 @@ const MapView = memo(function MapView({
                 opacity: 0.85;
               ">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="white" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));">
-                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                 </svg>
               </div>
               <!-- Badge con número del móvil -->
@@ -1509,7 +1571,7 @@ const MapView = memo(function MapView({
                     <OptimizedMarker
                       key={movil.id}
                       position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
-                      icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro !== undefined && movil.estadoNro !== null && [3, 4].includes(movil.estadoNro))}
+                      icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)}
                     >
                       <Popup>
                         <div className="p-2">
@@ -1886,7 +1948,7 @@ const MapView = memo(function MapView({
                     {/* Marcador principal (posición actual) */}
                     <OptimizedMarker
                       position={[movil.currentPosition!.coordX, movil.currentPosition!.coordY]}
-                      icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro !== undefined && movil.estadoNro !== null && [3, 4].includes(movil.estadoNro))}
+                      icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)}
                     >
                       <Popup>
                         <div className="p-2">
@@ -2053,7 +2115,7 @@ const MapView = memo(function MapView({
                 <OptimizedMarker
                   key={movil.id}
                   position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
-                  icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro !== undefined && movil.estadoNro !== null && [3, 4].includes(movil.estadoNro))}
+                  icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)}
                   eventHandlers={{
                     click: () => {
                       // Cerrar popup de pedido/servicio si está abierto

@@ -270,17 +270,32 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Estado Actual</h4>
               <div className="grid grid-cols-2 gap-2">
                 {(() => {
-                  const isNoActivo = movil.estadoNro !== undefined && movil.estadoNro !== null && [3, 4].includes(movil.estadoNro);
+                  const isNoActivo = movil.estadoNro === 3;
+                  const isBajaMomentanea = movil.estadoNro === 4;
+                  const hasSpecialState = isNoActivo || isBajaMomentanea;
                   return (
-                    <div className={`bg-gradient-to-br rounded-lg p-2 border ${isNoActivo ? 'from-red-50 to-red-100 border-red-300' : 'from-blue-50 to-blue-100 border-blue-200'}`}>
-                      <div className={`text-[9px] font-semibold mb-0.5 ${isNoActivo ? 'text-red-600' : 'text-blue-600'}`}>Estado</div>
-                      <div className={`font-bold text-xs flex items-center gap-1 ${isNoActivo ? 'text-red-800' : 'text-blue-900'}`}>
+                    <div className={`bg-gradient-to-br rounded-lg p-2 border ${
+                      isNoActivo ? 'from-red-50 to-red-100 border-red-300' 
+                      : isBajaMomentanea ? 'from-orange-50 to-orange-100 border-orange-300'
+                      : 'from-blue-50 to-blue-100 border-blue-200'
+                    }`}>
+                      <div className={`text-[9px] font-semibold mb-0.5 ${
+                        isNoActivo ? 'text-red-600' : isBajaMomentanea ? 'text-orange-600' : 'text-blue-600'
+                      }`}>Estado</div>
+                      <div className={`font-bold text-xs flex items-center gap-1 ${
+                        isNoActivo ? 'text-red-800' : isBajaMomentanea ? 'text-orange-800' : 'text-blue-900'
+                      }`}>
                         {isNoActivo && (
                           <svg className="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                          </svg>
+                        )}
+                        {isBajaMomentanea && (
+                          <svg className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
                           </svg>
                         )}
-                        {isNoActivo ? 'NO ACTIVO' : (movil.estadoDesc || 'Sin estado')}
+                        {isNoActivo ? 'NO ACTIVO' : isBajaMomentanea ? 'BAJA MOMENTÁNEA' : (movil.estadoDesc || 'Sin estado')}
                       </div>
                     </div>
                   );

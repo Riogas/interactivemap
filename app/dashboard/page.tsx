@@ -200,8 +200,8 @@ function DashboardContent() {
             return !movil.currentPosition || movil.isInactive;
           
           case 'baja_momentanea':
-            // Móviles con baja momentánea (sin historial reciente)
-            return movil.currentPosition && !movil.history?.length;
+            // Móviles con baja momentánea (estado_nro 4)
+            return movil.estadoNro === 4;
           
           case 'con_capacidad':
             // Móviles con capacidad disponible (> 0)
@@ -310,11 +310,15 @@ function DashboardContent() {
           // Convertir movil.id a string para buscar en el map
           const extendedData = extendedDataMap.get(movil.id.toString());
           if (extendedData) {
-            // Si el móvil es NO ACTIVO (estado_nro 3 o 4), usar color gris
-            const isNoActivo = extendedData.estadoNro !== null && extendedData.estadoNro !== undefined && [3, 4].includes(extendedData.estadoNro);
+            // Si el móvil es NO ACTIVO (estado_nro 3), usar color gris
+            // Si el móvil es BAJA MOMENTÁNEA (estado_nro 4), usar color naranja
+            const isNoActivo = extendedData.estadoNro === 3;
+            const isBajaMomentanea = extendedData.estadoNro === 4;
             const calculatedColor = isNoActivo 
               ? '#9CA3AF' // Gris para NO ACTIVO
-              : getMovilColorByOccupancy(extendedData.pedidosAsignados, extendedData.tamanoLote);
+              : isBajaMomentanea
+                ? '#F97316' // Naranja para BAJA MOMENTÁNEA
+                : getMovilColorByOccupancy(extendedData.pedidosAsignados, extendedData.tamanoLote);
             
             return {
               ...movil,

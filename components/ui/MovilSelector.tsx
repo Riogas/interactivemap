@@ -110,13 +110,15 @@ export default function MovilSelector({
       });
     }
     
-    // 🆕 Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3,4=NO ACTIVO)
+    // 🆕 Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3=NO ACTIVO | 4=BAJA MOMENTÁNEA)
     if (movilesFilters.actividad !== 'todos') {
       result = result.filter(movil => {
         const estadoNro = movil.estadoNro;
         const esActivo = estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
+        const esBajaMomentanea = estadoNro === 4;
         if (movilesFilters.actividad === 'activo') return esActivo;
-        if (movilesFilters.actividad === 'no_activo') return !esActivo;
+        if (movilesFilters.actividad === 'no_activo') return estadoNro === 3;
+        if (movilesFilters.actividad === 'baja_momentanea') return esBajaMomentanea;
         return true;
       });
     }
@@ -137,9 +139,8 @@ export default function MovilSelector({
               return !movil.currentPosition || movil.isInactive;
             
             case 'baja_momentanea':
-              // Móviles con baja momentánea (puedes definir tu lógica aquí)
-              // Por ahora, consideramos móviles sin historial reciente
-              return movil.currentPosition && !movil.history?.length;
+              // Móviles con baja momentánea (estado_nro 4)
+              return movil.estadoNro === 4;
             
             case 'con_capacidad':
               // Móviles con capacidad disponible (> 0%)
@@ -503,6 +504,7 @@ export default function MovilSelector({
           'todos': { label: 'Todos', icon: '🔵', color: 'bg-blue-100 text-blue-700' },
           'activo': { label: 'Activos', icon: '🟢', color: 'bg-green-100 text-green-700' },
           'no_activo': { label: 'No Activos', icon: '🔴', color: 'bg-red-100 text-red-700' },
+          'baja_momentanea': { label: 'Baja Momentánea', icon: '⏸️', color: 'bg-orange-100 text-orange-700' },
         };
         const actInfo = actividadLabels[movilesFilters.actividad] || actividadLabels['todos'];
         badges.push({
@@ -612,12 +614,14 @@ export default function MovilSelector({
                           "w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all",
                           movilesFilters.actividad === 'activo' && "bg-green-50 border-green-300 text-green-800",
                           movilesFilters.actividad === 'no_activo' && "bg-red-50 border-red-300 text-red-800",
+                          movilesFilters.actividad === 'baja_momentanea' && "bg-orange-50 border-orange-300 text-orange-800",
                           movilesFilters.actividad === 'todos' && "bg-white border-gray-300 text-gray-700",
                         )}
                       >
                         <option value="todos">🔵 Todos</option>
                         <option value="activo">🟢 Activo</option>
                         <option value="no_activo">🔴 No Activo</option>
+                        <option value="baja_momentanea">⏸️ Baja Momentánea</option>
                       </select>
                     </div>
 
@@ -786,7 +790,8 @@ export default function MovilSelector({
                           {filteredMoviles.map((movil) => {
                             const isSelected = selectedMoviles.includes(movil.id);
                             const isInactive = movil.isInactive;
-                            const isNoActivo = movil.estadoNro !== undefined && movil.estadoNro !== null && [3, 4].includes(movil.estadoNro);
+                            const isNoActivo = movil.estadoNro === 3;
+                            const isBajaMomentanea = movil.estadoNro === 4;
                             
                             return (
                               <motion.button
@@ -800,11 +805,12 @@ export default function MovilSelector({
                                     ? 'text-white shadow-md border-transparent'
                                     : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
                                   isInactive && !isSelected && 'bg-red-50 border-red-200',
-                                  isInactive && !isNoActivo && 'animate-pulse-slow',
-                                  isNoActivo && !isSelected && 'bg-gray-50 border-gray-300 opacity-75'
+                                  isInactive && !isNoActivo && !isBajaMomentanea && 'animate-pulse-slow',
+                                  isNoActivo && !isSelected && 'bg-gray-50 border-gray-300 opacity-75',
+                                  isBajaMomentanea && !isSelected && 'bg-orange-50 border-orange-300 opacity-85'
                                 )}
                                 style={{
-                                  backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : movil.color) : undefined,
+                                  backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#F97316' : movil.color) : undefined,
                                 }}
                               >
                                 <span className="flex items-center justify-between">
@@ -817,7 +823,7 @@ export default function MovilSelector({
                                         : "bg-white border-gray-300"
                                     )}>
                                       {isSelected && (
-                                        <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : movil.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#EA580C' : movil.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                         </svg>
                                       )}
@@ -827,6 +833,16 @@ export default function MovilSelector({
                                       <span className="relative inline-block">
                                         <svg 
                                           className="w-5 h-5 text-gray-400" 
+                                          fill="currentColor" 
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                        </svg>
+                                      </span>
+                                    ) : isBajaMomentanea ? (
+                                      <span className="relative inline-block">
+                                        <svg 
+                                          className="w-5 h-5 text-orange-500" 
                                           fill="currentColor" 
                                           viewBox="0 0 24 24"
                                         >
@@ -854,13 +870,18 @@ export default function MovilSelector({
                                       />
                                     )}
                                     {/* 🔥 Formato compacto: NroMovil – PedAsignados/Capacidad */}
-                                    <span className={clsx("text-sm font-medium leading-tight", isNoActivo && !isSelected && "text-gray-400")}>
+                                    <span className={clsx("text-sm font-medium leading-tight", (isNoActivo || isBajaMomentanea) && !isSelected && (isNoActivo ? "text-gray-400" : "text-orange-600"))}>
                                       {movil.id}
                                       {' – '}
                                       {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}
                                       {isNoActivo && (
                                         <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
                                           No activo
+                                        </span>
+                                      )}
+                                      {isBajaMomentanea && (
+                                        <span className="ml-1.5 text-[9px] bg-orange-200 text-orange-700 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                          Baja mom.
                                         </span>
                                       )}
                                     </span>
