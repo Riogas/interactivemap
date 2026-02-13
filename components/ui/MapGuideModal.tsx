@@ -112,10 +112,64 @@ function MovilesGuide() {
         </div>
       </div>
 
+      {/* Sección: No Activo */}
+      <div>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <span className="w-5 h-5 rounded bg-gray-200 flex items-center justify-center text-gray-600 text-xs font-bold">3</span>
+          No Activo — Estado Inactivo
+        </h4>
+        <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 border border-gray-300">
+          <div className="relative flex-shrink-0">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center shadow-md opacity-85" style={{ background: 'linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%)' }}>
+              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
+            </div>
+            <div className="absolute -bottom-1 -right-1 bg-white text-gray-500 text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-gray-400">
+              56
+            </div>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-800 text-sm">Gris con ícono X — No Activo</p>
+            <p className="text-xs text-gray-600">
+              El móvil tiene estado_nro 3 (NO ACTIVO). Se muestra en gris con un ícono de X
+              indicando que no se encuentra operativo actualmente.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Sección: Baja Momentánea */}
+      <div>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <span className="w-5 h-5 rounded bg-violet-100 flex items-center justify-center text-violet-600 text-xs font-bold">4</span>
+          Baja Momentánea — Pausado temporalmente
+        </h4>
+        <div className="flex items-center gap-3 p-2.5 rounded-lg bg-violet-50 border border-violet-200">
+          <div className="relative flex-shrink-0">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center shadow-md opacity-90" style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' }}>
+              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+              </svg>
+            </div>
+            <div className="absolute -bottom-1 -right-1 bg-white text-violet-600 text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center border-2 border-violet-400">
+              23
+            </div>
+          </div>
+          <div>
+            <p className="font-semibold text-violet-800 text-sm">Violeta con ícono Pausa — Baja Momentánea</p>
+            <p className="text-xs text-violet-700">
+              El móvil tiene estado_nro 4 (BAJA MOMENTÁNEA). Se muestra en violeta con un ícono de pausa
+              indicando que está temporalmente fuera de servicio pero no dado de baja.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Sección: Badge numérico */}
       <div>
         <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <span className="w-5 h-5 rounded bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold">3</span>
+          <span className="w-5 h-5 rounded bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold">5</span>
           Badge Numérico
         </h4>
         <div className="flex items-center gap-3 p-2.5 rounded-lg bg-purple-50 border border-purple-200">
