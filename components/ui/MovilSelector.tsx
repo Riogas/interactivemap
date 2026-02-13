@@ -504,7 +504,7 @@ export default function MovilSelector({
           'todos': { label: 'Todos', icon: '🔵', color: 'bg-blue-100 text-blue-700' },
           'activo': { label: 'Activos', icon: '🟢', color: 'bg-green-100 text-green-700' },
           'no_activo': { label: 'No Activos', icon: '🔴', color: 'bg-red-100 text-red-700' },
-          'baja_momentanea': { label: 'Baja Momentánea', icon: '⏸️', color: 'bg-orange-100 text-orange-700' },
+          'baja_momentanea': { label: 'Baja Momentánea', icon: '⏸️', color: 'bg-violet-100 text-violet-700' },
         };
         const actInfo = actividadLabels[movilesFilters.actividad] || actividadLabels['todos'];
         badges.push({
@@ -614,7 +614,7 @@ export default function MovilSelector({
                           "w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all",
                           movilesFilters.actividad === 'activo' && "bg-green-50 border-green-300 text-green-800",
                           movilesFilters.actividad === 'no_activo' && "bg-red-50 border-red-300 text-red-800",
-                          movilesFilters.actividad === 'baja_momentanea' && "bg-orange-50 border-orange-300 text-orange-800",
+                          movilesFilters.actividad === 'baja_momentanea' && "bg-violet-50 border-violet-300 text-violet-800",
                           movilesFilters.actividad === 'todos' && "bg-white border-gray-300 text-gray-700",
                         )}
                       >
@@ -634,7 +634,7 @@ export default function MovilSelector({
                     <div className="space-y-2">
                       {[
                         { value: 'no_reporta_gps', label: 'No reporta GPS', icon: '📡', color: 'text-red-600' },
-                        { value: 'baja_momentanea', label: 'Baja Momentánea', icon: '⏸️', color: 'text-orange-600' },
+                        { value: 'baja_momentanea', label: 'Baja Momentánea', icon: '⏸️', color: 'text-violet-600' },
                         { value: 'con_capacidad', label: 'Con Capacidad de Entrega', icon: '🟢', color: 'text-green-600' },
                         { value: 'sin_capacidad', label: 'Sin Capacidad de Entrega', icon: '⚫', color: 'text-gray-700' },
                       ].map((opcion) => {
@@ -807,10 +807,10 @@ export default function MovilSelector({
                                   isInactive && !isSelected && 'bg-red-50 border-red-200',
                                   isInactive && !isNoActivo && !isBajaMomentanea && 'animate-pulse-slow',
                                   isNoActivo && !isSelected && 'bg-gray-50 border-gray-300 opacity-75',
-                                  isBajaMomentanea && !isSelected && 'bg-orange-50 border-orange-300 opacity-85'
+                                  isBajaMomentanea && !isSelected && 'bg-violet-50 border-violet-300 opacity-85'
                                 )}
                                 style={{
-                                  backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#F97316' : movil.color) : undefined,
+                                  backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#8B5CF6' : movil.color) : undefined,
                                 }}
                               >
                                 <span className="flex items-center justify-between">
@@ -823,7 +823,7 @@ export default function MovilSelector({
                                         : "bg-white border-gray-300"
                                     )}>
                                       {isSelected && (
-                                        <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#EA580C' : movil.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#7C3AED' : movil.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                         </svg>
                                       )}
@@ -842,7 +842,7 @@ export default function MovilSelector({
                                     ) : isBajaMomentanea ? (
                                       <span className="relative inline-block">
                                         <svg 
-                                          className="w-5 h-5 text-orange-500" 
+                                          className="w-5 h-5 text-violet-500" 
                                           fill="currentColor" 
                                           viewBox="0 0 24 24"
                                         >
@@ -870,7 +870,7 @@ export default function MovilSelector({
                                       />
                                     )}
                                     {/* 🔥 Formato compacto: NroMovil – PedAsignados/Capacidad */}
-                                    <span className={clsx("text-sm font-medium leading-tight", (isNoActivo || isBajaMomentanea) && !isSelected && (isNoActivo ? "text-gray-400" : "text-orange-600"))}>
+                                    <span className={clsx("text-sm font-medium leading-tight", (isNoActivo || isBajaMomentanea) && !isSelected && (isNoActivo ? "text-gray-400" : "text-violet-600"))}>
                                       {movil.id}
                                       {' – '}
                                       {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}
@@ -880,7 +880,7 @@ export default function MovilSelector({
                                         </span>
                                       )}
                                       {isBajaMomentanea && (
-                                        <span className="ml-1.5 text-[9px] bg-orange-200 text-orange-700 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                        <span className="ml-1.5 text-[9px] bg-violet-200 text-violet-700 px-1.5 py-0.5 rounded-full font-semibold uppercase">
                                           Baja mom.
                                         </span>
                                       )}

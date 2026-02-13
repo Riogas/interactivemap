@@ -276,14 +276,14 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   return (
                     <div className={`bg-gradient-to-br rounded-lg p-2 border ${
                       isNoActivo ? 'from-red-50 to-red-100 border-red-300' 
-                      : isBajaMomentanea ? 'from-orange-50 to-orange-100 border-orange-300'
+                      : isBajaMomentanea ? 'from-violet-50 to-violet-100 border-violet-300'
                       : 'from-blue-50 to-blue-100 border-blue-200'
                     }`}>
                       <div className={`text-[9px] font-semibold mb-0.5 ${
-                        isNoActivo ? 'text-red-600' : isBajaMomentanea ? 'text-orange-600' : 'text-blue-600'
+                        isNoActivo ? 'text-red-600' : isBajaMomentanea ? 'text-violet-600' : 'text-blue-600'
                       }`}>Estado</div>
                       <div className={`font-bold text-xs flex items-center gap-1 ${
-                        isNoActivo ? 'text-red-800' : isBajaMomentanea ? 'text-orange-800' : 'text-blue-900'
+                        isNoActivo ? 'text-red-800' : isBajaMomentanea ? 'text-violet-800' : 'text-blue-900'
                       }`}>
                         {isNoActivo && (
                           <svg className="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
@@ -291,7 +291,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                           </svg>
                         )}
                         {isBajaMomentanea && (
-                          <svg className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
                           </svg>
                         )}

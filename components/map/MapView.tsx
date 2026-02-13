@@ -920,7 +920,7 @@ const MapView = memo(function MapView({
     }
     // 🆕 Si el móvil está en BAJA MOMENTÁNEA (estado_nro 4), color naranja
     if (estadoNro === 4) {
-      return '#F97316'; // Naranja (BAJA MOMENTÁNEA)
+      return '#8B5CF6'; // Violeta (BAJA MOMENTÁNEA)
     }
 
     const tamanoLote = movil.tamanoLote || 6;
@@ -970,7 +970,7 @@ const MapView = memo(function MapView({
               <div style="
                 width: 40px;
                 height: 40px;
-                background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+                background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
                 border: 3px solid white;
                 border-radius: 50%;
                 box-shadow: 0 4px 8px rgba(0,0,0,0.3);
@@ -989,8 +989,8 @@ const MapView = memo(function MapView({
                 position: absolute;
                 bottom: -6px;
                 background-color: white;
-                color: #EA580C;
-                border: 2px solid #F97316;
+                color: #7C3AED;
+                border: 2px solid #8B5CF6;
                 border-radius: 10px;
                 padding: 2px 6px;
                 font-size: 11px;

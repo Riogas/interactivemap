@@ -317,7 +317,7 @@ function DashboardContent() {
             const calculatedColor = isNoActivo 
               ? '#9CA3AF' // Gris para NO ACTIVO
               : isBajaMomentanea
-                ? '#F97316' // Naranja para BAJA MOMENTÁNEA
+                ? '#8B5CF6' // Violeta para BAJA MOMENTÁNEA
                 : getMovilColorByOccupancy(extendedData.pedidosAsignados, extendedData.tamanoLote);
             
             return {
