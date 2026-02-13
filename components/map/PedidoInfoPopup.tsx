@@ -68,6 +68,9 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-sm">Pedido #{pedido.id}</h3>
+                  {pedido.servicio_nombre && (
+                    <p className="text-[10px] font-medium opacity-95">{pedido.servicio_nombre}</p>
+                  )}
                   <p className="text-[10px] opacity-90">{pedido.tipo || 'Pedido'}</p>
                 </div>
               </div>
@@ -166,8 +169,8 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
               </div>
             </div>
 
-            {/* Móvil Asignado y Prioridad */}
-            {(pedido.movil || pedido.prioridad !== null) && (
+            {/* Móvil Asignado y Forma de Pago */}
+            {(pedido.movil || pedido.fpago_obs1) && (
               <div>
                 <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Asignación</h4>
                 <div className="grid grid-cols-2 gap-2">
@@ -177,10 +180,10 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                       <div className="font-bold text-indigo-900 text-sm">#{pedido.movil}</div>
                     </div>
                   )}
-                  {pedido.prioridad !== null && (
+                  {pedido.fpago_obs1 && (
                     <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-2 border border-orange-200">
-                      <div className="text-[9px] text-orange-600 font-semibold mb-0.5">Prioridad</div>
-                      <div className="font-bold text-orange-900 text-sm">{pedido.prioridad}</div>
+                      <div className="text-[9px] text-orange-600 font-semibold mb-0.5">Forma de Pago</div>
+                      <div className="font-bold text-orange-900 text-xs">{pedido.fpago_obs1}</div>
                     </div>
                   )}
                 </div>
@@ -215,22 +218,47 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
             )}
 
             {/* Fecha */}
-            {pedido.fch_hora_para && (
-              <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-2.5 border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <div className="text-[9px] text-gray-500 font-semibold">Fecha Programada</div>
-                      <div className="text-xs font-bold text-gray-900">
-                        {format(new Date(pedido.fch_hora_para), "dd/MM/yyyy HH:mm", { locale: es })}
+            {(pedido.fch_hora_mov || pedido.fch_hora_para || pedido.fch_hora_max_ent_comp) && (
+              <div>
+                <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Fechas y Horarios</h4>
+                <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-2.5 border border-gray-200 space-y-2">
+                  {/* Hora de Asignación */}
+                  {pedido.fch_hora_mov && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-gray-500 font-semibold">Hora Asignación</div>
+                        <div className="text-xs font-bold text-gray-900">
+                          {format(new Date(pedido.fch_hora_mov), "dd/MM/yyyy HH:mm", { locale: es })}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
+                  {/* Desde - Hasta */}
+                  {(pedido.fch_hora_para || pedido.fch_hora_max_ent_comp) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {pedido.fch_hora_para && (
+                        <div className="bg-white rounded-md p-1.5 border border-gray-200">
+                          <div className="text-[9px] text-green-600 font-semibold mb-0.5">Desde</div>
+                          <div className="text-[10px] font-bold text-gray-900">
+                            {format(new Date(pedido.fch_hora_para), "dd/MM HH:mm", { locale: es })}
+                          </div>
+                        </div>
+                      )}
+                      {pedido.fch_hora_max_ent_comp && (
+                        <div className="bg-white rounded-md p-1.5 border border-gray-200">
+                          <div className="text-[9px] text-red-600 font-semibold mb-0.5">Hasta</div>
+                          <div className="text-[10px] font-bold text-gray-900">
+                            {format(new Date(pedido.fch_hora_max_ent_comp), "dd/MM HH:mm", { locale: es })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
