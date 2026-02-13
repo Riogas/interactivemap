@@ -22,8 +22,21 @@ type AuthResult = {
   error?: string;
 };
 
-/**
- * � Variable de control de seguridad
+/** * ⚙️ Variable de control de logging del middleware
+ * Si es false, los console.log/warn del middleware se silencian
+ * Activar con ENABLE_MIDDLEWARE_LOGGING=true en .env
+ */
+const MIDDLEWARE_LOGGING = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
+
+/** Helper: solo loguea si MIDDLEWARE_LOGGING está activo */
+function mlog(...args: unknown[]) {
+  if (MIDDLEWARE_LOGGING) console.log(...args);
+}
+function mwarn(...args: unknown[]) {
+  if (MIDDLEWARE_LOGGING) console.warn(...args);
+}
+
+/** * � Variable de control de seguridad
  * Si es false, todos los checks de seguridad se saltan
  */
 const SECURITY_ENABLED = process.env.ENABLE_SECURITY_CHECKS === 'true';
@@ -50,7 +63,7 @@ const SECURITY_ENABLED = process.env.ENABLE_SECURITY_CHECKS === 'true';
 export async function requireAuth(request: NextRequest): Promise<AuthResult | NextResponse> {
   // ⚠️ MODO SIN SEGURIDAD: Bypass de autenticación
   if (!SECURITY_ENABLED) {
-    console.log('⚠️ SECURITY_CHECKS DISABLED: Saltando requireAuth()');
+    mlog('⚠️ SECURITY_CHECKS DISABLED: Saltando requireAuth()');
     return {
       session: { user: { id: 'bypass-mode' } },
       user: { id: 'bypass-mode', email: 'bypass@disabled.local' }
@@ -97,7 +110,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult | Ne
     }
 
     if (!session) {
-      console.warn('⚠️  Intento de acceso sin autenticación');
+      mwarn('⚠️  Intento de acceso sin autenticación');
       return NextResponse.json(
         {
           success: false,
@@ -112,7 +125,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult | Ne
     // Verificar que el token no haya expirado
     const now = Math.floor(Date.now() / 1000);
     if (session.expires_at && session.expires_at < now) {
-      console.warn('⚠️  Token expirado');
+      mwarn('⚠️  Token expirado');
       return NextResponse.json(
         {
           success: false,
@@ -124,7 +137,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult | Ne
       );
     }
 
-    console.log('✅ Autenticación exitosa:', session.user.email);
+    mlog('✅ Autenticación exitosa:', session.user.email);
 
     return {
       session,
@@ -171,7 +184,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult | Ne
 export function requireApiKey(request: NextRequest): true | NextResponse {
   // ⚠️ MODO SIN SEGURIDAD: Bypass de API Key
   if (!SECURITY_ENABLED) {
-    console.log('⚠️ SECURITY_CHECKS DISABLED: Saltando requireApiKey()');
+    mlog('⚠️ SECURITY_CHECKS DISABLED: Saltando requireApiKey()');
     return true;
   }
 
@@ -194,7 +207,7 @@ export function requireApiKey(request: NextRequest): true | NextResponse {
 
   // Verificar que el request incluya API Key
   if (!apiKey) {
-    console.warn('⚠️  Intento de acceso sin API Key');
+    mwarn('⚠️  Intento de acceso sin API Key');
     return NextResponse.json(
       {
         success: false,
@@ -208,7 +221,7 @@ export function requireApiKey(request: NextRequest): true | NextResponse {
 
   // Validar que la API Key sea correcta
   if (apiKey !== validApiKey) {
-    console.warn('⚠️  API Key inválida:', apiKey.substring(0, 8) + '...');
+    mwarn('⚠️  API Key inválida:', apiKey.substring(0, 8) + '...');
     return NextResponse.json(
       {
         success: false,
@@ -220,7 +233,7 @@ export function requireApiKey(request: NextRequest): true | NextResponse {
     );
   }
 
-  console.log('✅ API Key válida');
+  mlog('✅ API Key válida');
   return true;
 }
 
@@ -248,14 +261,14 @@ export function requireApiKey(request: NextRequest): true | NextResponse {
 export function requireRole(user: any, requiredRole: string): true | NextResponse {
   // ⚠️ MODO SIN SEGURIDAD: Bypass de roles
   if (!SECURITY_ENABLED) {
-    console.log(`⚠️ SECURITY_CHECKS DISABLED: Saltando requireRole('${requiredRole}')`);
+    mlog(`⚠️ SECURITY_CHECKS DISABLED: Saltando requireRole('${requiredRole}')`);
     return true;
   }
 
   const userRole = user.user_metadata?.role || user.role || 'user';
 
   if (userRole !== requiredRole) {
-    console.warn(`⚠️  Usuario ${user.email} intentó acceder sin rol ${requiredRole}`);
+    mwarn(`⚠️  Usuario ${user.email} intentó acceder sin rol ${requiredRole}`);
     return NextResponse.json(
       {
         success: false,

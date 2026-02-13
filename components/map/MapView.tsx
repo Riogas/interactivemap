@@ -2383,8 +2383,8 @@ const MapView = memo(function MapView({
         <MovilInfoPopup 
           movil={movilActual} 
           selectedMovilesCount={selectedMovilesCount}
-          pedidosPendientes={pedidos.filter(p => Number(p.movil) === popupMovil).length}
-          serviciosPendientes={services.filter(s => Number(s.movil) === popupMovil).length}
+          pedidosPendientes={allPedidos.filter(p => Number(p.estado_nro) === 1 && Number(p.movil) === popupMovil).length}
+          serviciosPendientes={allServices.filter(s => Number(s.estado_nro) === 1 && Number(s.movil) === popupMovil).length}
           onClose={() => {
             if (onMovilClick) {
               onMovilClick(undefined);

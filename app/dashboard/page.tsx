@@ -41,6 +41,7 @@ function DashboardContent() {
   
   const [moviles, setMoviles] = useState<MovilData[]>([]);
   const [selectedMoviles, setSelectedMoviles] = useState<number[]>([]); // Array de móviles seleccionados
+  const userExplicitlyCleared = useRef(false); // Evita auto-selección cuando el usuario intencionalmente deseleccionó
   
   // 🚀 Optimización: Detectar visibilidad de tab para pausar updates
   const isTabVisible = useTabVisibility();
@@ -519,10 +520,11 @@ function DashboardContent() {
   useEffect(() => {
     // Solo auto-seleccionar si:
     // 1. Hay móviles cargados
-    // 2. No hay ningún móvil seleccionado (primera carga o después de limpiar)
-    // 3. Es la primera carga (isInitialLoad es false significa que ya terminó la carga inicial)
-    if (movilesFiltered.length > 0 && selectedMoviles.length === 0 && !isInitialLoad) {
-      console.log('✅ Auto-selección: Marcando todos los móviles por defecto:', movilesFiltered.length);
+    // 2. No hay ningún móvil seleccionado (primera carga)
+    // 3. No es carga inicial (ya terminó la carga)
+    // 4. El usuario NO limpió explícitamente la selección
+    if (movilesFiltered.length > 0 && selectedMoviles.length === 0 && !isInitialLoad && !userExplicitlyCleared.current) {
+      console.log('✅ Auto-selección inicial: Marcando todos los móviles por defecto:', movilesFiltered.length);
       setSelectedMoviles(movilesFiltered.map(m => m.id));
     }
   }, [movilesFiltered.length, isInitialLoad]); // Depende de la cantidad de móviles y si es carga inicial
@@ -532,6 +534,7 @@ function DashboardContent() {
     if (!isLoadingEmpresas) {
       console.log('🏢 Empresas o fecha cambiaron - Forzando recarga completa');
       setIsInitialLoad(true); // Forzar recarga completa cuando cambian las empresas o la fecha
+      userExplicitlyCleared.current = false; // Reset: recarga = nueva selección automática
       setSelectedMoviles([]); // Limpiar selección para que auto-selección re-seleccione los filtrados
       fetchPositions();
     }
@@ -823,6 +826,7 @@ function DashboardContent() {
 
   // Handler para toggle de móvil en la lista (selección múltiple)
   const handleToggleMovil = useCallback((movilId: number) => {
+    userExplicitlyCleared.current = true; // El usuario está modificando la selección manualmente
     setSelectedMoviles(prev => {
       const newSelection = prev.includes(movilId)
         ? prev.filter(id => id !== movilId) // Deseleccionar
@@ -842,6 +846,7 @@ function DashboardContent() {
 
   // Handler para seleccionar todos los móviles
   const handleSelectAll = useCallback(() => {
+    userExplicitlyCleared.current = false;
     // Solo seleccionar móviles que pasan el filtro de actividad
     const filteredIds = applyActivityFilter(movilesFiltered).map(m => m.id);
     setSelectedMoviles(filteredIds);
@@ -850,15 +855,18 @@ function DashboardContent() {
 
   // Handler para deseleccionar todos los móviles
   const handleClearAll = useCallback(() => {
+    userExplicitlyCleared.current = true;
     setSelectedMoviles([]);
     setFocusedMovil(undefined);
   }, []);
 
   // 🆕 Cuando cambia el filtro de actividad, re-seleccionar solo móviles que cumplen el filtro
   useEffect(() => {
+    userExplicitlyCleared.current = false; // Cambiar filtro = nueva selección automática
     const filteredIds = applyActivityFilter(movilesFiltered).map(m => m.id);
     setSelectedMoviles(filteredIds);
-  }, [movilesFilters.actividad, applyActivityFilter, movilesFiltered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movilesFilters.actividad]); // Solo cuando cambia el filtro de actividad
 
   // Handler para clic en el marcador del mapa (abre popup con opciones)
   const handleMovilClick = useCallback(async (movilId: number | undefined) => {
