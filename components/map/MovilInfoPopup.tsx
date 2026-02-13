@@ -269,10 +269,22 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Estado Actual</h4>
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-2 border border-blue-200">
-                  <div className="text-[9px] text-blue-600 font-semibold mb-0.5">Estado</div>
-                  <div className="font-bold text-blue-900 text-xs">{movil.estadoDesc || 'Sin estado'}</div>
-                </div>
+                {(() => {
+                  const isNoActivo = movil.estadoNro !== undefined && movil.estadoNro !== null && [3, 4].includes(movil.estadoNro);
+                  return (
+                    <div className={`bg-gradient-to-br rounded-lg p-2 border ${isNoActivo ? 'from-red-50 to-red-100 border-red-300' : 'from-blue-50 to-blue-100 border-blue-200'}`}>
+                      <div className={`text-[9px] font-semibold mb-0.5 ${isNoActivo ? 'text-red-600' : 'text-blue-600'}`}>Estado</div>
+                      <div className={`font-bold text-xs flex items-center gap-1 ${isNoActivo ? 'text-red-800' : 'text-blue-900'}`}>
+                        {isNoActivo && (
+                          <svg className="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                          </svg>
+                        )}
+                        {isNoActivo ? 'NO ACTIVO' : (movil.estadoDesc || 'Sin estado')}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-lg p-2 border border-gray-200">
                   <div className="text-[9px] text-gray-500 font-semibold mb-0.5">Id Terminal</div>
                   <div className="font-bold text-gray-800 text-[10px] font-mono truncate" title={movil.terminalId || 'N/A'}>{movil.terminalId || 'N/A'}</div>

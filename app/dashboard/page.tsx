@@ -87,7 +87,8 @@ function DashboardContent() {
   // �🆕 Estado para filtros de móviles (recibidos desde MovilSelector)
   const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
     capacidad: 'all', 
-    estado: [] 
+    estado: [],
+    actividad: 'todos'
   });
   
   // 🔥 NUEVO: Hook para escuchar cambios en pedidos en tiempo real
@@ -295,6 +296,7 @@ function DashboardContent() {
           matricula: string;
           descripcion: string;
           estadoDesc: string;
+          estadoNro: number | null;
         }
 
         // Mapear por ID (que es TEXT), no por nro
@@ -308,11 +310,11 @@ function DashboardContent() {
           // Convertir movil.id a string para buscar en el map
           const extendedData = extendedDataMap.get(movil.id.toString());
           if (extendedData) {
-            // Calcular el color basado en la ocupación
-            const calculatedColor = getMovilColorByOccupancy(
-              extendedData.pedidosAsignados, 
-              extendedData.tamanoLote
-            );
+            // Si el móvil es NO ACTIVO (estado_nro 3 o 4), usar color gris
+            const isNoActivo = extendedData.estadoNro !== null && extendedData.estadoNro !== undefined && [3, 4].includes(extendedData.estadoNro);
+            const calculatedColor = isNoActivo 
+              ? '#9CA3AF' // Gris para NO ACTIVO
+              : getMovilColorByOccupancy(extendedData.pedidosAsignados, extendedData.tamanoLote);
             
             return {
               ...movil,
@@ -320,6 +322,7 @@ function DashboardContent() {
               pedidosAsignados: extendedData.pedidosAsignados,
               matricula: extendedData.matricula,
               estadoDesc: extendedData.estadoDesc,
+              estadoNro: extendedData.estadoNro ?? undefined,
               color: calculatedColor,
             };
           }

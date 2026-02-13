@@ -29,6 +29,7 @@ export interface MovilData {
   pedidosAsignados?: number;  // Cantidad de pedidos asignados (count desde tabla pedidos)
   matricula?: string;         // Matrícula del móvil
   estadoDesc?: string;        // Descripción del estado (ACTIVO, INACTIVO, etc.)
+  estadoNro?: number;         // Número de estado (0,1,2=ACTIVO | 3,4=NO ACTIVO)
   terminalId?: string;        // ID de la terminal del móvil (ej: abbc5d30f70f8cc4)
 }
 
@@ -263,6 +264,7 @@ export interface PuntoInteresData {
 export interface MovilFilters {
   capacidad: 'all' | '1-3' | '4-6' | '7-10' | '10+';
   estado: string[]; // Filtro multi-selección de estados
+  actividad: 'todos' | 'activo' | 'no_activo'; // Filtro por estado de actividad del móvil
 }
 
 export interface ServiceFilters {
