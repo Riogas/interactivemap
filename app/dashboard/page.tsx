@@ -218,6 +218,27 @@ function DashboardContent() {
     });
   }, [movilesFilters.estado]);
 
+  // 🆕 Filtrar por estado de actividad (activo / no_activo / baja_momentanea)
+  const applyActivityFilter = useCallback((moviles: MovilData[]): MovilData[] => {
+    if (movilesFilters.actividad === 'todos') return moviles;
+    return moviles.filter(movil => {
+      const estadoNro = movil.estadoNro;
+      const esActivo = estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
+      switch (movilesFilters.actividad) {
+        case 'activo': return esActivo;
+        case 'no_activo': return estadoNro === 3;
+        case 'baja_momentanea': return estadoNro === 4;
+        default: return true;
+      }
+    });
+  }, [movilesFilters.actividad]);
+
+  // 🆕 IDs de móviles que pasan el filtro de actividad (para filtrar pedidos/services)
+  const activityFilteredMovilIds = useMemo(() => {
+    const filtered = applyActivityFilter(movilesFiltered);
+    return new Set(filtered.map(m => m.id));
+  }, [applyActivityFilter, movilesFiltered]);
+
   // Cargar empresas fleteras al montar el componente
   useEffect(() => {
     const loadEmpresas = async () => {
@@ -827,15 +848,23 @@ function DashboardContent() {
 
   // Handler para seleccionar todos los móviles
   const handleSelectAll = useCallback(() => {
-    setSelectedMoviles(movilesFiltered.map(m => m.id));
+    // Solo seleccionar móviles que pasan el filtro de actividad
+    const filteredIds = applyActivityFilter(movilesFiltered).map(m => m.id);
+    setSelectedMoviles(filteredIds);
     setFocusedMovil(undefined);
-  }, [movilesFiltered]);
+  }, [movilesFiltered, applyActivityFilter]);
 
   // Handler para deseleccionar todos los móviles
   const handleClearAll = useCallback(() => {
     setSelectedMoviles([]);
     setFocusedMovil(undefined);
   }, []);
+
+  // 🆕 Cuando cambia el filtro de actividad, re-seleccionar solo móviles que cumplen el filtro
+  useEffect(() => {
+    const filteredIds = applyActivityFilter(movilesFiltered).map(m => m.id);
+    setSelectedMoviles(filteredIds);
+  }, [movilesFilters.actividad, applyActivityFilter, movilesFiltered]);
 
   // Handler para clic en el marcador del mapa (abre popup con opciones)
   const handleMovilClick = useCallback(async (movilId: number | undefined) => {
@@ -1244,7 +1273,7 @@ function DashboardContent() {
           showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
         >
           <DashboardIndicators
-            moviles={movilesFiltered}
+            moviles={applyActivityFilter(movilesFiltered)}
             pedidos={pedidosCompletos}
             services={servicesCompletos}
             selectedDate={selectedDate}
@@ -1441,7 +1470,7 @@ function DashboardContent() {
               className="w-full h-full"
             >
               <MapView 
-                moviles={applyAdvancedFilters(markInactiveMoviles(movilesFiltered)).filter(m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
+                moviles={applyActivityFilter(applyAdvancedFilters(markInactiveMoviles(movilesFiltered))).filter(m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
                 secondaryAnimMovil={selectedMovil2}
@@ -1455,11 +1484,11 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1)).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
+                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)) && activityFilteredMovilIds.has(Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && activityFilteredMovilIds.has(Number(p.movil)))).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
-                services={(selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud))}
+                services={(selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)) && activityFilteredMovilIds.has(Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && activityFilteredMovilIds.has(Number(s.movil)))).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud))}
                 allServices={servicesCompletos}
                 onServiceClick={handleServiceClick}
                 popupService={popupService}
