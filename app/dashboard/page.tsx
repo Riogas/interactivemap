@@ -233,12 +233,6 @@ function DashboardContent() {
     });
   }, [movilesFilters.actividad]);
 
-  // 🆕 IDs de móviles que pasan el filtro de actividad (para filtrar pedidos/services)
-  const activityFilteredMovilIds = useMemo(() => {
-    const filtered = applyActivityFilter(movilesFiltered);
-    return new Set(filtered.map(m => m.id));
-  }, [applyActivityFilter, movilesFiltered]);
-
   // Cargar empresas fleteras al montar el componente
   useEffect(() => {
     const loadEmpresas = async () => {
@@ -1484,11 +1478,11 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)) && activityFilteredMovilIds.has(Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && activityFilteredMovilIds.has(Number(p.movil)))).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
+                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1)).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
-                services={(selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)) && activityFilteredMovilIds.has(Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && activityFilteredMovilIds.has(Number(s.movil)))).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud))}
+                services={(selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud))}
                 allServices={servicesCompletos}
                 onServiceClick={handleServiceClick}
                 popupService={popupService}
