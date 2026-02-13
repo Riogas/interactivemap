@@ -7,6 +7,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+/** Logging controlado por ENABLE_MIDDLEWARE_LOGGING env var */
+const VERBOSE = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
+const rlog = (...args: unknown[]) => { if (VERBOSE) console.log(...args); };
+const rwarn = (...args: unknown[]) => { if (VERBOSE) console.warn(...args); };
+
 /**
  * Estructura para almacenar intentos de acceso
  */
@@ -184,39 +189,39 @@ export function checkRateLimit(
   const config = RATE_LIMIT_CONFIGS[type];
   const now = Date.now();
   
-  console.log(`🚦 checkRateLimit:`);
-  console.log(`   - IP: ${ip}`);
-  console.log(`   - Type: ${type}`);
-  console.log(`   - Config: ${config.maxRequests} req / ${config.windowMs}ms`);
+  rlog(`🚦 checkRateLimit:`);
+  rlog(`   - IP: ${ip}`);
+  rlog(`   - Type: ${type}`);
+  rlog(`   - Config: ${config.maxRequests} req / ${config.windowMs}ms`);
   
   // 🟢 BYPASS: IPs en whitelist no tienen rate limit
   if (isWhitelistedIp(ip)) {
-    console.log(`   ✅ IP en whitelist - BYPASS rate limit`);
+    rlog(`   ✅ IP en whitelist - BYPASS rate limit`);
     return true;
   }
   
   // Generar clave única para este IP + endpoint
   const key = `${ip}:${type}`;
-  console.log(`   - Key: ${key}`);
+  rlog(`   - Key: ${key}`);
   
   // Limpiar registros antiguos periódicamente
   if (Math.random() < 0.01) { // 1% de probabilidad
-    console.log(`   🧹 Limpiando registros expirados...`);
+    rlog(`   🧹 Limpiando registros expirados...`);
     cleanupExpiredRecords();
   }
   
   const record = rateLimitStore.get(key);
-  console.log(`   - Record exists: ${!!record}`);
+  rlog(`   - Record exists: ${!!record}`);
   if (record) {
-    console.log(`   - Record count: ${record.count}`);
-    console.log(`   - Record resetTime: ${new Date(record.resetTime).toISOString()}`);
-    console.log(`   - Record blockedUntil: ${record.blockedUntil ? new Date(record.blockedUntil).toISOString() : 'none'}`);
+    rlog(`   - Record count: ${record.count}`);
+    rlog(`   - Record resetTime: ${new Date(record.resetTime).toISOString()}`);
+    rlog(`   - Record blockedUntil: ${record.blockedUntil ? new Date(record.blockedUntil).toISOString() : 'none'}`);
   }
   
   // Verificar si la IP está bloqueada
   if (record?.blockedUntil && now < record.blockedUntil) {
     const remainingTime = Math.ceil((record.blockedUntil - now) / 1000);
-    console.warn(`🚫 IP bloqueada: ${ip} (${remainingTime}s restantes)`);
+    rwarn(`🚫 IP bloqueada: ${ip} (${remainingTime}s restantes)`);
     
     return NextResponse.json(
       {
@@ -260,10 +265,10 @@ export function checkRateLimit(
   // Si el endpoint tiene bloqueo (como auth), bloquear la IP
   if ('blockDuration' in config && config.blockDuration) {
     record.blockedUntil = now + config.blockDuration;
-    console.warn(`🚫 IP bloqueada por exceder límite: ${ip} (tipo: ${type})`);
+    rwarn(`🚫 IP bloqueada por exceder límite: ${ip} (tipo: ${type})`);
   }
   
-  console.warn(`⚠️  Rate limit excedido: ${ip} (tipo: ${type}, intentos: ${record.count})`);
+  rwarn(`⚠️  Rate limit excedido: ${ip} (tipo: ${type}, intentos: ${record.count})`);
   
   return NextResponse.json(
     {
@@ -292,7 +297,7 @@ export function unblockIp(ip: string, type?: string) {
   if (type) {
     const key = `${ip}:${type}`;
     rateLimitStore.delete(key);
-    console.log(`✅ IP desbloqueada: ${ip} (tipo: ${type})`);
+    rlog(`✅ IP desbloqueada: ${ip} (tipo: ${type})`);
   } else {
     // Desbloquear para todos los tipos
     for (const key of rateLimitStore.keys()) {
@@ -300,7 +305,7 @@ export function unblockIp(ip: string, type?: string) {
         rateLimitStore.delete(key);
       }
     }
-    console.log(`✅ IP desbloqueada: ${ip} (todos los tipos)`);
+    rlog(`✅ IP desbloqueada: ${ip} (todos los tipos)`);
   }
 }
 
@@ -336,7 +341,7 @@ export function getRateLimitStats() {
  */
 export function clearRateLimitStore() {
   rateLimitStore.clear();
-  console.log('🧹 Rate limit store limpiado');
+  rlog('🧹 Rate limit store limpiado');
 }
 
 /**
@@ -348,12 +353,12 @@ export function clearRateLimitStore() {
 export function autoRateLimit(request: NextRequest): true | NextResponse {
   const pathname = request.nextUrl.pathname;
   
-  console.log(`🚦 autoRateLimit:`);
-  console.log(`   - Pathname: ${pathname}`);
+  rlog(`🚦 autoRateLimit:`);
+  rlog(`   - Pathname: ${pathname}`);
   
   // 🚀 BYPASS para GPS tracking - sin rate limit (muchos móviles reportando)
   if (pathname === '/api/import/gps') {
-    console.log(`   - 🚀 GPS Tracking endpoint - SIN RATE LIMIT`);
+    rlog(`   - 🚀 GPS Tracking endpoint - SIN RATE LIMIT`);
     return true;
   }
   
@@ -362,28 +367,28 @@ export function autoRateLimit(request: NextRequest): true | NextResponse {
   
   if (pathname.startsWith('/api/import/')) {
     type = 'import';
-    console.log(`   - Tipo detectado: IMPORT`);
+    rlog(`   - Tipo detectado: IMPORT`);
   } else if (pathname.includes('/login') || pathname.includes('/auth')) {
     type = 'auth';
-    console.log(`   - Tipo detectado: AUTH (login)`);
+    rlog(`   - Tipo detectado: AUTH (login)`);
   } else if (pathname.startsWith('/api/proxy/')) {
     type = 'proxy';
-    console.log(`   - Tipo detectado: PROXY`);
+    rlog(`   - Tipo detectado: PROXY`);
   } else if (pathname.startsWith('/api/')) {
     type = 'public';
-    console.log(`   - Tipo detectado: PUBLIC`);
+    rlog(`   - Tipo detectado: PUBLIC`);
   } else {
-    console.log(`   - Tipo detectado: DEFAULT`);
+    rlog(`   - Tipo detectado: DEFAULT`);
   }
   
   const config = RATE_LIMIT_CONFIGS[type];
-  console.log(`   - Config: ${config.maxRequests} req / ${config.windowMs}ms`);
+  rlog(`   - Config: ${config.maxRequests} req / ${config.windowMs}ms`);
   
   const result = checkRateLimit(request, type);
   if (result instanceof NextResponse) {
-    console.warn(`   ⚠️ Rate limit excedido!`);
+    rwarn(`   ⚠️ Rate limit excedido!`);
   } else {
-    console.log(`   ✅ Rate limit OK`);
+    rlog(`   ✅ Rate limit OK`);
   }
   
   return result;
@@ -399,10 +404,10 @@ export function detectSuspiciousActivity(request: NextRequest) {
   const userAgent = request.headers.get('user-agent') || 'unknown';
   const pathname = request.nextUrl.pathname;
   
-  console.log(`🔍 detectSuspiciousActivity:`);
-  console.log(`   - IP: ${ip}`);
-  console.log(`   - Pathname: ${pathname}`);
-  console.log(`   - User-Agent: ${userAgent.substring(0, 50)}...`);
+  rlog(`🔍 detectSuspiciousActivity:`);
+  rlog(`   - IP: ${ip}`);
+  rlog(`   - Pathname: ${pathname}`);
+  rlog(`   - User-Agent: ${userAgent.substring(0, 50)}...`);
   
   // Patrones sospechosos
   const suspiciousPatterns = [
@@ -435,6 +440,6 @@ export function detectSuspiciousActivity(request: NextRequest) {
     }
   }
   
-  console.log(`   ✅ No se detectó actividad sospechosa`);
+  rlog(`   ✅ No se detectó actividad sospechosa`);
   return false;
 }

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
 
+const VERBOSE = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
+const rlog = (...args: unknown[]) => { if (VERBOSE) console.log(...args); };
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ movilId: string }> }
@@ -28,7 +31,7 @@ export async function GET(
       attempt++;
       
       try {
-        console.log(`🔄 Intento ${attempt}/${maxRetries} - Obteniendo pedidos pendientes para móvil ${movilId}`);
+        rlog(`🔄 Intento ${attempt}/${maxRetries} - Obteniendo pedidos pendientes para móvil ${movilId}`);
         
         // Construir query de pedidos pendientes del móvil
         let query = supabase
@@ -84,7 +87,7 @@ export async function GET(
         }
 
         pedidos = result.data;
-        console.log(`✅ Pedidos obtenidos exitosamente (${pedidos?.length || 0} registros)`);
+        rlog(`✅ Pedidos obtenidos exitosamente (${pedidos?.length || 0} registros)`);
         
       } catch (err: any) {
         error = err;

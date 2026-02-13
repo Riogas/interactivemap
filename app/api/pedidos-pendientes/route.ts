@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
 
+const VERBOSE = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
+const rlog = (...args: unknown[]) => { if (VERBOSE) console.log(...args); };
+
 export async function GET(request: NextRequest) {
   // 🔒 AUTENTICACIÓN REQUERIDA
   const authResult = await requireAuth(request);
@@ -13,7 +16,7 @@ export async function GET(request: NextRequest) {
     const escenarioId = parseInt(searchParams.get('escenarioId') || '1000');
     const fecha = searchParams.get('fecha') || new Date().toISOString().split('T')[0];
 
-    console.log(`📦 Obteniendo TODOS los pedidos pendientes del día ${fecha}`);
+    rlog(`📦 Obteniendo TODOS los pedidos pendientes del día ${fecha}`);
 
     // Consultar TODOS los pedidos pendientes filtrando por fecha exacta
     const { data: pedidos, error } = await supabase
@@ -63,7 +66,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`✅ Encontrados ${pedidos?.length || 0} pedidos pendientes para el día ${fecha}`);
+    rlog(`✅ Encontrados ${pedidos?.length || 0} pedidos pendientes para el día ${fecha}`);
 
     return NextResponse.json({
       escenarioId,
