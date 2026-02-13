@@ -88,7 +88,7 @@ function DashboardContent() {
   const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
     capacidad: 'all', 
     estado: [],
-    actividad: 'todos'
+    actividad: 'activo'
   });
   
   // 🔥 NUEVO: Hook para escuchar cambios en pedidos en tiempo real

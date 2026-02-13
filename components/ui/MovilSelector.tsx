@@ -67,7 +67,7 @@ export default function MovilSelector({
   const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
     capacidad: 'all',
     estado: [], // Inicialmente ningún filtro de estado activo
-    actividad: 'todos', // Por defecto mostrar todos
+    actividad: 'activo', // Por defecto mostrar solo activos
   });
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [] });
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ 
@@ -498,6 +498,19 @@ export default function MovilSelector({
       {(() => {
         const badges: { label: string; color?: string; onClear?: () => void }[] = [];
         
+        // Badge de estado de actividad (siempre visible)
+        const actividadLabels: Record<string, { label: string; icon: string; color: string }> = {
+          'todos': { label: 'Todos', icon: '🔵', color: 'bg-blue-100 text-blue-700' },
+          'activo': { label: 'Activos', icon: '🟢', color: 'bg-green-100 text-green-700' },
+          'no_activo': { label: 'No Activos', icon: '🔴', color: 'bg-red-100 text-red-700' },
+        };
+        const actInfo = actividadLabels[movilesFilters.actividad] || actividadLabels['todos'];
+        badges.push({
+          label: `${actInfo.icon} Estado: ${actInfo.label}`,
+          color: actInfo.color,
+          onClear: movilesFilters.actividad !== 'todos' ? () => setMovilesFilters(prev => ({ ...prev, actividad: 'todos' })) : undefined,
+        });
+
         // Badge de móviles seleccionados
         if (selectedMoviles.length > 0) {
           badges.push({
