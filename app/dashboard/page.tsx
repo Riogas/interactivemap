@@ -1117,7 +1117,7 @@ function DashboardContent() {
     
     pedidosCompletos.forEach(pedido => {
       const estadoNum = Number(pedido.estado_nro);
-      if (pedido.movil && estadoNum && ESTADOS_ACTIVOS.includes(estadoNum)) {
+      if (pedido.movil && estadoNum && ESTADOS_ACTIVOS.includes(estadoNum) && String(pedido.sub_estado_desc) === '5') {
         const movilNum = Number(pedido.movil);
         const count = pedidosPorMovil.get(movilNum) || 0;
         pedidosPorMovil.set(movilNum, count + 1);
@@ -1536,7 +1536,7 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1)).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
+                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5')).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}

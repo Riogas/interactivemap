@@ -167,10 +167,10 @@ export default function MovilSelector({
   const filteredPedidos = useMemo(() => {
     let result = [...pedidos];
     
-    // Filtrar pedidos pendientes (estado 1) con móvil asignado
+    // Filtrar pedidos pendientes (estado 1, sub_estado_desc 5 = Asignados) con móvil asignado
     result = result.filter(pedido => {
       const estado = Number(pedido.estado_nro);
-      return estado === 1 && pedido.movil && Number(pedido.movil) > 0;
+      return estado === 1 && String(pedido.sub_estado_desc) === '5' && pedido.movil && Number(pedido.movil) > 0;
     });
     
     // 🔥 FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles

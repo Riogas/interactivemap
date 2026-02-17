@@ -16,7 +16,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
-    const pendientes = pedidos.filter(p => Number(p.estado_nro) === 1);
+    const pendientes = pedidos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5');
     const entregados = pedidos.filter(p => Number(p.estado_nro) === 2);
     const total = pedidos.length;
     
