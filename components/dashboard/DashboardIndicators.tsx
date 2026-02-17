@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { MovilData, PedidoSupabase, ServiceSupabase } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { motion } from 'framer-motion';
@@ -105,8 +105,57 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     };
   }, [moviles]);
 
+  // ============= SCROLL CON FLECHAS =============
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      ro.disconnect();
+    };
+  }, [checkScroll, pedidos, services, moviles]);
+
+  const scroll = (direction: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const amount = el.clientWidth * 0.6;
+    el.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' });
+  };
+
   return (
-    <div className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar">
+    <div className="flex items-center gap-0.5 min-w-0 flex-1">
+      {/* Flecha izquierda */}
+      <button
+        onClick={() => scroll('left')}
+        className={`flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200 ${
+          canScrollLeft
+            ? 'bg-white/20 hover:bg-white/30 text-white cursor-pointer'
+            : 'opacity-0 pointer-events-none'
+        }`}
+        aria-label="Scroll indicadores izquierda"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+
+      {/* Contenedor scrollable de indicadores */}
+      <div ref={scrollRef} className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar min-w-0 flex-1">
       {/* ========== ALERTAS CRÍTICAS ========== */}
       <div className="flex items-center gap-1.5">
         {/* Pedidos Atrasados */}
@@ -223,6 +272,22 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           color="green"
         />
       </div>
+      </div>
+
+      {/* Flecha derecha */}
+      <button
+        onClick={() => scroll('right')}
+        className={`flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200 ${
+          canScrollRight
+            ? 'bg-white/20 hover:bg-white/30 text-white cursor-pointer'
+            : 'opacity-0 pointer-events-none'
+        }`}
+        aria-label="Scroll indicadores derecha"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
     </div>
   );
 }
