@@ -1315,10 +1315,6 @@ function DashboardContent() {
         onPreferencesChange={(newPrefs) => {
           updatePreferences(newPrefs);
         }}
-        onOpenLeaderboard={() => setIsLeaderboardOpen(true)}
-        onOpenTracking={() => setIsTrackingModalOpen(true)}
-        isPlacingMarker={isPlacingMarker}
-        onTogglePlacingMarker={() => setIsPlacingMarker(!isPlacingMarker)}
       />
 
       {/* Botones flotantes: FAB colapsable con Tracking + POI + Leaderboard */}

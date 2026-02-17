@@ -9,20 +9,12 @@ interface FloatingToolbarProps {
   selectedDate: string;
   onDateChange: (date: string) => void;
   onPreferencesChange?: (preferences: UserPreferences) => void;
-  onOpenLeaderboard?: () => void;
-  onOpenTracking?: () => void;
-  isPlacingMarker?: boolean;
-  onTogglePlacingMarker?: () => void;
 }
 
 export default function FloatingToolbar({
   selectedDate,
   onDateChange,
   onPreferencesChange,
-  onOpenLeaderboard,
-  onOpenTracking,
-  isPlacingMarker,
-  onTogglePlacingMarker,
 }: FloatingToolbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
@@ -126,53 +118,6 @@ export default function FloatingToolbar({
                 max={new Date().toISOString().split('T')[0]}
                 className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 text-gray-700 font-medium"
               />
-            </div>
-
-            {/* Acciones rápidas - siempre visibles como acceso alternativo */}
-            <div className="space-y-2">
-              <div className="border-t border-gray-200 mb-3"></div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <span className="text-lg">⚡</span>
-                Acciones rápidas
-              </label>
-              <div className="flex gap-2">
-                {onOpenLeaderboard && (
-                  <button
-                    onClick={() => { onOpenLeaderboard(); setIsOpen(false); }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r from-yellow-50 to-amber-50 hover:from-yellow-100 hover:to-amber-100 border-2 border-yellow-200 hover:border-yellow-300 transition-all duration-200"
-                    title="Leaderboard"
-                  >
-                    <span className="text-lg">🏆</span>
-                    <span className="text-xs font-semibold text-yellow-800">Ranking</span>
-                  </button>
-                )}
-                {onOpenTracking && (
-                  <button
-                    onClick={() => { onOpenTracking(); setIsOpen(false); }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-gradient-to-r from-purple-50 to-violet-50 hover:from-purple-100 hover:to-violet-100 border-2 border-purple-200 hover:border-purple-300 transition-all duration-200"
-                    title="Tracking"
-                  >
-                    <span className="text-lg">🗺️</span>
-                    <span className="text-xs font-semibold text-purple-800">Tracking</span>
-                  </button>
-                )}
-                {onTogglePlacingMarker && (
-                  <button
-                    onClick={() => { onTogglePlacingMarker(); setIsOpen(false); }}
-                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border-2 transition-all duration-200 ${
-                      isPlacingMarker
-                        ? 'bg-gradient-to-r from-red-50 to-red-100 border-red-300 hover:from-red-100 hover:to-red-200'
-                        : 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:from-green-100 hover:to-emerald-100'
-                    }`}
-                    title={isPlacingMarker ? 'Cancelar marcador' : 'Punto de interés'}
-                  >
-                    <span className="text-lg">📍</span>
-                    <span className={`text-xs font-semibold ${isPlacingMarker ? 'text-red-800' : 'text-green-800'}`}>
-                      {isPlacingMarker ? 'Cancelar' : 'POI'}
-                    </span>
-                  </button>
-                )}
-              </div>
             </div>
 
             {/* Botón de Preferencias */}
