@@ -56,9 +56,8 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
           </div>
 
           {/* Indicadores - Centrados */}
-          {/* mr-14: esquivar solo el gear icon (~56px) en < xl */}
-          {/* mr-52 en xl+: esquivar los 4 botones flotantes horizontales (~200px) */}
-          <div className="flex items-center flex-1 justify-center ml-2 mr-14 xl:mr-52 min-w-0">
+          {/* mr-28: esquivar el FAB (⚡) + gear (⚙️) (~112px). Los action buttons se expanden bajo demanda */}
+          <div className="flex items-center flex-1 justify-center ml-2 mr-28 min-w-0">
             {children}
           </div>
         </div>

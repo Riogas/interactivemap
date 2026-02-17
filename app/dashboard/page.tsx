@@ -71,6 +71,9 @@ function DashboardContent() {
   // Estado para modal de leaderboard/ranking
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   
+  // Estado para expandir/colapsar botones de acción rápida (FAB)
+  const [isActionsExpanded, setIsActionsExpanded] = useState(false);
+  
   // Estado para puntos de interés
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
   
@@ -1318,76 +1321,70 @@ function DashboardContent() {
         onTogglePlacingMarker={() => setIsPlacingMarker(!isPlacingMarker)}
       />
 
-      {/* Botones flotantes: Tracking + POI + Leaderboard */}
-      {/* Solo visibles en xl+ (1280px+). En pantallas más chicas se acceden desde el FloatingToolbar */}
-      <div className="fixed z-[9999] hidden xl:flex items-center gap-2 top-3 right-16 flex-row">
-        {/* Botón de Leaderboard/Ranking */}
-        <button
-          onClick={() => setIsLeaderboardOpen(true)}
-          className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700"
-          title="Ranking de Móviles"
-        >
-          <svg 
-            className="w-5 h-5 text-white"
-            fill="currentColor" 
-            viewBox="0 0 24 24"
+      {/* Botones flotantes: FAB colapsable con Tracking + POI + Leaderboard */}
+      {/* Por defecto solo muestra un botón ⚡. Al hacer clic se expanden los 3 botones de acción */}
+      <div className="fixed z-[9999] flex items-center gap-2 top-3 right-16 flex-row">
+        {/* Botones de acción - se muestran/ocultan con animación */}
+        <div className={`flex items-center gap-2 transition-all duration-300 origin-right ${
+          isActionsExpanded 
+            ? 'opacity-100 scale-100 translate-x-0' 
+            : 'opacity-0 scale-75 translate-x-4 pointer-events-none w-0 overflow-hidden'
+        }`}>
+          {/* Botón de Leaderboard/Ranking */}
+          <button
+            onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
+            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700"
+            title="Ranking de Móviles"
           >
-            <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>
-          </svg>
-        </button>
+            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>
+            </svg>
+          </button>
 
-        {/* Botón de Tracking */}
-        <button
-          onClick={() => setIsTrackingModalOpen(true)}
-          className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
-          title="Ver recorrido de un móvil"
-        >
-          <svg 
-            className="w-5 h-5 text-white"
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
+          {/* Botón de Tracking */}
+          <button
+            onClick={() => { setIsTrackingModalOpen(true); setIsActionsExpanded(false); }}
+            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
+            title="Ver recorrido de un móvil"
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" 
-            />
-          </svg>
-        </button>
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
+          </button>
 
-        {/* Botón para activar modo de colocación de marcadores (POI) */}
-        <button
-          onClick={() => setIsPlacingMarker(!isPlacingMarker)}
-          className={`
-            flex items-center justify-center w-10 h-10 rounded-full shadow-2xl
-            transition-all duration-300 transform hover:scale-110
-            ${isPlacingMarker
-              ? 'bg-gradient-to-br from-red-500 to-red-600 animate-pulse'
-              : 'bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
-            }
-          `}
-          title={isPlacingMarker ? 'Cancelar modo de colocación' : 'Agregar marcador personalizado'}
-        >
-          <svg 
-            className={`w-5 h-5 text-white transition-transform ${isPlacingMarker ? 'scale-110' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
+          {/* Botón POI */}
+          <button
+            onClick={() => { setIsPlacingMarker(!isPlacingMarker); setIsActionsExpanded(false); }}
+            className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 ${
+              isPlacingMarker
+                ? 'bg-gradient-to-br from-red-500 to-red-600 animate-pulse'
+                : 'bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+            }`}
+            title={isPlacingMarker ? 'Cancelar modo de colocación' : 'Agregar marcador personalizado'}
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" 
-            />
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" 
-            />
+            <svg className={`w-5 h-5 text-white transition-transform ${isPlacingMarker ? 'scale-110' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Botón toggle FAB ⚡ */}
+        <button
+          onClick={() => setIsActionsExpanded(!isActionsExpanded)}
+          className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 ${
+            isActionsExpanded
+              ? 'bg-gradient-to-br from-gray-600 to-gray-700 rotate-45'
+              : 'bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
+          }`}
+          title={isActionsExpanded ? 'Cerrar acciones' : 'Acciones rápidas'}
+        >
+          <svg className={`w-5 h-5 text-white transition-transform duration-300 ${isActionsExpanded ? 'rotate-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {isActionsExpanded ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            )}
           </svg>
         </button>
       </div>

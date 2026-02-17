@@ -128,8 +128,8 @@ export default function FloatingToolbar({
               />
             </div>
 
-            {/* Acciones rápidas - solo visibles en pantallas < xl */}
-            <div className="xl:hidden space-y-2">
+            {/* Acciones rápidas - siempre visibles como acceso alternativo */}
+            <div className="space-y-2">
               <div className="border-t border-gray-200 mb-3"></div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                 <span className="text-lg">⚡</span>
