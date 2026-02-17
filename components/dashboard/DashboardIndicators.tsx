@@ -106,7 +106,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   }, [moviles]);
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
+    <div className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar">
       {/* ========== ALERTAS CRÍTICAS ========== */}
       <div className="flex items-center gap-1.5">
         {/* Pedidos Atrasados */}
@@ -252,20 +252,20 @@ function Indicator({ icon, label, value, subtitle, color = 'blue', pulse = false
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className={`
-        backdrop-blur-sm rounded-md px-2 py-1 border
+        backdrop-blur-sm rounded-md px-1.5 py-0.5 lg:px-2 lg:py-1 border
         ${colorClasses[color]}
         ${pulse ? 'animate-pulse' : ''}
         hover:scale-105 transition-transform cursor-default
         whitespace-nowrap
-        h-[38px] flex items-center
+        h-[32px] lg:h-[38px] flex items-center
       `}
     >
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs">{icon}</span>
+      <div className="flex items-center gap-1 lg:gap-1.5">
+        <span className="text-[10px] lg:text-xs">{icon}</span>
         <div className="flex flex-col leading-none justify-center">
           <div className="flex items-baseline gap-1">
-            <span className="text-[9px] font-medium opacity-75">{label}</span>
-            <span className="text-xs font-bold">{value}</span>
+            <span className="text-[8px] lg:text-[9px] font-medium opacity-75 hidden sm:inline">{label}</span>
+            <span className="text-[10px] lg:text-xs font-bold">{value}</span>
           </div>
           {subtitle && (
             <span className="text-[8px] opacity-60 mt-0.5">{subtitle}</span>

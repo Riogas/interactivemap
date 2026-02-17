@@ -77,6 +77,18 @@ function DashboardContent() {
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
+  // 📐 Sidebar responsive: ancho dinámico según resolución
+  const [sidebarWidth, setSidebarWidth] = useState(384);
+  useEffect(() => {
+    const updateSidebarWidth = () => {
+      // < 1024px (lg): sidebar más angosto para dejar más espacio al mapa
+      setSidebarWidth(window.innerWidth < 1024 ? 320 : 384);
+    };
+    updateSidebarWidth();
+    window.addEventListener('resize', updateSidebarWidth);
+    return () => window.removeEventListener('resize', updateSidebarWidth);
+  }, []);
+  
   // Estado para empresas fleteras
   const [empresas, setEmpresas] = useState<EmpresaFleteraSupabase[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
@@ -1036,6 +1048,9 @@ function DashboardContent() {
   }, [puntosInteres]);
 
   // Combinar pedidos iniciales con updates de realtime
+  // Fecha seleccionada en formato YYYYMMDD para filtrar por fch_para
+  const selectedDateCompact = useMemo(() => selectedDate.replace(/-/g, ''), [selectedDate]);
+
   const pedidosCompletos = useMemo(() => {
     const pedidosMap = new Map<number, PedidoSupabase>();
     
@@ -1045,37 +1060,40 @@ function DashboardContent() {
     // Actualizar/agregar pedidos de realtime (sobrescriben los iniciales si existen)
     pedidosRealtime.forEach(p => pedidosMap.set(p.id, p));
     
-    const resultado = Array.from(pedidosMap.values());
+    // 🔥 Filtrar por fecha seleccionada: solo incluir pedidos de la fecha actual
+    // Esto evita que realtime inyecte pedidos de otras fechas
+    const resultado = Array.from(pedidosMap.values()).filter(p => {
+      // Verificar por fch_para (formato YYYYMMDD) o por fch_hora_para (timestamp)
+      if (p.fch_para && p.fch_para === selectedDateCompact) return true;
+      if (p.fch_hora_para && p.fch_hora_para.startsWith(selectedDate)) return true;
+      // Si no tiene ninguno de los dos campos, incluir (para no perder datos)
+      if (!p.fch_para && !p.fch_hora_para) return true;
+      return false;
+    });
     
-    // 🐛 DEBUG: Logging de pedidos completos
     console.log('🔷 DASHBOARD: pedidosCompletos calculado');
-    console.log('📊 Total pedidos iniciales:', pedidosIniciales.length);
-    console.log('📊 Total pedidos realtime:', pedidosRealtime.length);
-    console.log('📊 Total pedidos completos:', resultado.length);
-    if (resultado.length > 0) {
-      console.log('📍 Primer pedido completo:', {
-        id: resultado[0].id,
-        latitud: resultado[0].latitud,
-        longitud: resultado[0].longitud,
-        cliente: resultado[0].cliente_nombre,
-        estado: resultado[0].estado_nro
-      });
-      const conCoords = resultado.filter(p => p.latitud && p.longitud);
-      console.log(`📍 ${conCoords.length} pedidos tienen coordenadas válidas`);
-    }
+    console.log(`📊 Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
     
     return resultado;
-  }, [pedidosIniciales, pedidosRealtime]);
+  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate]);
 
   // Combinar services iniciales con updates de realtime
   const servicesCompletos = useMemo(() => {
     const servicesMap = new Map<number, ServiceSupabase>();
     servicesIniciales.forEach(s => servicesMap.set(s.id, s));
     servicesRealtime.forEach(s => servicesMap.set(s.id, s));
-    const resultado = Array.from(servicesMap.values());
-    console.log(`🔧 DASHBOARD: servicesCompletos: ${resultado.length}`);
+    
+    // 🔥 Filtrar por fecha seleccionada
+    const resultado = Array.from(servicesMap.values()).filter(s => {
+      if (s.fch_para && s.fch_para === selectedDateCompact) return true;
+      if (s.fch_hora_para && s.fch_hora_para.startsWith(selectedDate)) return true;
+      if (!s.fch_para && !s.fch_hora_para) return true;
+      return false;
+    });
+    
+    console.log(`🔧 DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
-  }, [servicesIniciales, servicesRealtime]);
+  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate]);
 
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
@@ -1294,10 +1312,15 @@ function DashboardContent() {
         onPreferencesChange={(newPrefs) => {
           updatePreferences(newPrefs);
         }}
+        onOpenLeaderboard={() => setIsLeaderboardOpen(true)}
+        onOpenTracking={() => setIsTrackingModalOpen(true)}
+        isPlacingMarker={isPlacingMarker}
+        onTogglePlacingMarker={() => setIsPlacingMarker(!isPlacingMarker)}
       />
 
-      {/* Botones flotantes: Tracking + POI */}
-      <div className="fixed top-3 right-16 z-[9999] flex items-center gap-2">
+      {/* Botones flotantes: Tracking + POI + Leaderboard */}
+      {/* Solo visibles en xl+ (1280px+). En pantallas más chicas se acceden desde el FloatingToolbar */}
+      <div className="fixed z-[9999] hidden xl:flex items-center gap-2 top-3 right-16 flex-row">
         {/* Botón de Leaderboard/Ranking */}
         <button
           onClick={() => setIsLeaderboardOpen(true)}
@@ -1388,7 +1411,8 @@ function DashboardContent() {
         services={servicesCompletos}
       />
 
-      {/* Indicador de conexión Realtime - Alineado a la derecha en el borde header/mapa */}
+      {/* Indicador de conexión Realtime - Debajo del navbar, a la derecha */}
+      {/* right-4 siempre, los botones ya no están en < xl */}
       <div className="absolute right-4 top-[68px] z-50">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
@@ -1438,10 +1462,11 @@ function DashboardContent() {
             <motion.div
               initial={false}
               animate={{
-                x: isSidebarCollapsed ? -380 : 0,
+                x: isSidebarCollapsed ? -(sidebarWidth + 4) : 0,
               }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="absolute left-0 top-0 bottom-0 z-30 w-96 bg-white shadow-2xl flex flex-col"
+              className="absolute left-0 top-0 bottom-0 z-30 bg-white shadow-2xl flex flex-col"
+              style={{ width: sidebarWidth }}
             >
               {/* Selector de Móviles - Full height */}
               <div className="flex-1 overflow-hidden">
@@ -1466,7 +1491,7 @@ function DashboardContent() {
             <motion.button
               initial={false}
               animate={{
-                left: isSidebarCollapsed ? 0 : 384,
+                left: isSidebarCollapsed ? 0 : sidebarWidth,
               }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -1494,7 +1519,7 @@ function DashboardContent() {
             <motion.div
               initial={false}
               animate={{
-                paddingLeft: isSidebarCollapsed ? 0 : 384,
+                paddingLeft: isSidebarCollapsed ? 0 : sidebarWidth,
               }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               className="w-full h-full"

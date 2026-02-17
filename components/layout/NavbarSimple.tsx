@@ -38,7 +38,7 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
 
             {/* Selector de Empresas Fleteras - junto al logo */}
             {showEmpresaSelector && empresas && selectedEmpresas && onEmpresasChange && (
-              <div className="hidden md:block">
+              <div className="hidden lg:block">
                 {isLoadingEmpresas ? (
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-lg">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
@@ -56,7 +56,9 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
           </div>
 
           {/* Indicadores - Centrados */}
-          <div className="flex items-center flex-1 justify-center ml-2 mr-10 min-w-0">
+          {/* mr-14: esquivar solo el gear icon (~56px) en < xl */}
+          {/* mr-52 en xl+: esquivar los 4 botones flotantes horizontales (~200px) */}
+          <div className="flex items-center flex-1 justify-center ml-2 mr-14 xl:mr-52 min-w-0">
             {children}
           </div>
         </div>

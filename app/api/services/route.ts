@@ -63,10 +63,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Filtrar por fecha: OR para capturar services por fch_hora_para (timestamp) O fch_para (date)
+    // NOTA: fch_para se almacena como YYYYMMDD (sin guiones) en la BD
     if (fecha) {
       const fechaInicio = `${fecha}T00:00:00`;
       const fechaFin = `${fecha}T23:59:59`;
-      query = query.or(`and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${fecha}`);
+      const fechaSinGuiones = fecha.replace(/-/g, ''); // '2026-02-17' → '20260217'
+      query = query.or(`and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${fechaSinGuiones}`);
     }
 
     if (empresaFleteraId) {
