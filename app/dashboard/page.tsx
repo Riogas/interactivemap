@@ -16,6 +16,8 @@ import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtime
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
+import ZonasAsignacionModal from '@/components/ui/ZonasAsignacionModal';
+import PedidosTableModal from '@/components/ui/PedidosTableModal';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -70,6 +72,15 @@ function DashboardContent() {
   
   // Estado para modal de leaderboard/ranking
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  
+  // Estado para modal de asignación de zonas
+  const [isZonasAsignacionOpen, setIsZonasAsignacionOpen] = useState(false);
+  
+  // Estado para modal de vista extendida de pedidos
+  const [isPedidosTableOpen, setIsPedidosTableOpen] = useState(false);
+  
+  // Estado para ocultar/mostrar indicadores de móviles en el mapa
+  const [movilesHidden, setMovilesHidden] = useState(false);
   
   // Estado para expandir/colapsar botones de acción rápida (FAB)
   const [isActionsExpanded, setIsActionsExpanded] = useState(false);
@@ -1326,6 +1337,17 @@ function DashboardContent() {
             ? 'opacity-100 scale-100 translate-x-0' 
             : 'opacity-0 scale-75 translate-x-4 pointer-events-none w-0 overflow-hidden'
         }`}>
+          {/* Botón de Asignación de Zonas */}
+          <button
+            onClick={() => { setIsZonasAsignacionOpen(true); setIsActionsExpanded(false); }}
+            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700"
+            title="Asignación de Móviles a Zonas"
+          >
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          </button>
+
           {/* Botón de Leaderboard/Ranking */}
           <button
             onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
@@ -1393,6 +1415,23 @@ function DashboardContent() {
         moviles={movilesFiltered}
         selectedDate={selectedDate}
         selectedMovil={selectedMoviles.length === 1 ? selectedMoviles[0] : undefined}
+      />
+
+      {/* Modal de Vista Extendida de Pedidos */}
+      <PedidosTableModal
+        isOpen={isPedidosTableOpen}
+        onClose={() => setIsPedidosTableOpen(false)}
+        pedidos={pedidosCompletos}
+        moviles={movilesFiltered}
+        onPedidoClick={handlePedidoClick}
+      />
+
+      {/* Modal de Asignación de Zonas */}
+      <ZonasAsignacionModal
+        isOpen={isZonasAsignacionOpen}
+        onClose={() => setIsZonasAsignacionOpen(false)}
+        moviles={movilesFiltered}
+        pedidos={pedidosCompletos}
       />
 
       {/* Modal de Leaderboard/Ranking */}
@@ -1476,6 +1515,9 @@ function DashboardContent() {
                   puntosInteres={puntosInteres}
                   onPuntoInteresClick={handlePuntoInteresClick}
                   onFiltersChange={setMovilesFilters}
+                  onOpenPedidosTable={() => setIsPedidosTableOpen(true)}
+                  movilesHidden={movilesHidden}
+                  onToggleMovilesHidden={() => setMovilesHidden(h => !h)}
                 />
               </div>
             </motion.div>
@@ -1518,7 +1560,7 @@ function DashboardContent() {
               className="w-full h-full"
             >
               <MapView 
-                moviles={applyActivityFilter(applyAdvancedFilters(markInactiveMoviles(movilesFiltered))).filter(m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
+                moviles={movilesHidden ? [] : applyActivityFilter(applyAdvancedFilters(markInactiveMoviles(movilesFiltered))).filter(m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
                 secondaryAnimMovil={selectedMovil2}

@@ -23,6 +23,9 @@ interface MovilSelectorProps {
   puntosInteres?: CustomMarker[]; // Nueva prop para puntos de interés
   onPuntoInteresClick?: (puntoId: string) => void; // Callback para click en punto
   onFiltersChange?: (filters: MovilFilters) => void; // 🆕 Callback para comunicar filtros activos
+  onOpenPedidosTable?: () => void; // Abrir modal de vista extendida de pedidos
+  movilesHidden?: boolean; // Si los indicadores de móviles están ocultos en el mapa
+  onToggleMovilesHidden?: () => void; // Toggle visibilidad de móviles en el mapa
 }
 
 // Definir las categorías del árbol
@@ -48,6 +51,9 @@ export default function MovilSelector({
   puntosInteres = [],
   onPuntoInteresClick,
   onFiltersChange, // 🆕 Recibir el callback
+  onOpenPedidosTable,
+  movilesHidden = false,
+  onToggleMovilesHidden,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -704,6 +710,48 @@ export default function MovilSelector({
                   )}
                 </div>
                 <div className="flex items-center gap-1">
+                  {/* Botón de vista extendida (solo pedidos) */}
+                  {category.key === 'pedidos' && onOpenPedidosTable && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onOpenPedidosTable(); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenPedidosTable(); } }}
+                      className="p-1 rounded-full hover:bg-orange-100 transition-colors group"
+                      title="Vista extendida de pedidos"
+                    >
+                      <svg className="w-4 h-4 text-gray-400 group-hover:text-orange-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 6h18M3 14h18M3 18h18" />
+                      </svg>
+                    </span>
+                  )}
+
+                  {/* Botón de ocultar/mostrar móviles en el mapa */}
+                  {category.key === 'moviles' && onToggleMovilesHidden && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onToggleMovilesHidden(); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onToggleMovilesHidden(); } }}
+                      className={clsx(
+                        'p-1 rounded-full transition-colors group',
+                        movilesHidden ? 'hover:bg-green-100 bg-red-50' : 'hover:bg-blue-100'
+                      )}
+                      title={movilesHidden ? 'Mostrar móviles en el mapa' : 'Ocultar móviles del mapa'}
+                    >
+                      {movilesHidden ? (
+                        <svg className="w-4 h-4 text-red-400 group-hover:text-green-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </span>
+                  )}
+
                   {/* Botón de ayuda */}
                   {(category.key === 'moviles' || category.key === 'pedidos' || category.key === 'pedidosFinalizados' || category.key === 'services' || category.key === 'servicesFinalizados') && (
                     <span
