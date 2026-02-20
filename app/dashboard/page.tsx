@@ -18,6 +18,7 @@ import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonasAsignacionModal from '@/components/ui/ZonasAsignacionModal';
 import PedidosTableModal from '@/components/ui/PedidosTableModal';
+import AppTour from '@/components/ui/AppTour';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -84,6 +85,9 @@ function DashboardContent() {
   
   // Estado para expandir/colapsar botones de acción rápida (FAB)
   const [isActionsExpanded, setIsActionsExpanded] = useState(false);
+  
+  // Estado para el tour interactivo
+  const [isTourOpen, setIsTourOpen] = useState(false);
   
   // Estado para puntos de interés
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
@@ -1330,7 +1334,7 @@ function DashboardContent() {
 
       {/* Botones flotantes: FAB colapsable con Tracking + POI + Leaderboard */}
       {/* Por defecto solo muestra un botón ⚡. Al hacer clic se expanden los 3 botones de acción */}
-      <div className="fixed z-[9999] flex items-center gap-2 top-3 right-16 flex-row">
+      <div id="tour-fab-area" className="fixed z-[9999] flex items-center gap-2 top-3 right-16 flex-row">
         {/* Botones de acción - se muestran/ocultan con animación */}
         <div className={`flex items-center gap-2 transition-all duration-300 origin-right ${
           isActionsExpanded 
@@ -1339,6 +1343,7 @@ function DashboardContent() {
         }`}>
           {/* Botón de Asignación de Zonas */}
           <button
+            id="tour-fab-zonas"
             onClick={() => { setIsZonasAsignacionOpen(true); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700"
             title="Asignación de Móviles a Zonas"
@@ -1350,6 +1355,7 @@ function DashboardContent() {
 
           {/* Botón de Leaderboard/Ranking */}
           <button
+            id="tour-fab-ranking"
             onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700"
             title="Ranking de Móviles"
@@ -1361,6 +1367,7 @@ function DashboardContent() {
 
           {/* Botón de Tracking */}
           <button
+            id="tour-fab-tracking"
             onClick={() => { setIsTrackingModalOpen(true); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
             title="Ver recorrido de un móvil"
@@ -1372,6 +1379,7 @@ function DashboardContent() {
 
           {/* Botón POI */}
           <button
+            id="tour-fab-poi"
             onClick={() => { setIsPlacingMarker(!isPlacingMarker); setIsActionsExpanded(false); }}
             className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 ${
               isPlacingMarker
@@ -1389,6 +1397,7 @@ function DashboardContent() {
 
         {/* Botón toggle FAB ⚡ */}
         <button
+          id="tour-fab-toggle"
           onClick={() => setIsActionsExpanded(!isActionsExpanded)}
           className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 ${
             isActionsExpanded
@@ -1405,7 +1414,30 @@ function DashboardContent() {
             )}
           </svg>
         </button>
+
+        {/* Botón de Tour / Ayuda ❓ */}
+        <button
+          id="tour-help-btn"
+          onClick={() => {
+            setIsActionsExpanded(true);
+            setTimeout(() => setIsTourOpen(true), 350);
+          }}
+          className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 group"
+          title="Tour interactivo de la aplicación"
+        >
+          <svg className="w-5 h-5 text-white group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
       </div>
+
+      {/* Tour Interactivo */}
+      <AppTour
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+        expandFab={() => setIsActionsExpanded(true)}
+        collapseFab={() => setIsActionsExpanded(false)}
+      />
 
       {/* Modal de Tracking */}
       <TrackingModal
@@ -1445,7 +1477,7 @@ function DashboardContent() {
 
       {/* Indicador de conexión Realtime - Debajo del navbar, a la derecha */}
       {/* right-4 siempre, los botones ya no están en < xl */}
-      <div className="absolute right-4 top-[68px] z-50">
+      <div id="tour-realtime-indicator" className="absolute right-4 top-[68px] z-50">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -1492,6 +1524,7 @@ function DashboardContent() {
           <>
             {/* Panel Lateral Colapsable - Absolute positioned */}
             <motion.div
+              id="tour-sidebar"
               initial={false}
               animate={{
                 x: isSidebarCollapsed ? -(sidebarWidth + 4) : 0,
@@ -1524,6 +1557,7 @@ function DashboardContent() {
 
             {/* Botón para colapsar/expandir el sidebar */}
             <motion.button
+              id="tour-sidebar-toggle"
               initial={false}
               animate={{
                 left: isSidebarCollapsed ? 0 : sidebarWidth,
@@ -1552,6 +1586,7 @@ function DashboardContent() {
 
             {/* Mapa - Full width con padding dinámico */}
             <motion.div
+              id="tour-map-area"
               initial={false}
               animate={{
                 paddingLeft: isSidebarCollapsed ? 0 : sidebarWidth,

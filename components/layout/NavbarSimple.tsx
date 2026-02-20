@@ -20,7 +20,7 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
         <div className="flex items-center justify-between py-2.5">
           {/* Logo + Empresas */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="flex items-center gap-2">
+            <div id="tour-logo" className="flex items-center gap-2">
               <div className="bg-white rounded-lg p-1.5 shadow-lg">
                 <svg
                   className="w-6 h-6 text-blue-600"
@@ -38,7 +38,7 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
 
             {/* Selector de Empresas Fleteras - junto al logo */}
             {showEmpresaSelector && empresas && selectedEmpresas && onEmpresasChange && (
-              <div className="hidden lg:block">
+              <div id="tour-empresa-selector" className="hidden lg:block">
                 {isLoadingEmpresas ? (
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-lg">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
@@ -57,7 +57,7 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
 
           {/* Indicadores - Centrados */}
           {/* mr-28: esquivar el FAB (⚡) + gear (⚙️) (~112px). Los action buttons se expanden bajo demanda */}
-          <div className="flex items-center flex-1 justify-center ml-2 mr-28 min-w-0">
+          <div id="tour-indicators" className="flex items-center flex-1 justify-center ml-2 mr-28 min-w-0">
             {children}
           </div>
         </div>

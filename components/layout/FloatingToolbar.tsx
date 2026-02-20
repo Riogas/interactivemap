@@ -53,8 +53,9 @@ export default function FloatingToolbar({
   return (
     <>
       {/* Botón Flotante - Centrado verticalmente con el header */}
-      <div className="fixed top-3 right-4 z-[9999]" ref={panelRef}>
+      <div id="tour-floating-toolbar" className="fixed top-3 right-4 z-[9999]" ref={panelRef}>
         <button
+          id="tour-gear-btn"
           onClick={() => setIsOpen(!isOpen)}
           className={`
             flex items-center justify-center w-10 h-10 rounded-full shadow-2xl
@@ -106,7 +107,7 @@ export default function FloatingToolbar({
           {/* Contenido del Panel */}
           <div className="p-6 space-y-5 max-h-[calc(100vh-180px)] overflow-y-auto">
             {/* Selector de Fecha */}
-            <div className="space-y-2">
+            <div id="tour-date-selector" className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                 <span className="text-lg">📅</span>
                 Fecha
@@ -122,6 +123,7 @@ export default function FloatingToolbar({
 
             {/* Botón de Preferencias */}
             <button
+              id="tour-preferences-btn"
               onClick={() => {
                 setIsPreferencesOpen(true);
                 setIsOpen(false);
@@ -154,7 +156,7 @@ export default function FloatingToolbar({
             <div className="border-t border-gray-200"></div>
 
             {/* Info del Usuario */}
-            <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-100">
+            <div id="tour-user-info" className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-100">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-lg">
                 <span className="text-white font-bold text-lg">
                   {user?.username?.charAt(0).toUpperCase() || 'U'}

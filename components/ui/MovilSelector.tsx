@@ -583,6 +583,7 @@ export default function MovilSelector({
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="mb-4 overflow-hidden"
+            id="tour-sidebar-filters"
           >
             {/* Barra de filtros con filtros avanzados integrados */}
             <FilterBar
@@ -694,7 +695,7 @@ export default function MovilSelector({
       <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
         <div className="space-y-2">
           {categories.map((category) => (
-            <div key={category.key} className="border border-gray-200 rounded-lg overflow-hidden">
+            <div key={category.key} id={`tour-category-${category.key}`} className="border border-gray-200 rounded-lg overflow-hidden">
               {/* Header de la categoría */}
               <button
                 onClick={() => toggleCategory(category.key)}
@@ -713,6 +714,7 @@ export default function MovilSelector({
                   {/* Botón de vista extendida (solo pedidos) */}
                   {category.key === 'pedidos' && onOpenPedidosTable && (
                     <span
+                      id="tour-pedidos-table-btn"
                       role="button"
                       tabIndex={0}
                       onClick={(e) => { e.stopPropagation(); onOpenPedidosTable(); }}
@@ -729,6 +731,7 @@ export default function MovilSelector({
                   {/* Botón de ocultar/mostrar móviles en el mapa */}
                   {category.key === 'moviles' && onToggleMovilesHidden && (
                     <span
+                      id="tour-eye-toggle"
                       role="button"
                       tabIndex={0}
                       onClick={(e) => { e.stopPropagation(); onToggleMovilesHidden(); }}
