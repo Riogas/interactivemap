@@ -366,6 +366,7 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
           onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
           <motion.div
+            id="tour-modal-zonas"
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}

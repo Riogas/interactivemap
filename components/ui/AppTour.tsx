@@ -11,7 +11,7 @@ const CUSTOM_CSS = `
     border: 1px solid rgba(129, 140, 248, 0.3) !important;
     border-radius: 16px !important;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(99, 102, 241, 0.15) !important;
-    max-width: 400px !important;
+    max-width: 420px !important;
     padding: 0 !important;
     overflow: hidden;
   }
@@ -135,7 +135,15 @@ const CUSTOM_CSS = `
     background: rgba(0, 0, 0, 0.65) !important;
   }
 
-  /* Separador de secciones en el tour */
+  /* z-index alto para que esté por encima de los modales (z-[10000]) */
+  .driver-active .driver-overlay,
+  .driver-active .driver-active-element {
+    z-index: 100000 !important;
+  }
+  .driver-popover {
+    z-index: 100001 !important;
+  }
+
   .tour-section-badge {
     display: inline-block;
     background: rgba(99, 102, 241, 0.3);
@@ -158,10 +166,32 @@ function clickElement(id: string, delay = 0) {
   }, delay);
 }
 
+// Helper: esperar a que un elemento aparezca en el DOM
+function waitForElement(id: string, timeout = 2000): Promise<HTMLElement | null> {
+  return new Promise((resolve) => {
+    const el = document.getElementById(id);
+    if (el) { resolve(el); return; }
+    const observer = new MutationObserver(() => {
+      const found = document.getElementById(id);
+      if (found) { observer.disconnect(); resolve(found); }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => { observer.disconnect(); resolve(null); }, timeout);
+  });
+}
+
 // ============= DEFINICIÓN DE PASOS DEL TOUR =============
 interface TourActions {
   expandFab: () => void;
   collapseFab: () => void;
+  openZonas: () => void;
+  closeZonas: () => void;
+  openRanking: () => void;
+  closeRanking: () => void;
+  openTracking: () => void;
+  closeTracking: () => void;
+  openPedidosTable: () => void;
+  closePedidosTable: () => void;
 }
 
 function getTourSteps(actions: TourActions): DriveStep[] {
@@ -174,7 +204,7 @@ function getTourSteps(actions: TourActions): DriveStep[] {
     {
       popover: {
         title: '🚀 ¡Bienvenido a TrackMovil!',
-        description: '<div class="tour-section-badge">INTRODUCCIÓN</div><br>Esta guía te va a mostrar <strong>todas las funcionalidades</strong> de la aplicación de rastreo en tiempo real, paso a paso.<br><br>Navegá con los botones <strong>Siguiente / Anterior</strong> o las teclas <strong>← →</strong> del teclado.',
+        description: '<div class="tour-section-badge">INTRODUCCIÓN</div><br>Esta guía te va a mostrar <strong>todas las funcionalidades</strong> de la aplicación de rastreo en tiempo real, paso a paso.<br><br>Vamos a ir abriendo cada pantalla para que veas cómo funciona todo. Navegá con <strong>Siguiente / Anterior</strong> o las teclas <strong>← →</strong>.',
         side: 'over',
         align: 'center',
       },
@@ -185,7 +215,7 @@ function getTourSteps(actions: TourActions): DriveStep[] {
       element: '#tour-logo',
       popover: {
         title: '🚗 TrackMovil — Riogas',
-        description: '<div class="tour-section-badge">NAVBAR</div><br>Esta es la barra de navegación principal. Desde acá vas a poder ver toda la información resumida de la operación del día.',
+        description: '<div class="tour-section-badge">NAVBAR</div><br>Barra de navegación principal. Desde acá ves toda la información resumida de la operación del día.',
         side: 'bottom',
         align: 'start',
       },
@@ -196,7 +226,7 @@ function getTourSteps(actions: TourActions): DriveStep[] {
       element: '#tour-empresa-selector',
       popover: {
         title: '🏢 Selector de Empresa Fletera',
-        description: 'Si tenés acceso a <strong>múltiples empresas fleteras</strong>, desde este combo podés filtrar cuáles querés visualizar. Los datos del dashboard se actualizan automáticamente al cambiar la selección.',
+        description: 'Si tenés acceso a <strong>múltiples empresas fleteras</strong>, desde este combo filtrás cuáles querés visualizar. Los datos se actualizan automáticamente.',
         side: 'bottom',
         align: 'start',
       },
@@ -207,7 +237,7 @@ function getTourSteps(actions: TourActions): DriveStep[] {
       element: '#tour-indicators',
       popover: {
         title: '📊 Indicadores Operativos',
-        description: 'Panel de <strong>KPIs en tiempo real</strong> que resume toda la operación:<br><br>• <span style="color:#f87171"><strong>⏰ Atrasados</strong></span> — Pedidos/Services con demora<br>• <span style="color:#60a5fa"><strong>📦 Pendientes</strong></span> — En ruta, sin entregar<br>• <span style="color:#4ade80"><strong>🚗 Móviles</strong></span> — Cantidad de activos<br>• <span style="color:#fb923c"><strong>📡 Sin Coord.</strong></span> — Móviles sin GPS<br>• <span style="color:#4ade80"><strong>✅ Entregados/OK</strong></span> — Completados hoy<br><br>Si no entran todos, usá las <strong>flechas ◄ ►</strong> de los costados.',
+        description: 'Panel de <strong>KPIs en tiempo real</strong>:<br><br>• <span style="color:#f87171"><strong>⏰ Atrasados</strong></span> — Pedidos con demora<br>• <span style="color:#60a5fa"><strong>📦 Pendientes</strong></span> — En ruta<br>• <span style="color:#4ade80"><strong>🚗 Móviles</strong></span> — Activos<br>• <span style="color:#fb923c"><strong>📡 Sin Coord.</strong></span> — Sin GPS<br>• <span style="color:#4ade80"><strong>✅ Entregados/OK</strong></span> — Completados<br><br>Si no entran todos, usá las <strong>flechas ◄ ►</strong>.',
         side: 'bottom',
         align: 'center',
       },
@@ -218,22 +248,22 @@ function getTourSteps(actions: TourActions): DriveStep[] {
       element: '#tour-realtime-indicator',
       popover: {
         title: '📡 Estado de Conexión',
-        description: 'Muestra si los datos se actualizan en <strong>tiempo real</strong>:<br><br>• <span style="color:#4ade80"><strong>🟢 Verde</strong></span> — Conectado, datos en vivo<br>• <span style="color:#facc15"><strong>🟡 Amarillo</strong></span> — Reconectando...<br>• <span style="color:#9ca3af"><strong>⚫ Gris</strong></span> — Modo estático (sin actualizaciones)',
+        description: '• <span style="color:#4ade80"><strong>🟢 Verde</strong></span> — Conectado, datos en vivo<br>• <span style="color:#facc15"><strong>🟡 Amarillo</strong></span> — Reconectando...<br>• <span style="color:#9ca3af"><strong>⚫ Gris</strong></span> — Modo estático',
         side: 'bottom',
         align: 'end',
       },
     },
 
     // ======================================================
-    // PARTE 2: BOTONES DE ACCIÓN (FAB) — Uno a uno
+    // PARTE 2: ACCIONES RÁPIDAS (FAB) + MODALES INTERACTIVOS
     // ======================================================
 
-    // 5 — Introducción a los botones FAB
+    // 5 — Introducción FAB
     {
       element: '#tour-fab-toggle',
       popover: {
-        title: '⚡ Botón de Acciones Rápidas',
-        description: '<div class="tour-section-badge">ACCIONES RÁPIDAS</div><br>Este botón <strong>expande 4 acciones rápidas</strong>. Al presionarlo se despliegan los botones de acción a su izquierda. Veamos cada uno...',
+        title: '⚡ Acciones Rápidas',
+        description: '<div class="tour-section-badge">ACCIONES RÁPIDAS</div><br>Este botón <strong>expande 4 acciones</strong>. Vamos a abrirlas una a una para que veas lo que hacen.',
         side: 'bottom',
         align: 'end',
       },
@@ -242,45 +272,97 @@ function getTourSteps(actions: TourActions): DriveStep[] {
       },
     },
 
-    // 6 — Botón Zonas
+    // 6 — Botón Zonas (presentación)
     {
       element: '#tour-fab-zonas',
       popover: {
         title: '🗺️ Asignación de Zonas',
-        description: 'Abre un modal de <strong>drag & drop</strong> para asignar móviles a zonas.<br><br>Tiene <strong>3 paneles</strong>:<br>• <strong>Zonas</strong> — Listado de zonas disponibles<br>• <strong>Prioridad / Tránsito</strong> — Arrastrá un móvil acá<br>• <strong>Disponibles</strong> — Móviles sin asignar',
+        description: 'Este botón abre el modal de <strong>asignación de móviles a zonas</strong> mediante drag & drop. Vamos a abrirlo para que lo veas...',
         side: 'bottom',
         align: 'end',
       },
+      onDeselected: () => {
+        // Abrir el modal de zonas al avanzar
+        actions.openZonas();
+      },
     },
 
-    // 7 — Botón Ranking
+    // 7 — Modal Zonas abierto
+    {
+      element: '#tour-modal-zonas',
+      popover: {
+        title: '🗺️ Panel de Asignación de Zonas',
+        description: 'Acá ves <strong>3 paneles</strong>:<br><br>• <strong>Izquierda:</strong> Lista de zonas configuradas. Seleccioná una para trabajar.<br>• <strong>Centro:</strong> Dos áreas de drop — <span style="color:#fbbf24"><strong>Prioridad</strong></span> y <span style="color:#22d3ee"><strong>Tránsito</strong></span>. Arrastrá móviles acá.<br>• <strong>Derecha:</strong> Móviles disponibles con buscador para filtrar.<br><br>Arrastrá los móviles de derecha al centro, y al finalizar hacé clic en <strong>"Guardar asignaciones"</strong>.',
+        side: 'left',
+        align: 'center',
+      },
+      onDeselected: () => {
+        actions.closeZonas();
+      },
+    },
+
+    // 8 — Botón Ranking (presentación)
     {
       element: '#tour-fab-ranking',
       popover: {
         title: '🏆 Ranking de Móviles',
-        description: 'Abre el <strong>Leaderboard</strong> con el ranking de rendimiento de la flota. Muestra métricas de cada móvil: pedidos completados, servicios realizados.',
+        description: 'Abre el <strong>Leaderboard</strong> con el ranking de rendimiento diario de toda la flota. Veámoslo...',
         side: 'bottom',
         align: 'end',
       },
+      onDeselected: () => {
+        actions.openRanking();
+      },
     },
 
-    // 8 — Botón Tracking
+    // 9 — Modal Ranking abierto
+    {
+      element: '#tour-modal-ranking',
+      popover: {
+        title: '🏆 Ranking de Móviles',
+        description: 'El leaderboard muestra:<br><br>• <strong>4 tarjetas resumen</strong> — Móviles, Entregas, En Hora, Cumplimiento %<br>• <strong>Tabla de ranking</strong> — Ordenable por entregas, cumplimiento, en hora, pendientes o total<br>• <strong>🥇🥈🥉</strong> Medallas para los <strong>top 3</strong><br>• <strong>Barra de progreso</strong> visual por cada móvil<br>• Checkbox <strong>"Solo activos"</strong> para filtrar<br><br>Los datos son <strong>en tiempo real</strong> del día actual.',
+        side: 'left',
+        align: 'center',
+      },
+      onDeselected: () => {
+        actions.closeRanking();
+      },
+    },
+
+    // 10 — Botón Tracking (presentación)
     {
       element: '#tour-fab-tracking',
       popover: {
         title: '🛤️ Recorrido Histórico',
-        description: 'Abre el modal de <strong>tracking</strong>. Seleccioná un móvil y una fecha para ver su <strong>recorrido animado</strong> dibujado sobre el mapa, punto a punto.',
+        description: 'Abre el modal de <strong>tracking</strong> para ver el recorrido de un móvil en el mapa. Veamos cómo funciona...',
         side: 'bottom',
         align: 'end',
       },
+      onDeselected: () => {
+        actions.openTracking();
+      },
     },
 
-    // 9 — Botón POI
+    // 11 — Modal Tracking abierto
+    {
+      element: '#tour-modal-tracking',
+      popover: {
+        title: '🛤️ Ver Recorrido de un Móvil',
+        description: 'Desde acá seleccionás:<br><br>• <strong>🚗 Móvil</strong> — Buscá por número, nombre o patente<br>• <strong>📅 Fecha</strong> — La jornada que querés ver<br><br>Al confirmar, el <strong>recorrido se dibuja animado</strong> sobre el mapa, punto a punto. Luego podés agregar un <strong>2do móvil</strong> desde el control del mapa para <strong>comparar rutas</strong> en paralelo.',
+        side: 'right',
+        align: 'center',
+      },
+      onDeselected: () => {
+        actions.closeTracking();
+      },
+    },
+
+    // 12 — Botón POI
     {
       element: '#tour-fab-poi',
       popover: {
         title: '📍 Puntos de Interés (POI)',
-        description: 'Activa el <strong>modo marcador</strong>. Después, hacé clic en cualquier lugar del mapa para crear un punto de interés con nombre, color e ícono personalizado.',
+        description: 'Activa el <strong>modo marcador</strong>. El cursor cambia a <strong>✛</strong> y cualquier clic en el mapa crea un punto de interés con nombre, color e ícono personalizado.<br><br>Los POIs creados se listan en la sección <strong>"Puntos de Interés"</strong> del panel lateral.',
         side: 'bottom',
         align: 'end',
       },
@@ -290,44 +372,43 @@ function getTourSteps(actions: TourActions): DriveStep[] {
     // PARTE 3: CONFIGURACIÓN (⚙️ Gear)
     // ======================================================
 
-    // 10 — Botón de engranaje (intro)
+    // 13 — Botón de engranaje (intro)
     {
       element: '#tour-gear-btn',
       popover: {
         title: '⚙️ Filtros y Configuración',
-        description: '<div class="tour-section-badge">CONFIGURACIÓN</div><br>Este botón abre el <strong>panel de configuración</strong>. Desde ahí podés cambiar la fecha, acceder a preferencias avanzadas y ver tu usuario.',
+        description: '<div class="tour-section-badge">CONFIGURACIÓN</div><br>Este botón abre el <strong>panel de configuración</strong>. Desde ahí cambiás la fecha, accedés a preferencias y ves tu usuario.',
         side: 'left',
         align: 'start',
       },
       onDeselected: () => {
-        // Abrir el panel para que los siguientes steps lo muestren
         clickElement('tour-gear-btn', 100);
       },
     },
 
-    // 11 — Selector de fecha
+    // 14 — Selector de fecha
     {
       element: '#tour-date-selector',
       popover: {
         title: '📅 Selector de Fecha',
-        description: 'Cambiá la fecha para ver <strong>datos históricos</strong>. Al modificarla se recargan todos los pedidos, services y posiciones de esa jornada.',
+        description: 'Cambiá la fecha para ver <strong>datos históricos</strong>. Se recargan todos los pedidos, services y posiciones de esa jornada.',
         side: 'left',
         align: 'start',
       },
     },
 
-    // 12 — Botón de preferencias
+    // 15 — Botón de preferencias
     {
       element: '#tour-preferences-btn',
       popover: {
         title: '🔧 Preferencias Avanzadas',
-        description: 'Abre el <strong>modal de preferencias</strong> donde se configura:<br><br>• <strong>Capa del mapa</strong> — Satélite, calles, terreno, oscuro<br>• <strong>Tiempo de inactividad</strong> — Minutos sin GPS para marcar móvil como inactivo<br>• <strong>Modo tiempo real</strong> — Activar/desactivar actualizaciones automáticas',
+        description: 'Abre el modal de preferencias:<br><br>• <strong>Capa del mapa</strong> — Satélite, calles, terreno, oscuro<br>• <strong>Tiempo de inactividad</strong> — Minutos sin GPS para marcar inactivo<br>• <strong>Modo tiempo real</strong> — Activar/desactivar auto-refresh',
         side: 'left',
         align: 'start',
       },
     },
 
-    // 13 — Info de usuario
+    // 16 — Info de usuario
     {
       element: '#tour-user-info',
       popover: {
@@ -337,7 +418,6 @@ function getTourSteps(actions: TourActions): DriveStep[] {
         align: 'end',
       },
       onDeselected: () => {
-        // Cerrar el panel de config para limpiar
         clickElement('tour-gear-btn', 100);
       },
     },
@@ -346,12 +426,12 @@ function getTourSteps(actions: TourActions): DriveStep[] {
     // PARTE 4: EL MAPA
     // ======================================================
 
-    // 14 — Mapa principal
+    // 17 — Mapa principal
     {
       element: '#tour-map-area',
       popover: {
         title: '🗺️ Mapa Interactivo',
-        description: '<div class="tour-section-badge">MAPA</div><br>El <strong>corazón de TrackMovil</strong>. Acá se visualiza en tiempo real:<br><br>🚗 <strong>Móviles</strong> — Ícono con número y color según ocupación. Los activos tienen efecto "pulso".<br>📦 <strong>Pedidos</strong> — Marcadores coloreados por atraso: <span style="color:#4ade80">verde</span> → <span style="color:#facc15">amarillo</span> → <span style="color:#f472b6">rosa</span> → <span style="color:#f87171">rojo</span><br>🔧 <strong>Services</strong> — Marcadores de servicios técnicos<br>📍 <strong>POIs</strong> — Marcadores personalizados<br><br>Hacé <strong>clic en un móvil</strong> para ver su popup con detalle completo.',
+        description: '<div class="tour-section-badge">MAPA</div><br>El <strong>corazón de TrackMovil</strong>. Visualización en tiempo real:<br><br>🚗 <strong>Móviles</strong> — Ícono con número y color según ocupación. Activos con efecto "pulso".<br>📦 <strong>Pedidos</strong> — Marcadores coloreados por atraso: <span style="color:#4ade80">verde</span> → <span style="color:#facc15">amarillo</span> → <span style="color:#f472b6">rosa</span> → <span style="color:#f87171">rojo</span><br>🔧 <strong>Services</strong> — Marcadores de servicios técnicos<br>📍 <strong>POIs</strong> — Marcadores personalizados<br><br>Clic en un móvil para ver su popup con detalle completo.',
         side: 'left',
         align: 'center',
       },
@@ -364,122 +444,139 @@ function getTourSteps(actions: TourActions): DriveStep[] {
     // PARTE 5: SIDEBAR
     // ======================================================
 
-    // 15 — Panel lateral general
+    // 18 — Panel lateral general
     {
       element: '#tour-sidebar',
       popover: {
         title: '📋 Panel Lateral',
-        description: '<div class="tour-section-badge">SIDEBAR</div><br>El <strong>panel de control</strong> con todas las listas organizadas en secciones colapsables. Cada sección tiene su propio buscador y filtros.<br><br>Secciones: <strong>Móviles</strong>, <strong>Pedidos</strong>, <strong>Pedidos Finalizados</strong>, <strong>Services</strong>, <strong>Services Finalizados</strong> y <strong>Puntos de Interés</strong>.',
+        description: '<div class="tour-section-badge">SIDEBAR</div><br>El <strong>panel de control</strong> con todas las listas organizadas. Secciones: <strong>Móviles</strong>, <strong>Pedidos</strong>, <strong>Ped. Finalizados</strong>, <strong>Services</strong>, <strong>Svc. Finalizados</strong> y <strong>Puntos de Interés</strong>.',
         side: 'right',
         align: 'center',
       },
     },
 
-    // 16 — Botón colapsar sidebar
+    // 19 — Botón colapsar sidebar
     {
       element: '#tour-sidebar-toggle',
       popover: {
         title: '◀ Colapsar / Expandir',
-        description: 'Con este botón podés <strong>ocultar o mostrar</strong> todo el panel lateral para ver el mapa en pantalla completa cuando necesitás más espacio.',
+        description: 'Ocultá o mostrá el panel lateral para ver el mapa en <strong>pantalla completa</strong>.',
         side: 'right',
         align: 'center',
       },
     },
 
-    // 17 — Filtros del sidebar
+    // 20 — Filtros del sidebar
     {
       element: '#tour-sidebar-filters',
       popover: {
         title: '🔍 Buscador y Filtros',
-        description: 'Los filtros cambian <strong>automáticamente</strong> según la sección abierta:<br><br>• <strong>Móviles:</strong> Buscar por nro, filtro de capacidad, actividad<br>• <strong>Pedidos/Services:</strong> Buscar por cliente, filtro zona, móvil, atraso<br><br>Los filtros activos aparecen como <strong>badges</strong> removibles.',
+        description: 'Los filtros cambian según la sección abierta:<br><br>• <strong>Móviles:</strong> Buscar por nro, filtro de capacidad, actividad<br>• <strong>Pedidos/Services:</strong> Buscar por cliente, zona, móvil, atraso<br><br>Los filtros activos aparecen como <strong>badges</strong> removibles.',
         side: 'right',
         align: 'start',
       },
     },
 
-    // 18 — Sección Móviles
+    // 21 — Sección Móviles
     {
       element: '#tour-category-moviles',
       popover: {
         title: '🚗 Sección Móviles',
-        description: 'Lista todos los <strong>móviles de la flota</strong>. Hacé clic en uno para seleccionarlo y centrarlo en el mapa.<br><br>Cada móvil muestra: número, último GPS, zona actual, y <strong>color según pedidos asignados</strong>.<br><br>Usá <strong>"Seleccionar todos"</strong> o <strong>"Limpiar"</strong> para gestión masiva.',
+        description: 'Lista todos los móviles. Clic en uno para <strong>centrarlo en el mapa</strong>.<br><br>Cada móvil muestra: número, último GPS, zona, y <strong>color según pedidos</strong>. Usá <strong>"Seleccionar todos"</strong> o <strong>"Limpiar"</strong> para gestión masiva.',
         side: 'right',
         align: 'start',
       },
     },
 
-    // 19 — Eye toggle (ocultar móviles)
+    // 22 — Eye toggle
     {
       element: '#tour-eye-toggle',
       popover: {
         title: '👁️ Ocultar / Mostrar Móviles',
-        description: 'Este ícono <strong>oculta o muestra</strong> los marcadores de móviles en el mapa, sin perder la selección.<br><br>Útil cuando querés ver <strong>solo pedidos o POIs</strong> sin que los móviles tapen la vista.',
+        description: '<strong>Oculta o muestra</strong> los marcadores de móviles en el mapa, sin perder la selección. Útil para ver <strong>solo pedidos o POIs</strong>.',
         side: 'left',
         align: 'center',
       },
     },
 
-    // 20 — Sección Pedidos
+    // 23 — Sección Pedidos
     {
       element: '#tour-category-pedidos',
       popover: {
         title: '📦 Pedidos Pendientes',
-        description: 'Muestra los <strong>pedidos pendientes</strong> del día. Cada pedido tiene indicador visual de atraso:<br><br>• <span style="color:#4ade80">🟢 En tiempo</span><br>• <span style="color:#facc15">🟡 Próximo al vencimiento</span><br>• <span style="color:#f472b6">🩷 Atrasado</span><br>• <span style="color:#f87171">🔴 Muy atrasado</span><br><br>Clic en un pedido → se centra en el mapa.',
+        description: 'Pedidos del día con indicador de atraso:<br><br>• <span style="color:#4ade80">🟢 En tiempo</span> • <span style="color:#facc15">🟡 Próximo</span> • <span style="color:#f472b6">🩷 Atrasado</span> • <span style="color:#f87171">🔴 Muy atrasado</span><br><br>Clic en un pedido → se centra en el mapa.',
         side: 'right',
         align: 'start',
       },
     },
 
-    // 21 — Botón tabla extendida de pedidos
+    // 24 — Botón tabla extendida (presentación)
     {
       element: '#tour-pedidos-table-btn',
       popover: {
         title: '📊 Vista Tabla de Pedidos',
-        description: 'Abre una <strong>tabla completa</strong> con todos los pedidos. Incluye:<br><br>• <strong>12 columnas</strong> con toda la info<br>• <strong>Ordenamiento</strong> por cualquier columna<br>• <strong>Filtros:</strong> zona, móvil, producto, atraso<br>• <strong>Solo sin coordenadas</strong> — detectar pedidos sin GPS<br>• <strong>Paginación</strong> de 50 por página',
+        description: 'Este botón abre una <strong>tabla completa</strong> con todos los pedidos. Veámosla...',
         side: 'left',
         align: 'center',
       },
+      onDeselected: () => {
+        actions.openPedidosTable();
+      },
     },
 
-    // 22 — Pedidos Finalizados
+    // 25 — Modal Pedidos Table abierto
+    {
+      element: '#tour-modal-pedidos-table',
+      popover: {
+        title: '📊 Vista Extendida de Pedidos',
+        description: 'Tabla completa con:<br><br>• <strong>12 columnas</strong> — Atraso, Pedido, Móvil, Zona, Cliente, Dirección, Producto, Cant., Importe, H. Máx, Estado, Coords<br>• <strong>Filtros avanzados:</strong> zona, móvil, producto, atraso, sin coordenadas<br>• <strong>Indicadores de atraso</strong> por colores en la barra superior<br>• <strong>Ordenamiento</strong> por cualquier columna<br>• <strong>Paginación</strong> de 50 por página<br><br>Clic en una fila para centrar ese pedido en el mapa.',
+        side: 'left',
+        align: 'center',
+      },
+      onDeselected: () => {
+        actions.closePedidosTable();
+      },
+    },
+
+    // 26 — Pedidos Finalizados
     {
       element: '#tour-category-pedidosFinalizados',
       popover: {
         title: '✅ Pedidos Finalizados',
-        description: '<strong>Pedidos ya entregados</strong> del día. Incluye hora de entrega y datos del cliente. Útil para auditoría y seguimiento de completitud.',
+        description: '<strong>Pedidos ya entregados</strong> del día. Incluye hora de entrega y datos del cliente.',
         side: 'right',
         align: 'start',
       },
     },
 
-    // 23 — Services pendientes
+    // 27 — Services pendientes
     {
       element: '#tour-category-services',
       popover: {
         title: '🔧 Services Pendientes',
-        description: '<strong>Servicios técnicos pendientes</strong> (instalaciones, reparaciones, mantenimiento). Mismo sistema de colores por atraso que los pedidos. Se visualizan en el mapa con marcadores propios.',
+        description: '<strong>Servicios técnicos pendientes</strong> (instalaciones, reparaciones, mantenimiento). Mismo sistema de colores por atraso. Marcadores propios en el mapa.',
         side: 'right',
         align: 'start',
       },
     },
 
-    // 24 — Services finalizados
+    // 28 — Services finalizados
     {
       element: '#tour-category-servicesFinalizados',
       popover: {
         title: '✅ Services Finalizados',
-        description: '<strong>Servicios completados</strong> del día. Registra hora de finalización y estado de cada trabajo técnico.',
+        description: '<strong>Servicios completados</strong> del día. Hora de finalización y estado de cada trabajo.',
         side: 'right',
         align: 'start',
       },
     },
 
-    // 25 — Puntos de interés
+    // 29 — Puntos de interés
     {
       element: '#tour-category-pois',
       popover: {
         title: '📍 Puntos de Interés',
-        description: 'Acá aparecen tus <strong>marcadores personalizados</strong>. Se crean desde el botón 📍 del FAB y los podés gestionar desde esta lista.',
+        description: 'Tus <strong>marcadores personalizados</strong>. Se crean desde el botón 📍 del FAB y los gestionás desde acá.',
         side: 'right',
         align: 'start',
       },
@@ -489,7 +586,7 @@ function getTourSteps(actions: TourActions): DriveStep[] {
     // FINAL
     // ======================================================
 
-    // 26 — Cierre
+    // 30 — Cierre
     {
       popover: {
         title: '🎉 ¡Tour Completado!',
@@ -507,9 +604,30 @@ interface AppTourProps {
   onClose: () => void;
   expandFab: () => void;
   collapseFab: () => void;
+  openZonas: () => void;
+  closeZonas: () => void;
+  openRanking: () => void;
+  closeRanking: () => void;
+  openTracking: () => void;
+  closeTracking: () => void;
+  openPedidosTable: () => void;
+  closePedidosTable: () => void;
 }
 
-export default function AppTour({ isOpen, onClose, expandFab, collapseFab }: AppTourProps) {
+export default function AppTour({
+  isOpen,
+  onClose,
+  expandFab,
+  collapseFab,
+  openZonas,
+  closeZonas,
+  openRanking,
+  closeRanking,
+  openTracking,
+  closeTracking,
+  openPedidosTable,
+  closePedidosTable,
+}: AppTourProps) {
   const styleRef = useRef<HTMLStyleElement | null>(null);
   const driverRef = useRef<ReturnType<typeof driver> | null>(null);
   const hasStarted = useRef(false);
@@ -531,7 +649,6 @@ export default function AppTour({ isOpen, onClose, expandFab, collapseFab }: App
   // Iniciar / destruir tour según isOpen
   useEffect(() => {
     if (!isOpen) {
-      // Si se cierra externamente, destruir la instancia
       if (driverRef.current) {
         driverRef.current.destroy();
         driverRef.current = null;
@@ -540,11 +657,40 @@ export default function AppTour({ isOpen, onClose, expandFab, collapseFab }: App
       return;
     }
 
-    // Evitar inicio múltiple (el bug de "arranca n veces")
     if (hasStarted.current || driverRef.current) return;
     hasStarted.current = true;
 
-    const steps = getTourSteps({ expandFab, collapseFab });
+    const steps = getTourSteps({
+      expandFab,
+      collapseFab,
+      openZonas,
+      closeZonas,
+      openRanking,
+      closeRanking,
+      openTracking,
+      closeTracking,
+      openPedidosTable,
+      closePedidosTable,
+    });
+
+    // Para los modales, necesitamos un hook global que espere al elemento
+    // antes de mover el highlight. Usamos onHighlightStarted con retry.
+    const stepsWithModalWait = steps.map((step) => {
+      if (!step.element) return step;
+      const elId = (step.element as string).replace('#', '');
+
+      // Pasos que apuntan a modales necesitan esperar a que aparezcan
+      if (elId.startsWith('tour-modal-')) {
+        return {
+          ...step,
+          onHighlightStarted: async () => {
+            // Esperar un poco para que el modal aparezca en el DOM
+            await waitForElement(elId, 2000);
+          },
+        } as DriveStep;
+      }
+      return step;
+    });
 
     const config: Config = {
       showProgress: true,
@@ -559,15 +705,25 @@ export default function AppTour({ isOpen, onClose, expandFab, collapseFab }: App
       prevBtnText: '← Anterior',
       doneBtnText: '¡Entendido! ✨',
       progressText: '{{current}} de {{total}}',
-      steps,
+      steps: stepsWithModalWait,
       onDestroyed: () => {
+        // Asegurar que todos los modales se cierren al terminar
+        closeZonas();
+        closeRanking();
+        closeTracking();
+        closePedidosTable();
+        collapseFab();
+        // Cerrar el gear panel si quedó abierto
+        const gearPanel = document.getElementById('tour-date-selector');
+        if (gearPanel && gearPanel.offsetParent !== null) {
+          clickElement('tour-gear-btn', 50);
+        }
         driverRef.current = null;
         hasStarted.current = false;
         onClose();
       },
     };
 
-    // Un solo timeout, suficiente para que el DOM esté listo
     const timer = setTimeout(() => {
       if (!hasStarted.current) return;
       const d = driver(config);
@@ -581,7 +737,7 @@ export default function AppTour({ isOpen, onClose, expandFab, collapseFab }: App
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // Cleanup al desmontar el componente
+  // Cleanup al desmontar
   useEffect(() => {
     return () => {
       if (driverRef.current) {
@@ -591,5 +747,5 @@ export default function AppTour({ isOpen, onClose, expandFab, collapseFab }: App
     };
   }, []);
 
-  return null; // driver.js maneja su propio DOM
+  return null;
 }

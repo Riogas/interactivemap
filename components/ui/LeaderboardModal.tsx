@@ -113,6 +113,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
         onClick={onClose}
       >
         <motion.div
+          id="tour-modal-ranking"
           key="leaderboard-modal"
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}

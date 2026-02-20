@@ -1437,6 +1437,14 @@ function DashboardContent() {
         onClose={() => setIsTourOpen(false)}
         expandFab={() => setIsActionsExpanded(true)}
         collapseFab={() => setIsActionsExpanded(false)}
+        openZonas={() => setIsZonasAsignacionOpen(true)}
+        closeZonas={() => setIsZonasAsignacionOpen(false)}
+        openRanking={() => setIsLeaderboardOpen(true)}
+        closeRanking={() => setIsLeaderboardOpen(false)}
+        openTracking={() => setIsTrackingModalOpen(true)}
+        closeTracking={() => setIsTrackingModalOpen(false)}
+        openPedidosTable={() => setIsPedidosTableOpen(true)}
+        closePedidosTable={() => setIsPedidosTableOpen(false)}
       />
 
       {/* Modal de Tracking */}
