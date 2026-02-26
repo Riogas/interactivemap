@@ -44,9 +44,11 @@ export function useGPSTracking(
       }
 
       // Crear canal único con timestamp para evitar conflictos
-      const channelName = `gps-tracking-${escenarioId}-${Date.now()}`;
+      const channelName = `gps-latest-${escenarioId}-${Date.now()}`;
       
-      // Crear canal de Realtime
+      // Crear canal de Realtime — suscrito a gps_latest_positions (1 fila por móvil)
+      // Los eventos INSERT ocurren cuando un móvil aparece por primera vez
+      // Los eventos UPDATE ocurren cuando el trigger sync_gps_latest_position actualiza la fila
       channel = supabase
         .channel(channelName, {
           config: {
@@ -59,7 +61,7 @@ export function useGPSTracking(
           {
             event: 'INSERT',
             schema: 'public',
-            table: 'gps_tracking_extended',
+            table: 'gps_latest_positions',
             filter: `escenario_id=eq.${escenarioId}`,
           },
           (payload) => {
@@ -87,7 +89,7 @@ export function useGPSTracking(
           {
             event: 'UPDATE',
             schema: 'public',
-            table: 'gps_tracking_extended',
+            table: 'gps_latest_positions',
             filter: `escenario_id=eq.${escenarioId}`,
           },
           (payload) => {

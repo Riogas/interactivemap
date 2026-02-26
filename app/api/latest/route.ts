@@ -22,13 +22,11 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = getServerSupabaseClient();
     
-    // Obtener la posición más reciente del móvil desde gps_tracking_extended
+    // Obtener la posición más reciente del móvil desde gps_latest_positions (1 fila por móvil)
     const { data: position, error } = await supabase
-      .from('gps_tracking_extended')
+      .from('gps_latest_positions')
       .select('*')
-      .eq('movil_id', parseInt(movilId))
-      .order('fecha_hora', { ascending: false })
-      .limit(1)
+      .eq('movil_id', movilId)
       .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned

@@ -72,23 +72,20 @@ export async function GET(request: NextRequest) {
     
     console.log(`🔍 Buscando coordenadas GPS entre ${startDateTime} y ${endDateTime}`);
     
-    // Query para obtener la última posición de cada móvil SOLO del día especificado
+    // Query directa a gps_latest_positions (1 fila por móvil, siempre actualizada por trigger)
     const { data: gpsData, error: gpsError } = await supabase
-      .from('gps_tracking_extended')
+      .from('gps_latest_positions')
       .select('*')
       .in('movil_id', movilIds)
       .gte('fecha_hora', startDateTime)
-      .lte('fecha_hora', endDateTime)
-      .order('fecha_hora', { ascending: false });
+      .lte('fecha_hora', endDateTime);
     
     if (gpsError) throw gpsError;
     
-    // Agrupar por móvil y obtener la última posición de cada uno
+    // Ya viene 1 fila por móvil — mapear directamente
     const latestPositions = new Map();
     gpsData?.forEach((pos: any) => {
-      if (!latestPositions.has(pos.movil_id)) {
-        latestPositions.set(pos.movil_id, pos);
-      }
+      latestPositions.set(pos.movil_id, pos);
     });
     
     console.log(`📍 Móviles con coordenadas en ${dateFilter}: ${latestPositions.size} de ${moviles.length}`);

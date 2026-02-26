@@ -200,7 +200,7 @@ export async function DELETE(request: NextRequest) {
     console.log(`🗑️ Eliminando ${gps_ids.length} registros GPS...`);
 
     const { data, error } = await (supabase as any)
-      .from('gps_tracking_extended')
+      .from('gps_tracking_history')
       .delete()
       .in('id', gps_ids)
       .select();

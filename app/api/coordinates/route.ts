@@ -23,9 +23,9 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = getServerSupabaseClient();
     
-    // Obtener historial de coordenadas del móvil
+    // Obtener historial de coordenadas del móvil desde gps_tracking_history
     const { data: coordinates, error } = await supabase
-      .from('gps_tracking_extended')
+      .from('gps_tracking_history')
       .select('*')
       .eq('movil_id', parseInt(movilId))
       .order('fecha_hora', { ascending: false })

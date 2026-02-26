@@ -38,7 +38,7 @@ export async function GET(
     const supabase = getServerSupabaseClient();
     
     const { data: coordinates, error } = await supabase
-      .from('gps_tracking_extended')
+      .from('gps_tracking_history')
       .select('id, latitud, longitud, fecha_hora, velocidad, distancia_recorrida, movil_id')
       .eq('movil_id', movilId.toString())
       .gte('fecha_hora', startDateTime)

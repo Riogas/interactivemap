@@ -436,7 +436,7 @@ export interface Database {
           updated_at?: string | null
         }
       }
-      gps_tracking_extended: {
+      gps_tracking_history: {
         Row: {
           id: number
           movil_id: string
@@ -598,6 +598,71 @@ export interface Database {
           timestamp_local?: string | null
           timestamp_utc?: string | null
           created_at?: string | null
+        }
+      }
+      gps_latest_positions: {
+        Row: {
+          movil_id: string
+          history_id: number | null
+          escenario_id: number | null
+          latitud: number
+          longitud: number
+          velocidad: number | null
+          bearing: number | null
+          accuracy: number | null
+          altitude: number | null
+          battery_level: number | null
+          distancia_recorrida: number | null
+          movement_type: string | null
+          device_id: string | null
+          app_version: string | null
+          network_type: string | null
+          network_connected: boolean | null
+          fecha_hora: string
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          movil_id: string
+          history_id?: number | null
+          escenario_id?: number | null
+          latitud: number
+          longitud: number
+          velocidad?: number | null
+          bearing?: number | null
+          accuracy?: number | null
+          altitude?: number | null
+          battery_level?: number | null
+          distancia_recorrida?: number | null
+          movement_type?: string | null
+          device_id?: string | null
+          app_version?: string | null
+          network_type?: string | null
+          network_connected?: boolean | null
+          fecha_hora: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          movil_id?: string
+          history_id?: number | null
+          escenario_id?: number | null
+          latitud?: number
+          longitud?: number
+          velocidad?: number | null
+          bearing?: number | null
+          accuracy?: number | null
+          altitude?: number | null
+          battery_level?: number | null
+          distancia_recorrida?: number | null
+          movement_type?: string | null
+          device_id?: string | null
+          app_version?: string | null
+          network_type?: string | null
+          network_connected?: boolean | null
+          fecha_hora?: string
+          created_at?: string | null
+          updated_at?: string | null
         }
       }
     }

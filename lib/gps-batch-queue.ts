@@ -152,7 +152,7 @@ class GPSBatchQueue {
         
         // Insertar en Supabase
         const { data, error } = await supabase
-          .from('gps_tracking_extended')
+          .from('gps_tracking_history')
           .insert(batch);
 
         const duration = Date.now() - startTime;

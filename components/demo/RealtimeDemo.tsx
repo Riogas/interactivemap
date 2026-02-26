@@ -164,8 +164,8 @@ export default function RealtimeDemo() {
           <li>
             Ejecuta este comando:
             <pre className="bg-white p-2 mt-1 rounded border text-xs overflow-x-auto">
-{`INSERT INTO gps_tracking_extended (
-  movil, escenario_id, latitud, longitud, fecha_hora
+{`INSERT INTO gps_tracking_history (
+  movil_id, escenario_id, latitud, longitud, fecha_hora
 ) VALUES (
   '101', 1, -34.9011, -56.1645, NOW()
 );`}

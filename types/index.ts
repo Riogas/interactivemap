@@ -83,14 +83,15 @@ export type MovilSupabase = Database['public']['Tables']['moviles']['Row'];
 export type PedidoSupabase = Database['public']['Tables']['pedidos']['Row'];
 export type ServiceSupabase = Database['public']['Tables']['services']['Row'];
 export type EmpresaFleteraSupabase = Database['public']['Tables']['empresas_fleteras']['Row'];
-export type GPSTrackingSupabase = Database['public']['Tables']['gps_tracking_extended']['Row'];
+export type GPSTrackingSupabase = Database['public']['Tables']['gps_tracking_history']['Row'];
+export type GPSLatestPositionSupabase = Database['public']['Tables']['gps_latest_positions']['Row'];
 
 // Tipos para inserciones
 export type MovilInsert = Database['public']['Tables']['moviles']['Insert'];
 export type PedidoInsert = Database['public']['Tables']['pedidos']['Insert'];
 export type ServiceInsert = Database['public']['Tables']['services']['Insert'];
 export type EmpresaFleteraInsert = Database['public']['Tables']['empresas_fleteras']['Insert'];
-export type GPSTrackingInsert = Database['public']['Tables']['gps_tracking_extended']['Insert'];
+export type GPSTrackingInsert = Database['public']['Tables']['gps_tracking_history']['Insert'];
 
 // Tipos unificados para la UI (combina ambos sistemas)
 export interface MovilUnified {
