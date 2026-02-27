@@ -49,10 +49,10 @@ cd "$PROJECT_DIR"
 if [ ! -f ".env.production" ]; then
     echo -e "${YELLOW}📝 Creando archivo .env.production...${NC}"
     cat > .env.production << 'EOF'
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://lgniuhelyyizoursmsmi.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxnbml1aGVseXlpem91cnNtc21pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0NDQ5MTUsImV4cCI6MjA3MzAyMDkxNX0.96kkOHRA1EgOYqu6bm0-6nr_a3qpAHUoYA9Z77qUCQI
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxnbml1aGVseXlpem91cnNtc21pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzQ0NDkxNSwiZXhwIjoyMDczMDIwOTE1fQ.qR09lu4wr1j-tecWLdH0IZbEj2HUpEt8xHTtOvE_5BE
+# Supabase Configuration (Self-Hosted)
+NEXT_PUBLIC_SUPABASE_URL=https://supabase.glp.riogas.com.uy
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzcxNjExNDY2LCJleHAiOjE5MjkyOTE0NjZ9.qD9ZTsX9Pn7zf2tAdeidForoM20mlBqfYcQ_PXYZAmk
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3NzE2MTE0NjYsImV4cCI6MTkyOTI5MTQ2Nn0.ejNj65ClpKHiszUdkVz6ZY_XMeiaGYhQeAplbUoJ7GA
 
 # Database Configuration (Legacy)
 DB_HOST=192.168.1.8
@@ -62,13 +62,20 @@ DB_SCHEMA=GXICAGEO
 DB_MODE=supabase
 
 # API Externa
-EXTERNAL_API_URL=http://localhost:8000
+EXTERNAL_API_URL=https://sgm.glp.riogas.com.uy
+NEXT_PUBLIC_EXTERNAL_API_URL=https://sgm.glp.riogas.com.uy
+
+# Security
+INTERNAL_API_KEY=96c596ab9a239195c517000e92101c89fed22da7f13843440357493b0d911cd3
+GPS_TRACKING_TOKEN=IcA.FwL.1710.!
+ENABLE_SECURITY_CHECKS=false
 
 # Node
 NODE_ENV=production
 PORT=3000
 HOSTNAME=0.0.0.0
 NEXT_TELEMETRY_DISABLED=1
+NODE_TLS_REJECT_UNAUTHORIZED=0
 EOF
     echo -e "${GREEN}✓ Archivo .env.production creado${NC}"
 else

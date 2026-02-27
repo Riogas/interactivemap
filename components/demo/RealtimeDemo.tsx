@@ -153,12 +153,12 @@ export default function RealtimeDemo() {
           <li>
             Abre el SQL Editor en Supabase:{' '}
             <a 
-              href="https://supabase.com/dashboard/project/lgniuhelyyizoursmsmi/sql" 
+              href="https://supabase.glp.riogas.com.uy" 
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:underline"
             >
-              Dashboard SQL
+              Supabase Self-Hosted
             </a>
           </li>
           <li>

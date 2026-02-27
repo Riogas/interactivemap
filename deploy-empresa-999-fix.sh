@@ -32,7 +32,7 @@ if [ -f "fix-empresa-fletera-999.sql" ]; then
     echo "✅ fix-empresa-fletera-999.sql encontrado"
     echo ""
     echo "📝 IMPORTANTE: Ejecutar este SQL en Supabase SQL Editor:"
-    echo "   https://supabase.com/dashboard/project/lgniuhelyyizoursmsmi/sql"
+    echo "   https://supabase.glp.riogas.com.uy"
     echo ""
     echo "   Copiar contenido de: fix-empresa-fletera-999.sql"
     echo ""
@@ -41,7 +41,7 @@ if [ -f "fix-empresa-fletera-999.sql" ]; then
     if [ "$sql_executed" != "s" ]; then
         echo ""
         echo "⚠️  DEBES ejecutar el SQL primero para crear empresa 999"
-        echo "   Abrir: https://supabase.com/dashboard/project/lgniuhelyyizoursmsmi/sql"
+        echo "   Abrir: https://supabase.glp.riogas.com.uy"
         echo "   Copiar y pegar contenido de fix-empresa-fletera-999.sql"
         echo "   Ejecutar (Run)"
         echo ""
