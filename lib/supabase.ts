@@ -2,7 +2,13 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 
 // Variables de entorno
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+// En el browser, usar el proxy de nginx para evitar problemas de certificado auto-firmado
+// En el servidor (Node.js), conectar directo a Supabase (NODE_TLS_REJECT_UNAUTHORIZED=0)
+const supabaseDirectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseProxyUrl = process.env.NEXT_PUBLIC_SUPABASE_PROXY_URL;
+const supabaseUrl = typeof window !== 'undefined' && supabaseProxyUrl 
+  ? supabaseProxyUrl 
+  : supabaseDirectUrl;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -45,7 +51,8 @@ export function getServerSupabaseClient() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   
   if (serviceRoleKey) {
-    return createClient<Database>(supabaseUrl, serviceRoleKey, {
+    // Servidor siempre usa URL directa (NODE_TLS_REJECT_UNAUTHORIZED=0 en PM2)
+    return createClient<Database>(supabaseDirectUrl, serviceRoleKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
