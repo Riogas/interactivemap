@@ -1,0 +1,393 @@
+{
+  "metadata": {
+    "descripcion": "Puntos de interés reales de Uruguay para TrackMovil",
+    "fuentes": [
+      "Google Maps (coordenadas Riogas verificadas)",
+      "Wikipedia (capitales departamentales, hospitales)",
+      "riogas.com.uy (planta principal y depósitos)"
+    ],
+    "fecha_generacion": "2025-07-28",
+    "total_puntos": 62,
+    "categorias": [
+      "Planta/Depósito Riogas",
+      "Punto de Venta Riogas",
+      "Intendencia Departamental",
+      "Sanatorio/Hospital",
+      "Complejo Habitacional"
+    ]
+  },
+  "puntos_interes": [
+    {
+      "categoria": "Planta/Depósito Riogas",
+      "icono": "🏭",
+      "puntos": [
+        {
+          "nombre": "Planta Principal Riogas - Maroñas",
+          "descripcion": "Planta de envasado principal. Cno. Francisco Lecocq 1013, Montevideo",
+          "latitud": -34.81964200,
+          "longitud": -56.23838470
+        },
+        {
+          "nombre": "Depósito Riogas - Garzón",
+          "descripcion": "Centro de distribución. Av. Gral. Eugenio Garzón 1651, Montevideo",
+          "latitud": -34.81348980,
+          "longitud": -56.22089130
+        },
+        {
+          "nombre": "Depósito Riogas - Las Piedras",
+          "descripcion": "Centro logístico y distribución, Canelones",
+          "latitud": -34.72830000,
+          "longitud": -56.22170000
+        },
+        {
+          "nombre": "Depósito Riogas - Maldonado",
+          "descripcion": "Centro logístico y distribución, Maldonado",
+          "latitud": -34.90930000,
+          "longitud": -54.95850000
+        },
+        {
+          "nombre": "Depósito Riogas - Salto",
+          "descripcion": "Centro logístico y distribución, Salto",
+          "latitud": -31.38830000,
+          "longitud": -57.96080000
+        },
+        {
+          "nombre": "Depósito Riogas - Tacuarembó",
+          "descripcion": "Centro logístico y distribución, Tacuarembó",
+          "latitud": -31.71420000,
+          "longitud": -55.98360000
+        }
+      ]
+    },
+    {
+      "categoria": "Punto de Venta Riogas",
+      "icono": "🔵",
+      "puntos": [
+        {
+          "nombre": "Riogas Lezica",
+          "descripcion": "Punto de venta. C. Guanahani 1661, Montevideo",
+          "latitud": -34.80041830,
+          "longitud": -56.25357540
+        },
+        {
+          "nombre": "Riogas 11 Águilas",
+          "descripcion": "Punto de venta. Cno. Gral. Máximo Santos 5235, Montevideo",
+          "latitud": -34.82354460,
+          "longitud": -56.22042460
+        },
+        {
+          "nombre": "Riogas Garzón",
+          "descripcion": "Punto de venta. Av. Gral. Eugenio Garzón 162, Montevideo",
+          "latitud": -34.85151790,
+          "longitud": -56.22390750
+        },
+        {
+          "nombre": "Riogas Paso de la Arena",
+          "descripcion": "Punto de venta (Arenagas). Eduardo Paz Aguirre, Montevideo",
+          "latitud": -34.83790760,
+          "longitud": -56.26299400
+        },
+        {
+          "nombre": "Riogas Las Chancles",
+          "descripcion": "Punto de venta. Antonio María Márquez 5841, Montevideo",
+          "latitud": -34.81554990,
+          "longitud": -56.23203280
+        },
+        {
+          "nombre": "Riogas Villa Colón",
+          "descripcion": "Punto de venta. C. Pinta 1874bis, Montevideo",
+          "latitud": -34.79851580,
+          "longitud": -56.24757320
+        },
+        {
+          "nombre": "Riogas Paysandú",
+          "descripcion": "Punto de venta y distribución, Paysandú",
+          "latitud": -32.32050000,
+          "longitud": -58.07350000
+        },
+        {
+          "nombre": "Riogas Mercedes",
+          "descripcion": "Punto de venta y distribución, Soriano",
+          "latitud": -33.25210000,
+          "longitud": -58.03160000
+        }
+      ]
+    },
+    {
+      "categoria": "Intendencia Departamental",
+      "icono": "🏛️",
+      "puntos": [
+        {
+          "nombre": "Intendencia de Montevideo",
+          "descripcion": "Palacio Municipal, 18 de Julio 1360, Montevideo",
+          "latitud": -34.90592000,
+          "longitud": -56.18628000
+        },
+        {
+          "nombre": "Intendencia de Canelones",
+          "descripcion": "Treinta y Tres esq. José Pedro Varela, Canelones",
+          "latitud": -34.52280000,
+          "longitud": -56.27830000
+        },
+        {
+          "nombre": "Intendencia de Maldonado",
+          "descripcion": "Sarandí y Dodera, Maldonado",
+          "latitud": -34.90970000,
+          "longitud": -54.95700000
+        },
+        {
+          "nombre": "Intendencia de Rocha",
+          "descripcion": "General Artigas y 25 de Agosto, Rocha",
+          "latitud": -34.48330000,
+          "longitud": -54.30000000
+        },
+        {
+          "nombre": "Intendencia de Colonia",
+          "descripcion": "Av. Gral. Flores 481, Colonia del Sacramento",
+          "latitud": -34.46260000,
+          "longitud": -57.84000000
+        },
+        {
+          "nombre": "Intendencia de Soriano",
+          "descripcion": "Colón y Rodó, Mercedes",
+          "latitud": -33.25130000,
+          "longitud": -58.03440000
+        },
+        {
+          "nombre": "Intendencia de Paysandú",
+          "descripcion": "18 de Julio y Zorrilla de San Martín, Paysandú",
+          "latitud": -32.32140000,
+          "longitud": -58.07560000
+        },
+        {
+          "nombre": "Intendencia de Salto",
+          "descripcion": "Uruguay y Treinta y Tres, Salto",
+          "latitud": -31.38830000,
+          "longitud": -57.96080000
+        },
+        {
+          "nombre": "Intendencia de Artigas",
+          "descripcion": "Lecueder y Rivera, Artigas",
+          "latitud": -30.40280000,
+          "longitud": -56.47360000
+        },
+        {
+          "nombre": "Intendencia de Rivera",
+          "descripcion": "Av. Sarandí 543, Rivera",
+          "latitud": -30.90500000,
+          "longitud": -55.55000000
+        },
+        {
+          "nombre": "Intendencia de Tacuarembó",
+          "descripcion": "18 de Julio 162, Tacuarembó",
+          "latitud": -31.71000000,
+          "longitud": -55.98000000
+        },
+        {
+          "nombre": "Intendencia de Cerro Largo",
+          "descripcion": "Javier de Viana y Juan A. Lavalleja, Melo",
+          "latitud": -32.36670000,
+          "longitud": -54.16670000
+        },
+        {
+          "nombre": "Intendencia de Treinta y Tres",
+          "descripcion": "Juan Antonio Lavalleja y Pablo Zufriategui, Treinta y Tres",
+          "latitud": -33.23330000,
+          "longitud": -54.38330000
+        },
+        {
+          "nombre": "Intendencia de Lavalleja",
+          "descripcion": "Sarandí y Juan Antonio Lavalleja, Minas",
+          "latitud": -34.37500000,
+          "longitud": -55.23330000
+        },
+        {
+          "nombre": "Intendencia de Florida",
+          "descripcion": "Independencia y Barreiro, Florida",
+          "latitud": -34.09560000,
+          "longitud": -56.21530000
+        },
+        {
+          "nombre": "Intendencia de Durazno",
+          "descripcion": "Dr. Luis A. de Herrera y Rivera, Durazno",
+          "latitud": -33.38670000,
+          "longitud": -56.52330000
+        },
+        {
+          "nombre": "Intendencia de Flores",
+          "descripcion": "Treinta y Tres y Florencio Sánchez, Trinidad",
+          "latitud": -33.51440000,
+          "longitud": -56.89940000
+        },
+        {
+          "nombre": "Intendencia de San José",
+          "descripcion": "25 de Mayo y Asamblea, San José de Mayo",
+          "latitud": -34.33780000,
+          "longitud": -56.71330000
+        },
+        {
+          "nombre": "Intendencia de Río Negro",
+          "descripcion": "Treinta y Tres y Lavalleja, Fray Bentos",
+          "latitud": -33.11670000,
+          "longitud": -58.30220000
+        }
+      ]
+    },
+    {
+      "categoria": "Sanatorio/Hospital",
+      "icono": "🏥",
+      "puntos": [
+        {
+          "nombre": "Hospital de Clínicas Dr. Manuel Quintela",
+          "descripcion": "Hospital universitario público. Av. Italia s/n, Montevideo",
+          "latitud": -34.88150000,
+          "longitud": -56.16340000
+        },
+        {
+          "nombre": "Hospital Maciel",
+          "descripcion": "Hospital público ASSE. 25 de Mayo 174, Ciudad Vieja, Montevideo",
+          "latitud": -34.90860000,
+          "longitud": -56.20240000
+        },
+        {
+          "nombre": "Hospital Pasteur",
+          "descripcion": "Hospital público ASSE. Larravide 2458, Montevideo",
+          "latitud": -34.86280000,
+          "longitud": -56.11860000
+        },
+        {
+          "nombre": "Hospital Italiano Umberto I",
+          "descripcion": "Hospital mutualista. Bvar. Artigas 1632, Montevideo",
+          "latitud": -34.89800000,
+          "longitud": -56.17600000
+        },
+        {
+          "nombre": "Hospital Pereira Rossell",
+          "descripcion": "Hospital pediátrico y de la mujer ASSE. Bvar. Artigas 1550, Montevideo",
+          "latitud": -34.89470000,
+          "longitud": -56.17470000
+        },
+        {
+          "nombre": "Sanatorio CASMU",
+          "descripcion": "Centro de asistencia mutualista. 8 de Octubre 3310, Montevideo",
+          "latitud": -34.87250000,
+          "longitud": -56.14390000
+        },
+        {
+          "nombre": "Hospital Británico",
+          "descripcion": "Hospital mutualista. Av. Italia 2420, Montevideo",
+          "latitud": -34.88400000,
+          "longitud": -56.15800000
+        },
+        {
+          "nombre": "Médica Uruguaya (MUCAM)",
+          "descripcion": "Sede central mutualista. José Ellauri 857, Montevideo",
+          "latitud": -34.91160000,
+          "longitud": -56.16480000
+        },
+        {
+          "nombre": "Asociación Española",
+          "descripcion": "Hospital mutualista. Bvar. Artigas 1515, Montevideo",
+          "latitud": -34.89360000,
+          "longitud": -56.17280000
+        },
+        {
+          "nombre": "Hospital Evangélico",
+          "descripcion": "Hospital mutualista. Millán 4520, Montevideo",
+          "latitud": -34.85830000,
+          "longitud": -56.18860000
+        },
+        {
+          "nombre": "Hospital Militar",
+          "descripcion": "Hospital militar. Av. 8 de Octubre 3020, Montevideo",
+          "latitud": -34.87500000,
+          "longitud": -56.14750000
+        },
+        {
+          "nombre": "Sanatorio Americano (SMI)",
+          "descripcion": "Sociedad Médica Internacional. Gral. Urquiza 3314, Montevideo",
+          "latitud": -34.87330000,
+          "longitud": -56.14610000
+        },
+        {
+          "nombre": "Hospital Policial",
+          "descripcion": "Hospital del Ministerio del Interior. Av. 8 de Octubre 2760, Montevideo",
+          "latitud": -34.87830000,
+          "longitud": -56.15250000
+        },
+        {
+          "nombre": "Hospital de Salto",
+          "descripcion": "Hospital Regional ASSE. Viera y Agraciada, Salto",
+          "latitud": -31.38440000,
+          "longitud": -57.95890000
+        },
+        {
+          "nombre": "Hospital de Paysandú",
+          "descripcion": "Hospital Regional ASSE. Montevideo y Gral. Leandro Gómez, Paysandú",
+          "latitud": -32.31970000,
+          "longitud": -58.07800000
+        },
+        {
+          "nombre": "Hospital de Maldonado",
+          "descripcion": "Hospital Regional ASSE. Ventura Alegre esq. Rafael, Maldonado",
+          "latitud": -34.90750000,
+          "longitud": -54.96580000
+        }
+      ]
+    },
+    {
+      "categoria": "Complejo Habitacional",
+      "icono": "🏢",
+      "puntos": [
+        {
+          "nombre": "Complejo Habitacional Euskal Erria 71",
+          "descripcion": "Gran complejo de viviendas BHU. Paso de la Arena, Montevideo",
+          "latitud": -34.83390000,
+          "longitud": -56.25230000
+        },
+        {
+          "nombre": "Complejo Habitacional Bulevar",
+          "descripcion": "Torres BHU. Bvar. Artigas y Garibaldi, Montevideo",
+          "latitud": -34.89430000,
+          "longitud": -56.17280000
+        },
+        {
+          "nombre": "Complejo Habitacional Cerro Norte",
+          "descripcion": "Complejo de viviendas en barrio Cerro, Montevideo",
+          "latitud": -34.87780000,
+          "longitud": -56.23060000
+        },
+        {
+          "nombre": "Complejo Habitacional Malvín Norte",
+          "descripcion": "Conjunto de edificios de vivienda, Malvín Norte, Montevideo",
+          "latitud": -34.86830000,
+          "longitud": -56.13280000
+        },
+        {
+          "nombre": "Complejo Habitacional Casavalle",
+          "descripcion": "Conjunto habitacional zona Casavalle, Montevideo",
+          "latitud": -34.84330000,
+          "longitud": -56.15500000
+        },
+        {
+          "nombre": "Complejo Habitacional Piedras Blancas",
+          "descripcion": "Conjunto de viviendas en Piedras Blancas, Montevideo",
+          "latitud": -34.84170000,
+          "longitud": -56.12750000
+        },
+        {
+          "nombre": "Complejo Habitacional Jardines del Hipódromo",
+          "descripcion": "Conjunto de viviendas en Jardines del Hipódromo, Montevideo",
+          "latitud": -34.85420000,
+          "longitud": -56.14190000
+        },
+        {
+          "nombre": "Torres del Puerto",
+          "descripcion": "Complejo residencial moderno. Rambla 25 de Agosto, Ciudad Vieja, Montevideo",
+          "latitud": -34.90420000,
+          "longitud": -56.20670000
+        }
+      ]
+    }
+  ]
+}
