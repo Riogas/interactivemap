@@ -42,7 +42,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
 interface GPSRecord {
   movil_id: string;
   pedido_id: string | null;
-  escenario: string | null;
+  escenario_id: string | null;
   device_id: string | null;
   usuario: string | null;
   latitud: number;

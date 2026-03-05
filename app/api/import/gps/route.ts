@@ -10,7 +10,7 @@ function transformGpsToSupabase(gps: any) {
     // IDs y referencias
     movil_id: gps.movil || gps.movil_id,
     pedido_id: gps.pedido_id || null,
-    escenario: gps.escenario || gps.escenarioid || gps.escenario_id || null,
+    escenario_id: gps.escenario || gps.escenarioid || gps.escenario_id || null,
     device_id: gps.device_id || gps.deviceId || null,
     usuario: gps.usuario || null,
     
