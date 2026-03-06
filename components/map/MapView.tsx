@@ -14,6 +14,7 @@ import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
 import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from './MapOptimizations';
 import { registerTileCacheServiceWorker } from './TileCacheConfig';
+import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
@@ -68,6 +69,7 @@ interface MapViewProps {
   selectedDate?: string; // Fecha seleccionada actual
   onMovilDateChange?: (movilId: number, date: string) => void; // Cambiar móvil/fecha desde panel animación
   onSecondaryAnimMovilChange?: (movilId: number | undefined) => void; // Cambiar 2do móvil animación
+  zonas?: ZonaMapData[]; // Zonas para dibujar polígonos en el mapa
 }
 
 function MapUpdater({ 
@@ -392,6 +394,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     (prev.allPedidos?.length ?? 0) === (next.allPedidos?.length ?? 0) &&
     (prev.services?.length ?? 0) === (next.services?.length ?? 0) &&
     (prev.allServices?.length ?? 0) === (next.allServices?.length ?? 0) &&
+    (prev.zonas?.length ?? 0) === (next.zonas?.length ?? 0) &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -431,6 +434,7 @@ const MapView = memo(function MapView({
   selectedDate = '',
   onMovilDateChange,
   onSecondaryAnimMovilChange,
+  zonas = [],
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -1541,6 +1545,9 @@ const MapView = memo(function MapView({
       >
         {/* Control de capas base (calles, satélite, terreno, etc.) */}
         <LayersControl defaultLayer={defaultMapLayer} />
+
+        {/* 🗺️ Capa de zonas (polígonos) */}
+        {zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
         
         {(selectedMovil || secondaryAnimMovil) ? (
           // Mostrar los móviles seleccionados con su recorrido

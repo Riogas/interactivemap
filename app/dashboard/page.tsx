@@ -91,6 +91,10 @@ function DashboardContent() {
   
   // Estado para puntos de interés
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
+
+  // Estado para mostrar zonas en el mapa
+  const [showZonas, setShowZonas] = useState(false);
+  const [zonasData, setZonasData] = useState<any[]>([]);
   
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -305,6 +309,42 @@ function DashboardContent() {
     
     loadEmpresas();
   }, [user?.allowedEmpresas]);
+
+  // 🗺️ Cargar zonas cuando se activa showZonas, filtradas por escenario_id de empresas seleccionadas
+  useEffect(() => {
+    if (!showZonas) {
+      setZonasData([]);
+      return;
+    }
+    const loadZonas = async () => {
+      try {
+        // Obtener escenario_ids de las empresas seleccionadas
+        const escenarioIds = empresas
+          .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
+          .map(e => e.escenario_id);
+        const uniqueEscenarios = [...new Set(escenarioIds)];
+
+        if (uniqueEscenarios.length === 0) {
+          setZonasData([]);
+          return;
+        }
+
+        const response = await fetch('/api/zonas');
+        const result = await response.json();
+        if (result.success && result.data) {
+          // Filtrar por escenario_id de las empresas seleccionadas y activa = true
+          const zonasFiltradas = result.data.filter(
+            (z: any) => z.activa !== false && uniqueEscenarios.includes(z.escenario_id)
+          );
+          console.log(`🗺️ ${zonasFiltradas.length} zonas activas para escenarios [${uniqueEscenarios.join(', ')}]`);
+          setZonasData(zonasFiltradas);
+        }
+      } catch (err) {
+        console.error('❌ Error loading zonas:', err);
+      }
+    };
+    loadZonas();
+  }, [showZonas, selectedEmpresas, empresas]);
 
   // 🎨 Función para calcular el color del móvil según ocupación
   const getMovilColorByOccupancy = useCallback((pedidosAsignados: number, capacidad: number): string => {
@@ -1355,6 +1395,22 @@ function DashboardContent() {
             </svg>
           </button>
 
+          {/* Botón Mostrar/Ocultar Zonas en el mapa */}
+          <button
+            id="tour-fab-show-zonas"
+            onClick={() => { setShowZonas(!showZonas); setIsActionsExpanded(false); }}
+            className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 ${
+              showZonas
+                ? 'bg-gradient-to-br from-orange-500 to-red-500 ring-2 ring-orange-300'
+                : 'bg-gradient-to-br from-orange-400 to-amber-500 hover:from-orange-500 hover:to-amber-600'
+            }`}
+            title={showZonas ? 'Ocultar zonas del mapa' : 'Mostrar zonas en el mapa'}
+          >
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
+          </button>
+
           {/* Botón de Leaderboard/Ranking */}
           <button
             id="tour-fab-ranking"
@@ -1643,6 +1699,7 @@ function DashboardContent() {
                   }
                   setSelectedMovil2(movilId);
                 }}
+                zonas={showZonas ? zonasData : []}
               />
             </motion.div>
           </>
