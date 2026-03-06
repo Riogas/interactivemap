@@ -137,6 +137,22 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
   }, [pedidos]);
 
   // ========== Drag and Drop handlers ==========
+  
+  // ========== Asignar movil por click (definido antes de handleDrop que lo usa) ==========
+  const handleClickAssign = useCallback((movilId: number, tipo: TipoAsignacion) => {
+    if (!selectedZonaId) return;
+    setAsignaciones(prev => {
+      // Remover de cualquier zona previa
+      const newMap: AsignacionesMap = {};
+      for (const [zId, arr] of Object.entries(prev)) {
+        newMap[Number(zId)] = arr.filter(a => a.movilId !== movilId);
+      }
+      // Agregar a la zona seleccionada
+      newMap[selectedZonaId] = [...(newMap[selectedZonaId] || []), { movilId, tipo }];
+      return newMap;
+    });
+  }, [selectedZonaId]);
+
   const handleDragStart = useCallback((e: React.DragEvent, movilId: number) => {
     setDraggedMovilId(movilId);
     e.dataTransfer.effectAllowed = 'move';
@@ -237,21 +253,6 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
       setAsignaciones({});
     }
   }, [isOpen]);
-
-  // ========== Asignar movil por click ==========
-  const handleClickAssign = useCallback((movilId: number, tipo: TipoAsignacion) => {
-    if (!selectedZonaId) return;
-    setAsignaciones(prev => {
-      // Remover de cualquier zona previa
-      const newMap: AsignacionesMap = {};
-      for (const [zId, arr] of Object.entries(prev)) {
-        newMap[Number(zId)] = arr.filter(a => a.movilId !== movilId);
-      }
-      // Agregar a la zona seleccionada
-      newMap[selectedZonaId] = [...(newMap[selectedZonaId] || []), { movilId, tipo }];
-      return newMap;
-    });
-  }, [selectedZonaId]);
 
   // ========== Render movil chip (draggable) ==========
   const renderMovilChip = (movilData: MovilData, inDropZone = false, tipo?: TipoAsignacion) => {
