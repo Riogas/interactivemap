@@ -52,7 +52,7 @@ const ZonasMapLayer = memo(function ZonasMapLayer({ zonas }: ZonasMapLayerProps)
               dashArray: '5, 5',
             }}
           >
-            <Tooltip sticky direction="center" className="zona-tooltip">
+            <Tooltip sticky direction="top" offset={[0, -20]} className="zona-tooltip">
               <div className="text-center">
                 <span className="font-bold text-sm">{zona.nombre || `Zona ${zona.zona_id}`}</span>
                 {zona.demora_minutos != null && zona.demora_minutos > 0 && (
