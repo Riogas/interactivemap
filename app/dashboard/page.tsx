@@ -586,7 +586,9 @@ function DashboardContent() {
     if (!latestPosition) return;
     
     const movilId = parseInt(latestPosition.movil_id); // ✅ Usar 'movil_id'
-      console.log(`🔔 Actualización Realtime para móvil ${movilId}`);
+    // La tabla gps_latest_positions se limpia cada madrugada por cron,
+    // así que toda posición que llega por Realtime es vigente.
+    console.log(`🔔 Actualización Realtime para móvil ${movilId}`);
     
     setMoviles(prevMoviles => {
       // Buscar si el móvil ya existe en la lista

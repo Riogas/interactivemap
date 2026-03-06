@@ -66,19 +66,14 @@ export async function GET(request: NextRequest) {
     // Obtener las últimas posiciones GPS de cada móvil
     const movilIds = moviles.map((m: any) => m.id);
     
-    // Filtrar por fecha: obtener coordenadas desde las 00:00:00 hasta las 23:59:59 del día especificado
-    const startDateTime = `${dateFilter}T00:00:00`;
-    const endDateTime = `${dateFilter}T23:59:59`;
-    
-    console.log(`🔍 Buscando coordenadas GPS entre ${startDateTime} y ${endDateTime}`);
-    
     // Query directa a gps_latest_positions (1 fila por móvil, siempre actualizada por trigger)
+    // La tabla se limpia cada madrugada por cron, así que solo contiene posiciones vigentes.
+    console.log(`🔍 Buscando últimas posiciones GPS para ${movilIds.length} móviles`);
+    
     const { data: gpsData, error: gpsError } = await supabase
       .from('gps_latest_positions')
       .select('*')
-      .in('movil_id', movilIds)
-      .gte('fecha_hora', startDateTime)
-      .lte('fecha_hora', endDateTime);
+      .in('movil_id', movilIds);
     
     if (gpsError) throw gpsError;
     
@@ -88,12 +83,12 @@ export async function GET(request: NextRequest) {
       latestPositions.set(pos.movil_id, pos);
     });
     
-    console.log(`📍 Móviles con coordenadas en ${dateFilter}: ${latestPositions.size} de ${moviles.length}`);
+    console.log(`📍 Móviles con posición vigente: ${latestPositions.size} de ${moviles.length}`);
     
-    // 🔥 FILTRAR: Solo incluir móviles que tienen coordenadas del día especificado
+    // Solo incluir móviles que tienen una posición en gps_latest_positions (tabla limpia por cron)
     const movilesConCoordenadas = moviles.filter((movil: any) => latestPositions.has(movil.id));
     
-    console.log(`✅ Móviles filtrados con GPS del día: ${movilesConCoordenadas.length}`);
+    console.log(`✅ Móviles con GPS vigente: ${movilesConCoordenadas.length}`);
     
     // Combinar datos de móviles con posiciones
     const data = movilesConCoordenadas.map((movil: any, index: number) => {
@@ -117,7 +112,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    console.log(`✅ API /all-positions - Returning ${data.length} móviles with GPS data from ${dateFilter}`);
+    console.log(`✅ API /all-positions - Returning ${data.length} móviles with GPS data`);
 
     return NextResponse.json({
       success: true,
