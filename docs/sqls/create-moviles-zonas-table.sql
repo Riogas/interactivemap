@@ -1,11 +1,11 @@
 -- =====================================================================
--- 🔗 Tabla moviles_zonas (N:N entre móviles y zonas) + demora por zona
+-- 🔗 Tabla moviles_zonas (N:N entre móviles y zonas)
 -- =====================================================================
 --
 -- PROPÓSITO:
 --   Relacionar móviles con zonas (muchos a muchos).
---   Cada asignación tiene su propia demora en minutos.
---   También se agrega zona_id a la tabla demoras para vincular demoras a zonas.
+--   La demora es propiedad de la zona, no de la asignación.
+--   Se agrega demora_minutos a la tabla zonas.
 --
 -- EJECUTAR EN: Supabase SQL Editor
 -- =====================================================================
@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS moviles_zonas (
     movil_id          TEXT NOT NULL,
     zona_id           INT NOT NULL,
     escenario_id      INT DEFAULT 1000,
-    demora_minutos    INT DEFAULT 0,              -- demora específica de este móvil en esta zona
     activa            BOOLEAN DEFAULT true,
     created_at        TIMESTAMPTZ DEFAULT NOW(),
     updated_at        TIMESTAMPTZ DEFAULT NOW(),
@@ -36,11 +35,9 @@ CREATE TRIGGER trigger_moviles_zonas_updated_at
     BEFORE UPDATE ON moviles_zonas
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 4️⃣ Agregar zona_id a demoras (vincular demora a zona)
-ALTER TABLE demoras
-    ADD COLUMN IF NOT EXISTS zona_id INT;
-
-CREATE INDEX IF NOT EXISTS idx_demoras_zona ON demoras(zona_id);
+-- 4️⃣ Agregar demora_minutos a la tabla zonas (la demora es de la zona)
+ALTER TABLE zonas
+    ADD COLUMN IF NOT EXISTS demora_minutos INT DEFAULT 0;
 
 -- 5️⃣ RLS (Row Level Security)
 ALTER TABLE moviles_zonas ENABLE ROW LEVEL SECURITY;
@@ -67,8 +64,8 @@ CREATE POLICY "full_access_moviles_zonas" ON moviles_zonas FOR ALL USING (true) 
 --   JOIN zonas z ON z.zona_id = mz.zona_id
 --   WHERE mz.zona_id = 1 AND mz.activa = true;
 --
--- Zonas de un móvil:
---   SELECT mz.*, z.nombre, z.color, mz.demora_minutos
+-- Zonas de un móvil (con demora de cada zona):
+--   SELECT mz.*, z.nombre, z.color, z.demora_minutos
 --   FROM moviles_zonas mz
 --   JOIN zonas z ON z.zona_id = mz.zona_id
 --   WHERE mz.movil_id = '693' AND mz.activa = true;
