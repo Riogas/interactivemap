@@ -31,6 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_moviles_zonas_escenario ON moviles_zonas(escenari
 CREATE INDEX IF NOT EXISTS idx_moviles_zonas_activa ON moviles_zonas(activa);
 
 -- 3️⃣ Trigger updated_at
+DROP TRIGGER IF EXISTS trigger_moviles_zonas_updated_at ON moviles_zonas;
 CREATE TRIGGER trigger_moviles_zonas_updated_at
     BEFORE UPDATE ON moviles_zonas
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
