@@ -175,32 +175,17 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
 
   const handleDrop = useCallback((e: React.DragEvent, tipo: TipoAsignacion) => {
     e.preventDefault();
+    e.stopPropagation();
     setDropTarget(null);
 
     const movilIdStr = e.dataTransfer.getData('text/plain');
     const movilId = parseInt(movilIdStr, 10);
     if (isNaN(movilId) || !selectedZonaId) return;
 
-    setAsignaciones(prev => {
-      const zonaAsigns = [...(prev[selectedZonaId] || [])];
-      // Si ya está asignado en esta zona, mover de categoría
-      const existing = zonaAsigns.findIndex(a => a.movilId === movilId);
-      if (existing >= 0) {
-        zonaAsigns[existing] = { movilId, tipo };
-      } else {
-        // Remover de otras zonas si existía
-        const newMap = { ...prev };
-        for (const zId of Object.keys(newMap)) {
-          newMap[Number(zId)] = newMap[Number(zId)].filter(a => a.movilId !== movilId);
-        }
-        newMap[selectedZonaId] = [...(newMap[selectedZonaId] || []), { movilId, tipo }];
-        return newMap;
-      }
-      return { ...prev, [selectedZonaId]: zonaAsigns };
-    });
-
+    console.log(`📌 Drop: movil ${movilId} → ${tipo} en zona ${selectedZonaId}`);
+    handleClickAssign(movilId, tipo);
     setDraggedMovilId(null);
-  }, [selectedZonaId]);
+  }, [selectedZonaId, handleClickAssign]);
 
   // ========== Remover asignación ==========
   const handleRemoveAsignacion = useCallback((movilId: number) => {
@@ -248,8 +233,25 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
       setDraggedMovilId(null);
       setDropTarget(null);
       setError(null);
+      // Limpiar asignaciones al cerrar para evitar estado stale
+      setAsignaciones({});
     }
   }, [isOpen]);
+
+  // ========== Asignar movil por click ==========
+  const handleClickAssign = useCallback((movilId: number, tipo: TipoAsignacion) => {
+    if (!selectedZonaId) return;
+    setAsignaciones(prev => {
+      // Remover de cualquier zona previa
+      const newMap: AsignacionesMap = {};
+      for (const [zId, arr] of Object.entries(prev)) {
+        newMap[Number(zId)] = arr.filter(a => a.movilId !== movilId);
+      }
+      // Agregar a la zona seleccionada
+      newMap[selectedZonaId] = [...(newMap[selectedZonaId] || []), { movilId, tipo }];
+      return newMap;
+    });
+  }, [selectedZonaId]);
 
   // ========== Render movil chip (draggable) ==========
   const renderMovilChip = (movilData: MovilData, inDropZone = false, tipo?: TipoAsignacion) => {
@@ -345,7 +347,23 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
             <div className="flex flex-col gap-1.5">
               {items.map(a => {
                 const movilData = getMovil(a.movilId);
-                if (!movilData) return null;
+                if (!movilData) {
+                  // Movil no encontrado en la lista actual, mostrar chip básico
+                  return (
+                    <div key={a.movilId} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-700/50 border border-gray-600 text-gray-400">
+                      <span className="text-sm">Móvil {a.movilId}</span>
+                      <button
+                        onClick={() => handleRemoveAsignacion(a.movilId)}
+                        className="ml-auto text-gray-500 hover:text-red-400 transition-colors"
+                        title="Quitar"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                }
                 return renderMovilChip(movilData, true, tipo);
               })}
             </div>
@@ -550,7 +568,32 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
                       {searchMovil ? 'Sin resultados' : 'Todos los móviles fueron asignados'}
                     </div>
                   ) : (
-                    movilesDisponibles.map(m => renderMovilChip(m))
+                    movilesDisponibles.map(m => (
+                      <div key={m.id} className="flex items-center gap-1">
+                        <div className="flex-1 min-w-0">
+                          {renderMovilChip(m)}
+                        </div>
+                        {/* Botones rápidos de asignación por click */}
+                        {selectedZonaId && (
+                          <div className="flex gap-0.5 flex-shrink-0">
+                            <button
+                              onClick={() => handleClickAssign(m.id, 'prioridad')}
+                              className="w-6 h-6 rounded bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 hover:text-amber-300 text-[10px] font-bold flex items-center justify-center transition-colors"
+                              title="Asignar a Prioridad"
+                            >
+                              P
+                            </button>
+                            <button
+                              onClick={() => handleClickAssign(m.id, 'transito')}
+                              className="w-6 h-6 rounded bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400 hover:text-cyan-300 text-[10px] font-bold flex items-center justify-center transition-colors"
+                              title="Asignar a Tránsito"
+                            >
+                              T
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
