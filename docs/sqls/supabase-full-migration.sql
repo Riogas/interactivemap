@@ -387,6 +387,8 @@ CREATE TABLE IF NOT EXISTS zonas (
     nombre            TEXT,
     descripcion       TEXT,
     color             TEXT,
+    demora_minutos    INT DEFAULT 0,
+    geojson           JSONB,
     activa            BOOLEAN DEFAULT true,
     created_at        TIMESTAMPTZ DEFAULT NOW(),
     updated_at        TIMESTAMPTZ DEFAULT NOW()

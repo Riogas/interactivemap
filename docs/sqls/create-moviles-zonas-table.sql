@@ -36,9 +36,12 @@ CREATE TRIGGER trigger_moviles_zonas_updated_at
     BEFORE UPDATE ON moviles_zonas
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 4️⃣ Agregar demora_minutos a la tabla zonas (la demora es de la zona)
+-- 4️⃣ Agregar columnas a la tabla zonas
 ALTER TABLE zonas
     ADD COLUMN IF NOT EXISTS demora_minutos INT DEFAULT 0;
+
+ALTER TABLE zonas
+    ADD COLUMN IF NOT EXISTS geojson JSONB;
 
 -- 5️⃣ RLS (Row Level Security)
 ALTER TABLE moviles_zonas ENABLE ROW LEVEL SECURITY;
