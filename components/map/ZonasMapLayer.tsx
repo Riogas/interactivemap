@@ -27,10 +27,16 @@ const ZonasMapLayer = memo(function ZonasMapLayer({ zonas }: ZonasMapLayerProps)
   return (
     <>
       {zonas.map((zona) => {
-        // Solo dibujar si tiene geojson con al menos 3 puntos (triángulo mínimo)
-        if (!zona.geojson || zona.geojson.length < 3) return null;
+        // Parsear geojson si viene como string
+        let geo = zona.geojson;
+        if (typeof geo === 'string') {
+          try { geo = JSON.parse(geo); } catch { return null; }
+        }
 
-        const positions: LatLngExpression[] = zona.geojson.map((p) => [p.lat, p.lng]);
+        // Solo dibujar si tiene geojson como array con al menos 3 puntos
+        if (!Array.isArray(geo) || geo.length < 3) return null;
+
+        const positions: LatLngExpression[] = geo.map((p: any) => [p.lat, p.lng]);
         const fillColor = zona.color || '#3b82f6';
 
         return (
