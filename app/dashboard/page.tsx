@@ -1700,6 +1700,7 @@ function DashboardContent() {
                   setSelectedMovil2(movilId);
                 }}
                 zonas={showZonas ? zonasData : []}
+                markerStyle={preferences.markerStyle || 'normal'}
               />
             </motion.div>
           </>

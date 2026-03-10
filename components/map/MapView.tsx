@@ -70,6 +70,7 @@ interface MapViewProps {
   onMovilDateChange?: (movilId: number, date: string) => void; // Cambiar móvil/fecha desde panel animación
   onSecondaryAnimMovilChange?: (movilId: number | undefined) => void; // Cambiar 2do móvil animación
   zonas?: ZonaMapData[]; // Zonas para dibujar polígonos en el mapa
+  markerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores
 }
 
 function MapUpdater({ 
@@ -395,6 +396,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     (prev.services?.length ?? 0) === (next.services?.length ?? 0) &&
     (prev.allServices?.length ?? 0) === (next.allServices?.length ?? 0) &&
     (prev.zonas?.length ?? 0) === (next.zonas?.length ?? 0) &&
+    prev.markerStyle === next.markerStyle &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -435,6 +437,7 @@ const MapView = memo(function MapView({
   onMovilDateChange,
   onSecondaryAnimMovilChange,
   zonas = [],
+  markerStyle = 'normal',
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -1187,7 +1190,92 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // 🚀 OPTIMIZACIÓN: Iconos con cache
+  // � COMPACTO: Punto pequeño (24px) con número
+  const createCompactIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
+    const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
+    const borderStyle = isInactive ? '2px dashed rgba(255,255,255,0.8)' : '2px solid white';
+    const opacity = isNoActivo ? '0.7' : '1';
+    const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}`;
+
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width: 28px;
+          height: 28px;
+          position: absolute;
+          left: -14px;
+          top: -14px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          opacity: ${opacity};
+        ">
+          <div style="
+            width: 18px;
+            height: 18px;
+            background: ${effectiveColor};
+            border: ${borderStyle};
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            ${isInactive ? 'animation: alarm-pulse 1.5s infinite;' : ''}
+          "></div>
+          ${movilId ? `
+          <div style="
+            position: absolute;
+            bottom: -4px;
+            background: white;
+            color: ${effectiveColor};
+            border: 1.5px solid ${effectiveColor};
+            border-radius: 6px;
+            padding: 0px 3px;
+            font-size: 8px;
+            font-weight: bold;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            white-space: nowrap;
+            line-height: 1.2;
+          ">${movilId}</div>
+          ` : ''}
+        </div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    }));
+  }, []);
+
+  // 🔹 MINI: Solo punto diminuto (14px), sin número
+  const createMiniIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
+    const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
+    const borderStyle = isInactive ? '1.5px dashed rgba(255,255,255,0.8)' : '1.5px solid white';
+    const opacity = isNoActivo ? '0.6' : '1';
+    const cacheKey = `mini-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}`;
+
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width: 14px;
+          height: 14px;
+          position: absolute;
+          left: -7px;
+          top: -7px;
+          background: ${effectiveColor};
+          border: ${borderStyle};
+          border-radius: 50%;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+          opacity: ${opacity};
+          ${isInactive ? 'animation: alarm-pulse 1.5s infinite;' : ''}
+        ">
+        </div>
+      `,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    }));
+  }, []);
+
+  // �🚀 OPTIMIZACIÓN: Iconos con cache
   const createPedidoIcon = useCallback(() => {
     return getCachedIcon('pedido-legacy', () => L.divIcon({
       className: '',
@@ -2122,7 +2210,13 @@ const MapView = memo(function MapView({
                 <OptimizedMarker
                   key={movil.id}
                   position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
-                  icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)}
+                  icon={
+                    markerStyle === 'mini'
+                      ? createMiniIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+                      : markerStyle === 'compact'
+                      ? createCompactIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+                      : createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+                  }
                   eventHandlers={{
                     click: () => {
                       // Cerrar popup de pedido/servicio si está abierto

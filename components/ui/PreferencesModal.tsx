@@ -10,6 +10,7 @@ export interface UserPreferences {
   realtimeEnabled: boolean; // Modo Tiempo Real ON/OFF
   showRouteAnimation: boolean;
   showCompletedMarkers: boolean;
+  markerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de móviles
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -19,6 +20,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   realtimeEnabled: true, // Por defecto activado
   showRouteAnimation: true,
   showCompletedMarkers: true,
+  markerStyle: 'normal',
 };
 
 interface PreferencesModalProps {
@@ -36,9 +38,12 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
     if (saved) {
       try {
         const savedPrefs = JSON.parse(saved);
-        // Asegurar que realtimeEnabled existe, si no, usar el valor por defecto
+        // Asegurar que campos nuevos existen
         if (savedPrefs.realtimeEnabled === undefined) {
           savedPrefs.realtimeEnabled = DEFAULT_PREFERENCES.realtimeEnabled;
+        }
+        if (!savedPrefs.markerStyle) {
+          savedPrefs.markerStyle = DEFAULT_PREFERENCES.markerStyle;
         }
         setPreferences(savedPrefs);
       } catch (e) {
@@ -128,6 +133,56 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   <option value="light">🌞 Modo Claro (CartoDB Light)</option>
                 </select>
                 <p className="text-xs text-gray-500">Esta será la vista del mapa al cargar la aplicación</p>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Estilo de Marcadores */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">📍</span>
+                  Tamaño de Marcadores de Móviles
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { value: 'normal' as const, label: 'Normal', desc: 'Ícono completo', preview: 'w-10 h-10' },
+                    { value: 'compact' as const, label: 'Compacto', desc: 'Punto + número', preview: 'w-6 h-6' },
+                    { value: 'mini' as const, label: 'Mini', desc: 'Solo punto', preview: 'w-4 h-4' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPreferences({ ...preferences, markerStyle: opt.value })}
+                      className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                        preferences.markerStyle === opt.value
+                          ? 'border-blue-500 bg-blue-50 shadow-md'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center h-12">
+                        <div className={`${opt.preview} rounded-full bg-green-500 border-2 border-white shadow-md`} />
+                      </div>
+                      <div className="text-center">
+                        <div className={`text-xs font-bold ${preferences.markerStyle === opt.value ? 'text-blue-700' : 'text-gray-700'}`}>
+                          {opt.label}
+                        </div>
+                        <div className="text-[10px] text-gray-500">{opt.desc}</div>
+                      </div>
+                      {preferences.markerStyle === opt.value && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {preferences.markerStyle === 'normal' ? 'Vista detallada con ícono de vehículo y número' :
+                   preferences.markerStyle === 'compact' ? 'Punto con número, ideal para ver muchos móviles' :
+                   'Punto mínimo, máxima visibilidad del mapa'}
+                </p>
               </div>
 
               <hr className="border-gray-200" />
@@ -309,9 +364,12 @@ export function useUserPreferences() {
     if (saved) {
       try {
         const savedPrefs = JSON.parse(saved);
-        // Asegurar que realtimeEnabled existe, si no, usar el valor por defecto
+        // Asegurar que campos nuevos existen
         if (savedPrefs.realtimeEnabled === undefined) {
           savedPrefs.realtimeEnabled = DEFAULT_PREFERENCES.realtimeEnabled;
+        }
+        if (!savedPrefs.markerStyle) {
+          savedPrefs.markerStyle = DEFAULT_PREFERENCES.markerStyle;
         }
         setPreferences(savedPrefs);
       } catch (e) {
