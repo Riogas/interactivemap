@@ -26,8 +26,12 @@ interface DemorasZonasLayerProps {
  * Muestra todas las zonas pintadas, con etiqueta de nro de zona y demora en minutos.
  */
 const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: DemorasZonasLayerProps) {
+  console.log(`🎨 DemorasZonasLayer RENDER: zonas=${zonas?.length ?? 0}, demoras.size=${demoras?.size ?? 0}`);
   const items = useMemo(() => {
-    if (!zonas || zonas.length === 0) return [];
+    if (!zonas || zonas.length === 0) {
+      console.log('🎨 DemorasZonasLayer useMemo: zonas vacías, retornando []');
+      return [];
+    }
     return zonas.map((zona) => {
       let geo = zona.geojson;
       if (typeof geo === 'string') {
@@ -71,6 +75,7 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: De
     }>;
   }, [zonas, demoras]);
 
+  console.log(`🎨 DemorasZonasLayer: ${items.length} items calculados`);
   if (items.length === 0) return null;
 
   return (

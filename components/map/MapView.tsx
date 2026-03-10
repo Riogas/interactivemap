@@ -1767,6 +1767,12 @@ const MapView = memo(function MapView({
         {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
 
         {/* ⏱️ Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
+        {(() => {
+          if (dataViewMode === 'demoras') {
+            console.log(`🔍 MAPVIEW demoras check: dataViewMode=${dataViewMode}, allZonas=${allZonas.length}, zonas(toggle)=${zonas.length}, demorasData.size=${demorasData.size}`);
+          }
+          return null;
+        })()}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
           <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} />
         )}

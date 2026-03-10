@@ -390,7 +390,14 @@ function DashboardContent() {
             (z: any) => uniqueEscenarios.includes(z.escenario_id) && z.geojson
           );
           console.log(`📊 ${zonasFiltradas.length} zonas con geojson (de ${zonasResult.data.length} total)`);
+          if (zonasFiltradas.length > 0) {
+            const sample = zonasFiltradas[0];
+            console.log(`📊 Ejemplo zona: id=${sample.zona_id}, nombre=${sample.nombre}, geojson type=${typeof sample.geojson}, geojson length=${Array.isArray(sample.geojson) ? sample.geojson.length : 'N/A'}`);
+          }
           setAllZonasData(zonasFiltradas);
+          console.log(`📊 setAllZonasData llamado con ${zonasFiltradas.length} zonas`);
+        } else {
+          console.log(`❌ zonasResult falló: success=${zonasResult.success}, data=${!!zonasResult.data}`);
         }
 
         // 2) Si es vista Demoras, cargar demoras desde la tabla demoras
@@ -408,7 +415,10 @@ function DashboardContent() {
                 }
               }
             }
+            console.log(`📊 setDemorasData: ${dMap.size} demoras cargadas. Zonas con demora: [${[...dMap.keys()].slice(0,10).join(', ')}${dMap.size > 10 ? '...' : ''}]`);
             setDemorasData(dMap);
+          } else {
+            console.log(`❌ demorasResult falló: success=${demorasResult.success}, data count=${demorasResult.data?.length ?? 'null'}`);
           }
         }
 
