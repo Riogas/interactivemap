@@ -23,7 +23,7 @@
 
 -- 1️⃣ Autoincrement en demora_id (la tabla original lo tiene como INT sin secuencia)
 CREATE SEQUENCE IF NOT EXISTS demoras_demora_id_seq;
-SELECT setval('demoras_demora_id_seq', COALESCE((SELECT MAX(demora_id) FROM demoras), 0));
+SELECT setval('demoras_demora_id_seq', GREATEST(COALESCE((SELECT MAX(demora_id) FROM demoras), 0), 1));
 ALTER TABLE demoras ALTER COLUMN demora_id SET DEFAULT nextval('demoras_demora_id_seq');
 ALTER SEQUENCE demoras_demora_id_seq OWNED BY demoras.demora_id;
 
