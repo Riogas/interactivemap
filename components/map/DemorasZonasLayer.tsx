@@ -26,54 +26,31 @@ interface DemorasZonasLayerProps {
  * Muestra todas las zonas pintadas, con etiqueta de nro de zona y demora en minutos.
  */
 const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: DemorasZonasLayerProps) {
-  console.log(`🎨 DemorasZonasLayer RENDER: zonas=${zonas?.length ?? 0}, demoras.size=${demoras?.size ?? 0}`);
   const items = useMemo(() => {
-    if (!zonas || zonas.length === 0) {
-      console.log('🎨 DemorasZonasLayer useMemo: zonas vacías, retornando []');
-      return [];
-    }
-    let debugCount = 0;
+    if (!zonas || zonas.length === 0) return [];
     const result = zonas.map((zona) => {
       let geo: any = zona.geojson;
-      
-      // Debug primeras 3 zonas
-      if (debugCount < 3) {
-        console.log(`🎨 Zona ${zona.zona_id}: geojson type=${typeof geo}, isArray=${Array.isArray(geo)}, sample=${typeof geo === 'string' ? geo.substring(0, 120) : JSON.stringify(geo)?.substring(0, 120)}`);
-        debugCount++;
-      }
 
       if (typeof geo === 'string') {
-        try { geo = JSON.parse(geo); } catch (e) { 
-          console.log(`🎨 Zona ${zona.zona_id}: JSON.parse failed: ${e}`);
-          return null; 
-        }
+        try { geo = JSON.parse(geo); } catch { return null; }
       }
 
-      // Si es un GeoJSON Feature o FeatureCollection, extraer las coordenadas
+      // Si es GeoJSON Feature/Geometry, extraer coordenadas
       if (geo && typeof geo === 'object' && !Array.isArray(geo)) {
-        // GeoJSON Feature → extraer geometry.coordinates
-        if (geo.type === 'Feature' && geo.geometry) {
-          geo = geo.geometry;
-        }
+        if (geo.type === 'Feature' && geo.geometry) geo = geo.geometry;
         if (geo.type === 'Polygon' && geo.coordinates) {
-          // Polygon coordinates: [[[lng, lat], [lng, lat], ...]]
           geo = geo.coordinates[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
         } else if (geo.type === 'MultiPolygon' && geo.coordinates) {
-          // MultiPolygon: usar el primer polígono
           geo = geo.coordinates[0]?.[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
-        }
-        if (debugCount <= 4) {
-          console.log(`🎨 Zona ${zona.zona_id} después de GeoJSON parse: isArray=${Array.isArray(geo)}, length=${Array.isArray(geo) ? geo.length : 'N/A'}`);
         }
       }
 
       if (!Array.isArray(geo) || geo.length < 3) return null;
 
-      // Filtrar puntos válidos
-      const validGeo = geo.filter((p: any) =>
-        p && typeof p.lat === 'number' && typeof p.lng === 'number' &&
-        isFinite(p.lat) && isFinite(p.lng)
-      );
+      // Filtrar puntos válidos (lat/lng pueden venir como string desde la DB)
+      const validGeo = geo
+        .map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }))
+        .filter((p: any) => isFinite(p.lat) && isFinite(p.lng));
       if (validGeo.length < 3) return null;
 
       const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
@@ -103,11 +80,9 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: De
       minutos: number;
       demoraActiva: boolean;
     }>;
-    console.log(`🎨 DemorasZonasLayer useMemo: ${result.length} items de ${zonas.length} zonas`);
     return result;
   }, [zonas, demoras]);
 
-  console.log(`🎨 DemorasZonasLayer: ${items.length} items calculados`);
   if (items.length === 0) return null;
 
   return (

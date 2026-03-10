@@ -33,11 +33,9 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount 
         try { geo = JSON.parse(geo); } catch { return null; }
       }
 
-      // Si es un GeoJSON Feature o Geometry, extraer coordenadas
+      // Si es GeoJSON Feature/Geometry, extraer coordenadas
       if (geo && typeof geo === 'object' && !Array.isArray(geo)) {
-        if (geo.type === 'Feature' && geo.geometry) {
-          geo = geo.geometry;
-        }
+        if (geo.type === 'Feature' && geo.geometry) geo = geo.geometry;
         if (geo.type === 'Polygon' && geo.coordinates) {
           geo = geo.coordinates[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
         } else if (geo.type === 'MultiPolygon' && geo.coordinates) {
@@ -47,11 +45,10 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount 
 
       if (!Array.isArray(geo) || geo.length < 3) return null;
 
-      // Filtrar puntos válidos
-      const validGeo = geo.filter((p: any) =>
-        p && typeof p.lat === 'number' && typeof p.lng === 'number' &&
-        isFinite(p.lat) && isFinite(p.lng)
-      );
+      // Filtrar puntos válidos (lat/lng pueden venir como string desde la DB)
+      const validGeo = geo
+        .map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }))
+        .filter((p: any) => isFinite(p.lat) && isFinite(p.lng));
       if (validGeo.length < 3) return null;
 
       const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
