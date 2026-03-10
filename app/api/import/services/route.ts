@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from('services')
       .upsert(transformedServices as any, {
-        onConflict: 'id,escenario',
+        onConflict: 'id',
       })
       .select();
 
@@ -229,7 +229,7 @@ export async function PUT(request: NextRequest) {
     const { data, error } = await supabase
       .from('services')
       .upsert(transformedServices as any, {
-        onConflict: 'id,escenario',
+        onConflict: 'id',
       })
       .select();
 
