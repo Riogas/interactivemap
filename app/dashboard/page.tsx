@@ -101,6 +101,14 @@ function DashboardContent() {
   const [allZonasData, setAllZonasData] = useState<any[]>([]);
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
   const [movilesZonasCount, setMovilesZonasCount] = useState<Map<number, number>>(new Map());
+
+  // Cuando se cambia de vista de datos, activar zonas automáticamente si no están activas
+  const handleDataViewChange = useCallback((mode: 'normal' | 'demoras' | 'moviles-zonas') => {
+    setDataViewMode(mode);
+    if (mode !== 'normal' && !showZonas) {
+      setShowZonas(true); // Auto-activar zonas para que se vean los polígonos
+    }
+  }, [showZonas]);
   
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -370,6 +378,8 @@ function DashboardContent() {
 
     const loadDataView = async () => {
       try {
+        console.log(`📊 Cargando vista "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
+
         // 1) Cargar todas las zonas con geojson
         const zonasRes = await fetch('/api/zonas');
         const zonasResult = await zonasRes.json();
@@ -377,6 +387,7 @@ function DashboardContent() {
           const zonasFiltradas = zonasResult.data.filter(
             (z: any) => uniqueEscenarios.includes(z.escenario_id) && z.geojson
           );
+          console.log(`📊 ${zonasFiltradas.length} zonas con geojson (de ${zonasResult.data.length} total)`);
           setAllZonasData(zonasFiltradas);
         }
 
@@ -1780,7 +1791,7 @@ function DashboardContent() {
                 pedidoShape={preferences.pedidoShape || 'square'}
                 serviceShape={preferences.serviceShape || 'triangle'}
                 dataViewMode={dataViewMode}
-                onDataViewChange={setDataViewMode}
+                onDataViewChange={handleDataViewChange}
                 demorasData={demorasData}
                 movilesZonasCount={movilesZonasCount}
                 allZonas={allZonasData}

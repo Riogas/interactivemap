@@ -419,6 +419,8 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.serviceShape === next.serviceShape &&
     prev.dataViewMode === next.dataViewMode &&
     (prev.allZonas?.length ?? 0) === (next.allZonas?.length ?? 0) &&
+    prev.demorasData?.size === next.demorasData?.size &&
+    prev.movilesZonasCount?.size === next.movilesZonasCount?.size &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -1761,17 +1763,17 @@ const MapView = memo(function MapView({
           <DataViewControl value={dataViewMode} onChange={onDataViewChange} />
         )}
 
-        {/* 🗺️ Capa de zonas (polígonos) — solo en modo Normal */}
-        {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
+        {/* 🗺️ Capa de zonas (polígonos) — siempre disponible con el toggle */}
+        {zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
 
         {/* ⏱️ Capa de Demoras */}
-        {dataViewMode === 'demoras' && allZonas.length > 0 && (
-          <DemorasZonasLayer zonas={allZonas as DemoraZonaData[]} demoras={demorasData} />
+        {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
+          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} />
         )}
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas */}
-        {dataViewMode === 'moviles-zonas' && allZonas.length > 0 && (
-          <MovilesZonasLayer zonas={allZonas} movilesCount={movilesZonasCount} />
+        {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesCount={movilesZonasCount} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
