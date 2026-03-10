@@ -95,6 +95,12 @@ function DashboardContent() {
   // Estado para mostrar zonas en el mapa
   const [showZonas, setShowZonas] = useState(false);
   const [zonasData, setZonasData] = useState<any[]>([]);
+
+  // 📊 Estado para vista de datos del mapa (Normal / Demoras / Móviles en Zonas)
+  const [dataViewMode, setDataViewMode] = useState<'normal' | 'demoras' | 'moviles-zonas'>('normal');
+  const [allZonasData, setAllZonasData] = useState<any[]>([]);
+  const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
+  const [movilesZonasCount, setMovilesZonasCount] = useState<Map<number, number>>(new Map());
   
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -345,6 +351,73 @@ function DashboardContent() {
     };
     loadZonas();
   }, [showZonas, selectedEmpresas, empresas]);
+
+  // 📊 Cargar datos cuando se selecciona una vista de datos (Demoras / Móviles en Zonas)
+  useEffect(() => {
+    if (dataViewMode === 'normal') {
+      setAllZonasData([]);
+      setDemorasData(new Map());
+      setMovilesZonasCount(new Map());
+      return;
+    }
+
+    const escenarioIds = empresas
+      .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
+      .map(e => e.escenario_id);
+    const uniqueEscenarios = [...new Set(escenarioIds)];
+
+    if (uniqueEscenarios.length === 0) return;
+
+    const loadDataView = async () => {
+      try {
+        // 1) Cargar todas las zonas con geojson
+        const zonasRes = await fetch('/api/zonas');
+        const zonasResult = await zonasRes.json();
+        if (zonasResult.success && zonasResult.data) {
+          const zonasFiltradas = zonasResult.data.filter(
+            (z: any) => uniqueEscenarios.includes(z.escenario_id) && z.geojson
+          );
+          setAllZonasData(zonasFiltradas);
+        }
+
+        // 2) Si es vista Demoras, cargar demoras desde la tabla demoras
+        if (dataViewMode === 'demoras') {
+          const demorasRes = await fetch('/api/demoras');
+          const demorasResult = await demorasRes.json();
+          if (demorasResult.success && demorasResult.data) {
+            const dMap = new Map<number, { minutos: number; activa: boolean }>();
+            for (const d of demorasResult.data) {
+              if (uniqueEscenarios.includes(d.escenario_id)) {
+                // Si hay varias demoras para una zona, quédarse con la más alta
+                const existing = dMap.get(d.zona_id);
+                if (!existing || d.minutos > existing.minutos) {
+                  dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
+                }
+              }
+            }
+            setDemorasData(dMap);
+          }
+        }
+
+        // 3) Si es vista Móviles en Zonas, cargar conteo
+        if (dataViewMode === 'moviles-zonas') {
+          const mzRes = await fetch('/api/moviles-zonas');
+          const mzResult = await mzRes.json();
+          if (mzResult.success && mzResult.data) {
+            const countMap = new Map<number, number>();
+            for (const mz of mzResult.data) {
+              countMap.set(mz.zona_id, (countMap.get(mz.zona_id) || 0) + 1);
+            }
+            setMovilesZonasCount(countMap);
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error loading data view:', err);
+      }
+    };
+
+    loadDataView();
+  }, [dataViewMode, selectedEmpresas, empresas]);
 
   // 🎨 Función para calcular el color del móvil según ocupación
   const getMovilColorByOccupancy = useCallback((pedidosAsignados: number, capacidad: number): string => {
@@ -1706,6 +1779,11 @@ function DashboardContent() {
                 movilShape={preferences.movilShape || 'circle'}
                 pedidoShape={preferences.pedidoShape || 'square'}
                 serviceShape={preferences.serviceShape || 'triangle'}
+                dataViewMode={dataViewMode}
+                onDataViewChange={setDataViewMode}
+                demorasData={demorasData}
+                movilesZonasCount={movilesZonasCount}
+                allZonas={allZonasData}
               />
             </motion.div>
           </>

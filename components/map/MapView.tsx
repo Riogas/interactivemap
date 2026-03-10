@@ -16,7 +16,11 @@ import CustomMarkerModal from './CustomMarkerModal';
 import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from './MapOptimizations';
 import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
+import DataViewControl, { DataViewMode } from './DataViewControl';
+import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
+import MovilesZonasLayer from './MovilesZonasLayer';
 import dynamic from 'next/dynamic';
+import './DataViewControl.css';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 import './MarkerCluster.css';
@@ -77,6 +81,11 @@ interface MapViewProps {
   movilShape?: MarkerShape; // Forma del marcador de móviles (compact/mini)
   pedidoShape?: MarkerShape; // Forma del marcador de pedidos (compact/mini)
   serviceShape?: MarkerShape; // Forma del marcador de services (compact/mini)
+  dataViewMode?: DataViewMode; // Vista de datos activa
+  onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
+  demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
+  movilesZonasCount?: Map<number, number>; // Cantidad de móviles por zona_id
+  allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
 }
 
 function MapUpdater({ 
@@ -408,6 +417,8 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.movilShape === next.movilShape &&
     prev.pedidoShape === next.pedidoShape &&
     prev.serviceShape === next.serviceShape &&
+    prev.dataViewMode === next.dataViewMode &&
+    (prev.allZonas?.length ?? 0) === (next.allZonas?.length ?? 0) &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -454,6 +465,11 @@ const MapView = memo(function MapView({
   movilShape = 'circle',
   pedidoShape = 'square',
   serviceShape = 'triangle',
+  dataViewMode = 'normal',
+  onDataViewChange,
+  demorasData = new Map(),
+  movilesZonasCount = new Map(),
+  allZonas = [],
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -1740,8 +1756,23 @@ const MapView = memo(function MapView({
         {/* Control de capas base (calles, satélite, terreno, etc.) */}
         <LayersControl defaultLayer={defaultMapLayer} />
 
-        {/* 🗺️ Capa de zonas (polígonos) */}
-        {zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
+        {/* � Control de vista de datos (Normal / Demoras / Móviles en Zonas) */}
+        {onDataViewChange && (
+          <DataViewControl value={dataViewMode} onChange={onDataViewChange} />
+        )}
+
+        {/* 🗺️ Capa de zonas (polígonos) — solo en modo Normal */}
+        {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
+
+        {/* ⏱️ Capa de Demoras */}
+        {dataViewMode === 'demoras' && allZonas.length > 0 && (
+          <DemorasZonasLayer zonas={allZonas as DemoraZonaData[]} demoras={demorasData} />
+        )}
+
+        {/* 🚛 Capa de Cantidad de Móviles en Zonas */}
+        {dataViewMode === 'moviles-zonas' && allZonas.length > 0 && (
+          <MovilesZonasLayer zonas={allZonas} movilesCount={movilesZonasCount} />
+        )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
           // Mostrar los móviles seleccionados con su recorrido

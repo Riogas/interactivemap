@@ -1,0 +1,176 @@
+/* ============================================================
+ * 📊 DataViewControl — Selector de vista de datos en el mapa
+ * Botón desplegable posicionado en bottomright, arriba del
+ * control de capas nativo de Leaflet.
+ * ============================================================ */
+
+.data-view-control {
+  background: white;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
+  overflow: visible;
+  margin-bottom: 8px !important;
+  border: none !important;
+}
+
+.dv-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  color: #555;
+  transition: background 0.2s, color 0.2s;
+  border-radius: 8px;
+}
+
+.dv-toggle:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.dv-toggle.dv-active {
+  background: #3b82f6;
+  color: white;
+}
+
+.dv-panel {
+  position: absolute;
+  bottom: 0;
+  right: 44px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  padding: 8px 4px;
+  min-width: 200px;
+  z-index: 1000;
+}
+
+.dv-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 12px 6px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px;
+}
+
+.dv-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  border-radius: 8px;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.dv-option:hover {
+  background: #f1f5f9;
+}
+
+.dv-option input[type="radio"] {
+  accent-color: #3b82f6;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.dv-option .dv-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+/* ============================================================
+ * 📊 DemorasZonasLayer — Etiquetas dentro de las zonas
+ * ============================================================ */
+
+.demora-label {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.demora-label-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.demora-label-zona {
+  background: rgba(255,255,255,0.92);
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.demora-label-time {
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.demora-label-time.demora-inactive {
+  background: rgba(148, 163, 184, 0.85);
+}
+
+.moviles-count-label {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.moviles-count-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.moviles-count-zona {
+  background: rgba(255,255,255,0.92);
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.moviles-count-badge {
+  background: rgba(59, 130, 246, 0.9);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.moviles-count-badge.count-zero {
+  background: rgba(148, 163, 184, 0.85);
+}
