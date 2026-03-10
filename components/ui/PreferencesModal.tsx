@@ -27,6 +27,7 @@ export interface UserPreferences {
   movilShape: MarkerShape; // Forma del marcador de móviles (compact/mini)
   pedidoShape: MarkerShape; // Forma del marcador de pedidos (compact/mini)
   serviceShape: MarkerShape; // Forma del marcador de services (compact/mini)
+  showDemoraLabels: boolean; // Mostrar etiquetas de demora (minutos) en mapa
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -42,6 +43,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   movilShape: 'circle',
   pedidoShape: 'square',
   serviceShape: 'triangle',
+  showDemoraLabels: false, // Por defecto ocultas
 };
 
 interface PreferencesModalProps {
@@ -494,6 +496,26 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                       type="checkbox"
                       checked={preferences.showCompletedMarkers}
                       onChange={(e) => setPreferences({ ...preferences, showCompletedMarkers: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </div>
+                </label>
+
+                {/* Toggle mostrar etiquetas de demoras */}
+                <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 text-lg">⏱️</div>
+                    <div>
+                      <div className="text-sm font-medium text-gray-700">Etiquetas de Demoras</div>
+                      <p className="text-xs text-gray-500">Mostrar minutos de demora en cada zona</p>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={preferences.showDemoraLabels}
+                      onChange={(e) => setPreferences({ ...preferences, showDemoraLabels: e.target.checked })}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

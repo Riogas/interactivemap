@@ -1798,6 +1798,7 @@ function DashboardContent() {
                 demorasData={demorasData}
                 movilesZonasCount={movilesZonasCount}
                 allZonas={allZonasData}
+                showDemoraLabels={preferences.showDemoraLabels ?? false}
               />
             </motion.div>
           </>

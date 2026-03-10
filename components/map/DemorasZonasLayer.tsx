@@ -19,13 +19,48 @@ interface DemorasZonasLayerProps {
   zonas: DemoraZonaData[];
   /** Map from zona_id → demora minutos (from demoras table) */
   demoras: Map<number, { minutos: number; activa: boolean }>;
+  /** Mostrar etiquetas de demora (minutos). Por defecto false */
+  showLabels?: boolean;
+}
+
+/**
+ * Calcula el centroide de un polígono usando la fórmula del área con signo.
+ * Mucho más preciso que el promedio simple para formas complejas / irregulares.
+ */
+function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, number] {
+  if (pts.length < 3) {
+    // fallback: promedio simple
+    const latS = pts.reduce((s, p) => s + p.lat, 0);
+    const lngS = pts.reduce((s, p) => s + p.lng, 0);
+    return [latS / pts.length, lngS / pts.length];
+  }
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i].lng, yi = pts[i].lat;
+    const xj = pts[j].lng, yj = pts[j].lat;
+    const cross = xi * yj - xj * yi;
+    area += cross;
+    cx += (xi + xj) * cross;
+    cy += (yi + yj) * cross;
+  }
+  area *= 0.5;
+  if (Math.abs(area) < 1e-12) {
+    // Polígono degenerado, usar promedio
+    const latS = pts.reduce((s, p) => s + p.lat, 0);
+    const lngS = pts.reduce((s, p) => s + p.lng, 0);
+    return [latS / pts.length, lngS / pts.length];
+  }
+  const factor = 1 / (6 * area);
+  return [cy * factor, cx * factor];
 }
 
 /**
  * Capa de zonas con información de demoras.
  * Muestra todas las zonas pintadas, con etiqueta de nro de zona y demora en minutos.
  */
-const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: DemorasZonasLayerProps) {
+const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false }: DemorasZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     const result = zonas.map((zona) => {
@@ -55,10 +90,8 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: De
 
       const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
 
-      // Calcular centro del polígono para poner la etiqueta
-      const latSum = validGeo.reduce((s: number, p: any) => s + p.lat, 0);
-      const lngSum = validGeo.reduce((s: number, p: any) => s + p.lng, 0);
-      const center: [number, number] = [latSum / validGeo.length, lngSum / validGeo.length];
+      // Calcular centroide del polígono (fórmula del área con signo)
+      const center: [number, number] = polygonCentroid(validGeo);
 
       // Demora: primero buscar en tabla demoras, sino usar demora_minutos de la zona
       const demoraInfo = demoras.get(zona.zona_id);
@@ -105,8 +138,8 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: De
               className: 'demora-label',
               html: `
                 <div class="demora-label-inner">
-                  <span class="demora-label-zona">Z${zona.zona_id}</span>
-                  <span class="demora-label-time ${!demoraActiva ? 'demora-inactive' : ''}">${minutos} min</span>
+                  <span class="demora-label-zona">${zona.zona_id}</span>
+                  ${showLabels ? `<span class="demora-label-time ${!demoraActiva ? 'demora-inactive' : ''}">${minutos} min</span>` : ''}
                 </div>
               `,
               iconSize: [60, 36],

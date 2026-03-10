@@ -86,6 +86,7 @@ interface MapViewProps {
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   movilesZonasCount?: Map<number, number>; // Cantidad de móviles por zona_id
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
+  showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
 }
 
 function MapUpdater({ 
@@ -421,6 +422,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     (prev.allZonas?.length ?? 0) === (next.allZonas?.length ?? 0) &&
     prev.demorasData?.size === next.demorasData?.size &&
     prev.movilesZonasCount?.size === next.movilesZonasCount?.size &&
+    prev.showDemoraLabels === next.showDemoraLabels &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -472,6 +474,7 @@ const MapView = memo(function MapView({
   demorasData = new Map(),
   movilesZonasCount = new Map(),
   allZonas = [],
+  showDemoraLabels = false,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -1768,7 +1771,7 @@ const MapView = memo(function MapView({
 
         {/* ⏱️ Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} />
+          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} />
         )}
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
