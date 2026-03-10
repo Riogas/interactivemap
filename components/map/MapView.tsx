@@ -1763,15 +1763,15 @@ const MapView = memo(function MapView({
           <DataViewControl value={dataViewMode} onChange={onDataViewChange} />
         )}
 
-        {/* 🗺️ Capa de zonas (polígonos) — siempre disponible con el toggle */}
-        {zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
+        {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}
+        {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
 
-        {/* ⏱️ Capa de Demoras */}
+        {/* ⏱️ Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
           <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} />
         )}
 
-        {/* 🚛 Capa de Cantidad de Móviles en Zonas */}
+        {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
           <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesCount={movilesZonasCount} />
         )}

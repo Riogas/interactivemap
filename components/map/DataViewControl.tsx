@@ -68,12 +68,15 @@ export default function DataViewControl({ value, onChange }: DataViewControlProp
           toggle.classList.toggle('dv-active', !isOpen);
         });
 
-        // Radio change handler
+        // Radio change handler — close panel on selection
         const radios = container.querySelectorAll<HTMLInputElement>('input[name="dv-mode"]');
         radios.forEach((radio) => {
           radio.addEventListener('change', () => {
             if (radio.checked) {
               onChange(radio.value as DataViewMode);
+              // Cerrar panel después de seleccionar
+              panel.style.display = 'none';
+              toggle.classList.toggle('dv-active', radio.value !== 'normal');
             }
           });
         });

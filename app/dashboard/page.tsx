@@ -102,13 +102,15 @@ function DashboardContent() {
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
   const [movilesZonasCount, setMovilesZonasCount] = useState<Map<number, number>>(new Map());
 
-  // Cuando se cambia de vista de datos, activar zonas automáticamente si no están activas
+  // Cuando se cambia de vista de datos
   const handleDataViewChange = useCallback((mode: 'normal' | 'demoras' | 'moviles-zonas') => {
     setDataViewMode(mode);
-    if (mode !== 'normal' && !showZonas) {
-      setShowZonas(true); // Auto-activar zonas para que se vean los polígonos
+    if (mode !== 'normal') {
+      setShowZonas(true); // Auto-activar zonas para demoras/moviles-zonas
+    } else {
+      setShowZonas(false); // Normal: quitar zonas del mapa
     }
-  }, [showZonas]);
+  }, []);
   
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
