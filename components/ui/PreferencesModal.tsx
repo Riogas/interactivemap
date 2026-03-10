@@ -11,6 +11,8 @@ export interface UserPreferences {
   showRouteAnimation: boolean;
   showCompletedMarkers: boolean;
   markerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de móviles
+  pedidosCluster: boolean; // Agrupar pedidos/services en clusters
+  pedidoMarkerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de pedidos
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -21,6 +23,8 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   showRouteAnimation: true,
   showCompletedMarkers: true,
   markerStyle: 'normal',
+  pedidosCluster: true, // Por defecto agrupados
+  pedidoMarkerStyle: 'normal',
 };
 
 interface PreferencesModalProps {
@@ -44,6 +48,12 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
         }
         if (!savedPrefs.markerStyle) {
           savedPrefs.markerStyle = DEFAULT_PREFERENCES.markerStyle;
+        }
+        if (savedPrefs.pedidosCluster === undefined) {
+          savedPrefs.pedidosCluster = DEFAULT_PREFERENCES.pedidosCluster;
+        }
+        if (!savedPrefs.pedidoMarkerStyle) {
+          savedPrefs.pedidoMarkerStyle = DEFAULT_PREFERENCES.pedidoMarkerStyle;
         }
         setPreferences(savedPrefs);
       } catch (e) {
@@ -182,6 +192,88 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   {preferences.markerStyle === 'normal' ? 'Vista detallada con ícono de vehículo y número' :
                    preferences.markerStyle === 'compact' ? 'Punto con número, ideal para ver muchos móviles' :
                    'Punto mínimo, máxima visibilidad del mapa'}
+                </p>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Agrupar Pedidos/Servicios */}
+              <div className="space-y-3">
+                <label className="flex items-center justify-between cursor-pointer group">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📦</span>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
+                        Agrupar Pedidos en Clusters
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {preferences.pedidosCluster 
+                          ? 'Los pedidos cercanos se agrupan al alejar el zoom' 
+                          : 'Todos los pedidos se muestran individualmente'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={preferences.pedidosCluster}
+                      onChange={(e) => setPreferences({ ...preferences, pedidosCluster: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                  </div>
+                </label>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Tamaño de Marcadores de Pedidos */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">📦</span>
+                  Tamaño de Marcadores de Pedidos
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { value: 'normal' as const, label: 'Normal', desc: 'Ícono con emoji', preview: 'w-6 h-6', emoji: '📦' },
+                    { value: 'compact' as const, label: 'Compacto', desc: 'Cuadrado pequeño', preview: 'w-4 h-4', emoji: '■' },
+                    { value: 'mini' as const, label: 'Mini', desc: 'Punto mínimo', preview: 'w-3 h-3', emoji: '•' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPreferences({ ...preferences, pedidoMarkerStyle: opt.value })}
+                      className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                        preferences.pedidoMarkerStyle === opt.value
+                          ? 'border-orange-500 bg-orange-50 shadow-md'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center h-12">
+                        <div className={`${opt.preview} rounded bg-gradient-to-br from-orange-400 to-orange-600 border-2 border-white shadow-md flex items-center justify-center`}>
+                          <span className="text-white text-[8px]">{opt.emoji}</span>
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className={`text-xs font-bold ${preferences.pedidoMarkerStyle === opt.value ? 'text-orange-700' : 'text-gray-700'}`}>
+                          {opt.label}
+                        </div>
+                        <div className="text-[10px] text-gray-500">{opt.desc}</div>
+                      </div>
+                      {preferences.pedidoMarkerStyle === opt.value && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {preferences.pedidoMarkerStyle === 'normal' ? 'Marcador con emoji 📦/🔧 y colores de demora' :
+                   preferences.pedidoMarkerStyle === 'compact' ? 'Cuadrado pequeño con color de demora, sin emoji' :
+                   'Punto mínimo con color de demora'}
                 </p>
               </div>
 
@@ -370,6 +462,12 @@ export function useUserPreferences() {
         }
         if (!savedPrefs.markerStyle) {
           savedPrefs.markerStyle = DEFAULT_PREFERENCES.markerStyle;
+        }
+        if (savedPrefs.pedidosCluster === undefined) {
+          savedPrefs.pedidosCluster = DEFAULT_PREFERENCES.pedidosCluster;
+        }
+        if (!savedPrefs.pedidoMarkerStyle) {
+          savedPrefs.pedidoMarkerStyle = DEFAULT_PREFERENCES.pedidoMarkerStyle;
         }
         setPreferences(savedPrefs);
       } catch (e) {

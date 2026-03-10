@@ -1701,6 +1701,8 @@ function DashboardContent() {
                 }}
                 zonas={showZonas ? zonasData : []}
                 markerStyle={preferences.markerStyle || 'normal'}
+                pedidosCluster={preferences.pedidosCluster !== undefined ? preferences.pedidosCluster : true}
+                pedidoMarkerStyle={preferences.pedidoMarkerStyle || 'normal'}
               />
             </motion.div>
           </>

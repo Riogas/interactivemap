@@ -71,6 +71,8 @@ interface MapViewProps {
   onSecondaryAnimMovilChange?: (movilId: number | undefined) => void; // Cambiar 2do móvil animación
   zonas?: ZonaMapData[]; // Zonas para dibujar polígonos en el mapa
   markerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores
+  pedidosCluster?: boolean; // Agrupar pedidos en clusters
+  pedidoMarkerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de pedidos
 }
 
 function MapUpdater({ 
@@ -397,6 +399,8 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     (prev.allServices?.length ?? 0) === (next.allServices?.length ?? 0) &&
     (prev.zonas?.length ?? 0) === (next.zonas?.length ?? 0) &&
     prev.markerStyle === next.markerStyle &&
+    prev.pedidosCluster === next.pedidosCluster &&
+    prev.pedidoMarkerStyle === next.pedidoMarkerStyle &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -438,6 +442,8 @@ const MapView = memo(function MapView({
   onSecondaryAnimMovilChange,
   zonas = [],
   markerStyle = 'normal',
+  pedidosCluster = true,
+  pedidoMarkerStyle = 'normal',
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -1408,7 +1414,72 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // �🚀 OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
+  // 📦 Iconos COMPACTOS para pedidos (cuadrado pequeño con color de demora, sin emoji)
+  const createPedidoIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
+    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
+    const info = getDelayInfo(delayMinutes);
+    const cacheKey = `pedido-delay-compact-${info.label}`;
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `<div style="width:14px;height:14px;position:absolute;left:-7px;top:-7px;background:linear-gradient(135deg,${info.color} 0%,${info.lightColor} 100%);border:1.5px solid white;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    }));
+  }, []);
+
+  // 📦 Iconos MINI para pedidos (punto mínimo con color de demora)
+  const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
+    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
+    const info = getDelayInfo(delayMinutes);
+    const cacheKey = `pedido-delay-mini-${info.label}`;
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `<div style="width:10px;height:10px;position:absolute;left:-5px;top:-5px;background:${info.color};border:1px solid white;border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,0.3);cursor:pointer;"></div>`,
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+    }));
+  }, []);
+
+  // 🔧 Iconos COMPACTOS para services (círculo para diferenciar de pedidos)
+  const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
+    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
+    const info = getDelayInfo(delayMinutes);
+    const cacheKey = `service-delay-compact-${info.label}`;
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `<div style="width:14px;height:14px;position:absolute;left:-7px;top:-7px;background:linear-gradient(135deg,${info.color} 0%,${info.lightColor} 100%);border:1.5px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    }));
+  }, []);
+
+  // 🔧 Iconos MINI para services
+  const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
+    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
+    const info = getDelayInfo(delayMinutes);
+    const cacheKey = `service-delay-mini-${info.label}`;
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `<div style="width:10px;height:10px;position:absolute;left:-5px;top:-5px;background:${info.color};border:1px solid white;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,0.3);cursor:pointer;"></div>`,
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+    }));
+  }, []);
+
+  // 🚀 Funciones selectoras de icono por estilo de pedido
+  const getPedidoIcon = useCallback((fchHoraMaxEntComp: string | null) => {
+    if (pedidoMarkerStyle === 'mini') return createPedidoIconByDelayMini(fchHoraMaxEntComp);
+    if (pedidoMarkerStyle === 'compact') return createPedidoIconByDelayCompact(fchHoraMaxEntComp);
+    return createPedidoIconByDelay(fchHoraMaxEntComp);
+  }, [pedidoMarkerStyle, createPedidoIconByDelay, createPedidoIconByDelayCompact, createPedidoIconByDelayMini]);
+
+  const getServiceIcon = useCallback((fchHoraMaxEntComp: string | null) => {
+    if (pedidoMarkerStyle === 'mini') return createServiceIconByDelayMini(fchHoraMaxEntComp);
+    if (pedidoMarkerStyle === 'compact') return createServiceIconByDelayCompact(fchHoraMaxEntComp);
+    return createServiceIconByDelay(fchHoraMaxEntComp);
+  }, [pedidoMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
+
+  // 🚀 OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
   const createCompletadoIcon = useCallback((tipo: 'PEDIDO' | 'SERVICIO') => {
     const cacheKey = `completado-${tipo}`;
     
@@ -2281,20 +2352,19 @@ const MapView = memo(function MapView({
           </>
         )}
         
-        {/* Marcadores de Pedidos desde tabla - con coordenadas - CLUSTERIZADOS */}
+        {/* Marcadores de Pedidos desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
         {(() => {
           const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud);
-          return pedidosFiltrados;
-        })()?.length ? (
-          <MarkerClusterGroup>
-            {pedidos.filter(p => p.latitud && p.longitud).map(pedido => {
-              const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
-              const delayInfo = getDelayInfo(delayMins);
-              return (
+          if (!pedidosFiltrados?.length) return null;
+          
+          const pedidoMarkers = pedidosFiltrados.map(pedido => {
+            const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
+            const delayInfo = getDelayInfo(delayMins);
+            return (
               <OptimizedMarker
                 key={`pedido-tabla-${pedido.id}`}
                 position={[pedido.latitud!, pedido.longitud!]}
-                icon={createPedidoIconByDelay(pedido.fch_hora_max_ent_comp)}
+                icon={getPedidoIcon(pedido.fch_hora_max_ent_comp)}
                 eventHandlers={{
                   click: () => {
                     onPedidoClick && onPedidoClick(pedido.id);
@@ -2312,25 +2382,27 @@ const MapView = memo(function MapView({
                   </div>
                 </Tooltip>
               </OptimizedMarker>
-              );
-            })}
-          </MarkerClusterGroup>
-        ) : null}
+            );
+          });
+          
+          return pedidosCluster 
+            ? <MarkerClusterGroup>{pedidoMarkers}</MarkerClusterGroup>
+            : <>{pedidoMarkers}</>;
+        })()}
 
-        {/* Marcadores de Services desde tabla - con coordenadas - CLUSTERIZADOS */}
+        {/* Marcadores de Services desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
         {(() => {
           const servicesFiltrados = services && services.filter(s => s.latitud && s.longitud);
-          return servicesFiltrados;
-        })()?.length ? (
-          <MarkerClusterGroup>
-            {services.filter(s => s.latitud && s.longitud).map(service => {
-              const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
-              const delayInfo = getDelayInfo(delayMins);
-              return (
+          if (!servicesFiltrados?.length) return null;
+          
+          const serviceMarkers = servicesFiltrados.map(service => {
+            const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
+            const delayInfo = getDelayInfo(delayMins);
+            return (
               <OptimizedMarker
                 key={`service-tabla-${service.id}`}
                 position={[service.latitud!, service.longitud!]}
-                icon={createServiceIconByDelay(service.fch_hora_max_ent_comp)}
+                icon={getServiceIcon(service.fch_hora_max_ent_comp)}
                 eventHandlers={{
                   click: () => {
                     onServiceClick && onServiceClick(service.id);
@@ -2348,10 +2420,13 @@ const MapView = memo(function MapView({
                   </div>
                 </Tooltip>
               </OptimizedMarker>
-              );
-            })}
-          </MarkerClusterGroup>
-        ) : null}
+            );
+          });
+          
+          return pedidosCluster 
+            ? <MarkerClusterGroup>{serviceMarkers}</MarkerClusterGroup>
+            : <>{serviceMarkers}</>;
+        })()}
         
         <MapUpdater 
           moviles={moviles} 
