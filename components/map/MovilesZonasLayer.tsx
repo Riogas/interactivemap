@@ -25,9 +25,8 @@ interface MovilesZonasLayerProps {
  * Muestra cada zona pintada con una etiqueta con el nro de zona y la cantidad de móviles.
  */
 const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount }: MovilesZonasLayerProps) {
-  if (!zonas || zonas.length === 0) return null;
-
   const items = useMemo(() => {
+    if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
       let geo = zona.geojson;
       if (typeof geo === 'string') {
@@ -64,6 +63,8 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount 
       count: number;
     }>;
   }, [zonas, movilesCount]);
+
+  if (items.length === 0) return null;
 
   return (
     <>
