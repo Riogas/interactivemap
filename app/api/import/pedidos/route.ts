@@ -199,11 +199,11 @@ export async function POST(request: NextRequest) {
     console.log(JSON.stringify(transformedPedidos[0], null, 2));
     console.log('─'.repeat(100) + '\n');
 
-    console.log('🔄 4. Haciendo UPSERT en Supabase (conflict: id)...');
+    console.log('🔄 4. Haciendo UPSERT en Supabase (conflict: id,escenario)...');
     const { data, error } = await supabase
       .from('pedidos')
       .upsert(transformedPedidos as any, {
-        onConflict: 'id', // PRIMARY KEY de la tabla
+        onConflict: 'id,escenario', // PRIMARY KEY compuesta (id, escenario)
       })
       .select();
 
@@ -302,11 +302,11 @@ export async function PUT(request: NextRequest) {
     console.log(JSON.stringify(transformedPedidos[0], null, 2));
     console.log('─'.repeat(100) + '\n');
 
-    console.log('🔄 4. Haciendo UPSERT en Supabase (conflict: id)...');
+    console.log('🔄 4. Haciendo UPSERT en Supabase (conflict: id,escenario)...');
     const { data, error } = await supabase
       .from('pedidos')
       .upsert(transformedPedidos as any, {
-        onConflict: 'id', // PRIMARY KEY de la tabla
+        onConflict: 'id,escenario', // PRIMARY KEY compuesta (id, escenario)
       })
       .select();
 
