@@ -36,12 +36,19 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: De
       }
       if (!Array.isArray(geo) || geo.length < 3) return null;
 
-      const positions: LatLngExpression[] = geo.map((p: any) => [p.lat, p.lng]);
+      // Filtrar puntos válidos
+      const validGeo = geo.filter((p: any) =>
+        p && typeof p.lat === 'number' && typeof p.lng === 'number' &&
+        isFinite(p.lat) && isFinite(p.lng)
+      );
+      if (validGeo.length < 3) return null;
+
+      const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
 
       // Calcular centro del polígono para poner la etiqueta
-      const latSum = geo.reduce((s: number, p: any) => s + p.lat, 0);
-      const lngSum = geo.reduce((s: number, p: any) => s + p.lng, 0);
-      const center: [number, number] = [latSum / geo.length, lngSum / geo.length];
+      const latSum = validGeo.reduce((s: number, p: any) => s + p.lat, 0);
+      const lngSum = validGeo.reduce((s: number, p: any) => s + p.lng, 0);
+      const center: [number, number] = [latSum / validGeo.length, lngSum / validGeo.length];
 
       // Demora: primero buscar en tabla demoras, sino usar demora_minutos de la zona
       const demoraInfo = demoras.get(zona.zona_id);

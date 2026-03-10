@@ -35,11 +35,18 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount 
       }
       if (!Array.isArray(geo) || geo.length < 3) return null;
 
-      const positions: LatLngExpression[] = geo.map((p: any) => [p.lat, p.lng]);
+      // Filtrar puntos válidos
+      const validGeo = geo.filter((p: any) =>
+        p && typeof p.lat === 'number' && typeof p.lng === 'number' &&
+        isFinite(p.lat) && isFinite(p.lng)
+      );
+      if (validGeo.length < 3) return null;
 
-      const latSum = geo.reduce((s: number, p: any) => s + p.lat, 0);
-      const lngSum = geo.reduce((s: number, p: any) => s + p.lng, 0);
-      const center: [number, number] = [latSum / geo.length, lngSum / geo.length];
+      const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
+
+      const latSum = validGeo.reduce((s: number, p: any) => s + p.lat, 0);
+      const lngSum = validGeo.reduce((s: number, p: any) => s + p.lng, 0);
+      const center: [number, number] = [latSum / validGeo.length, lngSum / validGeo.length];
 
       const count = movilesCount.get(zona.zona_id) ?? 0;
       const fillColor = zona.color || '#3b82f6';
