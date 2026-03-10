@@ -14,6 +14,12 @@ import { requireApiKey } from '@/lib/auth-middleware';
 function transformMovilToSupabase(movil: any) {
   // Detectar empresa fletera con fallback a 999 "Sin Empresa"
   const empresaFleteraId = movil.EFleteraId ?? movil.empresa_fletera_id ?? 999;
+
+  // Sanitizar fechas: AS400 envía "0000-00-00T00:00:00" para fechas vacías
+  const parseDate = (dateStr: string | null | undefined) => {
+    if (!dateStr || dateStr.startsWith('0000-00-00') || dateStr === '0') return null;
+    return dateStr;
+  };
   
   return {
     id: movil.id || movil.IdentificadorId?.toString() || movil.Nro?.toString() || movil.nro?.toString(),
@@ -25,8 +31,8 @@ function transformMovilToSupabase(movil: any) {
     // escenario_id: movil.EscenarioId ?? movil.escenario_id ?? 1000, // ⚠️ TEMPORALMENTE COMENTADO - PostgREST cache issue
     estado_desc: movil.EstadoDesc || movil.estado_desc || '',
     estado_nro: movil.EstadoNro ?? movil.estado_nro ?? 0,
-    fch_hora_mov: movil.FchHoraMov || movil.fch_hora_mov,
-    fch_hora_upd_firestore: movil.FchHoraUPDFireStore || movil.fch_hora_upd_firestore,
+    fch_hora_mov: parseDate(movil.FchHoraMov || movil.fch_hora_mov),
+    fch_hora_upd_firestore: parseDate(movil.FchHoraUPDFireStore || movil.fch_hora_upd_firestore),
     matricula: movil.Matricula || movil.matricula,
     mostrar_en_mapa: movil.MostrarEnMapa === 'S' || movil.mostrar_en_mapa === true,
     nro: movil.Nro ?? movil.IdentificadorId ?? movil.nro,
