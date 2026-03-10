@@ -21,13 +21,19 @@
 -- EJECUTAR EN: Supabase SQL Editor
 -- =====================================================================
 
--- 1️⃣ Unique constraint en la clave natural
+-- 1️⃣ Autoincrement en demora_id (la tabla original lo tiene como INT sin secuencia)
+CREATE SEQUENCE IF NOT EXISTS demoras_demora_id_seq;
+SELECT setval('demoras_demora_id_seq', COALESCE((SELECT MAX(demora_id) FROM demoras), 0));
+ALTER TABLE demoras ALTER COLUMN demora_id SET DEFAULT nextval('demoras_demora_id_seq');
+ALTER SEQUENCE demoras_demora_id_seq OWNED BY demoras.demora_id;
+
+-- 2️⃣ Unique constraint en la clave natural
 -- (permite upsert con onConflict: 'escenario_id,zona_id,zona_tipo,descripcion')
 ALTER TABLE demoras
     ADD CONSTRAINT demoras_natural_key
     UNIQUE (escenario_id, zona_id, zona_tipo, descripcion);
 
--- 2️⃣ Índice compuesto para búsquedas frecuentes por escenario + zona_tipo
+-- 3️⃣ Índice compuesto para búsquedas frecuentes por escenario + zona_tipo
 CREATE INDEX IF NOT EXISTS idx_demoras_escenario_tipo
     ON demoras(escenario_id, zona_tipo);
 
