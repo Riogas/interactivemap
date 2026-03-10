@@ -28,10 +28,23 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount 
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
-      let geo = zona.geojson;
+      let geo: any = zona.geojson;
       if (typeof geo === 'string') {
         try { geo = JSON.parse(geo); } catch { return null; }
       }
+
+      // Si es un GeoJSON Feature o Geometry, extraer coordenadas
+      if (geo && typeof geo === 'object' && !Array.isArray(geo)) {
+        if (geo.type === 'Feature' && geo.geometry) {
+          geo = geo.geometry;
+        }
+        if (geo.type === 'Polygon' && geo.coordinates) {
+          geo = geo.coordinates[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
+        } else if (geo.type === 'MultiPolygon' && geo.coordinates) {
+          geo = geo.coordinates[0]?.[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
+        }
+      }
+
       if (!Array.isArray(geo) || geo.length < 3) return null;
 
       // Filtrar puntos válidos

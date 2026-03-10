@@ -32,11 +32,41 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: De
       console.log('🎨 DemorasZonasLayer useMemo: zonas vacías, retornando []');
       return [];
     }
-    return zonas.map((zona) => {
-      let geo = zona.geojson;
-      if (typeof geo === 'string') {
-        try { geo = JSON.parse(geo); } catch { return null; }
+    let debugCount = 0;
+    const result = zonas.map((zona) => {
+      let geo: any = zona.geojson;
+      
+      // Debug primeras 3 zonas
+      if (debugCount < 3) {
+        console.log(`🎨 Zona ${zona.zona_id}: geojson type=${typeof geo}, isArray=${Array.isArray(geo)}, sample=${typeof geo === 'string' ? geo.substring(0, 120) : JSON.stringify(geo)?.substring(0, 120)}`);
+        debugCount++;
       }
+
+      if (typeof geo === 'string') {
+        try { geo = JSON.parse(geo); } catch (e) { 
+          console.log(`🎨 Zona ${zona.zona_id}: JSON.parse failed: ${e}`);
+          return null; 
+        }
+      }
+
+      // Si es un GeoJSON Feature o FeatureCollection, extraer las coordenadas
+      if (geo && typeof geo === 'object' && !Array.isArray(geo)) {
+        // GeoJSON Feature → extraer geometry.coordinates
+        if (geo.type === 'Feature' && geo.geometry) {
+          geo = geo.geometry;
+        }
+        if (geo.type === 'Polygon' && geo.coordinates) {
+          // Polygon coordinates: [[[lng, lat], [lng, lat], ...]]
+          geo = geo.coordinates[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
+        } else if (geo.type === 'MultiPolygon' && geo.coordinates) {
+          // MultiPolygon: usar el primer polígono
+          geo = geo.coordinates[0]?.[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
+        }
+        if (debugCount <= 4) {
+          console.log(`🎨 Zona ${zona.zona_id} después de GeoJSON parse: isArray=${Array.isArray(geo)}, length=${Array.isArray(geo) ? geo.length : 'N/A'}`);
+        }
+      }
+
       if (!Array.isArray(geo) || geo.length < 3) return null;
 
       // Filtrar puntos válidos
@@ -73,6 +103,8 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras }: De
       minutos: number;
       demoraActiva: boolean;
     }>;
+    console.log(`🎨 DemorasZonasLayer useMemo: ${result.length} items de ${zonas.length} zonas`);
+    return result;
   }, [zonas, demoras]);
 
   console.log(`🎨 DemorasZonasLayer: ${items.length} items calculados`);
