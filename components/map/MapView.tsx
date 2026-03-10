@@ -1440,27 +1440,27 @@ const MapView = memo(function MapView({
     }));
   }, []);
 
-  // 🔧 Iconos COMPACTOS para services (círculo para diferenciar de pedidos)
+  // 🔧 Iconos COMPACTOS para services (triángulo para diferenciar de pedidos)
   const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
     const cacheKey = `service-delay-compact-${info.label}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="width:14px;height:14px;position:absolute;left:-7px;top:-7px;background:linear-gradient(135deg,${info.color} 0%,${info.lightColor} 100%);border:1.5px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7],
+      html: `<div style="width:0;height:0;position:absolute;left:-8px;top:-7px;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:14px solid ${info.color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"><div style="position:absolute;top:2px;left:-5px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid ${info.lightColor};"></div></div>`,
+      iconSize: [16, 14],
+      iconAnchor: [8, 7],
     }));
   }, []);
 
-  // 🔧 Iconos MINI para services
+  // 🔧 Iconos MINI para services (triángulo pequeño)
   const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
     const cacheKey = `service-delay-mini-${info.label}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="width:10px;height:10px;position:absolute;left:-5px;top:-5px;background:${info.color};border:1px solid white;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,0.3);cursor:pointer;"></div>`,
+      html: `<div style="width:0;height:0;position:absolute;left:-5px;top:-5px;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid ${info.color};filter:drop-shadow(0 1px 1px rgba(0,0,0,0.3));cursor:pointer;"></div>`,
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
