@@ -2,22 +2,66 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
 
+// ─── Transformar body AS400 → filas de demoras ──────────────────────
+// Body AS400:
+//   { EscenarioId, TipoDeZona, TipoDeServicio, CodZonas: [{ Zona, ZonaActiva, Demora }] }
+// Tabla demoras:
+//   demora_id (PK auto), escenario_id, zona_id, zona_tipo, descripcion, minutos, activa
+// ─────────────────────────────────────────────────────────────────────
+function isAS400Format(body: any): boolean {
+  return body.CodZonas && Array.isArray(body.CodZonas);
+}
+
+function transformAS400(body: any) {
+  const escenario_id = body.EscenarioId ?? 1000;
+  const zona_tipo = body.TipoDeZona ?? null;
+  const descripcion = body.TipoDeServicio ?? null;
+  const codZonas = body.CodZonas || [];
+
+  return codZonas.map((z: any) => ({
+    escenario_id,
+    zona_tipo,
+    descripcion,
+    zona_id: parseInt(z.Zona, 10),
+    activa: z.ZonaActiva === 'S',
+    minutos: z.Demora ?? 0,
+  }));
+}
+
+/**
+ * Normaliza el body a un array de filas para la tabla demoras.
+ * Acepta:
+ *   1) Formato AS400: { EscenarioId, TipoDeZona, TipoDeServicio, CodZonas: [...] }
+ *   2) Formato directo: { demoras: [...] }  ó  [ {...}, ... ]  ó  { ... }
+ */
+function parseDemorasBody(body: any): any[] {
+  // 1) Formato AS400
+  if (isAS400Format(body)) {
+    return transformAS400(body);
+  }
+
+  // 2) Formato directo con key "demoras"
+  if (body.demoras) {
+    const d = body.demoras;
+    return Array.isArray(d) ? d : [d];
+  }
+
+  // 3) Array directo o un solo objeto
+  return Array.isArray(body) ? body : [body];
+}
+
+// =====================================================================
+// PUT /api/import/demoras — Upsert (insertar o actualizar)
+// Clave natural: (escenario_id, zona_id, zona_tipo, descripcion)
+// Requiere UNIQUE constraint "demoras_natural_key" en la tabla.
+// =====================================================================
 export async function PUT(request: NextRequest) {
-  // 🔒 VALIDAR API KEY
   const keyValidation = requireApiKey(request);
   if (keyValidation instanceof NextResponse) return keyValidation;
 
   try {
     const body = await request.json();
-    let { demoras } = body;
-
-    // Si no viene "demoras", asumir que el body ES la demora
-    if (!demoras) {
-      demoras = body;
-    }
-
-    // Normalizar a array si es un solo objeto
-    const demorasArray = Array.isArray(demoras) ? demoras : [demoras];
+    const demorasArray = parseDemorasBody(body);
 
     if (demorasArray.length === 0) {
       return NextResponse.json(
@@ -26,13 +70,13 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    console.log(`🔄 Actualizando ${demorasArray.length} demora(s)...`);
+    console.log(`🔄 Upsert ${demorasArray.length} demora(s)...`);
 
     const supabase = getServerSupabaseClient();
     const { data, error } = await (supabase as any)
       .from('demoras')
       .upsert(demorasArray, {
-        onConflict: 'demora_id',
+        onConflict: 'escenario_id,zona_id,zona_tipo,descripcion',
       })
       .select();
 
@@ -41,7 +85,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log(`✅ ${data?.length || 0} demora(s) actualizada(s)`);
+    console.log(`✅ ${data?.length || 0} demora(s) upserted`);
     return NextResponse.json({ success: true, count: data?.length || 0, data });
   } catch (error: any) {
     console.error('❌ Error en PUT /api/import/demoras:', error);
@@ -52,26 +96,16 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-/**
- * POST /api/import/demoras
- * Importar demoras desde fuente externa
- */
+// =====================================================================
+// POST /api/import/demoras — Insert (sin upsert, falla si ya existe)
+// =====================================================================
 export async function POST(request: NextRequest) {
-  // 🔒 VALIDAR API KEY
   const keyValidation = requireApiKey(request);
   if (keyValidation instanceof NextResponse) return keyValidation;
 
   try {
     const body = await request.json();
-    let { demoras } = body;
-
-    // Si no viene "demoras", asumir que el body ES la demora
-    if (!demoras) {
-      demoras = body;
-    }
-
-    // Normalizar a array si es un solo objeto
-    const demorasArray = Array.isArray(demoras) ? demoras : [demoras];
+    const demorasArray = parseDemorasBody(body);
 
     if (demorasArray.length === 0) {
       return NextResponse.json(
@@ -112,50 +146,75 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * DELETE /api/import/demoras
- * Eliminar demoras por IDs
- */
+// =====================================================================
+// DELETE /api/import/demoras
+//   Body: { demora_ids: [1,2,3] }
+//      ó  { escenario_id, zona_tipo, descripcion }  → borra todo el bloque
+// =====================================================================
 export async function DELETE(request: NextRequest) {
-  // 🔒 VALIDAR API KEY
   const keyValidation = requireApiKey(request);
   if (keyValidation instanceof NextResponse) return keyValidation;
 
   try {
     const body = await request.json();
-    const { demora_ids } = body;
-
-    if (!demora_ids || !Array.isArray(demora_ids)) {
-      return NextResponse.json(
-        { error: 'Se requiere un array de demora_ids' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`🗑️ Eliminando ${demora_ids.length} demoras...`);
-
     const supabase = getServerSupabaseClient();
-    const { data, error } = await (supabase as any)
-      .from('demoras')
-      .delete()
-      .in('demora_id', demora_ids)
-      .select();
 
-    if (error) {
-      console.error('❌ Error al eliminar demoras:', error);
-      return NextResponse.json(
-        { error: 'Error al eliminar demoras', details: error.message },
-        { status: 500 }
-      );
+    // Opción 1: borrar por IDs
+    if (body.demora_ids && Array.isArray(body.demora_ids)) {
+      console.log(`🗑️ Eliminando ${body.demora_ids.length} demoras por ID...`);
+
+      const { data, error } = await (supabase as any)
+        .from('demoras')
+        .delete()
+        .in('demora_id', body.demora_ids)
+        .select();
+
+      if (error) {
+        console.error('❌ Error al eliminar demoras:', error);
+        return NextResponse.json(
+          { error: 'Error al eliminar demoras', details: error.message },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `${data?.length || 0} demoras eliminadas`,
+        deleted_count: data?.length || 0,
+      });
     }
 
-    console.log(`✅ ${data?.length || 0} demoras eliminadas`);
+    // Opción 2: borrar bloque por escenario + zona_tipo + descripcion
+    if (body.escenario_id || body.zona_tipo || body.descripcion) {
+      let query = (supabase as any).from('demoras').delete();
 
-    return NextResponse.json({
-      success: true,
-      message: `${data?.length || 0} demoras eliminadas correctamente`,
-      deleted_count: data?.length || 0,
-    });
+      if (body.escenario_id) query = query.eq('escenario_id', body.escenario_id);
+      if (body.zona_tipo) query = query.eq('zona_tipo', body.zona_tipo);
+      if (body.descripcion) query = query.eq('descripcion', body.descripcion);
+
+      console.log(`🗑️ Eliminando demoras por filtro (escenario=${body.escenario_id}, tipo=${body.zona_tipo}, desc=${body.descripcion})...`);
+
+      const { data, error } = await query.select();
+
+      if (error) {
+        console.error('❌ Error al eliminar demoras:', error);
+        return NextResponse.json(
+          { error: 'Error al eliminar demoras', details: error.message },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `${data?.length || 0} demoras eliminadas`,
+        deleted_count: data?.length || 0,
+      });
+    }
+
+    return NextResponse.json(
+      { error: 'Se requiere demora_ids[] o filtros (escenario_id, zona_tipo, descripcion)' },
+      { status: 400 }
+    );
   } catch (error: any) {
     console.error('❌ Error inesperado:', error);
     return NextResponse.json(
