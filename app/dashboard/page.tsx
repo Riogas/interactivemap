@@ -1703,6 +1703,9 @@ function DashboardContent() {
                 markerStyle={preferences.markerStyle || 'normal'}
                 pedidosCluster={preferences.pedidosCluster !== undefined ? preferences.pedidosCluster : true}
                 pedidoMarkerStyle={preferences.pedidoMarkerStyle || 'normal'}
+                movilShape={preferences.movilShape || 'circle'}
+                pedidoShape={preferences.pedidoShape || 'square'}
+                serviceShape={preferences.serviceShape || 'triangle'}
               />
             </motion.div>
           </>

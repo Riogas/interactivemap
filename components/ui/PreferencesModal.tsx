@@ -3,6 +3,17 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'star';
+
+export const SHAPE_OPTIONS: { value: MarkerShape; label: string; svg: string }[] = [
+  { value: 'circle', label: 'Círculo', svg: '<circle cx="12" cy="12" r="9" fill="currentColor" stroke="white" stroke-width="2"/>' },
+  { value: 'square', label: 'Cuadrado', svg: '<rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor" stroke="white" stroke-width="2"/>' },
+  { value: 'triangle', label: 'Triángulo', svg: '<polygon points="12,2 22,20 2,20" fill="currentColor" stroke="white" stroke-width="2"/>' },
+  { value: 'diamond', label: 'Rombo', svg: '<polygon points="12,2 22,12 12,22 2,12" fill="currentColor" stroke="white" stroke-width="2"/>' },
+  { value: 'hexagon', label: 'Hexágono', svg: '<polygon points="12,2 21,7 21,17 12,22 3,17 3,7" fill="currentColor" stroke="white" stroke-width="2"/>' },
+  { value: 'star', label: 'Estrella', svg: '<polygon points="12,2 14.9,8.6 22,9.3 16.8,14 18.2,21 12,17.3 5.8,21 7.2,14 2,9.3 9.1,8.6" fill="currentColor" stroke="white" stroke-width="1.5"/>' },
+];
+
 export interface UserPreferences {
   defaultMapLayer: 'streets' | 'satellite' | 'terrain' | 'cartodb' | 'dark' | 'light';
   showActiveMovilesOnly: boolean;
@@ -13,6 +24,9 @@ export interface UserPreferences {
   markerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de móviles
   pedidosCluster: boolean; // Agrupar pedidos/services en clusters
   pedidoMarkerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de pedidos
+  movilShape: MarkerShape; // Forma del marcador de móviles (compact/mini)
+  pedidoShape: MarkerShape; // Forma del marcador de pedidos (compact/mini)
+  serviceShape: MarkerShape; // Forma del marcador de services (compact/mini)
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -25,6 +39,9 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   markerStyle: 'normal',
   pedidosCluster: true, // Por defecto agrupados
   pedidoMarkerStyle: 'normal',
+  movilShape: 'circle',
+  pedidoShape: 'square',
+  serviceShape: 'triangle',
 };
 
 interface PreferencesModalProps {
@@ -55,6 +72,9 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
         if (!savedPrefs.pedidoMarkerStyle) {
           savedPrefs.pedidoMarkerStyle = DEFAULT_PREFERENCES.pedidoMarkerStyle;
         }
+        if (!savedPrefs.movilShape) savedPrefs.movilShape = DEFAULT_PREFERENCES.movilShape;
+        if (!savedPrefs.pedidoShape) savedPrefs.pedidoShape = DEFAULT_PREFERENCES.pedidoShape;
+        if (!savedPrefs.serviceShape) savedPrefs.serviceShape = DEFAULT_PREFERENCES.serviceShape;
         setPreferences(savedPrefs);
       } catch (e) {
         console.error('Error al cargar preferencias:', e);
@@ -193,6 +213,28 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                    preferences.markerStyle === 'compact' ? 'Punto con número, ideal para ver muchos móviles' :
                    'Punto mínimo, máxima visibilidad del mapa'}
                 </p>
+                {/* Selector de forma - solo visible en compact/mini */}
+                {preferences.markerStyle !== 'normal' && (
+                  <div className="mt-3 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-2">Forma del marcador:</div>
+                    <div className="flex gap-2 flex-wrap">
+                      {SHAPE_OPTIONS.map(shape => (
+                        <button key={shape.value} type="button"
+                          onClick={() => setPreferences({ ...preferences, movilShape: shape.value })}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all ${
+                            preferences.movilShape === shape.value ? 'border-blue-500 bg-blue-100' : 'border-gray-200 hover:border-gray-300 bg-white'
+                          }`}
+                          title={shape.label}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" className="text-green-500">
+                            <g dangerouslySetInnerHTML={{ __html: shape.svg }} />
+                          </svg>
+                          <span className="text-[9px] text-gray-500">{shape.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <hr className="border-gray-200" />
@@ -272,9 +314,52 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 </div>
                 <p className="text-xs text-gray-500">
                   {preferences.pedidoMarkerStyle === 'normal' ? 'Marcador con emoji 📦/🔧 y colores de demora' :
-                   preferences.pedidoMarkerStyle === 'compact' ? 'Cuadrado pequeño con color de demora, sin emoji' :
+                   preferences.pedidoMarkerStyle === 'compact' ? 'Forma pequeña con color de demora, sin emoji' :
                    'Punto mínimo con color de demora'}
                 </p>
+                {/* Selector de forma para pedidos y services - solo en compact/mini */}
+                {preferences.pedidoMarkerStyle !== 'normal' && (
+                  <div className="mt-3 space-y-3">
+                    <div className="p-3 bg-orange-50/50 rounded-lg border border-orange-100">
+                      <div className="text-xs font-semibold text-gray-600 mb-2">📦 Forma de Pedidos:</div>
+                      <div className="flex gap-2 flex-wrap">
+                        {SHAPE_OPTIONS.map(shape => (
+                          <button key={shape.value} type="button"
+                            onClick={() => setPreferences({ ...preferences, pedidoShape: shape.value })}
+                            className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all ${
+                              preferences.pedidoShape === shape.value ? 'border-orange-500 bg-orange-100' : 'border-gray-200 hover:border-gray-300 bg-white'
+                            }`}
+                            title={shape.label}
+                          >
+                            <svg width="20" height="20" viewBox="0 0 24 24" className="text-orange-500">
+                              <g dangerouslySetInnerHTML={{ __html: shape.svg }} />
+                            </svg>
+                            <span className="text-[9px] text-gray-500">{shape.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-red-50/50 rounded-lg border border-red-100">
+                      <div className="text-xs font-semibold text-gray-600 mb-2">🔧 Forma de Services:</div>
+                      <div className="flex gap-2 flex-wrap">
+                        {SHAPE_OPTIONS.map(shape => (
+                          <button key={shape.value} type="button"
+                            onClick={() => setPreferences({ ...preferences, serviceShape: shape.value })}
+                            className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all ${
+                              preferences.serviceShape === shape.value ? 'border-red-500 bg-red-100' : 'border-gray-200 hover:border-gray-300 bg-white'
+                            }`}
+                            title={shape.label}
+                          >
+                            <svg width="20" height="20" viewBox="0 0 24 24" className="text-red-500">
+                              <g dangerouslySetInnerHTML={{ __html: shape.svg }} />
+                            </svg>
+                            <span className="text-[9px] text-gray-500">{shape.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <hr className="border-gray-200" />
@@ -469,6 +554,9 @@ export function useUserPreferences() {
         if (!savedPrefs.pedidoMarkerStyle) {
           savedPrefs.pedidoMarkerStyle = DEFAULT_PREFERENCES.pedidoMarkerStyle;
         }
+        if (!savedPrefs.movilShape) savedPrefs.movilShape = DEFAULT_PREFERENCES.movilShape;
+        if (!savedPrefs.pedidoShape) savedPrefs.pedidoShape = DEFAULT_PREFERENCES.pedidoShape;
+        if (!savedPrefs.serviceShape) savedPrefs.serviceShape = DEFAULT_PREFERENCES.serviceShape;
         setPreferences(savedPrefs);
       } catch (e) {
         console.error('Error al cargar preferencias:', e);

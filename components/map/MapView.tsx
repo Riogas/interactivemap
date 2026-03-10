@@ -5,6 +5,7 @@ import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leafle
 import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
+import { MarkerShape } from '@/components/ui/PreferencesModal';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
 import { PedidoInfoPopup } from './PedidoInfoPopup';
@@ -73,6 +74,9 @@ interface MapViewProps {
   markerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores
   pedidosCluster?: boolean; // Agrupar pedidos en clusters
   pedidoMarkerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de pedidos
+  movilShape?: MarkerShape; // Forma del marcador de móviles (compact/mini)
+  pedidoShape?: MarkerShape; // Forma del marcador de pedidos (compact/mini)
+  serviceShape?: MarkerShape; // Forma del marcador de services (compact/mini)
 }
 
 function MapUpdater({ 
@@ -401,6 +405,9 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.markerStyle === next.markerStyle &&
     prev.pedidosCluster === next.pedidosCluster &&
     prev.pedidoMarkerStyle === next.pedidoMarkerStyle &&
+    prev.movilShape === next.movilShape &&
+    prev.pedidoShape === next.pedidoShape &&
+    prev.serviceShape === next.serviceShape &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -444,9 +451,41 @@ const MapView = memo(function MapView({
   markerStyle = 'normal',
   pedidosCluster = true,
   pedidoMarkerStyle = 'normal',
+  movilShape = 'circle',
+  pedidoShape = 'square',
+  serviceShape = 'triangle',
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
+
+  // 🔷 Generador de HTML para formas geométricas (compact/mini)
+  const getShapeHtml = useCallback((shape: MarkerShape, size: number, color: string, lightColor?: string) => {
+    const half = size / 2;
+    const border = size > 12 ? 1.5 : 1;
+    const bg = lightColor ? `linear-gradient(135deg,${color} 0%,${lightColor} 100%)` : color;
+    switch (shape) {
+      case 'circle':
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+      case 'square':
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:${Math.round(size * 0.15)}px;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+      case 'triangle': {
+        const bw = Math.round(half);
+        const bh = Math.round(size * 0.9);
+        return `<div style="width:0;height:0;position:absolute;left:-${bw}px;top:-${half}px;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
+      }
+      case 'diamond': {
+        const inner = Math.round(size * 0.72);
+        const offset = Math.round(inner / 2);
+        return `<div style="width:${inner}px;height:${inner}px;position:absolute;left:-${offset}px;top:-${offset}px;background:${bg};border:${border}px solid white;transform:rotate(45deg);box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+      }
+      case 'hexagon':
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
+      case 'star':
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
+      default:
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+    }
+  }, []);
 
   // 🔧 DEBUG: Log services recibidos en MapView
   useEffect(() => {
@@ -1201,7 +1240,27 @@ const MapView = memo(function MapView({
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
     const borderStyle = isInactive ? '2px dashed rgba(255,255,255,0.8)' : '2px solid white';
     const opacity = isNoActivo ? '0.7' : '1';
-    const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}`;
+    const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}`;
+
+    // Generate inner shape HTML based on movilShape preference
+    const shapeSize = 18;
+    const getCompactShapeHtml = () => {
+      const anim = isInactive ? 'animation: alarm-pulse 1.5s infinite;' : '';
+      switch (movilShape) {
+        case 'square':
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+        case 'triangle':
+          return `<div style="width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:16px solid ${effectiveColor};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+        case 'diamond':
+          return `<div style="width:13px;height:13px;background:${effectiveColor};border:${borderStyle};transform:rotate(45deg);box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+        case 'hexagon':
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+        case 'star':
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+        default: // circle
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+      }
+    };
 
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
@@ -1218,15 +1277,7 @@ const MapView = memo(function MapView({
           justify-content: center;
           opacity: ${opacity};
         ">
-          <div style="
-            width: 18px;
-            height: 18px;
-            background: ${effectiveColor};
-            border: ${borderStyle};
-            border-radius: 50%;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            ${isInactive ? 'animation: alarm-pulse 1.5s infinite;' : ''}
-          "></div>
+          ${getCompactShapeHtml()}
           ${movilId ? `
           <div style="
             position: absolute;
@@ -1254,32 +1305,16 @@ const MapView = memo(function MapView({
   // 🔹 MINI: Solo punto diminuto (14px), sin número
   const createMiniIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
-    const borderStyle = isInactive ? '1.5px dashed rgba(255,255,255,0.8)' : '1.5px solid white';
     const opacity = isNoActivo ? '0.6' : '1';
-    const cacheKey = `mini-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}`;
+    const cacheKey = `mini-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}`;
 
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `
-        <div style="
-          width: 14px;
-          height: 14px;
-          position: absolute;
-          left: -7px;
-          top: -7px;
-          background: ${effectiveColor};
-          border: ${borderStyle};
-          border-radius: 50%;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-          opacity: ${opacity};
-          ${isInactive ? 'animation: alarm-pulse 1.5s infinite;' : ''}
-        ">
-        </div>
-      `,
+      html: `<div style="opacity:${opacity};${isInactive ? 'animation:alarm-pulse 1.5s infinite;' : ''}">${getShapeHtml(movilShape, 14, effectiveColor)}</div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, []);
+  }, [movilShape, getShapeHtml]);
 
   // �🚀 OPTIMIZACIÓN: Iconos con cache
   const createPedidoIcon = useCallback(() => {
@@ -1414,57 +1449,57 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // 📦 Iconos COMPACTOS para pedidos (cuadrado pequeño con color de demora, sin emoji)
+  // 📦 Iconos COMPACTOS para pedidos (forma configurable con color de demora)
   const createPedidoIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
-    const cacheKey = `pedido-delay-compact-${info.label}`;
+    const cacheKey = `pedido-delay-compact-${info.label}-${pedidoShape}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="width:14px;height:14px;position:absolute;left:-7px;top:-7px;background:linear-gradient(135deg,${info.color} 0%,${info.lightColor} 100%);border:1.5px solid white;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`,
+      html: getShapeHtml(pedidoShape, 14, info.color, info.lightColor),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, []);
+  }, [pedidoShape, getShapeHtml]);
 
-  // 📦 Iconos MINI para pedidos (punto mínimo con color de demora)
+  // 📦 Iconos MINI para pedidos (forma configurable mínima)
   const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
-    const cacheKey = `pedido-delay-mini-${info.label}`;
+    const cacheKey = `pedido-delay-mini-${info.label}-${pedidoShape}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="width:10px;height:10px;position:absolute;left:-5px;top:-5px;background:${info.color};border:1px solid white;border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,0.3);cursor:pointer;"></div>`,
+      html: getShapeHtml(pedidoShape, 10, info.color),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, []);
+  }, [pedidoShape, getShapeHtml]);
 
-  // 🔧 Iconos COMPACTOS para services (triángulo para diferenciar de pedidos)
+  // 🔧 Iconos COMPACTOS para services (forma configurable)
   const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
-    const cacheKey = `service-delay-compact-${info.label}`;
+    const cacheKey = `service-delay-compact-${info.label}-${serviceShape}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="width:0;height:0;position:absolute;left:-8px;top:-7px;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:14px solid ${info.color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"><div style="position:absolute;top:2px;left:-5px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid ${info.lightColor};"></div></div>`,
-      iconSize: [16, 14],
-      iconAnchor: [8, 7],
+      html: getShapeHtml(serviceShape, 14, info.color, info.lightColor),
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
     }));
-  }, []);
+  }, [serviceShape, getShapeHtml]);
 
-  // 🔧 Iconos MINI para services (triángulo pequeño)
+  // 🔧 Iconos MINI para services (forma configurable mínima)
   const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
-    const cacheKey = `service-delay-mini-${info.label}`;
+    const cacheKey = `service-delay-mini-${info.label}-${serviceShape}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="width:0;height:0;position:absolute;left:-5px;top:-5px;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid ${info.color};filter:drop-shadow(0 1px 1px rgba(0,0,0,0.3));cursor:pointer;"></div>`,
+      html: getShapeHtml(serviceShape, 10, info.color),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, []);
+  }, [serviceShape, getShapeHtml]);
 
   // 🚀 Funciones selectoras de icono por estilo de pedido
   const getPedidoIcon = useCallback((fchHoraMaxEntComp: string | null) => {
