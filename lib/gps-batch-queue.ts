@@ -23,6 +23,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { gpsLog } from '@/lib/debug-config';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -83,9 +84,9 @@ class GPSBatchQueue {
     process.on('SIGINT', () => this.forceFlush());
     process.on('SIGTERM', () => this.forceFlush());
     
-    console.log('🔄 GPS Batch Queue iniciado');
-    console.log(`   - Batch size: ${this.BATCH_SIZE} registros`);
-    console.log(`   - Flush interval: ${this.FLUSH_INTERVAL}ms`);
+    gpsLog('🔄 GPS Batch Queue iniciado');
+    gpsLog(`   - Batch size: ${this.BATCH_SIZE} registros`);
+    gpsLog(`   - Flush interval: ${this.FLUSH_INTERVAL}ms`);
   }
 
   /**
@@ -94,11 +95,11 @@ class GPSBatchQueue {
   async add(record: GPSRecord): Promise<void> {
     this.queue.push(record);
     
-    console.log(`📦 GPS agregado a cola (${this.queue.length}/${this.BATCH_SIZE})`);
+    gpsLog(`📦 GPS agregado a cola (${this.queue.length}/${this.BATCH_SIZE})`);
     
     // Si alcanzamos el tamaño del batch, flush inmediato
     if (this.queue.length >= this.BATCH_SIZE) {
-      console.log(`🚀 Batch size alcanzado (${this.BATCH_SIZE}), flush inmediato`);
+      gpsLog(`🚀 Batch size alcanzado (${this.BATCH_SIZE}), flush inmediato`);
       await this.flush();
     }
   }
@@ -109,11 +110,11 @@ class GPSBatchQueue {
   async addBatch(records: GPSRecord[]): Promise<void> {
     this.queue.push(...records);
     
-    console.log(`📦 ${records.length} GPS agregados a cola (${this.queue.length}/${this.BATCH_SIZE})`);
+    gpsLog(`📦 ${records.length} GPS agregados a cola (${this.queue.length}/${this.BATCH_SIZE})`);
     
     // Si alcanzamos el tamaño del batch, flush inmediato
     if (this.queue.length >= this.BATCH_SIZE) {
-      console.log(`🚀 Batch size alcanzado (${this.BATCH_SIZE}), flush inmediato`);
+      gpsLog(`🚀 Batch size alcanzado (${this.BATCH_SIZE}), flush inmediato`);
       await this.flush();
     }
   }
@@ -133,11 +134,11 @@ class GPSBatchQueue {
     const batch = [...this.queue];
     this.queue = [];
     
-    console.log(`\n${'═'.repeat(80)}`);
-    console.log(`🔄 INICIANDO FLUSH DE GPS BATCH`);
-    console.log(`${'═'.repeat(80)}`);
-    console.log(`📊 Registros a insertar: ${batch.length}`);
-    console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
+    gpsLog(`\n${'═'.repeat(80)}`);
+    gpsLog(`🔄 INICIANDO FLUSH DE GPS BATCH`);
+    gpsLog(`${'═'.repeat(80)}`);
+    gpsLog(`📊 Registros a insertar: ${batch.length}`);
+    gpsLog(`⏰ Timestamp: ${new Date().toISOString()}`);
 
     let attempt = 0;
     let success = false;
@@ -146,7 +147,7 @@ class GPSBatchQueue {
       attempt++;
       
       try {
-        console.log(`\n🔧 Intento ${attempt}/${this.MAX_RETRIES}`);
+        gpsLog(`\n🔧 Intento ${attempt}/${this.MAX_RETRIES}`);
         
         const startTime = Date.now();
         
@@ -163,11 +164,11 @@ class GPSBatchQueue {
 
         success = true;
         
-        console.log(`✅ Batch insertado exitosamente`);
-        console.log(`   - Registros: ${batch.length}`);
-        console.log(`   - Duración: ${duration}ms`);
-        console.log(`   - Velocidad: ${(batch.length / (duration / 1000)).toFixed(2)} reg/s`);
-        console.log(`${'═'.repeat(80)}\n`);
+        gpsLog(`✅ Batch insertado exitosamente`);
+        gpsLog(`   - Registros: ${batch.length}`);
+        gpsLog(`   - Duración: ${duration}ms`);
+        gpsLog(`   - Velocidad: ${(batch.length / (duration / 1000)).toFixed(2)} reg/s`);
+        gpsLog(`${'═'.repeat(80)}\n`);
 
       } catch (error: any) {
         console.error(`❌ Error en intento ${attempt}/${this.MAX_RETRIES}:`);
@@ -191,10 +192,10 @@ class GPSBatchQueue {
           // Intentar crear los móviles faltantes
           const missingMoviles = await this.createMissingMoviles(batch);
           if (missingMoviles.length > 0) {
-            console.log(`   ✅ Creados ${missingMoviles.length} móviles nuevos`);
+            gpsLog(`   ✅ Creados ${missingMoviles.length} móviles nuevos`);
             // Forzar un reintento adicional después de crear los móviles
             if (attempt === this.MAX_RETRIES) {
-              console.log(`   🔄 Permitiendo un reintento adicional después de crear móviles`);
+              gpsLog(`   🔄 Permitiendo un reintento adicional después de crear móviles`);
               attempt--; // Decrementar para permitir un reintento más
             }
           }
@@ -202,7 +203,7 @@ class GPSBatchQueue {
 
         if (attempt < this.MAX_RETRIES) {
           const delay = this.RETRY_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
-          console.log(`⏳ Esperando ${delay}ms antes de reintentar...`);
+          gpsLog(`⏳ Esperando ${delay}ms antes de reintentar...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           console.error(`💥 BATCH FALLIDO después de ${this.MAX_RETRIES} intentos`);
@@ -223,7 +224,7 @@ class GPSBatchQueue {
    */
   async forceFlush(): Promise<void> {
     if (this.queue.length > 0) {
-      console.log(`\n🚨 Force flush: ${this.queue.length} registros pendientes`);
+      gpsLog(`\n🚨 Force flush: ${this.queue.length} registros pendientes`);
       await this.flush();
     }
   }
@@ -234,7 +235,7 @@ class GPSBatchQueue {
   private startFlushTimer(): void {
     this.flushTimer = setInterval(() => {
       if (this.queue.length > 0) {
-        console.log(`⏰ Flush automático por timeout (${this.queue.length} registros)`);
+        gpsLog(`⏰ Flush automático por timeout (${this.queue.length} registros)`);
         this.flush();
       }
     }, this.FLUSH_INTERVAL);
@@ -259,7 +260,7 @@ class GPSBatchQueue {
     try {
       // Obtener IDs únicos de móviles en el batch
       const movilIds = [...new Set(batch.map(record => record.movil_id))];
-      console.log(`🔍 Verificando ${movilIds.length} móviles únicos...`);
+      gpsLog(`🔍 Verificando ${movilIds.length} móviles únicos...`);
       
       // Verificar cuáles NO existen en Supabase
       const { data: existingMoviles } = await supabase
@@ -271,19 +272,19 @@ class GPSBatchQueue {
       const missingIds = movilIds.filter(id => !existingIds.has(id));
       
       if (missingIds.length === 0) {
-        console.log(`   ✅ Todos los móviles ya existen`);
+        gpsLog(`   ✅ Todos los móviles ya existen`);
         return [];
       }
       
-      console.log(`   ⚠️ Móviles faltantes: ${missingIds.join(', ')}`);
-      console.log(`   🔄 Creando móviles vía endpoint de importación...`);
+      gpsLog(`   ⚠️ Móviles faltantes: ${missingIds.join(', ')}`);
+      gpsLog(`   🔄 Creando móviles vía endpoint de importación...`);
       
       // Crear cada móvil faltante usando el endpoint interno
       const createdMoviles: string[] = [];
       
       for (const movilId of missingIds) {
         try {
-          console.log(`   📤 Creando móvil ${movilId}...`);
+          gpsLog(`   📤 Creando móvil ${movilId}...`);
           
           // Llamar al endpoint interno de importación
           const response = await fetch('http://localhost:3002/api/import/moviles', {
@@ -307,7 +308,7 @@ class GPSBatchQueue {
           }
           
           const result = await response.json();
-          console.log(`   ✅ Móvil ${movilId} creado:`, result);
+          gpsLog(`   ✅ Móvil ${movilId} creado:`, result);
           
           // Esperar un momento para que se propague a Supabase
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -320,7 +321,7 @@ class GPSBatchQueue {
             .single();
           
           if (verifyMovil) {
-            console.log(`   ✅ Móvil ${movilId} verificado en Supabase`);
+            gpsLog(`   ✅ Móvil ${movilId} verificado en Supabase`);
             createdMoviles.push(movilId);
           } else {
             console.error(`   ⚠️ Móvil ${movilId} no encontrado en Supabase después de crear`);
@@ -332,7 +333,7 @@ class GPSBatchQueue {
       }
       
       if (createdMoviles.length > 0) {
-        console.log(`   ✅ Total móviles creados y verificados: ${createdMoviles.join(', ')}`);
+        gpsLog(`   ✅ Total móviles creados y verificados: ${createdMoviles.join(', ')}`);
       }
       
       return createdMoviles;
@@ -367,8 +368,8 @@ class GPSBatchQueue {
       
       await writeFile(filepath, JSON.stringify(data, null, 2));
       
-      console.log(`💾 Batch guardado en: ${filepath}`);
-      console.log(`   - Para recuperar: Importar manualmente a Supabase`);
+      gpsLog(`💾 Batch guardado en: ${filepath}`);
+      gpsLog(`   - Para recuperar: Importar manualmente a Supabase`);
     } catch (error: any) {
       console.error(`❌ Error al guardar batch fallido:`, error.message);
     }

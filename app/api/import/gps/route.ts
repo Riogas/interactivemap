@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getGPSQueue } from '@/lib/gps-batch-queue';
+import { gpsLog } from '@/lib/debug-config';
 
 /**
  * Transforma campos del body a formato de base de datos
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log(`✅ Autenticación exitosa (${hasApiKey ? 'API Key' : 'Token'})`);
+    gpsLog(`✅ Autenticación exitosa (${hasApiKey ? 'API Key' : 'Token'})`);
     
     // Continuar con la lógica normal
 
@@ -133,7 +134,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`� Agregando ${gpsArray.length} registro(s) GPS a la cola de batching...`);
+    gpsLog(`📡 Agregando ${gpsArray.length} registro(s) GPS a la cola de batching...`);
 
     // Transformar campos a formato Supabase
     const transformedGps = gpsArray.map(transformGpsToSupabase);
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
     await gpsQueue.addBatch(transformedGps as any);
 
     // Responder inmediatamente (la cola se encarga de insertar en lotes)
-    console.log(`✅ ${transformedGps.length} registros GPS encolados para procesamiento`);
+    gpsLog(`✅ ${transformedGps.length} registros GPS encolados para procesamiento`);
     
     return NextResponse.json({
       success: true,
