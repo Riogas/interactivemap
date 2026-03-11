@@ -4,41 +4,67 @@ import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
  * Mapea un item del body de Genexus (PascalCase) a las columnas de la tabla moviles_zonas.
- * Body GX: { Movil, EscenarioId, TipoDeZona, TipoDeServicio, Zona, PrioridadOTransito }
+ *
+ * Soporta DOS formatos de GX:
+ *
+ * Formato A (legacy, un móvil por item):
+ *   { Movil: 330, EscenarioId: 1000, TipoDeZona: "...", TipoDeServicio: "GAS", Zona: "10", PrioridadOTransito: 0 }
+ *
+ * Formato B (nuevo, array de móviles por item):
+ *   { Moviles: [304, 305], EscenarioId: 1000, TipoDeZona: "Distribucion", TipoDeServicio: "URGENTE", Zona: "3", PrioridadOTransito: 1 }
+ *
  * Tabla:   { movil_id, escenario_id, tipo_de_zona, tipo_de_servicio, zona_id, prioridad_o_transito, activa }
  *
- * Si el item ya viene con snake_case (movil_id, zona_id, etc.) se usa directo.
+ * Esta función devuelve un ARRAY de filas (1 por móvil) para soportar el formato B.
  */
-function mapGxItem(item: any): Record<string, any> {
-  // Detectar si viene en formato Genexus (PascalCase) o ya en snake_case
-  if ('Movil' in item || 'Zona' in item) {
-    return {
-      movil_id: String(item.Movil ?? item.movil_id ?? ''),
-      zona_id: parseInt(String(item.Zona ?? item.zona_id ?? '0'), 10),
-      escenario_id: parseInt(String(item.EscenarioId ?? item.escenario_id ?? '1000'), 10),
-      tipo_de_zona: (item.TipoDeZona ?? item.tipo_de_zona ?? '').trim(),
-      tipo_de_servicio: (item.TipoDeServicio ?? item.tipo_de_servicio ?? '').trim().toUpperCase(),
-      prioridad_o_transito: parseInt(String(item.PrioridadOTransito ?? item.prioridad_o_transito ?? '0'), 10),
-      activa: true,
-    };
+function mapGxItem(item: any): Record<string, any>[] {
+  // Extraer datos comunes de la zona
+  const zona_id = parseInt(String(item.Zona ?? item.zona_id ?? '0'), 10);
+  const escenario_id = parseInt(String(item.EscenarioId ?? item.escenario_id ?? '1000'), 10);
+  const tipo_de_zona = (item.TipoDeZona ?? item.tipo_de_zona ?? '').trim();
+  const tipo_de_servicio = (item.TipoDeServicio ?? item.tipo_de_servicio ?? '').trim().toUpperCase();
+  const prioridad_o_transito = parseInt(String(item.PrioridadOTransito ?? item.prioridad_o_transito ?? '0'), 10);
+  const activa = item.activa !== undefined ? item.activa : true;
+
+  // Determinar los móviles: puede ser Moviles (array), Movil (solo uno), o movil_id (snake_case)
+  let movilIds: string[] = [];
+
+  if (Array.isArray(item.Moviles) && item.Moviles.length > 0) {
+    // Formato B: array de móviles
+    movilIds = item.Moviles.map((m: any) => String(m));
+  } else if (item.Movil !== undefined) {
+    // Formato A: un solo móvil
+    movilIds = [String(item.Movil)];
+  } else if (item.movil_id !== undefined) {
+    // snake_case
+    movilIds = [String(item.movil_id)];
   }
-  // Ya viene en snake_case — pasar directo con defaults
-  return {
-    movil_id: String(item.movil_id ?? ''),
-    zona_id: parseInt(String(item.zona_id ?? '0'), 10),
-    escenario_id: parseInt(String(item.escenario_id ?? '1000'), 10),
-    tipo_de_zona: (item.tipo_de_zona ?? '').trim(),
-    tipo_de_servicio: (item.tipo_de_servicio ?? '').trim().toUpperCase(),
-    prioridad_o_transito: parseInt(String(item.prioridad_o_transito ?? '0'), 10),
-    activa: item.activa !== undefined ? item.activa : true,
-  };
+
+  // Generar una fila por cada móvil
+  return movilIds.map(movil_id => ({
+    movil_id,
+    zona_id,
+    escenario_id,
+    tipo_de_zona,
+    tipo_de_servicio,
+    prioridad_o_transito,
+    activa,
+  }));
 }
 
 /**
  * POST /api/import/movZonaServicio
  * Importar asignaciones móvil-zona desde Genexus.
  *
- * Body esperado de GX:
+ * Body esperado (formato nuevo con array de Moviles):
+ * {
+ *   "MovZonas": [
+ *     { "EscenarioId": 1000, "TipoDeZona": "Distribucion", "TipoDeServicio": "URGENTE", "Zona": "3", "PrioridadOTransito": 1, "Moviles": [304, 305] },
+ *     ...
+ *   ]
+ * }
+ *
+ * Formato legacy (un Movil por item):
  * {
  *   "MovZonas": [
  *     { "Movil": 330, "EscenarioId": 1000, "TipoDeZona": "...", "TipoDeServicio": "GAS", "Zona": "10", "PrioridadOTransito": 0 },
@@ -46,11 +72,12 @@ function mapGxItem(item: any): Record<string, any> {
  *   ]
  * }
  *
- * También acepta el formato legacy: { "asignaciones": [...] } o un array directo.
+ * También acepta: { "asignaciones": [...] } o un array directo.
  *
  * Comportamiento: REEMPLAZA todas las asignaciones del escenario recibido.
  * 1. Borra todas las filas del escenario_id recibido.
- * 2. Inserta las nuevas filas.
+ * 2. Expande items con Moviles[] en filas individuales (1 fila por móvil).
+ * 3. Inserta las nuevas filas.
  * Esto asegura consistencia con el estado completo que envía Genexus.
  */
 export async function POST(request: NextRequest) {
@@ -89,8 +116,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Mapear todos los items al formato de la tabla
-    const items = rawItems.map(mapGxItem);
+    // Mapear todos los items al formato de la tabla (flatMap porque un item con Moviles[] genera múltiples filas)
+    const items = rawItems.flatMap(mapGxItem);
 
     // 🔍 DEBUG: Mostrar resultado del mapeo
     if (items.length > 0) {
@@ -190,7 +217,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const items = rawItems.map(mapGxItem);
+    const items = rawItems.flatMap(mapGxItem);
 
     console.log('🔄 Upsert items mapeados:', items.length);
     if (items.length > 0) console.log('🔄 Primer item mapeado:', JSON.stringify(items[0]));
