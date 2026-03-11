@@ -218,3 +218,31 @@
 .moviles-count-badge.count-zero {
   background: rgba(148, 163, 184, 0.85);
 }
+
+/* ============================================================
+ * 🏘️ DistribucionZonasLayer — Etiquetas de zona (distribución)
+ * ============================================================ */
+
+.distribucion-label {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.distribucion-label-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.distribucion-label-zona {
+  background: none;
+  color: rgba(30, 41, 59, 0.7);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0;
+  white-space: nowrap;
+  line-height: 1.3;
+  text-shadow: -1px -1px 0 rgba(255,255,255,0.7), 1px -1px 0 rgba(255,255,255,0.7), -1px 1px 0 rgba(255,255,255,0.7), 1px 1px 0 rgba(255,255,255,0.7);
+}

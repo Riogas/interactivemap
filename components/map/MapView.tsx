@@ -18,6 +18,7 @@ import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
+import DistribucionZonasLayer from './DistribucionZonasLayer';
 import MovilesZonasLayer from './MovilesZonasLayer';
 import dynamic from 'next/dynamic';
 import './DataViewControl.css';
@@ -1768,6 +1769,11 @@ const MapView = memo(function MapView({
 
         {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}
         {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
+
+        {/* 🏘️ Capa de Distribución (polígonos con color de tabla + identificador de zona) */}
+        {dataViewMode === 'distribucion' && (allZonas.length > 0 || zonas.length > 0) && (
+          <DistribucionZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} />
+        )}
 
         {/* ⏱️ Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (

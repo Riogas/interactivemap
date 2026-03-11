@@ -97,16 +97,16 @@ function DashboardContent() {
   const [zonasData, setZonasData] = useState<any[]>([]);
 
   // 📊 Estado para vista de datos del mapa (Normal / Demoras / Móviles en Zonas)
-  const [dataViewMode, setDataViewMode] = useState<'normal' | 'demoras' | 'moviles-zonas'>('normal');
+  const [dataViewMode, setDataViewMode] = useState<'normal' | 'distribucion' | 'demoras' | 'moviles-zonas'>('normal');
   const [allZonasData, setAllZonasData] = useState<any[]>([]);
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
   const [movilesZonasCount, setMovilesZonasCount] = useState<Map<number, number>>(new Map());
 
   // Cuando se cambia de vista de datos
-  const handleDataViewChange = useCallback((mode: 'normal' | 'demoras' | 'moviles-zonas') => {
+  const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas') => {
     setDataViewMode(mode);
     if (mode !== 'normal') {
-      setShowZonas(true); // Auto-activar zonas para demoras/moviles-zonas
+      setShowZonas(true); // Auto-activar zonas para distribucion/demoras/moviles-zonas
     } else {
       setShowZonas(false); // Normal: quitar zonas del mapa
     }
