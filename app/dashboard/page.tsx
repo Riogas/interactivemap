@@ -103,6 +103,16 @@ function DashboardContent() {
   const servicesHidden = !preferences.servicesVisible;
   const setServicesHidden = useCallback((hidden: boolean) => updatePreference('servicesVisible', !hidden), [updatePreference]);
   
+  // Estado para ocultar/mostrar POIs y categorías de POIs (persistido en preferencias)
+  const poisHidden = !preferences.poisVisible;
+  const setPoisHidden = useCallback((hidden: boolean) => updatePreference('poisVisible', !hidden), [updatePreference]);
+  const hiddenPoiCategories = useMemo(() => new Set(preferences.hiddenPoiCategories || []), [preferences.hiddenPoiCategories]);
+  const togglePoiCategory = useCallback((category: string) => {
+    const current = preferences.hiddenPoiCategories || [];
+    const next = current.includes(category) ? current.filter((c: string) => c !== category) : [...current, category];
+    updatePreference('hiddenPoiCategories', next);
+  }, [preferences.hiddenPoiCategories, updatePreference]);
+  
   // Estado para expandir/colapsar botones de acción rápida (FAB)
   const [isActionsExpanded, setIsActionsExpanded] = useState(false);
   
@@ -1762,6 +1772,10 @@ function DashboardContent() {
                   onTogglePedidosHidden={() => setPedidosHidden(!pedidosHidden)}
                   servicesHidden={servicesHidden}
                   onToggleServicesHidden={() => setServicesHidden(!servicesHidden)}
+                  poisHidden={poisHidden}
+                  onTogglePoisHidden={() => setPoisHidden(!poisHidden)}
+                  hiddenPoiCategories={hiddenPoiCategories}
+                  onTogglePoiCategory={togglePoiCategory}
                 />
               </div>
             </motion.div>
@@ -1858,6 +1872,8 @@ function DashboardContent() {
                 allZonas={allZonasData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
                 reloadMarkersTrigger={reloadMarkersTrigger}
+                poisHidden={poisHidden}
+                hiddenPoiCategories={hiddenPoiCategories}
               />
             </motion.div>
           </>

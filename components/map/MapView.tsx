@@ -89,6 +89,8 @@ interface MapViewProps {
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
+  poisHidden?: boolean; // Ocultar todos los POIs del mapa
+  hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
 }
 
 function MapUpdater({ 
@@ -426,6 +428,8 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.movilesZonasCount?.size === next.movilesZonasCount?.size &&
     prev.showDemoraLabels === next.showDemoraLabels &&
     prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
+    prev.poisHidden === next.poisHidden &&
+    prev.hiddenPoiCategories?.size === next.hiddenPoiCategories?.size &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -479,6 +483,8 @@ const MapView = memo(function MapView({
   allZonas = [],
   showDemoraLabels = false,
   reloadMarkersTrigger = 0,
+  poisHidden = false,
+  hiddenPoiCategories = new Set(),
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2540,24 +2546,33 @@ const MapView = memo(function MapView({
           }}
         />
 
-        {/* Renderizar marcadores personalizados */}
-        {customMarkers.filter(m => m.visible).map((marker) => {
-          // Crear icono personalizado con emoji
+        {/* Renderizar marcadores personalizados (POIs) */}
+        {!poisHidden && customMarkers.filter(m => {
+          if (!m.visible) return false;
+          // Extraer categoría del prefijo [Label] en observacion
+          if (hiddenPoiCategories.size > 0) {
+            const catMatch = m.observacion?.match(/^\[([^\]]+)\]/);
+            const cat = catMatch ? catMatch[1] : '';
+            if (cat && hiddenPoiCategories.has(cat)) return false;
+          }
+          return true;
+        }).map((marker) => {
+          // Crear icono mini con emoji (16x16)
           const customIcon = L.divIcon({
             html: `
               <div style="
-                font-size: 32px;
+                font-size: 14px;
                 text-align: center;
                 line-height: 1;
-                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+                filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
               ">
                 ${marker.icono}
               </div>
             `,
             className: 'custom-marker-icon',
-            iconSize: [32, 32],
-            iconAnchor: [16, 32],
-            popupAnchor: [0, -32],
+            iconSize: [16, 16],
+            iconAnchor: [8, 16],
+            popupAnchor: [0, -16],
           });
 
           return (

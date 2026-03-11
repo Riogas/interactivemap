@@ -31,6 +31,10 @@ interface MovilSelectorProps {
   onTogglePedidosHidden?: () => void; // Toggle visibilidad de pedidos en el mapa
   servicesHidden?: boolean; // Si los indicadores de services están ocultos en el mapa
   onToggleServicesHidden?: () => void; // Toggle visibilidad de services en el mapa
+  poisHidden?: boolean; // Si los POIs están ocultos en el mapa
+  onTogglePoisHidden?: () => void; // Toggle visibilidad global de POIs
+  hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
+  onTogglePoiCategory?: (category: string) => void; // Toggle visibilidad de una categoría de POI
 }
 
 // Definir las categorías del árbol
@@ -64,6 +68,10 @@ export default function MovilSelector({
   onTogglePedidosHidden,
   servicesHidden = false,
   onToggleServicesHidden,
+  poisHidden = false,
+  onTogglePoisHidden,
+  hiddenPoiCategories = new Set(),
+  onTogglePoiCategory,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -78,6 +86,39 @@ export default function MovilSelector({
   const [servicesSearch, setServicesSearch] = useState('');
   const [servicesFinalizadosSearch, setServicesFinalizadosSearch] = useState('');
   const [poisSearch, setPoisSearch] = useState('');
+
+  // Estado para sub-categorías expandidas dentro de POIs
+  const [expandedPoiCategories, setExpandedPoiCategories] = useState<Set<string>>(new Set());
+
+  // Agrupar POIs por categoría extraída del prefijo [Label] en observacion
+  const poiByCategory = useMemo(() => {
+    const groups: Record<string, { label: string; icono: string; items: CustomMarker[] }> = {};
+    const uncategorized: CustomMarker[] = [];
+    for (const poi of puntosInteres) {
+      const match = poi.observacion?.match(/^\[([^\]]+)\]/);
+      if (match) {
+        const cat = match[1];
+        if (!groups[cat]) groups[cat] = { label: cat, icono: poi.icono, items: [] };
+        groups[cat].items.push(poi);
+      } else {
+        uncategorized.push(poi);
+      }
+    }
+    // Ordenar categorías alfabéticamente
+    const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+    if (uncategorized.length > 0) {
+      sorted.push(['_privados', { label: 'Mis Puntos', icono: '📌', items: uncategorized }]);
+    }
+    return sorted;
+  }, [puntosInteres]);
+
+  const togglePoiSubCategory = useCallback((cat: string) => {
+    setExpandedPoiCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  }, []);
   
   // Estados de filtros por categoría
   const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
@@ -833,6 +874,32 @@ export default function MovilSelector({
                     </span>
                   )}
 
+                  {/* Botón de ocultar/mostrar POIs en el mapa */}
+                  {category.key === 'pois' && onTogglePoisHidden && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onTogglePoisHidden(); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onTogglePoisHidden(); } }}
+                      className={clsx(
+                        'p-1 rounded-full transition-colors group',
+                        poisHidden ? 'hover:bg-green-100 bg-red-50' : 'hover:bg-blue-100'
+                      )}
+                      title={poisHidden ? 'Mostrar POIs en el mapa' : 'Ocultar POIs del mapa'}
+                    >
+                      {poisHidden ? (
+                        <svg className="w-4 h-4 text-red-400 group-hover:text-green-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </span>
+                  )}
+
                   {/* Botón de ayuda */}
                   {(category.key === 'moviles' || category.key === 'pedidos' || category.key === 'pedidosFinalizados' || category.key === 'services' || category.key === 'servicesFinalizados') && (
                     <span
@@ -1262,37 +1329,129 @@ export default function MovilSelector({
                               <p>📍 Sin puntos de interés</p>
                               <p className="text-xs mt-1">Crea uno haciendo clic en el botón verde del header</p>
                             </div>
-                          ) : (
+                          ) : poiByCategory.length === 0 ? (
+                            /* Sin categorías, mostrar lista plana */
                             puntosInteres.map((punto) => (
                               <motion.button
                                 key={punto.id}
                                 onClick={() => onPuntoInteresClick?.(punto.id)}
-                                className="w-full text-left px-3 py-2.5 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-400 dark:from-cyan-600 dark:to-blue-600 hover:from-cyan-500 hover:to-blue-500 dark:hover:from-cyan-700 dark:hover:to-blue-700 border border-cyan-300 dark:border-cyan-500 transition-all duration-200 group shadow-sm hover:shadow-md"
+                                className="w-full text-left px-3 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-400 dark:from-cyan-600 dark:to-blue-600 hover:from-cyan-500 hover:to-blue-500 border border-cyan-300 dark:border-cyan-500 transition-all duration-200 group shadow-sm hover:shadow-md"
                                 whileHover={{ scale: 1.01, x: 2 }}
                                 whileTap={{ scale: 0.98 }}
                               >
-                                <div className="flex items-center gap-2.5">
-                                  <div className="text-2xl bg-white dark:bg-gray-800 rounded-lg p-1.5 shadow-sm">
-                                    {punto.icono}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-semibold text-white drop-shadow-sm truncate">
-                                        {punto.nombre}
-                                      </span>
-                                    </div>
-                                    {punto.observacion && (
-                                      <p className="text-xs text-white/90 truncate mt-0.5">
-                                        {punto.observacion}
-                                      </p>
-                                    )}
-                                    <div className="flex items-center gap-2 text-xs text-white/80 mt-1">
-                                      <span>📍 {punto.latitud.toFixed(4)}, {punto.longitud.toFixed(4)}</span>
-                                    </div>
-                                  </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">{punto.icono}</span>
+                                  <span className="font-semibold text-white text-sm truncate">{punto.nombre}</span>
                                 </div>
                               </motion.button>
                             ))
+                          ) : (
+                            /* Categorías agrupadas con sub-collapsibles */
+                            poiByCategory.map(([catKey, group]) => {
+                              const isCatHidden = hiddenPoiCategories.has(group.label);
+                              const isCatExpanded = expandedPoiCategories.has(catKey);
+                              return (
+                                <div key={catKey} className="rounded-lg overflow-hidden border border-gray-200/50 dark:border-gray-600/50">
+                                  {/* Header de categoría */}
+                                  <button
+                                    onClick={() => togglePoiSubCategory(catKey)}
+                                    className={clsx(
+                                      'w-full flex items-center gap-2 px-2.5 py-1.5 text-left transition-colors',
+                                      isCatExpanded
+                                        ? 'bg-cyan-50 dark:bg-cyan-900/30'
+                                        : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    )}
+                                  >
+                                    {/* Flecha expandir/colapsar */}
+                                    <svg
+                                      className={clsx('w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0', isCatExpanded && 'rotate-90')}
+                                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                    <span className="text-sm flex-shrink-0">{group.icono}</span>
+                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate flex-1">
+                                      {group.label}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono flex-shrink-0">
+                                      {group.items.length}
+                                    </span>
+                                    {/* Eye toggle por categoría */}
+                                    {onTogglePoiCategory && (
+                                      <span
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={(e) => { e.stopPropagation(); onTogglePoiCategory(group.label); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onTogglePoiCategory(group.label); } }}
+                                        className={clsx(
+                                          'p-0.5 rounded-full transition-colors flex-shrink-0',
+                                          isCatHidden ? 'hover:bg-green-100 bg-red-50 dark:bg-red-900/30' : 'hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                                        )}
+                                        title={isCatHidden ? `Mostrar ${group.label}` : `Ocultar ${group.label}`}
+                                      >
+                                        {isCatHidden ? (
+                                          <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                                          </svg>
+                                        ) : (
+                                          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                          </svg>
+                                        )}
+                                      </span>
+                                    )}
+                                  </button>
+                                  {/* Lista de POIs de esta categoría */}
+                                  <AnimatePresence>
+                                    {isCatExpanded && (
+                                      <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="overflow-hidden"
+                                      >
+                                        <div className="p-1 space-y-0.5 max-h-48 overflow-y-auto">
+                                          {group.items.map((punto) => {
+                                            // Quitar prefijo [Category] de observacion para mostrar limpio
+                                            const cleanObs = punto.observacion?.replace(/^\[[^\]]+\]\s*/, '') || '';
+                                            return (
+                                              <motion.button
+                                                key={punto.id}
+                                                onClick={() => onPuntoInteresClick?.(punto.id)}
+                                                className={clsx(
+                                                  'w-full text-left px-2 py-1.5 rounded-md transition-all duration-150 text-xs',
+                                                  isCatHidden
+                                                    ? 'bg-gray-100 dark:bg-gray-700 opacity-50'
+                                                    : 'bg-white dark:bg-gray-700 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 border border-transparent hover:border-cyan-200 dark:hover:border-cyan-700'
+                                                )}
+                                                whileHover={{ x: 2 }}
+                                                whileTap={{ scale: 0.98 }}
+                                              >
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="text-sm flex-shrink-0">{punto.icono}</span>
+                                                  <div className="flex-1 min-w-0">
+                                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate block">
+                                                      {punto.nombre}
+                                                    </span>
+                                                    {cleanObs && (
+                                                      <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate block">
+                                                        {cleanObs}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </motion.button>
+                                            );
+                                          })}
+                                        </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       )}

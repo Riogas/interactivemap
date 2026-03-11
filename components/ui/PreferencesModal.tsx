@@ -35,6 +35,8 @@ export interface UserPreferences {
   movilesVisible: boolean; // true = mostrar capa de móviles
   pedidosVisible: boolean; // true = mostrar capa de pedidos
   servicesVisible: boolean; // true = mostrar capa de services
+  poisVisible: boolean; // true = mostrar capa de puntos de interés
+  hiddenPoiCategories: string[]; // categorías de POI ocultas (ej: ['Hospital/Sanatorio', 'Banco'])
   dataViewMode: DataViewMode; // Vista activa del mapa
 }
 
@@ -55,6 +57,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   movilesVisible: true,
   pedidosVisible: true,
   servicesVisible: true,
+  poisVisible: true,
+  hiddenPoiCategories: [],
   dataViewMode: 'normal',
 };
 
