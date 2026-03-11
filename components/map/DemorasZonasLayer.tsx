@@ -66,7 +66,7 @@ function getDemoraColor(minutos: number): string {
   if (minutos >= 46)  return '#fde047';   // amarillo claro
   if (minutos >= 31)  return '#16a34a';   // verde fuerte
   if (minutos >= 1)   return '#86efac';   // verde claro
-  return '#9ca3af';                       // gris (0 — se puntea aparte)
+  return '#ef4444';                       // rojo punteado (0 min)
 }
 
 function getDemoraOpacity(minutos: number): number {
@@ -76,7 +76,7 @@ function getDemoraOpacity(minutos: number): number {
   if (minutos >= 46)  return 0.45;
   if (minutos >= 31)  return 0.55;
   if (minutos >= 1)   return 0.45;
-  return 0.08; // casi transparente, el patrón SVG da el efecto visual
+  return 0.12; // bajo pero visible, el patrón SVG da el efecto punteado
 }
 
 /** Inyecta un SVG <pattern> en el mapa para el relleno punteado de zonas con 0 min */
@@ -106,14 +106,14 @@ function useDottedPattern() {
     const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('width', '8');
     rect.setAttribute('height', '8');
-    rect.setAttribute('fill', 'rgba(255,255,255,0.35)');
+    rect.setAttribute('fill', 'rgba(255,230,230,0.3)');
     pattern.appendChild(rect);
     // Punto
     const circle = document.createElementNS(SVG_NS, 'circle');
     circle.setAttribute('cx', '4');
     circle.setAttribute('cy', '4');
     circle.setAttribute('r', '1.2');
-    circle.setAttribute('fill', 'rgba(120,120,120,0.5)');
+    circle.setAttribute('fill', 'rgba(220,38,38,0.6)');
     pattern.appendChild(circle);
     defs.appendChild(pattern);
     svg.appendChild(defs);
@@ -221,11 +221,11 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
           <Polygon
             positions={positions}
             pathOptions={{
-              color: isDotted ? '#9ca3af' : fillColor,
+              color: isDotted ? '#dc2626' : fillColor,
               fillColor: fillColor,
               fillOpacity,
-              weight: isDotted ? 1.5 : 2,
-              opacity: isDotted ? 0.5 : 0.8,
+              weight: isDotted ? 2 : 2,
+              opacity: isDotted ? 0.7 : 0.8,
               dashArray: isDotted ? '4 4' : undefined,
               className: isDotted ? 'demora-zona-dotted' : undefined,
             }}
