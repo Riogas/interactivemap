@@ -18,6 +18,7 @@ import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonasAsignacionModal from '@/components/ui/ZonasAsignacionModal';
 import PedidosTableModal from '@/components/ui/PedidosTableModal';
+import ServicesTableModal from '@/components/ui/ServicesTableModal';
 import AppTour from '@/components/ui/AppTour';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
@@ -80,8 +81,17 @@ function DashboardContent() {
   // Estado para modal de vista extendida de pedidos
   const [isPedidosTableOpen, setIsPedidosTableOpen] = useState(false);
   
+  // Estado para modal de vista extendida de services
+  const [isServicesTableOpen, setIsServicesTableOpen] = useState(false);
+  
   // Estado para ocultar/mostrar indicadores de móviles en el mapa
   const [movilesHidden, setMovilesHidden] = useState(false);
+  
+  // Estado para ocultar/mostrar indicadores de pedidos en el mapa
+  const [pedidosHidden, setPedidosHidden] = useState(false);
+  
+  // Estado para ocultar/mostrar indicadores de services en el mapa
+  const [servicesHidden, setServicesHidden] = useState(false);
   
   // Estado para expandir/colapsar botones de acción rápida (FAB)
   const [isActionsExpanded, setIsActionsExpanded] = useState(false);
@@ -1611,6 +1621,15 @@ function DashboardContent() {
         onPedidoClick={handlePedidoClick}
       />
 
+      {/* Modal de Vista Extendida de Services */}
+      <ServicesTableModal
+        isOpen={isServicesTableOpen}
+        onClose={() => setIsServicesTableOpen(false)}
+        services={servicesCompletos}
+        moviles={movilesFiltered}
+        onServiceClick={handleServiceClick}
+      />
+
       {/* Modal de Asignación de Zonas */}
       <ZonasAsignacionModal
         isOpen={isZonasAsignacionOpen}
@@ -1702,8 +1721,13 @@ function DashboardContent() {
                   onPuntoInteresClick={handlePuntoInteresClick}
                   onFiltersChange={setMovilesFilters}
                   onOpenPedidosTable={() => setIsPedidosTableOpen(true)}
+                  onOpenServicesTable={() => setIsServicesTableOpen(true)}
                   movilesHidden={movilesHidden}
                   onToggleMovilesHidden={() => setMovilesHidden(h => !h)}
+                  pedidosHidden={pedidosHidden}
+                  onTogglePedidosHidden={() => setPedidosHidden(h => !h)}
+                  servicesHidden={servicesHidden}
+                  onToggleServicesHidden={() => setServicesHidden(h => !h)}
                 />
               </div>
             </motion.div>
@@ -1762,11 +1786,11 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={(selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5')).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
+                pedidos={pedidosHidden ? [] : (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5')).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
-                services={(selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud))}
+                services={servicesHidden ? [] : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud))}
                 allServices={servicesCompletos}
                 onServiceClick={handleServiceClick}
                 popupService={popupService}
