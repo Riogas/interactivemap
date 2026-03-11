@@ -35,7 +35,7 @@ function mapGxItem(item: any): Record<string, any> {
 }
 
 /**
- * POST /api/import/moviles-zonas
+ * POST /api/import/movZonaServicio
  * Importar asignaciones móvil-zona desde Genexus.
  *
  * Body esperado de GX:
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PUT /api/import/moviles-zonas
+ * PUT /api/import/movZonaServicio
  * Upsert asignaciones móvil-zona (insertar o actualizar por movil_id + zona_id).
  * Acepta tanto formato Genexus (MovZonas / PascalCase) como snake_case.
  */
@@ -188,7 +188,7 @@ export async function PUT(request: NextRequest) {
 }
 
 /**
- * DELETE /api/import/moviles-zonas
+ * DELETE /api/import/movZonaServicio
  * Eliminar asignaciones por movil_id, zona_id o ambos
  */
 export async function DELETE(request: NextRequest) {
