@@ -60,9 +60,27 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    // 🔍 DEBUG: Log completo de lo que llega
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📥 POST /api/import/movZonaServicio');
+    console.log('📅 Timestamp:', new Date().toISOString());
+    console.log('🔑 Headers:', JSON.stringify({
+      'content-type': request.headers.get('content-type'),
+      'x-api-key': request.headers.get('x-api-key') ? '***' : '(no key)',
+      'user-agent': request.headers.get('user-agent'),
+    }));
+    console.log('📦 Body crudo (keys):', Object.keys(body));
+    console.log('📦 Body completo:', JSON.stringify(body, null, 2).substring(0, 3000));
+
     // Aceptar body de Genexus (MovZonas), formato legacy (asignaciones), o array directo
     let rawItems = body.MovZonas || body.asignaciones || body;
     if (!Array.isArray(rawItems)) rawItems = [rawItems];
+
+    console.log(`📋 Items crudos recibidos: ${rawItems.length}`);
+    if (rawItems.length > 0) {
+      console.log('📋 Primer item crudo:', JSON.stringify(rawItems[0]));
+      if (rawItems.length > 1) console.log('📋 Último item crudo:', JSON.stringify(rawItems[rawItems.length - 1]));
+    }
 
     if (rawItems.length === 0) {
       return NextResponse.json(
@@ -73,6 +91,12 @@ export async function POST(request: NextRequest) {
 
     // Mapear todos los items al formato de la tabla
     const items = rawItems.map(mapGxItem);
+
+    // 🔍 DEBUG: Mostrar resultado del mapeo
+    if (items.length > 0) {
+      console.log('🔄 Primer item mapeado:', JSON.stringify(items[0]));
+      if (items.length > 1) console.log('🔄 Último item mapeado:', JSON.stringify(items[items.length - 1]));
+    }
 
     // Determinar escenario_ids involucrados para limpiar antes de insertar
     const escenarioIds = [...new Set(items.map((i: any) => i.escenario_id))];
@@ -113,6 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ ${totalInserted} asignaciones importadas (escenarios: ${escenarioIds.join(', ')})`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return NextResponse.json({
       success: true,
@@ -121,7 +146,9 @@ export async function POST(request: NextRequest) {
       escenarios: escenarioIds,
     });
   } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
+    console.error('❌ Error inesperado en POST /api/import/movZonaServicio:', error);
+    console.error('❌ Stack:', error.stack);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     return NextResponse.json(
       { error: 'Error interno del servidor', details: error.message },
       { status: 500 }
@@ -140,8 +167,21 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
+
+    // 🔍 DEBUG: Log completo de lo que llega
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📥 PUT /api/import/movZonaServicio');
+    console.log('📅 Timestamp:', new Date().toISOString());
+    console.log('📦 Body crudo (keys):', Object.keys(body));
+    console.log('📦 Body completo:', JSON.stringify(body, null, 2).substring(0, 3000));
+
     let rawItems = body.MovZonas || body.asignaciones || body;
     if (!Array.isArray(rawItems)) rawItems = [rawItems];
+
+    console.log(`📋 Items crudos recibidos: ${rawItems.length}`);
+    if (rawItems.length > 0) {
+      console.log('📋 Primer item crudo:', JSON.stringify(rawItems[0]));
+    }
 
     if (rawItems.length === 0) {
       return NextResponse.json(
@@ -151,6 +191,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const items = rawItems.map(mapGxItem);
+
+    console.log('🔄 Upsert items mapeados:', items.length);
+    if (items.length > 0) console.log('🔄 Primer item mapeado:', JSON.stringify(items[0]));
 
     console.log(`🔄 Upsert ${items.length} asignación(es) móvil-zona...`);
 
@@ -171,6 +214,7 @@ export async function PUT(request: NextRequest) {
     }
 
     console.log(`✅ ${data?.length || 0} asignaciones actualizadas`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return NextResponse.json({
       success: true,
@@ -179,7 +223,9 @@ export async function PUT(request: NextRequest) {
       data,
     });
   } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
+    console.error('❌ Error inesperado en PUT /api/import/movZonaServicio:', error);
+    console.error('❌ Stack:', error.stack);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     return NextResponse.json(
       { error: 'Error interno del servidor', details: error.message },
       { status: 500 }
@@ -198,6 +244,10 @@ export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
     const { movil_id, zona_id, ids } = body;
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📥 DELETE /api/import/movZonaServicio');
+    console.log('📦 Body:', JSON.stringify(body));
 
     const supabase = getServerSupabaseClient();
     let query = (supabase as any).from('moviles_zonas').delete();
