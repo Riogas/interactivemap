@@ -194,15 +194,27 @@ async function queryOverpass(category: OsmCategory, bbox: [number, number, numbe
   const bboxStr = bbox.join(',');
   const query = category.query(bboxStr);
 
-  const response = await fetch(OVERPASS_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `data=${encodeURIComponent(query)}`,
-    signal: AbortSignal.timeout(60000),
-  });
+  // Retry con backoff para manejar 429 (Too Many Requests)
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    response = await fetch(OVERPASS_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(60000),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
+    if (response.status === 429) {
+      const waitSecs = (attempt + 1) * 5; // 5s, 10s, 15s
+      console.warn(`  ⏳ Overpass 429 — esperando ${waitSecs}s antes de reintentar (intento ${attempt + 1}/3)`);
+      await new Promise(r => setTimeout(r, waitSecs * 1000));
+      continue;
+    }
+    break;
+  }
+
+  if (!response || !response.ok) {
+    throw new Error(`Overpass API error: ${response?.status} ${response?.statusText}`);
   }
 
   const data = await response.json();
@@ -247,9 +259,11 @@ async function queryOverpass(category: OsmCategory, bbox: [number, number, numbe
     if (tags.website) descParts.push(tags.website);
     if (tags.opening_hours) descParts.push(`Horario: ${tags.opening_hours}`);
     
-    const descripcion = descParts.length > 0
+    // Prefijo con categoría en la descripción (ya que la columna categoria puede no existir)
+    const descBase = descParts.length > 0
       ? descParts.join('. ')
-      : `${category.label} — importado desde OpenStreetMap`;
+      : `Importado desde OpenStreetMap`;
+    const descripcion = `[${category.label}] ${descBase}`;
 
     results.push({
       nombre: nombre.substring(0, 100), // Límite de la columna
@@ -342,8 +356,7 @@ export async function POST(request: NextRequest) {
             icono: poi.icono,
             latitud: poi.latitud,
             longitud: poi.longitud,
-            tipo: 'osm',
-            categoria: poi.categoria,
+            tipo: 'publico', // Usar 'publico' (compatible con constraint existente)
             visible: true,
             usuario_email,
           }));
@@ -368,9 +381,9 @@ export async function POST(request: NextRequest) {
         resultados.push({ categoria: cat.key, importados, existentes, errores });
         totalImportados += importados;
 
-        // Cortesía: esperar 1s entre categorías para no abusar de Overpass API
+        // Cortesía: esperar 3s entre categorías para no recibir 429 de Overpass API
         if (categoriasToImport.indexOf(cat) < categoriasToImport.length - 1) {
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 3000));
         }
 
       } catch (catError: any) {
@@ -398,8 +411,9 @@ export async function POST(request: NextRequest) {
 
 /**
  * DELETE /api/puntos-interes/import-osm
- * Elimina todos los POIs importados de OSM (tipo='osm') para un usuario
- * Query: ?usuario_email=xxx&categoria=riogas (categoria opcional, si no se pasa borra todos los osm)
+ * Elimina todos los POIs importados de OSM para un usuario.
+ * Identifica POIs de OSM por descripcion que empieza con "[" (prefijo de categoría).
+ * Query: ?usuario_email=xxx&categoria=Riogas (categoria opcional — valor es el label)
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -414,14 +428,20 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = getServerSupabaseClient();
+    // Identificar POIs importados de OSM por el prefijo [Categoría] en la descripción
     let query = (supabase as any)
       .from('puntos_interes')
       .delete()
       .eq('usuario_email', usuario_email)
-      .eq('tipo', 'osm');
+      .like('descripcion', '[%] %'); // Patrón: "[Algo] ..."
 
     if (categoria) {
-      query = query.eq('categoria', categoria);
+      // Filtrar por categoría específica: "[Hospital/Sanatorio] ..."
+      query = (supabase as any)
+        .from('puntos_interes')
+        .delete()
+        .eq('usuario_email', usuario_email)
+        .like('descripcion', `[${categoria}]%`);
     }
 
     const { data, error } = await query.select('id');
