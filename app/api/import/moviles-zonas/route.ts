@@ -3,8 +3,55 @@ import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
+ * Mapea un item del body de Genexus (PascalCase) a las columnas de la tabla moviles_zonas.
+ * Body GX: { Movil, EscenarioId, TipoDeZona, TipoDeServicio, Zona, PrioridadOTransito }
+ * Tabla:   { movil_id, escenario_id, tipo_de_zona, tipo_de_servicio, zona_id, prioridad_o_transito, activa }
+ *
+ * Si el item ya viene con snake_case (movil_id, zona_id, etc.) se usa directo.
+ */
+function mapGxItem(item: any): Record<string, any> {
+  // Detectar si viene en formato Genexus (PascalCase) o ya en snake_case
+  if ('Movil' in item || 'Zona' in item) {
+    return {
+      movil_id: String(item.Movil ?? item.movil_id ?? ''),
+      zona_id: parseInt(String(item.Zona ?? item.zona_id ?? '0'), 10),
+      escenario_id: parseInt(String(item.EscenarioId ?? item.escenario_id ?? '1000'), 10),
+      tipo_de_zona: (item.TipoDeZona ?? item.tipo_de_zona ?? '').trim(),
+      tipo_de_servicio: (item.TipoDeServicio ?? item.tipo_de_servicio ?? '').trim().toUpperCase(),
+      prioridad_o_transito: parseInt(String(item.PrioridadOTransito ?? item.prioridad_o_transito ?? '0'), 10),
+      activa: true,
+    };
+  }
+  // Ya viene en snake_case — pasar directo con defaults
+  return {
+    movil_id: String(item.movil_id ?? ''),
+    zona_id: parseInt(String(item.zona_id ?? '0'), 10),
+    escenario_id: parseInt(String(item.escenario_id ?? '1000'), 10),
+    tipo_de_zona: (item.tipo_de_zona ?? '').trim(),
+    tipo_de_servicio: (item.tipo_de_servicio ?? '').trim().toUpperCase(),
+    prioridad_o_transito: parseInt(String(item.prioridad_o_transito ?? '0'), 10),
+    activa: item.activa !== undefined ? item.activa : true,
+  };
+}
+
+/**
  * POST /api/import/moviles-zonas
- * Importar asignaciones móvil-zona (insert)
+ * Importar asignaciones móvil-zona desde Genexus.
+ *
+ * Body esperado de GX:
+ * {
+ *   "MovZonas": [
+ *     { "Movil": 330, "EscenarioId": 1000, "TipoDeZona": "...", "TipoDeServicio": "GAS", "Zona": "10", "PrioridadOTransito": 0 },
+ *     ...
+ *   ]
+ * }
+ *
+ * También acepta el formato legacy: { "asignaciones": [...] } o un array directo.
+ *
+ * Comportamiento: REEMPLAZA todas las asignaciones del escenario recibido.
+ * 1. Borra todas las filas del escenario_id recibido.
+ * 2. Inserta las nuevas filas.
+ * Esto asegura consistencia con el estado completo que envía Genexus.
  */
 export async function POST(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -12,43 +59,66 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    let { asignaciones } = body;
 
-    if (!asignaciones) {
-      asignaciones = body;
-    }
+    // Aceptar body de Genexus (MovZonas), formato legacy (asignaciones), o array directo
+    let rawItems = body.MovZonas || body.asignaciones || body;
+    if (!Array.isArray(rawItems)) rawItems = [rawItems];
 
-    const items = Array.isArray(asignaciones) ? asignaciones : [asignaciones];
-
-    if (items.length === 0) {
+    if (rawItems.length === 0) {
       return NextResponse.json(
         { error: 'Se requiere al menos una asignación móvil-zona' },
         { status: 400 }
       );
     }
 
-    console.log(`📦 Importando ${items.length} asignación(es) móvil-zona...`);
+    // Mapear todos los items al formato de la tabla
+    const items = rawItems.map(mapGxItem);
+
+    // Determinar escenario_ids involucrados para limpiar antes de insertar
+    const escenarioIds = [...new Set(items.map((i: any) => i.escenario_id))];
+
+    console.log(`📦 Importando ${items.length} asignación(es) móvil-zona para escenarios [${escenarioIds.join(', ')}]...`);
 
     const supabase = getServerSupabaseClient();
-    const { data, error } = await (supabase as any)
-      .from('moviles_zonas')
-      .insert(items)
-      .select();
 
-    if (error) {
-      console.error('❌ Error al importar moviles_zonas:', error);
-      return NextResponse.json(
-        { error: 'Error al importar asignaciones', details: error.message },
-        { status: 500 }
-      );
+    // 1) Borrar asignaciones anteriores de los escenarios recibidos
+    for (const escId of escenarioIds) {
+      const { error: delError } = await (supabase as any)
+        .from('moviles_zonas')
+        .delete()
+        .eq('escenario_id', escId);
+      if (delError) {
+        console.error(`❌ Error al limpiar escenario ${escId}:`, delError);
+      }
     }
 
-    console.log(`✅ ${data?.length || 0} asignaciones importadas`);
+    // 2) Insertar en lotes de 500 (límite seguro de Supabase)
+    const BATCH_SIZE = 500;
+    let totalInserted = 0;
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
+      const { data, error } = await (supabase as any)
+        .from('moviles_zonas')
+        .insert(batch)
+        .select();
+
+      if (error) {
+        console.error(`❌ Error al importar lote ${i / BATCH_SIZE + 1}:`, error);
+        return NextResponse.json(
+          { error: 'Error al importar asignaciones', details: error.message, inserted_so_far: totalInserted },
+          { status: 500 }
+        );
+      }
+      totalInserted += data?.length || 0;
+    }
+
+    console.log(`✅ ${totalInserted} asignaciones importadas (escenarios: ${escenarioIds.join(', ')})`);
 
     return NextResponse.json({
       success: true,
-      message: `${data?.length || 0} asignaciones importadas correctamente`,
-      data,
+      message: `${totalInserted} asignaciones importadas correctamente`,
+      count: totalInserted,
+      escenarios: escenarioIds,
     });
   } catch (error: any) {
     console.error('❌ Error inesperado:', error);
@@ -61,7 +131,8 @@ export async function POST(request: NextRequest) {
 
 /**
  * PUT /api/import/moviles-zonas
- * Upsert asignaciones móvil-zona (insertar o actualizar por movil_id + zona_id)
+ * Upsert asignaciones móvil-zona (insertar o actualizar por movil_id + zona_id).
+ * Acepta tanto formato Genexus (MovZonas / PascalCase) como snake_case.
  */
 export async function PUT(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -69,20 +140,17 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    let { asignaciones } = body;
+    let rawItems = body.MovZonas || body.asignaciones || body;
+    if (!Array.isArray(rawItems)) rawItems = [rawItems];
 
-    if (!asignaciones) {
-      asignaciones = body;
-    }
-
-    const items = Array.isArray(asignaciones) ? asignaciones : [asignaciones];
-
-    if (items.length === 0) {
+    if (rawItems.length === 0) {
       return NextResponse.json(
         { error: 'Se requiere al menos una asignación para actualizar' },
         { status: 400 }
       );
     }
+
+    const items = rawItems.map(mapGxItem);
 
     console.log(`🔄 Upsert ${items.length} asignación(es) móvil-zona...`);
 
@@ -107,6 +175,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `${data?.length || 0} asignaciones actualizadas correctamente`,
+      count: data?.length || 0,
       data,
     });
   } catch (error: any) {
