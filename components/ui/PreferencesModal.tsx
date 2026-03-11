@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '@/contexts/AuthContext';
 
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'star';
 
@@ -13,6 +14,8 @@ export const SHAPE_OPTIONS: { value: MarkerShape; label: string; svg: string }[]
   { value: 'hexagon', label: 'Hexágono', svg: '<polygon points="12,2 21,7 21,17 12,22 3,17 3,7" fill="currentColor" stroke="white" stroke-width="2"/>' },
   { value: 'star', label: 'Estrella', svg: '<polygon points="12,2 14.9,8.6 22,9.3 16.8,14 18.2,21 12,17.3 5.8,21 7.2,14 2,9.3 9.1,8.6" fill="currentColor" stroke="white" stroke-width="1.5"/>' },
 ];
+
+export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas';
 
 export interface UserPreferences {
   defaultMapLayer: 'streets' | 'satellite' | 'terrain' | 'cartodb' | 'dark' | 'light';
@@ -28,9 +31,14 @@ export interface UserPreferences {
   pedidoShape: MarkerShape; // Forma del marcador de pedidos (compact/mini)
   serviceShape: MarkerShape; // Forma del marcador de services (compact/mini)
   showDemoraLabels: boolean; // Mostrar etiquetas de demora (minutos) en mapa
+  // Campos de visibilidad y vista de datos (persisten en DB)
+  movilesVisible: boolean; // true = mostrar capa de móviles
+  pedidosVisible: boolean; // true = mostrar capa de pedidos
+  servicesVisible: boolean; // true = mostrar capa de services
+  dataViewMode: DataViewMode; // Vista activa del mapa
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = {
+export const DEFAULT_PREFERENCES: UserPreferences = {
   defaultMapLayer: 'streets',
   showActiveMovilesOnly: false,
   maxCoordinateDelayMinutes: 30,
@@ -44,6 +52,10 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   pedidoShape: 'square',
   serviceShape: 'triangle',
   showDemoraLabels: false, // Por defecto ocultas
+  movilesVisible: true,
+  pedidosVisible: true,
+  servicesVisible: true,
+  dataViewMode: 'normal',
 };
 
 interface PreferencesModalProps {
@@ -55,29 +67,12 @@ interface PreferencesModalProps {
 export default function PreferencesModal({ isOpen, onClose, onSave }: PreferencesModalProps) {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
 
-  // Cargar preferencias desde localStorage al montar
+  // Cargar preferencias desde localStorage al montar (cache local de lo que ya se cargó de DB)
   useEffect(() => {
     const saved = localStorage.getItem('userPreferences');
     if (saved) {
       try {
-        const savedPrefs = JSON.parse(saved);
-        // Asegurar que campos nuevos existen
-        if (savedPrefs.realtimeEnabled === undefined) {
-          savedPrefs.realtimeEnabled = DEFAULT_PREFERENCES.realtimeEnabled;
-        }
-        if (!savedPrefs.markerStyle) {
-          savedPrefs.markerStyle = DEFAULT_PREFERENCES.markerStyle;
-        }
-        if (savedPrefs.pedidosCluster === undefined) {
-          savedPrefs.pedidosCluster = DEFAULT_PREFERENCES.pedidosCluster;
-        }
-        if (!savedPrefs.pedidoMarkerStyle) {
-          savedPrefs.pedidoMarkerStyle = DEFAULT_PREFERENCES.pedidoMarkerStyle;
-        }
-        if (!savedPrefs.movilShape) savedPrefs.movilShape = DEFAULT_PREFERENCES.movilShape;
-        if (!savedPrefs.pedidoShape) savedPrefs.pedidoShape = DEFAULT_PREFERENCES.pedidoShape;
-        if (!savedPrefs.serviceShape) savedPrefs.serviceShape = DEFAULT_PREFERENCES.serviceShape;
-        setPreferences(savedPrefs);
+        setPreferences({ ...DEFAULT_PREFERENCES, ...JSON.parse(saved) });
       } catch (e) {
         console.error('Error al cargar preferencias:', e);
       }
@@ -554,42 +549,106 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
   );
 }
 
-// Hook para usar preferencias en cualquier componente
+// Hook para usar preferencias en cualquier componente — persiste en DB con debounce
 export function useUserPreferences() {
+  const { user } = useAuth();
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [loaded, setLoaded] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestPrefsRef = useRef<UserPreferences>(DEFAULT_PREFERENCES);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('userPreferences');
-    if (saved) {
-      try {
-        const savedPrefs = JSON.parse(saved);
-        // Asegurar que campos nuevos existen
-        if (savedPrefs.realtimeEnabled === undefined) {
-          savedPrefs.realtimeEnabled = DEFAULT_PREFERENCES.realtimeEnabled;
-        }
-        if (!savedPrefs.markerStyle) {
-          savedPrefs.markerStyle = DEFAULT_PREFERENCES.markerStyle;
-        }
-        if (savedPrefs.pedidosCluster === undefined) {
-          savedPrefs.pedidosCluster = DEFAULT_PREFERENCES.pedidosCluster;
-        }
-        if (!savedPrefs.pedidoMarkerStyle) {
-          savedPrefs.pedidoMarkerStyle = DEFAULT_PREFERENCES.pedidoMarkerStyle;
-        }
-        if (!savedPrefs.movilShape) savedPrefs.movilShape = DEFAULT_PREFERENCES.movilShape;
-        if (!savedPrefs.pedidoShape) savedPrefs.pedidoShape = DEFAULT_PREFERENCES.pedidoShape;
-        if (!savedPrefs.serviceShape) savedPrefs.serviceShape = DEFAULT_PREFERENCES.serviceShape;
-        setPreferences(savedPrefs);
-      } catch (e) {
-        console.error('Error al cargar preferencias:', e);
-      }
-    }
+  // Función auxiliar para mergear con defaults (en caso de campos nuevos)
+  const mergeWithDefaults = useCallback((saved: Partial<UserPreferences>): UserPreferences => {
+    return { ...DEFAULT_PREFERENCES, ...saved };
   }, []);
 
-  const updatePreferences = (newPreferences: UserPreferences) => {
-    setPreferences(newPreferences);
-    localStorage.setItem('userPreferences', JSON.stringify(newPreferences));
-  };
+  // Cargar preferencias: primero intenta DB, fallback a localStorage
+  useEffect(() => {
+    let cancelled = false;
 
-  return { preferences, updatePreferences };
+    async function loadPreferences() {
+      // Si tenemos user.id, intentar cargar de DB
+      if (user?.id) {
+        try {
+          const res = await fetch(`/api/user-preferences?user_id=${encodeURIComponent(user.id)}`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && json.data && !cancelled) {
+              const merged = mergeWithDefaults(json.data);
+              setPreferences(merged);
+              latestPrefsRef.current = merged;
+              // Sincronizar a localStorage como cache
+              localStorage.setItem('userPreferences', JSON.stringify(merged));
+              setLoaded(true);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ No se pudo cargar preferencias de DB, usando localStorage:', e);
+        }
+      }
+
+      // Fallback: localStorage
+      if (!cancelled) {
+        const saved = localStorage.getItem('userPreferences');
+        if (saved) {
+          try {
+            const merged = mergeWithDefaults(JSON.parse(saved));
+            setPreferences(merged);
+            latestPrefsRef.current = merged;
+          } catch (e) {
+            console.error('Error al cargar preferencias de localStorage:', e);
+          }
+        }
+        setLoaded(true);
+      }
+    }
+
+    loadPreferences();
+    return () => { cancelled = true; };
+  }, [user?.id, mergeWithDefaults]);
+
+  // Guardar en DB con debounce (500ms)
+  const saveToDb = useCallback((prefs: UserPreferences) => {
+    if (!user?.id) return;
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await fetch('/api/user-preferences', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id, preferences: prefs }),
+        });
+      } catch (e) {
+        console.warn('⚠️ No se pudo guardar preferencias en DB:', e);
+      }
+    }, 500);
+  }, [user?.id]);
+
+  // Actualizar preferencias: state + localStorage + DB
+  const updatePreferences = useCallback((newPreferences: UserPreferences) => {
+    setPreferences(newPreferences);
+    latestPrefsRef.current = newPreferences;
+    localStorage.setItem('userPreferences', JSON.stringify(newPreferences));
+    saveToDb(newPreferences);
+  }, [saveToDb]);
+
+  // Actualizar un solo campo sin reemplazar todo el objeto
+  const updatePreference = useCallback(<K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
+    const updated = { ...latestPrefsRef.current, [key]: value };
+    updatePreferences(updated);
+  }, [updatePreferences]);
+
+  // Limpiar timer al desmontar
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
+  return { preferences, updatePreferences, updatePreference, loaded };
 }

@@ -42,7 +42,7 @@ function DashboardContent() {
   const { latestPosition, latestMovil, isConnected } = useRealtime();
   
   // Hook de preferencias de usuario
-  const { preferences, updatePreferences } = useUserPreferences();
+  const { preferences, updatePreferences, updatePreference } = useUserPreferences();
   
   const [moviles, setMoviles] = useState<MovilData[]>([]);
   const [selectedMoviles, setSelectedMoviles] = useState<number[]>([]); // Array de móviles seleccionados
@@ -84,14 +84,17 @@ function DashboardContent() {
   // Estado para modal de vista extendida de services
   const [isServicesTableOpen, setIsServicesTableOpen] = useState(false);
   
-  // Estado para ocultar/mostrar indicadores de móviles en el mapa
-  const [movilesHidden, setMovilesHidden] = useState(false);
+  // Estado para ocultar/mostrar indicadores de móviles en el mapa (persistido en preferencias)
+  const movilesHidden = !preferences.movilesVisible;
+  const setMovilesHidden = useCallback((hidden: boolean) => updatePreference('movilesVisible', !hidden), [updatePreference]);
   
-  // Estado para ocultar/mostrar indicadores de pedidos en el mapa
-  const [pedidosHidden, setPedidosHidden] = useState(false);
+  // Estado para ocultar/mostrar indicadores de pedidos en el mapa (persistido en preferencias)
+  const pedidosHidden = !preferences.pedidosVisible;
+  const setPedidosHidden = useCallback((hidden: boolean) => updatePreference('pedidosVisible', !hidden), [updatePreference]);
   
-  // Estado para ocultar/mostrar indicadores de services en el mapa
-  const [servicesHidden, setServicesHidden] = useState(false);
+  // Estado para ocultar/mostrar indicadores de services en el mapa (persistido en preferencias)
+  const servicesHidden = !preferences.servicesVisible;
+  const setServicesHidden = useCallback((hidden: boolean) => updatePreference('servicesVisible', !hidden), [updatePreference]);
   
   // Estado para expandir/colapsar botones de acción rápida (FAB)
   const [isActionsExpanded, setIsActionsExpanded] = useState(false);
@@ -106,21 +109,28 @@ function DashboardContent() {
   const [showZonas, setShowZonas] = useState(false);
   const [zonasData, setZonasData] = useState<any[]>([]);
 
-  // 📊 Estado para vista de datos del mapa (Normal / Demoras / Móviles en Zonas)
-  const [dataViewMode, setDataViewMode] = useState<'normal' | 'distribucion' | 'demoras' | 'moviles-zonas'>('normal');
+  // 📊 Estado para vista de datos del mapa (Normal / Demoras / Móviles en Zonas) — persistido en preferencias
+  const dataViewMode = preferences.dataViewMode;
+
+  // Sincronizar showZonas cuando dataViewMode se carga desde preferencias
+  useEffect(() => {
+    if (dataViewMode !== 'normal') {
+      setShowZonas(true);
+    }
+  }, [dataViewMode]);
   const [allZonasData, setAllZonasData] = useState<any[]>([]);
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
   const [movilesZonasCount, setMovilesZonasCount] = useState<Map<number, number>>(new Map());
 
   // Cuando se cambia de vista de datos
   const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas') => {
-    setDataViewMode(mode);
+    updatePreference('dataViewMode', mode);
     if (mode !== 'normal') {
       setShowZonas(true); // Auto-activar zonas para distribucion/demoras/moviles-zonas
     } else {
       setShowZonas(false); // Normal: quitar zonas del mapa
     }
-  }, []);
+  }, [updatePreference]);
   
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1723,11 +1733,11 @@ function DashboardContent() {
                   onOpenPedidosTable={() => setIsPedidosTableOpen(true)}
                   onOpenServicesTable={() => setIsServicesTableOpen(true)}
                   movilesHidden={movilesHidden}
-                  onToggleMovilesHidden={() => setMovilesHidden(h => !h)}
+                  onToggleMovilesHidden={() => setMovilesHidden(!movilesHidden)}
                   pedidosHidden={pedidosHidden}
-                  onTogglePedidosHidden={() => setPedidosHidden(h => !h)}
+                  onTogglePedidosHidden={() => setPedidosHidden(!pedidosHidden)}
                   servicesHidden={servicesHidden}
-                  onToggleServicesHidden={() => setServicesHidden(h => !h)}
+                  onToggleServicesHidden={() => setServicesHidden(!servicesHidden)}
                 />
               </div>
             </motion.div>
