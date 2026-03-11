@@ -170,9 +170,9 @@
   flex-shrink: 0;
 }
 .demora-legend-swatch.dotted {
-  background-image: radial-gradient(circle, rgba(220,38,38,0.6) 1.2px, rgba(255,230,230,0.3) 1.2px);
+  background-image: radial-gradient(circle, rgba(100,116,139,0.55) 1.2px, rgba(226,232,240,0.35) 1.2px);
   background-size: 6px 6px;
-  border-color: #dc2626;
+  border-color: #94a3b8;
 }
 .demora-legend-label {
   color: #475569;

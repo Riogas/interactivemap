@@ -66,7 +66,7 @@ function getDemoraColor(minutos: number): string {
   if (minutos >= 46)  return '#fde047';   // amarillo claro
   if (minutos >= 31)  return '#16a34a';   // verde fuerte
   if (minutos >= 1)   return '#86efac';   // verde claro
-  return '#ef4444';                       // rojo punteado (0 min)
+  return '#9ca3af';                       // gris medio punteado (0 min)
 }
 
 function getDemoraOpacity(minutos: number): number {
@@ -106,14 +106,14 @@ function useDottedPattern() {
     const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('width', '8');
     rect.setAttribute('height', '8');
-    rect.setAttribute('fill', 'rgba(255,230,230,0.3)');
+    rect.setAttribute('fill', 'rgba(226,232,240,0.35)');
     pattern.appendChild(rect);
     // Punto
     const circle = document.createElementNS(SVG_NS, 'circle');
     circle.setAttribute('cx', '4');
     circle.setAttribute('cy', '4');
     circle.setAttribute('r', '1.2');
-    circle.setAttribute('fill', 'rgba(220,38,38,0.6)');
+    circle.setAttribute('fill', 'rgba(100,116,139,0.55)');
     pattern.appendChild(circle);
     defs.appendChild(pattern);
     svg.appendChild(defs);
@@ -221,7 +221,7 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
           <Polygon
             positions={positions}
             pathOptions={{
-              color: isDotted ? '#dc2626' : fillColor,
+              color: isDotted ? '#94a3b8' : fillColor,
               fillColor: fillColor,
               fillOpacity,
               weight: isDotted ? 2 : 2,
