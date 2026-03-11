@@ -134,6 +134,50 @@
   background: rgba(148, 163, 184, 0.85);
 }
 
+/* Zona con 0 minutos: relleno punteado via SVG pattern */
+.demora-zona-dotted {
+  fill: url(#demora-dotted-pattern) !important;
+}
+
+/* ====== Leyenda de colores de demoras ====== */
+.demora-legend {
+  background: rgba(255,255,255,0.92);
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: auto;
+  min-width: 120px;
+}
+.demora-legend-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: #334155;
+  font-size: 11px;
+}
+.demora-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+}
+.demora-legend-swatch {
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0,0,0,0.15);
+  flex-shrink: 0;
+}
+.demora-legend-swatch.dotted {
+  background-image: radial-gradient(circle, rgba(120,120,120,0.55) 1.2px, rgba(255,255,255,0.35) 1.2px);
+  background-size: 6px 6px;
+}
+.demora-legend-label {
+  color: #475569;
+  white-space: nowrap;
+}
+
 .moviles-count-label {
   background: none !important;
   border: none !important;

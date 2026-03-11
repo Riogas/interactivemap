@@ -1,7 +1,7 @@
 'use client';
 
-import React, { memo, useMemo } from 'react';
-import { Polygon, Marker } from 'react-leaflet';
+import React, { memo, useMemo, useEffect } from 'react';
+import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
@@ -57,10 +57,105 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
 }
 
 /**
+ * Devuelve el color de relleno según los minutos de demora.
+ */
+function getDemoraColor(minutos: number): string {
+  if (minutos >= 151) return '#ef4444';   // rojo
+  if (minutos >= 91)  return '#f97316';   // naranja
+  if (minutos >= 61)  return '#eab308';   // amarillo fuerte
+  if (minutos >= 46)  return '#fde047';   // amarillo claro
+  if (minutos >= 31)  return '#16a34a';   // verde fuerte
+  if (minutos >= 1)   return '#86efac';   // verde claro
+  return '#9ca3af';                       // gris (0 — se puntea aparte)
+}
+
+function getDemoraOpacity(minutos: number): number {
+  if (minutos >= 151) return 0.55;
+  if (minutos >= 91)  return 0.50;
+  if (minutos >= 61)  return 0.50;
+  if (minutos >= 46)  return 0.45;
+  if (minutos >= 31)  return 0.55;
+  if (minutos >= 1)   return 0.45;
+  return 0.08; // casi transparente, el patrón SVG da el efecto visual
+}
+
+/** Inyecta un SVG <pattern> en el mapa para el relleno punteado de zonas con 0 min */
+function useDottedPattern() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const patternId = 'demora-dotted-pattern';
+    if (container.querySelector(`#${patternId}`)) return; // ya existe
+    let svg = container.querySelector('svg.demora-patterns') as SVGSVGElement | null;
+    if (!svg) {
+      svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+      svg.setAttribute('class', 'demora-patterns');
+      svg.setAttribute('width', '0');
+      svg.setAttribute('height', '0');
+      svg.style.position = 'absolute';
+      container.appendChild(svg);
+    }
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    const pattern = document.createElementNS(SVG_NS, 'pattern');
+    pattern.setAttribute('id', patternId);
+    pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+    pattern.setAttribute('width', '8');
+    pattern.setAttribute('height', '8');
+    // Fondo blanco translúcido
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('width', '8');
+    rect.setAttribute('height', '8');
+    rect.setAttribute('fill', 'rgba(255,255,255,0.35)');
+    pattern.appendChild(rect);
+    // Punto
+    const circle = document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('cx', '4');
+    circle.setAttribute('cy', '4');
+    circle.setAttribute('r', '1.2');
+    circle.setAttribute('fill', 'rgba(120,120,120,0.5)');
+    pattern.appendChild(circle);
+    defs.appendChild(pattern);
+    svg.appendChild(defs);
+    return () => { svg?.remove(); };
+  }, [map]);
+}
+
+/** Leyenda de colores de demoras como control Leaflet (esquina inferior izquierda) */
+function DemorasLegend() {
+  const map = useMap();
+  useEffect(() => {
+    const LegendControl = L.Control.extend({
+      onAdd() {
+        const div = L.DomUtil.create('div', 'demora-legend');
+        div.innerHTML = `
+          <div class="demora-legend-title">Demoras (min)</div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch dotted"></span><span class="demora-legend-label">0</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">1 – 30</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#16a34a"></span><span class="demora-legend-label">31 – 45</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#fde047"></span><span class="demora-legend-label">46 – 60</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">61 – 90</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">91 – 150</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">151+</span></div>
+        `;
+        L.DomEvent.disableClickPropagation(div);
+        return div;
+      },
+    });
+    const legend = new LegendControl({ position: 'bottomleft' });
+    legend.addTo(map);
+    return () => { legend.remove(); };
+  }, [map]);
+  return null;
+}
+
+/**
  * Capa de zonas con información de demoras.
- * Muestra todas las zonas pintadas, con etiqueta de nro de zona y demora en minutos.
+ * Muestra todas las zonas pintadas según minutos, con etiqueta de nro de zona y demora.
  */
 const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false }: DemorasZonasLayerProps) {
+  // Inyectar patrón SVG para zonas con 0 minutos
+  useDottedPattern();
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     const result = zonas.map((zona) => {
@@ -98,12 +193,11 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
       const minutos = demoraInfo?.minutos ?? zona.demora_minutos ?? 0;
       const demoraActiva = demoraInfo?.activa ?? true;
 
-      const fillColor = zona.color || '#3b82f6';
+      const fillColor = getDemoraColor(minutos);
+      const fillOpacity = getDemoraOpacity(minutos);
+      const isDotted = minutos === 0;
 
-      // Intensidad del fill basada en minutos de demora (más demora → más opaco)
-      const fillOpacity = minutos > 0 ? Math.min(0.15 + (minutos / 120) * 0.35, 0.50) : 0.10;
-
-      return { zona, positions, center, fillColor, fillOpacity, minutos, demoraActiva };
+      return { zona, positions, center, fillColor, fillOpacity, minutos, demoraActiva, isDotted };
     }).filter(Boolean) as Array<{
       zona: DemoraZonaData;
       positions: LatLngExpression[];
@@ -112,6 +206,7 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
       fillOpacity: number;
       minutos: number;
       demoraActiva: boolean;
+      isDotted: boolean;
     }>;
     return result;
   }, [zonas, demoras]);
@@ -120,16 +215,19 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
 
   return (
     <>
-      {items.map(({ zona, positions, center, fillColor, fillOpacity, minutos, demoraActiva }) => (
+      <DemorasLegend />
+      {items.map(({ zona, positions, center, fillColor, fillOpacity, minutos, demoraActiva, isDotted }) => (
         <React.Fragment key={zona.zona_id}>
           <Polygon
             positions={positions}
             pathOptions={{
-              color: fillColor,
+              color: isDotted ? '#9ca3af' : fillColor,
               fillColor: fillColor,
               fillOpacity,
-              weight: 2,
-              opacity: 0.8,
+              weight: isDotted ? 1.5 : 2,
+              opacity: isDotted ? 0.5 : 0.8,
+              dashArray: isDotted ? '4 4' : undefined,
+              className: isDotted ? 'demora-zona-dotted' : undefined,
             }}
           />
           <Marker
