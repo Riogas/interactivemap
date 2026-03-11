@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (tipo && !['publico', 'privado'].includes(tipo)) {
+    if (tipo && !['publico', 'privado', 'osm'].includes(tipo)) {
       return NextResponse.json(
-        { error: 'El tipo debe ser "publico" o "privado"' },
+        { error: 'El tipo debe ser "publico", "privado" o "osm"' },
         { status: 400 }
       );
     }
@@ -142,7 +142,7 @@ export async function GET(request: NextRequest) {
 
     console.log('📍 Obteniendo puntos para:', usuario_email);
 
-    // Obtener puntos privados del usuario + todos los públicos
+    // Obtener puntos privados del usuario + todos los públicos + OSM del usuario
     const { data, error } = await supabase
       .from('puntos_interes')
       .select('*')

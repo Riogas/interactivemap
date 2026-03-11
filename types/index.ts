@@ -218,9 +218,9 @@ export interface PedidoData {
   observaciones?: string;
 }
 
-// Marcador Personalizado (Cliente - LocalStorage)
+// Marcador Personalizado (Cliente - LocalStorage + Supabase)
 export interface CustomMarker {
-  id: string;  // UUID generado localmente
+  id: string;  // UUID generado localmente o ID de Supabase
   nombre: string;
   observacion: string;
   icono: string;  // Emoji
@@ -229,6 +229,8 @@ export interface CustomMarker {
   creadoPor?: string;  // ID o nombre del usuario creador
   fechaCreacion: string;  // ISO date string
   visible: boolean;  // Si está visible en el mapa
+  tipo?: 'publico' | 'privado' | 'osm'; // Tipo de punto de interés
+  categoria?: string; // Categoría OSM (riogas, gobierno, hospitales, etc.)
 }
 
 // Punto de Interés (Supabase - Persistente)
@@ -239,7 +241,8 @@ export interface PuntoInteresSupabase {
   icono: string;
   latitud: number; // Stored as DECIMAL in DB
   longitud: number; // Stored as DECIMAL in DB
-  tipo: 'publico' | 'privado';
+  tipo: 'publico' | 'privado' | 'osm';
+  categoria: string | null; // Categoría OSM: riogas, gobierno, hospitales, etc.
   visible: boolean;
   usuario_id: string; // UUID
   usuario_email: string | null;

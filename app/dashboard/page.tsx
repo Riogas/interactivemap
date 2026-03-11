@@ -19,6 +19,7 @@ import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonasAsignacionModal from '@/components/ui/ZonasAsignacionModal';
 import PedidosTableModal from '@/components/ui/PedidosTableModal';
 import ServicesTableModal from '@/components/ui/ServicesTableModal';
+import OsmImportModal from '@/components/ui/OsmImportModal';
 import AppTour from '@/components/ui/AppTour';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
@@ -83,6 +84,12 @@ function DashboardContent() {
   
   // Estado para modal de vista extendida de services
   const [isServicesTableOpen, setIsServicesTableOpen] = useState(false);
+  
+  // Estado para modal de importación OSM
+  const [isOsmImportOpen, setIsOsmImportOpen] = useState(false);
+  
+  // Trigger para recargar marcadores del mapa tras importación OSM
+  const [reloadMarkersTrigger, setReloadMarkersTrigger] = useState(0);
   
   // Estado para ocultar/mostrar indicadores de móviles en el mapa (persistido en preferencias)
   const movilesHidden = !preferences.movilesVisible;
@@ -1558,6 +1565,15 @@ function DashboardContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
+
+          {/* Botón Importar POIs desde OSM */}
+          <button
+            onClick={() => { setIsOsmImportOpen(true); setIsActionsExpanded(false); }}
+            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
+            title="Importar puntos de interés desde OpenStreetMap"
+          >
+            <span className="text-base">🗺️</span>
+          </button>
         </div>
 
         {/* Botón toggle FAB ⚡ */}
@@ -1638,6 +1654,14 @@ function DashboardContent() {
         services={servicesCompletos}
         moviles={movilesFiltered}
         onServiceClick={handleServiceClick}
+      />
+
+      {/* Modal de importación de POIs desde OpenStreetMap */}
+      <OsmImportModal
+        isOpen={isOsmImportOpen}
+        onClose={() => setIsOsmImportOpen(false)}
+        onImportComplete={() => setReloadMarkersTrigger(prev => prev + 1)}
+        usuarioEmail={user?.email || user?.username || ''}
       />
 
       {/* Modal de Asignación de Zonas */}
@@ -1833,6 +1857,7 @@ function DashboardContent() {
                 movilesZonasCount={movilesZonasCount}
                 allZonas={allZonasData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
+                reloadMarkersTrigger={reloadMarkersTrigger}
               />
             </motion.div>
           </>

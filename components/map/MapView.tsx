@@ -88,6 +88,7 @@ interface MapViewProps {
   movilesZonasCount?: Map<number, number>; // Cantidad de móviles por zona_id
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
+  reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
 }
 
 function MapUpdater({ 
@@ -424,6 +425,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.demorasData?.size === next.demorasData?.size &&
     prev.movilesZonasCount?.size === next.movilesZonasCount?.size &&
     prev.showDemoraLabels === next.showDemoraLabels &&
+    prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -476,6 +478,7 @@ const MapView = memo(function MapView({
   movilesZonasCount = new Map(),
   allZonas = [],
   showDemoraLabels = false,
+  reloadMarkersTrigger = 0,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -592,6 +595,8 @@ const MapView = memo(function MapView({
             creadoPor: punto.usuario_email,
             fechaCreacion: punto.created_at,
             visible: punto.visible,
+            tipo: punto.tipo || 'privado',
+            categoria: punto.categoria || null,
           }));
           setCustomMarkers(markers);
           // Guardar backup en localStorage
@@ -618,7 +623,7 @@ const MapView = memo(function MapView({
     };
 
     loadMarkers();
-  }, []);
+  }, [reloadMarkersTrigger]);
 
   // � DEBUG: Solo log mínimo en desarrollo
   useEffect(() => {
