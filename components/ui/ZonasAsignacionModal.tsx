@@ -58,6 +58,7 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
   const [dropTarget, setDropTarget] = useState<TipoAsignacion | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingAsignaciones, setLoadingAsignaciones] = useState(false);
 
   // Ref para el drag ghost custom
   const dragGhostRef = useRef<HTMLDivElement | null>(null);
@@ -83,6 +84,35 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
       .catch(() => setError('Error de conexión al cargar zonas'))
       .finally(() => setLoadingZonas(false));
   }, [isOpen]);
+
+  // ========== Fetch asignaciones existentes de la DB ==========
+  useEffect(() => {
+    if (!isOpen || zonas.length === 0) return;
+    setLoadingAsignaciones(true);
+    fetch('/api/moviles-zonas?activa=true')
+      .then(r => r.json())
+      .then(res => {
+        if (res.success && Array.isArray(res.data)) {
+          // Mapear filas DB → AsignacionesMap
+          const map: AsignacionesMap = {};
+          for (const row of res.data) {
+            const zonaId = row.zona_id;
+            const movilId = parseInt(String(row.movil_id), 10);
+            if (isNaN(movilId) || !zonaId) continue;
+            const tipo: TipoAsignacion = row.prioridad_o_transito === 1 ? 'prioridad' : 'transito';
+            if (!map[zonaId]) map[zonaId] = [];
+            map[zonaId].push({ movilId, tipo });
+          }
+          setAsignaciones(map);
+          console.log(`✅ Cargadas ${res.data.length} asignaciones de la DB`);
+        }
+      })
+      .catch(err => {
+        console.error('Error al cargar asignaciones:', err);
+        setError('No se pudieron cargar las asignaciones existentes');
+      })
+      .finally(() => setLoadingAsignaciones(false));
+  }, [isOpen, zonas]);
 
   // ========== Moviles filtrados por búsqueda ==========
   const filteredMoviles = useMemo(() => {
@@ -217,13 +247,22 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
     setSaving(true);
     setError(null);
     try {
-      // TODO: Implementar endpoint de guardado real
-      // Por ahora simular delay
-      await new Promise(res => setTimeout(res, 500));
-      console.log('Asignaciones guardadas:', asignaciones);
+      const res = await fetch('/api/moviles-zonas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          escenario_id: 1000,
+          asignaciones,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Error al guardar');
+      }
+      console.log(`✅ ${data.count} asignaciones guardadas en DB`);
       onClose();
-    } catch {
-      setError('Error al guardar asignaciones');
+    } catch (err: any) {
+      setError(err.message || 'Error al guardar asignaciones');
     } finally {
       setSaving(false);
     }
@@ -517,10 +556,19 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
                     </div>
 
                     {/* Two columns: Prioridad & Tránsito */}
-                    <div className="flex-1 flex gap-4 min-h-0">
-                      {renderDropZone('prioridad', 'Prioridad', movilesEnPrioridad, 'amber')}
-                      {renderDropZone('transito', 'Tránsito', movilesEnTransito, 'cyan')}
-                    </div>
+                    {loadingAsignaciones ? (
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="flex flex-col items-center gap-2 text-gray-400">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-400" />
+                          <span className="text-sm">Cargando asignaciones...</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex gap-4 min-h-0">
+                        {renderDropZone('prioridad', 'Prioridad', movilesEnPrioridad, 'amber')}
+                        {renderDropZone('transito', 'Tránsito', movilesEnTransito, 'cyan')}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="flex-1 flex items-center justify-center text-gray-500">
