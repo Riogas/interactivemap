@@ -428,6 +428,7 @@ function DashboardContent() {
   }, [showZonas, selectedEmpresas, empresas]);
 
   // 📊 Cargar datos cuando se selecciona una vista de datos (Demoras / Móviles en Zonas)
+  // Con polling automático: cada X segundos según preferencias del usuario
   useEffect(() => {
     if (dataViewMode === 'normal') {
       setAllZonasData([]);
@@ -495,8 +496,30 @@ function DashboardContent() {
       }
     };
 
+    // Carga inicial inmediata
     loadDataView();
-  }, [dataViewMode, selectedEmpresas, empresas]);
+
+    // Polling: intervalo según vista activa (configurable en preferencias)
+    let intervalMs = 0;
+    if (dataViewMode === 'demoras') {
+      intervalMs = (preferences.demorasPollingSeconds ?? 30) * 1000;
+    } else if (dataViewMode === 'moviles-zonas') {
+      intervalMs = (preferences.movilesZonasPollingSeconds ?? 30) * 1000;
+    }
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    if (intervalMs > 0) {
+      console.log(`🔄 Polling activado para "${dataViewMode}" cada ${intervalMs / 1000}s`);
+      intervalId = setInterval(loadDataView, intervalMs);
+    }
+
+    return () => {
+      if (intervalId) {
+        console.log(`🔄 Polling desactivado para "${dataViewMode}"`);
+        clearInterval(intervalId);
+      }
+    };
+  }, [dataViewMode, selectedEmpresas, empresas, preferences.demorasPollingSeconds, preferences.movilesZonasPollingSeconds]);
 
   // 🎨 Función para calcular el color del móvil según ocupación
   const getMovilColorByOccupancy = useCallback((pedidosAsignados: number, capacidad: number): string => {

@@ -51,9 +51,9 @@ function parseDemorasBody(body: any): any[] {
 }
 
 // =====================================================================
-// PUT /api/import/demoras — Upsert (insertar o actualizar)
-// Clave natural: (escenario_id, zona_id, zona_tipo, descripcion)
-// Requiere UNIQUE constraint "demoras_natural_key" en la tabla.
+// PUT /api/import/demoras — Delete-then-Insert (reemplaza toda la tabla)
+// Borra todos los registros existentes y luego inserta los nuevos.
+// Esto garantiza que no queden registros obsoletos de corridas anteriores.
 // =====================================================================
 export async function PUT(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -70,22 +70,35 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    console.log(`🔄 Upsert ${demorasArray.length} demora(s)...`);
+    console.log(`🔄 Delete-then-Insert: ${demorasArray.length} demora(s)...`);
 
     const supabase = getServerSupabaseClient();
+
+    // 1) Borrar todos los registros existentes de la tabla demoras
+    const { error: deleteError } = await (supabase as any)
+      .from('demoras')
+      .delete()
+      .neq('demora_id', 0); // condición que matchea todos los registros
+
+    if (deleteError) {
+      console.error('❌ Error al limpiar tabla demoras:', deleteError);
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
+
+    console.log('🗑️ Tabla demoras limpiada');
+
+    // 2) Insertar los nuevos registros
     const { data, error } = await (supabase as any)
       .from('demoras')
-      .upsert(demorasArray, {
-        onConflict: 'escenario_id,zona_id,zona_tipo,descripcion',
-      })
+      .insert(demorasArray)
       .select();
 
     if (error) {
-      console.error('❌ Error al actualizar demoras:', error);
+      console.error('❌ Error al insertar demoras:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log(`✅ ${data?.length || 0} demora(s) upserted`);
+    console.log(`✅ ${data?.length || 0} demora(s) insertadas (tabla renovada)`);
     return NextResponse.json({ success: true, count: data?.length || 0, data });
   } catch (error: any) {
     console.error('❌ Error en PUT /api/import/demoras:', error);

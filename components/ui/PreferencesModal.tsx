@@ -38,6 +38,8 @@ export interface UserPreferences {
   poisVisible: boolean; // true = mostrar capa de puntos de interés
   hiddenPoiCategories: string[]; // categorías de POI ocultas (ej: ['Hospital/Sanatorio', 'Banco'])
   dataViewMode: DataViewMode; // Vista activa del mapa
+  demorasPollingSeconds: number; // Intervalo de refresco para vista Demoras (segundos)
+  movilesZonasPollingSeconds: number; // Intervalo de refresco para vista Móviles en Zonas (segundos)
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -60,6 +62,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   poisVisible: true,
   hiddenPoiCategories: [],
   dataViewMode: 'normal',
+  demorasPollingSeconds: 30,
+  movilesZonasPollingSeconds: 30,
 };
 
 interface PreferencesModalProps {
@@ -520,6 +524,63 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                     <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                   </div>
                 </label>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Intervalos de Refresco de Capas */}
+              <div className="space-y-4">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">🔄</span>
+                  Intervalos de Refresco Automático
+                </label>
+                <p className="text-xs text-gray-500">
+                  Configura cada cuántos segundos se actualizan los datos al activar las vistas de Demoras y Móviles en Zonas.
+                </p>
+
+                {/* Demoras polling */}
+                <div className="p-3 bg-red-50/50 rounded-lg border border-red-100 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">⏱️</span>
+                    <span className="text-xs font-semibold text-gray-600">Vista Demoras</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min="10"
+                      max="120"
+                      step="5"
+                      value={preferences.demorasPollingSeconds}
+                      onChange={(e) => setPreferences({ ...preferences, demorasPollingSeconds: parseInt(e.target.value) })}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-red-500"
+                    />
+                    <span className="min-w-[60px] px-2 py-1 bg-red-100 text-red-700 font-bold rounded-lg text-center text-xs">
+                      {preferences.demorasPollingSeconds}s
+                    </span>
+                  </div>
+                </div>
+
+                {/* Moviles x Zona polling */}
+                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🚛</span>
+                    <span className="text-xs font-semibold text-gray-600">Vista Móviles en Zonas</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min="10"
+                      max="120"
+                      step="5"
+                      value={preferences.movilesZonasPollingSeconds}
+                      onChange={(e) => setPreferences({ ...preferences, movilesZonasPollingSeconds: parseInt(e.target.value) })}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                    <span className="min-w-[60px] px-2 py-1 bg-blue-100 text-blue-700 font-bold rounded-lg text-center text-xs">
+                      {preferences.movilesZonasPollingSeconds}s
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
