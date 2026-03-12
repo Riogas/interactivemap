@@ -32,7 +32,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
 
         // Pedidos of this movil
         const movilPedidos = pedidos.filter(p => Number(p.movil) === movilId);
-        const pedidosPendientes = movilPedidos.filter(p => Number(p.estado_nro) === 1).length;
+        const pedidosPendientes = movilPedidos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5').length;
         const pedidosEntregados = movilPedidos.filter(p => Number(p.estado_nro) === 2).length;
         const pedidosTotal = movilPedidos.length;
 
@@ -42,18 +42,26 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
         const servicesRealizados = movilServices.filter(s => Number(s.estado_nro) === 2).length;
         const servicesTotal = movilServices.length;
 
-        // "En hora": entregados that had fch_hora_max_ent_comp and were delivered before it
-        // We approximate: estado 2 pedidos where fch_hora_mov <= fch_hora_max_ent_comp
-        const entregadosEnHora = movilPedidos.filter(p => {
+        // "En hora": entregas (pedidos + services) delivered before fch_hora_max_ent_comp
+        const pedidosEnHora = movilPedidos.filter(p => {
           if (Number(p.estado_nro) !== 2) return false;
           if (!p.fch_hora_mov || !p.fch_hora_max_ent_comp) return false;
           return new Date(p.fch_hora_mov) <= new Date(p.fch_hora_max_ent_comp);
         }).length;
 
+        const servicesEnHora = movilServices.filter(s => {
+          if (Number(s.estado_nro) !== 2) return false;
+          if (!s.fch_hora_mov || !s.fch_hora_max_ent_comp) return false;
+          return new Date(s.fch_hora_mov) <= new Date(s.fch_hora_max_ent_comp);
+        }).length;
+
+        const entregadosEnHora = pedidosEnHora + servicesEnHora;
+
         const totalEntregas = pedidosEntregados + servicesRealizados;
         const totalPendientes = pedidosPendientes + servicesPendientes;
         const totalItems = pedidosTotal + servicesTotal;
-        const cumplimiento = totalItems > 0 ? Math.round((totalEntregas / totalItems) * 100) : 0;
+        const totalRelevantes = totalEntregas + totalPendientes;
+        const cumplimiento = totalRelevantes > 0 ? Math.round((totalEntregas / totalRelevantes) * 100) : 0;
 
         return {
           id: movilId,
@@ -96,7 +104,8 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
     const totalPendientes = leaderboard.reduce((s, m) => s + m.totalPendientes, 0);
     const totalEnHora = leaderboard.reduce((s, m) => s + m.entregadosEnHora, 0);
     const totalItems = leaderboard.reduce((s, m) => s + m.totalItems, 0);
-    const avgCumplimiento = totalItems > 0 ? Math.round((totalEntregas / totalItems) * 100) : 0;
+    const totalRelevantes = totalEntregas + totalPendientes;
+    const avgCumplimiento = totalRelevantes > 0 ? Math.round((totalEntregas / totalRelevantes) * 100) : 0;
     return { totalEntregas, totalPendientes, totalEnHora, avgCumplimiento, movilesCount: leaderboard.length };
   }, [leaderboard]);
 
