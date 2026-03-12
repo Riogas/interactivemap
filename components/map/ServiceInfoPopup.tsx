@@ -57,13 +57,13 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 100, opacity: 0, scale: 0.9 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[999] pointer-events-auto"
-        style={{ maxWidth: '420px', width: '90%' }}
+        className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[999] pointer-events-auto"
+        style={{ maxWidth: '420px', width: '90%', maxHeight: 'calc(100vh - 2rem)' }}
       >
-        <div className="bg-white rounded-xl shadow-2xl border-2 overflow-hidden" style={{ borderColor: estadoColor }}>
+        <div className="bg-white rounded-xl shadow-2xl border-2 flex flex-col" style={{ borderColor: estadoColor, maxHeight: 'calc(100vh - 2rem)' }}>
           {/* Header */}
           <div 
-            className="px-3 py-2.5 text-white relative overflow-hidden"
+            className="px-3 py-2.5 text-white relative overflow-hidden flex-shrink-0"
             style={{ backgroundColor: estadoColor }}
           >
             <div className="absolute inset-0 bg-black bg-opacity-10"></div>
@@ -92,7 +92,7 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
           </div>
 
           {/* Contenido */}
-          <div className="p-3 space-y-2.5">
+          <div className="p-3 space-y-2.5 overflow-y-auto flex-1">
             {/* Etiqueta de Atraso/Demora */}
             {Number(service.estado_nro) !== 2 ? (
             <div 

@@ -35,6 +35,10 @@ interface MovilSelectorProps {
   onTogglePoisHidden?: () => void; // Toggle visibilidad global de POIs
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
   onTogglePoiCategory?: (category: string) => void; // Toggle visibilidad de una categoría de POI
+  pedidosFilters?: PedidoFilters; // Filtros de pedidos (lifted)
+  onPedidosFiltersChange?: (filters: PedidoFilters) => void; // Callback para cambios en filtros de pedidos
+  servicesFilters?: ServiceFilters; // Filtros de services (lifted)
+  onServicesFiltersChange?: (filters: ServiceFilters) => void; // Callback para cambios en filtros de services
 }
 
 // Definir las categorías del árbol
@@ -72,6 +76,10 @@ export default function MovilSelector({
   onTogglePoisHidden,
   hiddenPoiCategories = new Set(),
   onTogglePoiCategory,
+  pedidosFilters: pedidosFiltersProp,
+  onPedidosFiltersChange,
+  servicesFilters: servicesFiltersProp,
+  onServicesFiltersChange,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -126,11 +134,24 @@ export default function MovilSelector({
     estado: [], // Inicialmente ningún filtro de estado activo
     actividad: 'activo', // Por defecto mostrar solo activos
   });
-  const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [] });
-  const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ 
+  // Filtros de pedidos/services: usar props si vienen del padre, si no estado local (fallback)
+  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [] });
+  const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({ 
     atraso: [], 
     tipoServicio: 'all' 
   });
+  const servicesFilters = servicesFiltersProp ?? localServicesFilters;
+  const pedidosFilters = pedidosFiltersProp ?? localPedidosFilters;
+  const setServicesFilters = useCallback((updater: ServiceFilters | ((prev: ServiceFilters) => ServiceFilters)) => {
+    const next = typeof updater === 'function' ? updater(servicesFilters) : updater;
+    if (onServicesFiltersChange) onServicesFiltersChange(next);
+    else setLocalServicesFilters(next);
+  }, [servicesFilters, onServicesFiltersChange]);
+  const setPedidosFilters = useCallback((updater: PedidoFilters | ((prev: PedidoFilters) => PedidoFilters)) => {
+    const next = typeof updater === 'function' ? updater(pedidosFilters) : updater;
+    if (onPedidosFiltersChange) onPedidosFiltersChange(next);
+    else setLocalPedidosFilters(next);
+  }, [pedidosFilters, onPedidosFiltersChange]);
 
   // 🆕 Notificar al padre cuando cambien los filtros de móviles
   useEffect(() => {

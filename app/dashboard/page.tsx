@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { MovilData, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters } from '@/types';
+import { MovilData, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters, PedidoFilters, ServiceFilters } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
@@ -14,6 +14,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
+import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonasAsignacionModal from '@/components/ui/ZonasAsignacionModal';
@@ -176,12 +177,16 @@ function DashboardContent() {
     );
   }, [moviles, selectedEmpresas]);
   
-  // �🆕 Estado para filtros de móviles (recibidos desde MovilSelector)
+  // Estado para filtros de móviles (recibidos desde MovilSelector)
   const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
     capacidad: 'all', 
     estado: [],
     actividad: 'activo'
   });
+
+  // Estado para filtros de pedidos y services (lifted desde MovilSelector para compartir con MapView)
+  const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ atraso: [], tipoServicio: 'all' });
+  const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [] });
   
   // 🔥 NUEVO: Hook para escuchar cambios en pedidos en tiempo real
   const { 
@@ -271,6 +276,29 @@ function DashboardContent() {
   const isInUruguay = useCallback((lat: number, lng: number): boolean => {
     return lat >= URUGUAY_BOUNDS.latMin && lat <= URUGUAY_BOUNDS.latMax &&
            lng >= URUGUAY_BOUNDS.lngMin && lng <= URUGUAY_BOUNDS.lngMax;
+  }, []);
+
+  // Helper: mapear delay label → filter value key
+  const DELAY_CATEGORY_MAP: Record<string, string> = {
+    'En Hora': 'en_hora',
+    'Hora Límite Cercana': 'limite_cercana',
+    'Atrasado': 'atrasado',
+    'Muy Atrasado': 'muy_atrasado',
+    'Sin hora': 'sin_hora',
+  };
+
+  // Filtrar pedidos/services por atraso (reutilizado para MapView)
+  const filterByDelay = useCallback(<T extends { fch_hora_max_ent_comp?: string | null }>(
+    items: T[],
+    atrasoFilter: string[]
+  ): T[] => {
+    if (atrasoFilter.length === 0) return items;
+    return items.filter(item => {
+      const delayMins = computeDelayMinutes(item.fch_hora_max_ent_comp ?? null);
+      const info = getDelayInfo(delayMins);
+      const category = DELAY_CATEGORY_MAP[info.label] || 'sin_hora';
+      return atrasoFilter.includes(category);
+    });
   }, []);
 
   const applyAdvancedFilters = useCallback((moviles: MovilData[]): MovilData[] => {
@@ -1766,6 +1794,10 @@ function DashboardContent() {
                   onFiltersChange={setMovilesFilters}
                   onOpenPedidosTable={() => setIsPedidosTableOpen(true)}
                   onOpenServicesTable={() => setIsServicesTableOpen(true)}
+                  pedidosFilters={pedidosFilters}
+                  onPedidosFiltersChange={setPedidosFilters}
+                  servicesFilters={servicesFilters}
+                  onServicesFiltersChange={setServicesFilters}
                   movilesHidden={movilesHidden}
                   onToggleMovilesHidden={() => setMovilesHidden(!movilesHidden)}
                   pedidosHidden={pedidosHidden}
@@ -1834,11 +1866,17 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={pedidosHidden ? [] : (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5')).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud))}
+                pedidos={pedidosHidden ? [] : filterByDelay(
+                  (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5')).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud)),
+                  pedidosFilters.atraso
+                )}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
-                services={servicesHidden ? [] : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud))}
+                services={servicesHidden ? [] : filterByDelay(
+                  (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud)),
+                  servicesFilters.atraso
+                )}
                 allServices={servicesCompletos}
                 onServiceClick={handleServiceClick}
                 popupService={popupService}

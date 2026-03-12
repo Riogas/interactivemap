@@ -118,13 +118,13 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 100, opacity: 0, scale: 0.9 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[999] pointer-events-auto"
-        style={{ maxWidth: '420px', width: '90%' }}
+        className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[999] pointer-events-auto"
+        style={{ maxWidth: '420px', width: '90%', maxHeight: 'calc(100vh - 2rem)' }}
       >
-        <div className="bg-white rounded-xl shadow-2xl border-2 overflow-hidden" style={{ borderColor: movil.color }}>
+        <div className="bg-white rounded-xl shadow-2xl border-2 flex flex-col" style={{ borderColor: movil.color, maxHeight: 'calc(100vh - 2rem)' }}>
           {/* Header con color del móvil */}
           <div 
-            className="px-3 py-2.5 text-white relative overflow-hidden"
+            className="px-3 py-2.5 text-white relative overflow-hidden flex-shrink-0"
             style={{ backgroundColor: movil.color }}
           >
             <div className="absolute inset-0 bg-black bg-opacity-10"></div>
@@ -226,7 +226,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
           </AnimatePresence>
 
           {/* Contenido */}
-          <div className="p-3 space-y-2.5">
+          <div className="p-3 space-y-2.5 overflow-y-auto flex-1">
             {/* Estado Actual e Id Terminal */}
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Estado Actual</h4>
