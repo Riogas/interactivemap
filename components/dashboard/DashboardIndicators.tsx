@@ -111,8 +111,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   const movilesStats = useMemo(() => {
     const total = moviles.length;
     
-    // Sin coordenadas: móviles que no reportaron GPS (sin posición actual o inactivos)
-    const sinCoordenadas = moviles.filter(m => !m.currentPosition || m.isInactive).length;
+    // Sin coordenadas: usa isInactive que ya respeta maxCoordinateDelayMinutes
+    const sinCoordenadas = moviles.filter(m => m.isInactive).length;
     const activos = total - sinCoordenadas;
     
     return {
