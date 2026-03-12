@@ -59,8 +59,11 @@ function DashboardContent() {
   const [popupMovil, setPopupMovil] = useState<number | undefined>(); // Móvil con popup abierto
   const [popupPedido, setPopupPedido] = useState<number | undefined>(); // Pedido con popup abierto
   const [popupService, setPopupService] = useState<number | undefined>(); // Service con popup abierto
-  const [focusedPedidoId, setFocusedPedidoId] = useState<number | undefined>(); // ✅ NUEVO: Pedido a centralizar
-  const [focusedPuntoId, setFocusedPuntoId] = useState<string | undefined>(); // ✅ NUEVO: Punto a centralizar
+  const [focusedPedidoId, setFocusedPedidoId] = useState<number | undefined>(); // Pedido a centralizar
+  const [focusedServiceId, setFocusedServiceId] = useState<number | undefined>(); // Service a centralizar
+  const focusTriggerRef = useRef(0); // Trigger para forzar re-centrar el mismo pedido/service
+  const [focusTrigger, setFocusTrigger] = useState(0);
+  const [focusedPuntoId, setFocusedPuntoId] = useState<string | undefined>(); // Punto a centralizar
   const [showPendientes, setShowPendientes] = useState(false); // Mostrar marcadores de pedidos
   const [showCompletados, setShowCompletados] = useState(false); // Mostrar marcadores de completados
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -1289,16 +1292,24 @@ function DashboardContent() {
     setSelectedMovil(movilId);
   }, [selectedDate, selectedMoviles]);
 
-  // Handler para click en pedido
+  // Handler para click en pedido (abre popup + centra mapa)
   const handlePedidoClick = useCallback((pedidoId: number | undefined) => {
-    setPopupService(undefined); // Cerrar popup de service si estaba abierto
+    setPopupService(undefined);
     setPopupPedido(pedidoId);
+    setFocusedServiceId(undefined);
+    setFocusedPedidoId(pedidoId);
+    focusTriggerRef.current += 1;
+    setFocusTrigger(focusTriggerRef.current);
   }, []);
 
-  // Handler para click en service
+  // Handler para click en service (abre popup + centra mapa)
   const handleServiceClick = useCallback((serviceId: number | undefined) => {
-    setPopupPedido(undefined); // Cerrar popup de pedido si estaba abierto
+    setPopupPedido(undefined);
     setPopupService(serviceId);
+    setFocusedPedidoId(undefined);
+    setFocusedServiceId(serviceId);
+    focusTriggerRef.current += 1;
+    setFocusTrigger(focusTriggerRef.current);
   }, []);
 
   // Handler para click en punto de interés
@@ -1929,6 +1940,9 @@ function DashboardContent() {
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
+                focusedPedidoId={focusedPedidoId}
+                focusedServiceId={focusedServiceId}
+                focusTrigger={focusTrigger}
                 services={servicesHidden ? [] : filterByTipoServicio(filterByDelay(
                   (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud)),
                   servicesFilters.atraso

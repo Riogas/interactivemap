@@ -66,8 +66,10 @@ interface MapViewProps {
   onServiceClick?: (serviceId: number | undefined) => void; // Callback para click en service
   popupPedido?: number; // Pedido con popup abierto
   popupService?: number; // Service con popup abierto
-  focusedPedidoId?: number; // ✅ NUEVO: ID del pedido a centralizar
-  focusedPuntoId?: string; // ✅ NUEVO: ID del punto de interés a centralizar
+  focusedPedidoId?: number; // ID del pedido a centralizar
+  focusedServiceId?: number; // ID del service a centralizar
+  focusTrigger?: number; // Trigger para forzar re-centrado
+  focusedPuntoId?: string; // ID del punto de interés a centralizar
   isPlacingMarker?: boolean; // Prop externa para controlar el modo de colocación
   onPlacingMarkerChange?: (isPlacing: boolean) => void; // Callback para notificar cambios
   onMarkersChange?: (markers: CustomMarker[]) => void; // Callback para notificar cambios en los marcadores
@@ -101,26 +103,32 @@ function MapUpdater({
   selectedMovil, 
   selectedMovilesCount,
   focusedPedidoId,
+  focusedServiceId,
+  focusTrigger,
   focusedPuntoId,
   pedidos,
+  services,
   customMarkers
 }: { 
   moviles: MovilData[]; 
   focusedMovil?: number; 
   selectedMovil?: number;
   selectedMovilesCount?: number;
-  focusedPedidoId?: number; // ✅ NUEVO
-  focusedPuntoId?: string; // ✅ NUEVO
-  pedidos?: PedidoSupabase[]; // ✅ NUEVO
-  customMarkers?: CustomMarker[]; // ✅ NUEVO
+  focusedPedidoId?: number;
+  focusedServiceId?: number;
+  focusTrigger?: number;
+  focusedPuntoId?: string;
+  pedidos?: PedidoSupabase[];
+  services?: ServiceSupabase[];
+  customMarkers?: CustomMarker[];
 }) {
   const map = useMap();
   const hasInitialized = useRef(false);
   const lastSelectedMovil = useRef<number | undefined>(undefined);
   const lastFocusedMovil = useRef<number | undefined>(undefined);
   const lastSelectedMovilesCount = useRef<number>(0);
-  const lastFocusedPedidoId = useRef<number | undefined>(undefined); // ✅ NUEVO
-  const lastFocusedPuntoId = useRef<string | undefined>(undefined); // ✅ NUEVO
+  const lastFocusTrigger = useRef<number>(0);
+  const lastFocusedPuntoId = useRef<string | undefined>(undefined);
   const userHasInteracted = useRef(false);
 
   // Detectar cuando el usuario mueve el mapa manualmente
@@ -139,22 +147,23 @@ function MapUpdater({
     };
   }, [map]);
 
-  // ✅ NUEVO: Efecto para centrar el mapa en un pedido
+  // Efecto para centrar mapa en pedido o service al hacer click desde sidebar
   useEffect(() => {
-    if (focusedPedidoId !== lastFocusedPedidoId.current) {
-      lastFocusedPedidoId.current = focusedPedidoId;
-      
-      if (focusedPedidoId && pedidos && pedidos.length > 0) {
-        const pedido = pedidos.find(p => p.id === focusedPedidoId);
-        if (pedido?.latitud && pedido?.longitud) {
-          console.log('📦 Centrando mapa en pedido:', pedido.id);
-          map.setView([pedido.latitud, pedido.longitud], 16, {
-            animate: true,
-          });
-        }
+    if (focusTrigger === undefined || focusTrigger === lastFocusTrigger.current) return;
+    lastFocusTrigger.current = focusTrigger;
+
+    if (focusedPedidoId && pedidos && pedidos.length > 0) {
+      const pedido = pedidos.find(p => p.id === focusedPedidoId);
+      if (pedido?.latitud && pedido?.longitud) {
+        map.setView([pedido.latitud, pedido.longitud], 16, { animate: true });
+      }
+    } else if (focusedServiceId && services && services.length > 0) {
+      const service = services.find(s => s.id === focusedServiceId);
+      if (service?.latitud && service?.longitud) {
+        map.setView([service.latitud, service.longitud], 16, { animate: true });
       }
     }
-  }, [map, focusedPedidoId, pedidos]);
+  }, [map, focusTrigger, focusedPedidoId, focusedServiceId, pedidos, services]);
 
   // ✅ NUEVO: Efecto para centrar el mapa en un punto de interés
   useEffect(() => {
@@ -446,6 +455,8 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.selectedMovilesCount === next.selectedMovilesCount &&
     prev.isPlacingMarker === next.isPlacingMarker &&
     prev.focusedPedidoId === next.focusedPedidoId &&
+    prev.focusedServiceId === next.focusedServiceId &&
+    prev.focusTrigger === next.focusTrigger &&
     prev.focusedPuntoId === next.focusedPuntoId &&
     // 🚀 Comparar pedidos por cantidad (evitar deep comparison costosa)
     (prev.pedidos?.length ?? 0) === (next.pedidos?.length ?? 0) &&
@@ -499,8 +510,10 @@ const MapView = memo(function MapView({
   onServiceClick,
   popupPedido,
   popupService,
-  focusedPedidoId, // ✅ NUEVO
-  focusedPuntoId, // ✅ NUEVO
+  focusedPedidoId,
+  focusedServiceId,
+  focusTrigger,
+  focusedPuntoId,
   isPlacingMarker: externalIsPlacingMarker = false,
   onPlacingMarkerChange,
   onMarkersChange,
@@ -2566,8 +2579,11 @@ const MapView = memo(function MapView({
           selectedMovil={selectedMovil}
           selectedMovilesCount={selectedMovilesCount}
           focusedPedidoId={focusedPedidoId}
+          focusedServiceId={focusedServiceId}
+          focusTrigger={focusTrigger}
           focusedPuntoId={focusedPuntoId}
           pedidos={pedidos}
+          services={services}
           customMarkers={customMarkers}
         />
         <AnimationFollower 
