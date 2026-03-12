@@ -15,6 +15,8 @@ export interface DistribucionZonaData {
 
 interface DistribucionZonasLayerProps {
   zonas: DistribucionZonaData[];
+  /** Opacidad global de zonas (0-100). Por defecto 50 */
+  zonaOpacity?: number;
 }
 
 /**
@@ -51,7 +53,8 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
  * Capa de zonas para la vista Distribución.
  * Muestra todas las zonas pintadas con su color de la tabla y el identificador de zona.
  */
-const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas }: DistribucionZonasLayerProps) {
+const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas, zonaOpacity = 50 }: DistribucionZonasLayerProps) {
+  const opacityFactor = zonaOpacity / 100;
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -102,9 +105,9 @@ const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas }: D
             pathOptions={{
               color: fillColor,
               fillColor: fillColor,
-              fillOpacity: 0.35,
+              fillOpacity: 0.35 * opacityFactor,
               weight: 2,
-              opacity: 0.85,
+              opacity: 0.85 * opacityFactor,
             }}
           />
           <Marker

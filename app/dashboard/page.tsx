@@ -1956,6 +1956,7 @@ function DashboardContent() {
                 markerStyle={preferences.markerStyle || 'normal'}
                 pedidosCluster={preferences.pedidosCluster !== undefined ? preferences.pedidosCluster : true}
                 pedidoMarkerStyle={preferences.pedidoMarkerStyle || 'normal'}
+                serviceMarkerStyle={preferences.serviceMarkerStyle || 'normal'}
                 movilShape={preferences.movilShape || 'circle'}
                 pedidoShape={preferences.pedidoShape || 'square'}
                 serviceShape={preferences.serviceShape || 'triangle'}
@@ -1965,6 +1966,7 @@ function DashboardContent() {
                 movilesZonasCount={movilesZonasCount}
                 allZonas={allZonasData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
+                zonaOpacity={preferences.zonaOpacity ?? 50}
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
                 hiddenPoiCategories={hiddenPoiCategories}

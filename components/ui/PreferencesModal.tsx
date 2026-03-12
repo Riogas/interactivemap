@@ -27,10 +27,12 @@ export interface UserPreferences {
   markerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de móviles
   pedidosCluster: boolean; // Agrupar pedidos/services en clusters
   pedidoMarkerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de pedidos
+  serviceMarkerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de services
   movilShape: MarkerShape; // Forma del marcador de móviles (compact/mini)
   pedidoShape: MarkerShape; // Forma del marcador de pedidos (compact/mini)
   serviceShape: MarkerShape; // Forma del marcador de services (compact/mini)
   showDemoraLabels: boolean; // Mostrar etiquetas de demora (minutos) en mapa
+  zonaOpacity: number; // Opacidad de las capas de zonas (0-100)
   // Campos de visibilidad y vista de datos (persisten en DB)
   movilesVisible: boolean; // true = mostrar capa de móviles
   pedidosVisible: boolean; // true = mostrar capa de pedidos
@@ -48,14 +50,16 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   maxCoordinateDelayMinutes: 30,
   realtimeEnabled: true, // Por defecto activado
   showRouteAnimation: true,
-  showCompletedMarkers: true,
+  showCompletedMarkers: false, // Por defecto ocultos
   markerStyle: 'normal',
   pedidosCluster: true, // Por defecto agrupados
   pedidoMarkerStyle: 'normal',
+  serviceMarkerStyle: 'normal',
   movilShape: 'circle',
   pedidoShape: 'square',
   serviceShape: 'triangle',
   showDemoraLabels: false, // Por defecto ocultas
+  zonaOpacity: 50, // 50% por defecto
   movilesVisible: true,
   pedidosVisible: true,
   servicesVisible: true,
@@ -149,33 +153,21 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
 
             {/* Content */}
             <div className="p-6 space-y-6">
-              {/* Vista del Mapa por Defecto */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">🗺️</span>
-                  Vista del Mapa por Defecto
-                </label>
-                <select
-                  value={preferences.defaultMapLayer}
-                  onChange={(e) => setPreferences({ ...preferences, defaultMapLayer: e.target.value as any })}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                >
-                  <option value="streets">🗺️ Calles (OpenStreetMap)</option>
-                  <option value="satellite">🛰️ Satélite (Esri World Imagery)</option>
-                  <option value="terrain">🗻 Terreno (OpenTopoMap)</option>
-                  <option value="cartodb">🌊 CartoDB Voyager</option>
-                  <option value="dark">🌙 Modo Oscuro (CartoDB Dark)</option>
-                  <option value="light">🌞 Modo Claro (CartoDB Light)</option>
-                </select>
-                <p className="text-xs text-gray-500">Esta será la vista del mapa al cargar la aplicación</p>
+
+              {/* ═══════════════════════════════════════════════════════════
+                  SECCIÓN 1: Tamaño y Forma de Marcadores
+                  ═══════════════════════════════════════════════════════════ */}
+              <div className="space-y-1">
+                <h3 className="flex items-center gap-2 text-sm font-bold text-gray-800 uppercase tracking-wide">
+                  <span>📍</span> Marcadores
+                </h3>
+                <p className="text-xs text-gray-500">Configura tamaño y forma de los marcadores en el mapa</p>
               </div>
 
-              <hr className="border-gray-200" />
-
-              {/* Estilo de Marcadores */}
+              {/* Tamaño de Marcadores de Móviles */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">📍</span>
+                  <span className="text-lg">🚗</span>
                   Tamaño de Marcadores de Móviles
                 </label>
                 <div className="grid grid-cols-3 gap-3">
@@ -244,36 +236,6 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
 
               <hr className="border-gray-200" />
 
-              {/* Agrupar Pedidos/Servicios */}
-              <div className="space-y-3">
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">📦</span>
-                    <div>
-                      <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                        Agrupar Pedidos en Clusters
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        {preferences.pedidosCluster 
-                          ? 'Los pedidos cercanos se agrupan al alejar el zoom' 
-                          : 'Todos los pedidos se muestran individualmente'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={preferences.pedidosCluster}
-                      onChange={(e) => setPreferences({ ...preferences, pedidosCluster: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                  </div>
-                </label>
-              </div>
-
-              <hr className="border-gray-200" />
-
               {/* Tamaño de Marcadores de Pedidos */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -318,50 +280,29 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   ))}
                 </div>
                 <p className="text-xs text-gray-500">
-                  {preferences.pedidoMarkerStyle === 'normal' ? 'Marcador con emoji 📦/🔧 y colores de demora' :
+                  {preferences.pedidoMarkerStyle === 'normal' ? 'Marcador con emoji 📦 y colores de demora' :
                    preferences.pedidoMarkerStyle === 'compact' ? 'Forma pequeña con color de demora, sin emoji' :
                    'Punto mínimo con color de demora'}
                 </p>
-                {/* Selector de forma para pedidos y services - solo en compact/mini */}
+                {/* Selector de forma para pedidos - solo en compact/mini */}
                 {preferences.pedidoMarkerStyle !== 'normal' && (
-                  <div className="mt-3 space-y-3">
-                    <div className="p-3 bg-orange-50/50 rounded-lg border border-orange-100">
-                      <div className="text-xs font-semibold text-gray-600 mb-2">📦 Forma de Pedidos:</div>
-                      <div className="flex gap-2 flex-wrap">
-                        {SHAPE_OPTIONS.map(shape => (
-                          <button key={shape.value} type="button"
-                            onClick={() => setPreferences({ ...preferences, pedidoShape: shape.value })}
-                            className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all ${
-                              preferences.pedidoShape === shape.value ? 'border-orange-500 bg-orange-100' : 'border-gray-200 hover:border-gray-300 bg-white'
-                            }`}
-                            title={shape.label}
-                          >
-                            <svg width="20" height="20" viewBox="0 0 24 24" className="text-orange-500">
-                              <g dangerouslySetInnerHTML={{ __html: shape.svg }} />
-                            </svg>
-                            <span className="text-[9px] text-gray-500">{shape.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="p-3 bg-red-50/50 rounded-lg border border-red-100">
-                      <div className="text-xs font-semibold text-gray-600 mb-2">🔧 Forma de Services:</div>
-                      <div className="flex gap-2 flex-wrap">
-                        {SHAPE_OPTIONS.map(shape => (
-                          <button key={shape.value} type="button"
-                            onClick={() => setPreferences({ ...preferences, serviceShape: shape.value })}
-                            className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all ${
-                              preferences.serviceShape === shape.value ? 'border-red-500 bg-red-100' : 'border-gray-200 hover:border-gray-300 bg-white'
-                            }`}
-                            title={shape.label}
-                          >
-                            <svg width="20" height="20" viewBox="0 0 24 24" className="text-red-500">
-                              <g dangerouslySetInnerHTML={{ __html: shape.svg }} />
-                            </svg>
-                            <span className="text-[9px] text-gray-500">{shape.label}</span>
-                          </button>
-                        ))}
-                      </div>
+                  <div className="mt-3 p-3 bg-orange-50/50 rounded-lg border border-orange-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-2">📦 Forma de Pedidos:</div>
+                    <div className="flex gap-2 flex-wrap">
+                      {SHAPE_OPTIONS.map(shape => (
+                        <button key={shape.value} type="button"
+                          onClick={() => setPreferences({ ...preferences, pedidoShape: shape.value })}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all ${
+                            preferences.pedidoShape === shape.value ? 'border-orange-500 bg-orange-100' : 'border-gray-200 hover:border-gray-300 bg-white'
+                          }`}
+                          title={shape.label}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" className="text-orange-500">
+                            <g dangerouslySetInnerHTML={{ __html: shape.svg }} />
+                          </svg>
+                          <span className="text-[9px] text-gray-500">{shape.label}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -369,31 +310,249 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
 
               <hr className="border-gray-200" />
 
-              {/* Mostrar Solo Móviles Activos */}
+              {/* Tamaño de Marcadores de Services */}
               <div className="space-y-3">
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🚗</span>
-                    <div>
-                      <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                        Mostrar Solo Móviles Activos
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">🔧</span>
+                  Tamaño de Marcadores de Services
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { value: 'normal' as const, label: 'Normal', desc: 'Ícono con emoji', preview: 'w-6 h-6', emoji: '🔧' },
+                    { value: 'compact' as const, label: 'Compacto', desc: 'Forma pequeña', preview: 'w-4 h-4', emoji: '■' },
+                    { value: 'mini' as const, label: 'Mini', desc: 'Punto mínimo', preview: 'w-3 h-3', emoji: '•' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPreferences({ ...preferences, serviceMarkerStyle: opt.value })}
+                      className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                        preferences.serviceMarkerStyle === opt.value
+                          ? 'border-red-500 bg-red-50 shadow-md'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center h-12">
+                        <div className={`${opt.preview} rounded bg-gradient-to-br from-red-400 to-red-600 border-2 border-white shadow-md flex items-center justify-center`}>
+                          <span className="text-white text-[8px]">{opt.emoji}</span>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500">Oculta móviles sin actualizaciones recientes</p>
+                      <div className="text-center">
+                        <div className={`text-xs font-bold ${preferences.serviceMarkerStyle === opt.value ? 'text-red-700' : 'text-gray-700'}`}>
+                          {opt.label}
+                        </div>
+                        <div className="text-[10px] text-gray-500">{opt.desc}</div>
+                      </div>
+                      {preferences.serviceMarkerStyle === opt.value && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {preferences.serviceMarkerStyle === 'normal' ? 'Marcador con emoji 🔧 y colores de demora' :
+                   preferences.serviceMarkerStyle === 'compact' ? 'Forma pequeña con color de demora, sin emoji' :
+                   'Punto mínimo con color de demora'}
+                </p>
+                {/* Selector de forma para services - solo en compact/mini */}
+                {preferences.serviceMarkerStyle !== 'normal' && (
+                  <div className="mt-3 p-3 bg-red-50/50 rounded-lg border border-red-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-2">🔧 Forma de Services:</div>
+                    <div className="flex gap-2 flex-wrap">
+                      {SHAPE_OPTIONS.map(shape => (
+                        <button key={shape.value} type="button"
+                          onClick={() => setPreferences({ ...preferences, serviceShape: shape.value })}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all ${
+                            preferences.serviceShape === shape.value ? 'border-red-500 bg-red-100' : 'border-gray-200 hover:border-gray-300 bg-white'
+                          }`}
+                          title={shape.label}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" className="text-red-500">
+                            <g dangerouslySetInnerHTML={{ __html: shape.svg }} />
+                          </svg>
+                          <span className="text-[9px] text-gray-500">{shape.label}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={preferences.showActiveMovilesOnly}
-                      onChange={(e) => setPreferences({ ...preferences, showActiveMovilesOnly: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </div>
-                </label>
+                )}
               </div>
 
-              <hr className="border-gray-200" />
+              {/* ═══════════════════════════════════════════════════════════
+                  SECCIÓN 2: Comportamiento
+                  ═══════════════════════════════════════════════════════════ */}
+              <div className="border-t-2 border-gray-300 pt-6 space-y-1">
+                <h3 className="flex items-center gap-2 text-sm font-bold text-gray-800 uppercase tracking-wide">
+                  <span>⚙️</span> Comportamiento
+                </h3>
+                <p className="text-xs text-gray-500">Opciones de visualización y comportamiento del mapa</p>
+              </div>
+
+              {/* Toggle: Agrupar Pedidos en Clusters */}
+              <label className="flex items-center justify-between cursor-pointer group">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📦</span>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
+                      Agrupar Pedidos en Clusters
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {preferences.pedidosCluster 
+                        ? 'Los pedidos cercanos se agrupan al alejar el zoom' 
+                        : 'Todos los pedidos se muestran individualmente'}
+                    </p>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={preferences.pedidosCluster}
+                    onChange={(e) => setPreferences({ ...preferences, pedidosCluster: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                </div>
+              </label>
+
+              <hr className="border-gray-100" />
+
+              {/* Toggle: Solo Móviles Activos */}
+              <label className="flex items-center justify-between cursor-pointer group">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🚗</span>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
+                      Mostrar Solo Móviles Activos
+                    </div>
+                    <p className="text-xs text-gray-500">Oculta móviles sin actualizaciones recientes</p>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={preferences.showActiveMovilesOnly}
+                    onChange={(e) => setPreferences({ ...preferences, showActiveMovilesOnly: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </div>
+              </label>
+
+              <hr className="border-gray-100" />
+
+              {/* Toggle: Modo Tiempo Real */}
+              <label className="flex items-center justify-between cursor-pointer group">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-green-400 to-emerald-600 rounded-lg shadow-md">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
+                      Modo Tiempo Real
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {preferences.realtimeEnabled 
+                        ? 'Actualizaciones automáticas activadas' 
+                        : 'Modo estático (sin actualizaciones automáticas)'}
+                    </p>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={preferences.realtimeEnabled}
+                    onChange={(e) => setPreferences({ ...preferences, realtimeEnabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                </div>
+              </label>
+
+              <hr className="border-gray-100" />
+
+              {/* Toggle: Animación de Rutas */}
+              <label className="flex items-center justify-between cursor-pointer group">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎬</span>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
+                      Habilitar Animación de Rutas
+                    </div>
+                    <p className="text-xs text-gray-500">Mostrar control de animación en el mapa</p>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={preferences.showRouteAnimation}
+                    onChange={(e) => setPreferences({ ...preferences, showRouteAnimation: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </div>
+              </label>
+
+              <hr className="border-gray-100" />
+
+              {/* Toggle: Mostrar Pedidos/Servicios Completados */}
+              <label className="flex items-center justify-between cursor-pointer group">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">✅</span>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
+                      Mostrar Pedidos/Servicios Completados
+                    </div>
+                    <p className="text-xs text-gray-500">Ver marcadores de entregas finalizadas</p>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={preferences.showCompletedMarkers}
+                    onChange={(e) => setPreferences({ ...preferences, showCompletedMarkers: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </div>
+              </label>
+
+              <hr className="border-gray-100" />
+
+              {/* Toggle: Etiquetas de Demoras */}
+              <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 text-lg">⏱️</div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Etiquetas de Demoras</div>
+                    <p className="text-xs text-gray-500">Mostrar minutos de demora en cada zona</p>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={preferences.showDemoraLabels}
+                    onChange={(e) => setPreferences({ ...preferences, showDemoraLabels: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </div>
+              </label>
+
+              {/* ═══════════════════════════════════════════════════════════
+                  SECCIÓN 3: Configuración Avanzada (Sliders)
+                  ═══════════════════════════════════════════════════════════ */}
+              <div className="border-t-2 border-gray-300 pt-6 space-y-1">
+                <h3 className="flex items-center gap-2 text-sm font-bold text-gray-800 uppercase tracking-wide">
+                  <span>🔧</span> Configuración Avanzada
+                </h3>
+                <p className="text-xs text-gray-500">Intervalos, umbrales y opacidad</p>
+              </div>
 
               {/* Retraso Máximo de Coordenadas */}
               <div className="space-y-3">
@@ -422,112 +581,6 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
 
               <hr className="border-gray-200" />
 
-              {/* Modo Tiempo Real */}
-              <div className="space-y-3">
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-green-400 to-emerald-600 rounded-lg shadow-md">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-                      </svg>
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                        Modo Tiempo Real
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        {preferences.realtimeEnabled 
-                          ? 'Actualizaciones automáticas activadas' 
-                          : 'Modo estático (sin actualizaciones automáticas)'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={preferences.realtimeEnabled}
-                      onChange={(e) => setPreferences({ ...preferences, realtimeEnabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                  </div>
-                </label>
-              </div>
-
-              <hr className="border-gray-200" />
-
-              {/* Mostrar Animación de Rutas */}
-              <div className="space-y-3">
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🎬</span>
-                    <div>
-                      <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                        Habilitar Animación de Rutas
-                      </div>
-                      <p className="text-xs text-gray-500">Mostrar control de animación en el mapa</p>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={preferences.showRouteAnimation}
-                      onChange={(e) => setPreferences({ ...preferences, showRouteAnimation: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </div>
-                </label>
-              </div>
-
-              <hr className="border-gray-200" />
-
-              {/* Mostrar Marcadores Completados */}
-              <div className="space-y-3">
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">✅</span>
-                    <div>
-                      <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                        Mostrar Pedidos/Servicios Completados
-                      </div>
-                      <p className="text-xs text-gray-500">Ver marcadores de entregas finalizadas</p>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={preferences.showCompletedMarkers}
-                      onChange={(e) => setPreferences({ ...preferences, showCompletedMarkers: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </div>
-                </label>
-
-                {/* Toggle mostrar etiquetas de demoras */}
-                <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 text-lg">⏱️</div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-700">Etiquetas de Demoras</div>
-                      <p className="text-xs text-gray-500">Mostrar minutos de demora en cada zona</p>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={preferences.showDemoraLabels}
-                      onChange={(e) => setPreferences({ ...preferences, showDemoraLabels: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </div>
-                </label>
-              </div>
-
-              <hr className="border-gray-200" />
-
               {/* Intervalos de Refresco de Capas */}
               <div className="space-y-4">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -535,7 +588,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   Intervalos de Refresco Automático
                 </label>
                 <p className="text-xs text-gray-500">
-                  Configura cada cuántos segundos se actualizan los datos al activar las vistas de Demoras y Móviles en Zonas.
+                  Configura cada cuántos segundos se actualizan los datos de las vistas Demoras y Móviles en Zonas.
                 </p>
 
                 {/* Demoras polling */}
@@ -581,6 +634,33 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                     </span>
                   </div>
                 </div>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Opacidad de Capas de Zonas */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">🎨</span>
+                  Opacidad de Capas de Zonas
+                </label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value={preferences.zonaOpacity}
+                    onChange={(e) => setPreferences({ ...preferences, zonaOpacity: parseInt(e.target.value) })}
+                    className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                  />
+                  <span className="min-w-[60px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
+                    {preferences.zonaOpacity}%
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Controla la intensidad de los colores de las zonas en las vistas de datos (Distribución, Demoras, Móviles por Zona)
+                </p>
               </div>
             </div>
 

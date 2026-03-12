@@ -15,14 +15,17 @@ export interface ZonaMapData {
 
 interface ZonasMapLayerProps {
   zonas: ZonaMapData[];
+  zonaOpacity?: number; // 0-100, default 50
 }
 
 /**
  * Capa del mapa que dibuja polígonos de zonas.
  * Cada zona se pinta con su color y muestra el nombre como tooltip.
  */
-const ZonasMapLayer = memo(function ZonasMapLayer({ zonas }: ZonasMapLayerProps) {
+const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50 }: ZonasMapLayerProps) {
   if (!zonas || zonas.length === 0) return null;
+
+  const opacityFactor = zonaOpacity / 100;
 
   return (
     <>
@@ -46,9 +49,9 @@ const ZonasMapLayer = memo(function ZonasMapLayer({ zonas }: ZonasMapLayerProps)
             pathOptions={{
               color: fillColor,
               fillColor: fillColor,
-              fillOpacity: 0.20,
+              fillOpacity: 0.20 * opacityFactor,
               weight: 2,
-              opacity: 0.7,
+              opacity: 0.7 * opacityFactor,
               dashArray: '5, 5',
             }}
           >

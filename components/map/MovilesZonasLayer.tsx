@@ -18,13 +18,16 @@ interface MovilesZonasLayerProps {
   zonas: MovilesZonaData[];
   /** Map from zona_id → count of assigned móviles */
   movilesCount: Map<number, number>;
+  /** Opacidad global de zonas (0-100). Por defecto 50 */
+  zonaOpacity?: number;
 }
 
 /**
  * Capa de zonas con cantidad de móviles asignados.
  * Muestra cada zona pintada con una etiqueta con el nro de zona y la cantidad de móviles.
  */
-const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount }: MovilesZonasLayerProps) {
+const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount, zonaOpacity = 50 }: MovilesZonasLayerProps) {
+  const opacityFactor = zonaOpacity / 100;
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -85,9 +88,9 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount 
             pathOptions={{
               color: fillColor,
               fillColor: fillColor,
-              fillOpacity,
+              fillOpacity: fillOpacity * opacityFactor,
               weight: 2,
-              opacity: 0.8,
+              opacity: 0.8 * opacityFactor,
             }}
           />
           <Marker

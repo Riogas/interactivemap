@@ -21,6 +21,8 @@ interface DemorasZonasLayerProps {
   demoras: Map<number, { minutos: number; activa: boolean }>;
   /** Mostrar etiquetas de demora (minutos). Por defecto false */
   showLabels?: boolean;
+  /** Opacidad global de zonas (0-100). Por defecto 50 */
+  zonaOpacity?: number;
 }
 
 /**
@@ -153,9 +155,10 @@ function DemorasLegend() {
  * Capa de zonas con información de demoras.
  * Muestra todas las zonas pintadas según minutos, con etiqueta de nro de zona y demora.
  */
-const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false }: DemorasZonasLayerProps) {
+const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false, zonaOpacity = 50 }: DemorasZonasLayerProps) {
   // Inyectar patrón SVG para zonas con 0 minutos
   useDottedPattern();
+  const opacityFactor = zonaOpacity / 100;
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     const result = zonas.map((zona) => {
@@ -223,9 +226,9 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
             pathOptions={{
               color: isDotted ? '#94a3b8' : fillColor,
               fillColor: fillColor,
-              fillOpacity,
+              fillOpacity: fillOpacity * opacityFactor,
               weight: isDotted ? 2 : 2,
-              opacity: isDotted ? 0.7 : 0.8,
+              opacity: (isDotted ? 0.7 : 0.8) * opacityFactor,
               dashArray: isDotted ? '4 4' : undefined,
               className: isDotted ? 'demora-zona-dotted' : undefined,
             }}

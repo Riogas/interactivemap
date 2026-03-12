@@ -79,6 +79,7 @@ interface MapViewProps {
   markerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores
   pedidosCluster?: boolean; // Agrupar pedidos en clusters
   pedidoMarkerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de pedidos
+  serviceMarkerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de services
   movilShape?: MarkerShape; // Forma del marcador de móviles (compact/mini)
   pedidoShape?: MarkerShape; // Forma del marcador de pedidos (compact/mini)
   serviceShape?: MarkerShape; // Forma del marcador de services (compact/mini)
@@ -88,6 +89,7 @@ interface MapViewProps {
   movilesZonasCount?: Map<number, number>; // Cantidad de móviles por zona_id
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
+  zonaOpacity?: number; // Opacidad de las capas de zonas (0-100)
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
@@ -454,6 +456,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.markerStyle === next.markerStyle &&
     prev.pedidosCluster === next.pedidosCluster &&
     prev.pedidoMarkerStyle === next.pedidoMarkerStyle &&
+    prev.serviceMarkerStyle === next.serviceMarkerStyle &&
     prev.movilShape === next.movilShape &&
     prev.pedidoShape === next.pedidoShape &&
     prev.serviceShape === next.serviceShape &&
@@ -462,6 +465,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.demorasData?.size === next.demorasData?.size &&
     prev.movilesZonasCount?.size === next.movilesZonasCount?.size &&
     prev.showDemoraLabels === next.showDemoraLabels &&
+    prev.zonaOpacity === next.zonaOpacity &&
     prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
     prev.poisHidden === next.poisHidden &&
     prev.hiddenPoiCategories?.size === next.hiddenPoiCategories?.size &&
@@ -508,6 +512,7 @@ const MapView = memo(function MapView({
   markerStyle = 'normal',
   pedidosCluster = true,
   pedidoMarkerStyle = 'normal',
+  serviceMarkerStyle = 'normal',
   movilShape = 'circle',
   pedidoShape = 'square',
   serviceShape = 'triangle',
@@ -517,6 +522,7 @@ const MapView = memo(function MapView({
   movilesZonasCount = new Map(),
   allZonas = [],
   showDemoraLabels = false,
+  zonaOpacity = 50,
   reloadMarkersTrigger = 0,
   poisHidden = false,
   hiddenPoiCategories = new Set(),
@@ -1577,10 +1583,10 @@ const MapView = memo(function MapView({
   }, [pedidoMarkerStyle, createPedidoIconByDelay, createPedidoIconByDelayCompact, createPedidoIconByDelayMini]);
 
   const getServiceIcon = useCallback((fchHoraMaxEntComp: string | null) => {
-    if (pedidoMarkerStyle === 'mini') return createServiceIconByDelayMini(fchHoraMaxEntComp);
-    if (pedidoMarkerStyle === 'compact') return createServiceIconByDelayCompact(fchHoraMaxEntComp);
+    if (serviceMarkerStyle === 'mini') return createServiceIconByDelayMini(fchHoraMaxEntComp);
+    if (serviceMarkerStyle === 'compact') return createServiceIconByDelayCompact(fchHoraMaxEntComp);
     return createServiceIconByDelay(fchHoraMaxEntComp);
-  }, [pedidoMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
+  }, [serviceMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
 
   // 🚀 OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
   const createCompletadoIcon = useCallback((tipo: 'PEDIDO' | 'SERVICIO') => {
@@ -1817,21 +1823,21 @@ const MapView = memo(function MapView({
         )}
 
         {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}
-        {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} />}
+        {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} zonaOpacity={zonaOpacity} />}
 
         {/* 🏘️ Capa de Distribución (polígonos con color de tabla + identificador de zona) */}
         {dataViewMode === 'distribucion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DistribucionZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} />
+          <DistribucionZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} zonaOpacity={zonaOpacity} />
         )}
 
         {/* ⏱️ Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} />
+          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} zonaOpacity={zonaOpacity} />
         )}
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesCount={movilesZonasCount} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesCount={movilesZonasCount} zonaOpacity={zonaOpacity} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
