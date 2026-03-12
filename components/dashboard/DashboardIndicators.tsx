@@ -10,14 +10,25 @@ interface DashboardIndicatorsProps {
   pedidos: PedidoSupabase[];
   services: ServiceSupabase[];
   selectedDate: string;
+  selectedMoviles?: number[];
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [] }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
-    const pendientes = pedidos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5');
-    const entregados = pedidos.filter(p => Number(p.estado_nro) === 2);
+    // Mismos filtros que MovilSelector: estado 1, sub_estado 5, con móvil asignado
+    let pendientes = pedidos.filter(p => 
+      Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5'
+      && p.movil && Number(p.movil) > 0
+    );
+    let entregados = pedidos.filter(p => Number(p.estado_nro) === 2);
+    
+    // Filtrar por móviles seleccionados (igual que sidebar)
+    if (selectedMoviles.length > 0) {
+      pendientes = pendientes.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
+      entregados = entregados.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
+    }
     const total = pedidos.length;
     
     // Atrasados: pedidos pendientes con delay "Atrasado" o "Muy Atrasado"
@@ -50,12 +61,18 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       masAtrasadoMins: Math.round(masAtrasadoMins),
       total,
     };
-  }, [pedidos]);
+  }, [pedidos, selectedMoviles]);
 
   // ============= CÁLCULOS DE SERVICES =============
   const servicesStats = useMemo(() => {
-    const pendientes = services.filter(s => Number(s.estado_nro) === 1);
-    const realizados = services.filter(s => Number(s.estado_nro) === 2);
+    let pendientes = services.filter(s => Number(s.estado_nro) === 1);
+    let realizados = services.filter(s => Number(s.estado_nro) === 2);
+    
+    // Filtrar por móviles seleccionados (igual que sidebar)
+    if (selectedMoviles.length > 0) {
+      pendientes = pendientes.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
+      realizados = realizados.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
+    }
     const total = services.length;
     
     // Atrasados: services pendientes con delay "Atrasado" o "Muy Atrasado"
@@ -88,7 +105,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       masAtrasadoMins: Math.round(masAtrasadoMins),
       total,
     };
-  }, [services]);
+  }, [services, selectedMoviles]);
 
   // ============= CÁLCULOS DE MÓVILES =============
   const movilesStats = useMemo(() => {

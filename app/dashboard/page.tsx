@@ -1563,10 +1563,11 @@ function DashboardContent() {
           showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
         >
           <DashboardIndicators
-            moviles={applyActivityFilter(movilesFiltered)}
+            moviles={markInactiveMoviles(movilesFiltered)}
             pedidos={pedidosCompletos}
             services={servicesCompletos}
             selectedDate={selectedDate}
+            selectedMoviles={selectedMoviles}
           />
         </NavbarSimple>
       </div>
