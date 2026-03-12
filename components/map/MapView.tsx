@@ -374,6 +374,41 @@ function AnimationFollower({
   return null;
 }
 
+/**
+ * Observa cambios de tamaño en el contenedor del mapa y llama invalidateSize().
+ * Resuelve el bug clásico de Leaflet donde al colapsar/expandir el sidebar
+ * el mapa no se re-renderiza correctamente (tiles grises, zonas cortadas).
+ */
+function MapResizer() {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    if (!container || typeof ResizeObserver === 'undefined') return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const observer = new ResizeObserver(() => {
+      // Debounce: esperar a que la animación termine y luego invalidar
+      if (timer) clearTimeout(timer);
+      // Invalidar rápido para feedback visual
+      map.invalidateSize({ animate: false });
+      // Y otra vez con delay para capturar el final de la animación spring
+      timer = setTimeout(() => {
+        map.invalidateSize({ animate: false });
+      }, 350);
+    });
+
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      if (timer) clearTimeout(timer);
+    };
+  }, [map]);
+
+  return null;
+}
+
 // Componente para capturar clics en el mapa
 function MapClickHandler({ 
   isPlacingMarker, 
@@ -1772,6 +1807,9 @@ const MapView = memo(function MapView({
       >
         {/* Control de capas base (calles, satélite, terreno, etc.) */}
         <LayersControl defaultLayer={defaultMapLayer} />
+
+        {/* 🔄 Recalcular tamaño del mapa cuando el contenedor cambia (sidebar collapse) */}
+        <MapResizer />
 
         {/* � Control de vista de datos (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
