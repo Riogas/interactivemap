@@ -22,10 +22,15 @@ interface ZonasMapLayerProps {
  * Capa del mapa que dibuja polígonos de zonas.
  * Cada zona se pinta con su color y muestra el nombre como tooltip.
  */
+// Ajusta opacidad base: 50%=valor original, 100%=sólido (1.0), <50%=más transparente
+function adjustOpacity(base: number, zonaOpacity: number): number {
+  const f = zonaOpacity / 50;
+  if (f <= 1) return base * f;
+  return Math.min(1, base + (1 - base) * (f - 1));
+}
+
 const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50 }: ZonasMapLayerProps) {
   if (!zonas || zonas.length === 0) return null;
-
-  const opacityFactor = zonaOpacity / 100;
 
   return (
     <>
@@ -49,9 +54,9 @@ const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50 }: Z
             pathOptions={{
               color: fillColor,
               fillColor: fillColor,
-              fillOpacity: 0.20 * opacityFactor,
+              fillOpacity: adjustOpacity(0.20, zonaOpacity),
               weight: 2,
-              opacity: 0.7 * opacityFactor,
+              opacity: adjustOpacity(0.7, zonaOpacity),
               dashArray: '5, 5',
             }}
           >

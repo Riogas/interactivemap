@@ -155,10 +155,16 @@ function DemorasLegend() {
  * Capa de zonas con información de demoras.
  * Muestra todas las zonas pintadas según minutos, con etiqueta de nro de zona y demora.
  */
+// Ajusta opacidad base: 50%=valor original, 100%=sólido (1.0), <50%=más transparente
+function adjustOpacity(base: number, zonaOpacity: number): number {
+  const f = zonaOpacity / 50;
+  if (f <= 1) return base * f;
+  return Math.min(1, base + (1 - base) * (f - 1));
+}
+
 const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false, zonaOpacity = 50 }: DemorasZonasLayerProps) {
   // Inyectar patrón SVG para zonas con 0 minutos
   useDottedPattern();
-  const opacityFactor = zonaOpacity / 100;
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     const result = zonas.map((zona) => {
@@ -226,9 +232,9 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
             pathOptions={{
               color: isDotted ? '#94a3b8' : fillColor,
               fillColor: fillColor,
-              fillOpacity: fillOpacity * opacityFactor,
+              fillOpacity: adjustOpacity(fillOpacity, zonaOpacity),
               weight: isDotted ? 2 : 2,
-              opacity: (isDotted ? 0.7 : 0.8) * opacityFactor,
+              opacity: adjustOpacity(isDotted ? 0.7 : 0.8, zonaOpacity),
               dashArray: isDotted ? '4 4' : undefined,
               className: isDotted ? 'demora-zona-dotted' : undefined,
             }}

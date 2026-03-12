@@ -26,8 +26,14 @@ interface MovilesZonasLayerProps {
  * Capa de zonas con cantidad de móviles asignados.
  * Muestra cada zona pintada con una etiqueta con el nro de zona y la cantidad de móviles.
  */
+// Ajusta opacidad base: 50%=valor original, 100%=sólido (1.0), <50%=más transparente
+function adjustOpacity(base: number, zonaOpacity: number): number {
+  const f = zonaOpacity / 50;
+  if (f <= 1) return base * f;
+  return Math.min(1, base + (1 - base) * (f - 1));
+}
+
 const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount, zonaOpacity = 50 }: MovilesZonasLayerProps) {
-  const opacityFactor = zonaOpacity / 100;
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -88,9 +94,9 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount,
             pathOptions={{
               color: fillColor,
               fillColor: fillColor,
-              fillOpacity: fillOpacity * opacityFactor,
+              fillOpacity: adjustOpacity(fillOpacity, zonaOpacity),
               weight: 2,
-              opacity: 0.8 * opacityFactor,
+              opacity: adjustOpacity(0.8, zonaOpacity),
             }}
           />
           <Marker

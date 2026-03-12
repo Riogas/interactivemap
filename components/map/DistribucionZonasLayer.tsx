@@ -53,8 +53,14 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
  * Capa de zonas para la vista Distribución.
  * Muestra todas las zonas pintadas con su color de la tabla y el identificador de zona.
  */
+// Ajusta opacidad base: 50%=valor original, 100%=sólido (1.0), <50%=más transparente
+function adjustOpacity(base: number, zonaOpacity: number): number {
+  const f = zonaOpacity / 50;
+  if (f <= 1) return base * f;
+  return Math.min(1, base + (1 - base) * (f - 1));
+}
+
 const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas, zonaOpacity = 50 }: DistribucionZonasLayerProps) {
-  const opacityFactor = zonaOpacity / 100;
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -105,9 +111,9 @@ const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas, zon
             pathOptions={{
               color: fillColor,
               fillColor: fillColor,
-              fillOpacity: 0.35 * opacityFactor,
+              fillOpacity: adjustOpacity(0.35, zonaOpacity),
               weight: 2,
-              opacity: 0.85 * opacityFactor,
+              opacity: adjustOpacity(0.85, zonaOpacity),
             }}
           />
           <Marker
