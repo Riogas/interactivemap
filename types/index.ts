@@ -273,9 +273,10 @@ export interface MovilFilters {
 
 export interface ServiceFilters {
   atraso: string[]; // Multi-selección: 'en_hora' | 'limite_cercana' | 'atrasado' | 'muy_atrasado' | 'sin_hora'
+  tipoServicio: string; // 'all' o valor dinámico de moviles_zonas.tipo_de_servicio
 }
 
 export interface PedidoFilters {
   atraso: string[]; // Multi-selección: 'en_hora' | 'limite_cercana' | 'atrasado' | 'muy_atrasado' | 'sin_hora'
-  tipoServicio: 'all' | 'urgente' | 'especial' | 'normal';
+  tipoServicio: string; // 'all' o valor dinámico de moviles_zonas.tipo_de_servicio
 }

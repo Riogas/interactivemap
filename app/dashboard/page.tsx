@@ -186,7 +186,26 @@ function DashboardContent() {
 
   // Estado para filtros de pedidos y services (lifted desde MovilSelector para compartir con MapView)
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ atraso: [], tipoServicio: 'all' });
-  const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [] });
+  const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all' });
+  
+  // Tipos de servicio dinámicos desde moviles_zonas.tipo_de_servicio
+  const [tiposServicio, setTiposServicio] = useState<string[]>([]);
+  useEffect(() => {
+    async function loadTiposServicio() {
+      try {
+        const res = await fetch('/api/moviles-zonas?activa=true');
+        const json = await res.json();
+        if (json.success && json.data) {
+          const tipos = [...new Set(json.data.map((mz: any) => mz.tipo_de_servicio).filter(Boolean))] as string[];
+          tipos.sort((a, b) => a.localeCompare(b));
+          setTiposServicio(tipos);
+        }
+      } catch (e) {
+        console.warn('⚠️ No se pudieron cargar tipos de servicio:', e);
+      }
+    }
+    loadTiposServicio();
+  }, []);
   
   // 🔥 NUEVO: Hook para escuchar cambios en pedidos en tiempo real
   const { 
@@ -299,6 +318,18 @@ function DashboardContent() {
       const category = DELAY_CATEGORY_MAP[info.label] || 'sin_hora';
       return atrasoFilter.includes(category);
     });
+  }, []);
+
+  // Filtrar pedidos/services por tipo de servicio (dinámico desde moviles_zonas)
+  const filterByTipoServicio = useCallback(<T extends { servicio_nombre?: string | null }>(
+    items: T[],
+    tipoServicio: string
+  ): T[] => {
+    if (!tipoServicio || tipoServicio === 'all') return items;
+    const tipoUpper = tipoServicio.toUpperCase();
+    return items.filter(item => 
+      item.servicio_nombre && item.servicio_nombre.toUpperCase() === tipoUpper
+    );
   }, []);
 
   const applyAdvancedFilters = useCallback((moviles: MovilData[]): MovilData[] => {
@@ -1821,6 +1852,7 @@ function DashboardContent() {
                   onPedidosFiltersChange={setPedidosFilters}
                   servicesFilters={servicesFilters}
                   onServicesFiltersChange={setServicesFilters}
+                  tiposServicio={tiposServicio}
                   movilesHidden={movilesHidden}
                   onToggleMovilesHidden={() => setMovilesHidden(!movilesHidden)}
                   pedidosHidden={pedidosHidden}
@@ -1889,17 +1921,17 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={pedidosHidden ? [] : filterByDelay(
+                pedidos={pedidosHidden ? [] : filterByTipoServicio(filterByDelay(
                   (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5')).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud)),
                   pedidosFilters.atraso
-                )}
+                ), pedidosFilters.tipoServicio)}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
-                services={servicesHidden ? [] : filterByDelay(
+                services={servicesHidden ? [] : filterByTipoServicio(filterByDelay(
                   (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud)),
                   servicesFilters.atraso
-                )}
+                ), servicesFilters.tipoServicio)}
                 allServices={servicesCompletos}
                 onServiceClick={handleServiceClick}
                 popupService={popupService}

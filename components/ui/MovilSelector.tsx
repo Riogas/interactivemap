@@ -39,6 +39,7 @@ interface MovilSelectorProps {
   onPedidosFiltersChange?: (filters: PedidoFilters) => void; // Callback para cambios en filtros de pedidos
   servicesFilters?: ServiceFilters; // Filtros de services (lifted)
   onServicesFiltersChange?: (filters: ServiceFilters) => void; // Callback para cambios en filtros de services
+  tiposServicio?: string[]; // Tipos de servicio dinámicos desde moviles_zonas
 }
 
 // Definir las categorías del árbol
@@ -80,6 +81,7 @@ export default function MovilSelector({
   onPedidosFiltersChange,
   servicesFilters: servicesFiltersProp,
   onServicesFiltersChange,
+  tiposServicio = [],
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -135,7 +137,7 @@ export default function MovilSelector({
     actividad: 'activo', // Por defecto mostrar solo activos
   });
   // Filtros de pedidos/services: usar props si vienen del padre, si no estado local (fallback)
-  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [] });
+  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all' });
   const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({ 
     atraso: [], 
     tipoServicio: 'all' 
@@ -266,6 +268,14 @@ export default function MovilSelector({
       );
     }
     
+    // Filtrar por tipo de servicio (dinámico desde moviles_zonas.tipo_de_servicio)
+    if (pedidosFilters.tipoServicio && pedidosFilters.tipoServicio !== 'all') {
+      const tipoUpper = pedidosFilters.tipoServicio.toUpperCase();
+      result = result.filter(pedido => 
+        pedido.servicio_nombre && pedido.servicio_nombre.toUpperCase() === tipoUpper
+      );
+    }
+    
     // Filtrar por atraso (multi-selección)
     if (pedidosFilters.atraso.length > 0) {
       result = result.filter(pedido => {
@@ -345,6 +355,14 @@ export default function MovilSelector({
         (service.defecto && service.defecto.toLowerCase().includes(searchLower)) ||
         (service.cliente_nombre && service.cliente_nombre.toLowerCase().includes(searchLower)) ||
         (service.cliente_tel && service.cliente_tel.includes(searchLower))
+      );
+    }
+    
+    // Filtrar por tipo de servicio (dinámico desde moviles_zonas.tipo_de_servicio)
+    if (servicesFilters.tipoServicio && servicesFilters.tipoServicio !== 'all') {
+      const tipoUpper = servicesFilters.tipoServicio.toUpperCase();
+      result = result.filter(service => 
+        service.servicio_nombre && service.servicio_nombre.toUpperCase() === tipoUpper
       );
     }
     
@@ -443,7 +461,17 @@ export default function MovilSelector({
           searchValue: servicesSearch,
           onSearchChange: setServicesSearch,
           searchPlaceholder: 'Buscar service...',
-          filters: [],
+          filters: [
+            {
+              id: 'tipoServicio',
+              label: 'Tipo de Servicio',
+              options: [
+                { value: 'all', label: 'Todos' },
+                ...tiposServicio.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() })),
+              ],
+              value: servicesFilters.tipoServicio ?? 'all',
+            }
+          ],
           multiSelectFilters: [
             {
               id: 'atraso',
@@ -458,7 +486,14 @@ export default function MovilSelector({
               values: servicesFilters.atraso,
             }
           ],
-          onFilterChange: () => {},
+          onFilterChange: (filterId: string, value: string) => {
+            if (filterId === 'tipoServicio') {
+              setServicesFilters(prev => ({ 
+                ...prev, 
+                tipoServicio: value
+              }));
+            }
+          },
           onMultiSelectFilterChange: (filterId: string, values: string[]) => {
             if (filterId === 'atraso') {
               setServicesFilters(prev => ({ ...prev, atraso: values }));
@@ -495,8 +530,7 @@ export default function MovilSelector({
               label: 'Tipo de Servicio',
               options: [
                 { value: 'all', label: 'Todos' },
-                { value: 'urgente', label: 'Urgente' },
-                { value: 'especial', label: 'Especial' },
+                ...tiposServicio.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() })),
               ],
               value: pedidosFilters.tipoServicio,
             }
@@ -519,7 +553,7 @@ export default function MovilSelector({
             if (filterId === 'tipoServicio') {
               setPedidosFilters(prev => ({ 
                 ...prev, 
-                tipoServicio: value as 'all' | 'urgente' | 'especial' 
+                tipoServicio: value
               }));
             }
           },
