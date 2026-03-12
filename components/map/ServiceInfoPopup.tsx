@@ -8,6 +8,15 @@ import { es } from 'date-fns/locale';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion } from '@/utils/estadoPedido';
 
+/**
+ * La DB almacena horas locales (Uruguay) con offset +00 incorrecto.
+ * Stripeamos el offset para que JS lo interprete como hora local del navegador.
+ */
+function parseLocalDate(dateStr: string): Date {
+  const stripped = dateStr.replace(/[+-]\d{2}(:\d{2})?$/, '').trim();
+  return new Date(stripped);
+}
+
 interface ServiceInfoPopupProps {
   service: ServiceSupabase | null;
   onClose: () => void;
@@ -137,7 +146,13 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-2 border border-blue-200">
                 <div className="font-bold text-blue-900 text-sm">{service.cliente_nombre || 'Sin nombre'}</div>
                 {service.cliente_tel && (
-                  <div className="text-[10px] text-blue-700 mt-0.5">📞 {service.cliente_tel}</div>
+                  <a
+                    href={`tel:${service.cliente_tel}`}
+                    className="inline-flex items-center gap-1.5 mt-1 px-2 py-1 bg-blue-200/60 hover:bg-blue-300/60 rounded-md transition-colors"
+                  >
+                    <span className="text-sm">📞</span>
+                    <span className="text-sm font-bold text-blue-900 tracking-wide">{service.cliente_tel}</span>
+                  </a>
                 )}
                 {service.cliente_direccion && (
                   <div className="text-[10px] text-blue-600 mt-1">📍 {service.cliente_direccion}</div>
@@ -218,7 +233,7 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
                       <div>
                         <div className="text-[9px] text-gray-500 font-semibold">Hora Asignación</div>
                         <div className="text-xs font-bold text-gray-900">
-                          {format(new Date(service.fch_hora_mov), "dd/MM/yyyy HH:mm", { locale: es })}
+                          {format(parseLocalDate(service.fch_hora_mov), "dd/MM/yyyy HH:mm", { locale: es })}
                         </div>
                       </div>
                     </div>
@@ -230,7 +245,7 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
                         <div className="bg-white rounded-md p-1.5 border border-gray-200">
                           <div className="text-[9px] text-green-600 font-semibold mb-0.5">Desde</div>
                           <div className="text-[10px] font-bold text-gray-900">
-                            {format(new Date(service.fch_hora_para), "dd/MM HH:mm", { locale: es })}
+                            {format(parseLocalDate(service.fch_hora_para), "dd/MM HH:mm", { locale: es })}
                           </div>
                         </div>
                       )}
@@ -238,7 +253,7 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
                         <div className="bg-white rounded-md p-1.5 border border-gray-200">
                           <div className="text-[9px] text-red-600 font-semibold mb-0.5">Hasta</div>
                           <div className="text-[10px] font-bold text-gray-900">
-                            {format(new Date(service.fch_hora_max_ent_comp), "dd/MM HH:mm", { locale: es })}
+                            {format(parseLocalDate(service.fch_hora_max_ent_comp), "dd/MM HH:mm", { locale: es })}
                           </div>
                         </div>
                       )}
