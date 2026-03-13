@@ -15,7 +15,7 @@ interface LeaderboardModalProps {
 type SortKey = 'entregados' | 'pendientes' | 'total' | 'enHora' | 'cumplimiento';
 type ViewMode = 'pedidos' | 'services';
 
-const MEDAL_ICONS = ['🥇', '🥈', '🥉'];
+
 
 export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, services }: LeaderboardModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('entregados');
@@ -246,11 +246,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
                     >
                       {/* Rank */}
                       <td className="py-2 px-2">
-                        {isTop3 ? (
-                          <span className="text-lg">{MEDAL_ICONS[rank - 1]}</span>
-                        ) : (
-                          <span className="text-gray-500 font-mono text-xs">{rank}</span>
-                        )}
+                        <span className={`font-mono text-xs font-bold ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-500'}`}>{rank}</span>
                       </td>
 
                       {/* Movil name */}
