@@ -13,12 +13,14 @@ interface LeaderboardModalProps {
 }
 
 type SortKey = 'entregados' | 'pendientes' | 'total' | 'enHora' | 'cumplimiento';
+type ViewMode = 'pedidos' | 'services';
 
 const MEDAL_ICONS = ['🥇', '🥈', '🥉'];
 
 export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, services }: LeaderboardModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('entregados');
   const [showOnlyActive, setShowOnlyActive] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('pedidos');
 
   const leaderboard = useMemo(() => {
     // Build stats per movil
@@ -57,11 +59,13 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
 
         const entregadosEnHora = pedidosEnHora + servicesEnHora;
 
-        const totalEntregas = pedidosEntregados + servicesRealizados;
-        const totalPendientes = pedidosPendientes + servicesPendientes;
-        const totalItems = pedidosTotal + servicesTotal;
-        const totalRelevantes = totalEntregas + totalPendientes;
-        const cumplimiento = totalRelevantes > 0 ? Math.round((totalEntregas / totalRelevantes) * 100) : 0;
+        // Totals depend on viewMode
+        const entregas = viewMode === 'pedidos' ? pedidosEntregados : viewMode === 'services' ? servicesRealizados : pedidosEntregados + servicesRealizados;
+        const pend = viewMode === 'pedidos' ? pedidosPendientes : viewMode === 'services' ? servicesPendientes : pedidosPendientes + servicesPendientes;
+        const items = viewMode === 'pedidos' ? pedidosTotal : viewMode === 'services' ? servicesTotal : pedidosTotal + servicesTotal;
+        const enHora = viewMode === 'pedidos' ? pedidosEnHora : viewMode === 'services' ? servicesEnHora : pedidosEnHora + servicesEnHora;
+        const relevantes = entregas + pend;
+        const cumplimiento = relevantes > 0 ? Math.round((entregas / relevantes) * 100) : 0;
 
         return {
           id: movilId,
@@ -74,10 +78,10 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
           servicesRealizados,
           servicesPendientes,
           servicesTotal,
-          entregadosEnHora,
-          totalEntregas,
-          totalPendientes,
-          totalItems,
+          entregadosEnHora: enHora,
+          totalEntregas: entregas,
+          totalPendientes: pend,
+          totalItems: items,
           cumplimiento,
           capacidad: movil.tamanoLote || 0,
         };
@@ -96,7 +100,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
     });
 
     return sorted;
-  }, [moviles, pedidos, services, sortBy, showOnlyActive]);
+  }, [moviles, pedidos, services, sortBy, showOnlyActive, viewMode]);
 
   // Summary stats
   const summary = useMemo(() => {
@@ -153,10 +157,26 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
             </div>
           </div>
 
-          {/* Summary Cards */}
-          <div className="grid grid-cols-4 gap-2 px-4 -mt-3 relative z-10">
+          {/* View Mode Selector + Summary Cards */}
+          <div className="px-4 pt-3 pb-1 relative z-10 -mt-3">
+            <div className="flex items-center gap-2 mb-2">
+              <select
+                value={viewMode}
+                onChange={e => setViewMode(e.target.value as ViewMode)}
+                className="bg-slate-700/80 text-white text-xs font-semibold rounded-lg border border-white/10 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500/50 cursor-pointer"
+              >
+                <option value="pedidos">📦 Pedidos</option>
+                <option value="services">🔧 Services</option>
+              </select>
+              <span className="text-[10px] text-gray-500">
+                {viewMode === 'pedidos' ? 'Estadísticas de pedidos' : 'Estadísticas de services'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2 px-4 relative z-10">
             <SummaryCard icon="🚗" label="Móviles" value={summary.movilesCount} color="blue" />
-            <SummaryCard icon="✅" label="Entregas" value={summary.totalEntregas} color="green" />
+            <SummaryCard icon="✅" label={viewMode === 'pedidos' ? 'Entregados' : 'Realizados'} value={summary.totalEntregas} color="green" />
             <SummaryCard icon="⏱️" label="En Hora" value={summary.totalEnHora} color="amber" />
             <SummaryCard icon="📊" label="Cumplimiento" value={`${summary.avgCumplimiento}%`} color="purple" />
           </div>
@@ -189,13 +209,12 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
                   <th className="text-left py-2 px-2 w-12">#</th>
                   <th className="text-left py-2 px-2">Móvil</th>
                   <th className="text-center py-2 px-1">
-                    <span title="Pedidos Entregados">📦 Entreg.</span>
+                    <span title={viewMode === 'pedidos' ? 'Pedidos Entregados' : 'Services Realizados'}>
+                      {viewMode === 'pedidos' ? '📦 Entreg.' : '🔧 Realiz.'}
+                    </span>
                   </th>
                   <th className="text-center py-2 px-1">
-                    <span title="Services Realizados">🔧 Svc OK</span>
-                  </th>
-                  <th className="text-center py-2 px-1">
-                    <span title="Total entregas (Pedidos + Services)">✅ Total</span>
+                    <span title="Total asignados">🔢 Total</span>
                   </th>
                   <th className="text-center py-2 px-1">
                     <span title="Pendientes">⏳ Pend.</span>
@@ -250,21 +269,16 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
                         </div>
                       </td>
 
-                      {/* Pedidos Entregados */}
-                      <td className="text-center py-2 px-1">
-                        <span className="text-green-400 font-bold">{m.pedidosEntregados}</span>
-                      </td>
-
-                      {/* Services Realizados */}
-                      <td className="text-center py-2 px-1">
-                        <span className="text-blue-400 font-bold">{m.servicesRealizados}</span>
-                      </td>
-
-                      {/* Total Entregas */}
+                      {/* Entregados / Realizados */}
                       <td className="text-center py-2 px-1">
                         <span className={`font-black text-base ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-200'}`}>
                           {m.totalEntregas}
                         </span>
+                      </td>
+
+                      {/* Total asignados */}
+                      <td className="text-center py-2 px-1">
+                        <span className="text-gray-300 font-bold">{m.totalItems}</span>
                       </td>
 
                       {/* Pendientes */}
@@ -309,7 +323,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
 
                 {leaderboard.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="text-center py-8 text-gray-500">
+                    <td colSpan={7} className="text-center py-8 text-gray-500">
                       No hay móviles con datos para mostrar
                     </td>
                   </tr>
