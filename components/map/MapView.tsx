@@ -19,7 +19,7 @@ import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
 import DistribucionZonasLayer from './DistribucionZonasLayer';
-import MovilesZonasLayer from './MovilesZonasLayer';
+import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from './MovilesZonasLayer';
 import dynamic from 'next/dynamic';
 import './DataViewControl.css';
 import toast from 'react-hot-toast';
@@ -88,7 +88,9 @@ interface MapViewProps {
   dataViewMode?: DataViewMode; // Vista de datos activa
   onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
-  movilesZonasCount?: Map<number, number>; // Cantidad de móviles por zona_id
+  movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
+  movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro Pedidos/Services
+  onMovilesZonasServiceFilterChange?: (f: MovilesZonasServiceFilter) => void; // Callback cambio filtro
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
   zonaOpacity?: number; // Opacidad de las capas de zonas (0-100)
@@ -474,7 +476,8 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.dataViewMode === next.dataViewMode &&
     (prev.allZonas?.length ?? 0) === (next.allZonas?.length ?? 0) &&
     prev.demorasData?.size === next.demorasData?.size &&
-    prev.movilesZonasCount?.size === next.movilesZonasCount?.size &&
+    prev.movilesZonasData?.length === next.movilesZonasData?.length &&
+    prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
     prev.showDemoraLabels === next.showDemoraLabels &&
     prev.zonaOpacity === next.zonaOpacity &&
     prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
@@ -532,7 +535,9 @@ const MapView = memo(function MapView({
   dataViewMode = 'normal',
   onDataViewChange,
   demorasData = new Map(),
-  movilesZonasCount = new Map(),
+  movilesZonasData = [],
+  movilesZonasServiceFilter = 'all',
+  onMovilesZonasServiceFilterChange,
   allZonas = [],
   showDemoraLabels = false,
   zonaOpacity = 50,
@@ -1850,7 +1855,7 @@ const MapView = memo(function MapView({
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesCount={movilesZonasCount} zonaOpacity={zonaOpacity} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} zonaOpacity={zonaOpacity} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (

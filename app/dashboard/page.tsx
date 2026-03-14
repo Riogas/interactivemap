@@ -141,7 +141,8 @@ function DashboardContent() {
   }, [dataViewMode]);
   const [allZonasData, setAllZonasData] = useState<any[]>([]);
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
-  const [movilesZonasCount, setMovilesZonasCount] = useState<Map<number, number>>(new Map());
+  const [movilesZonasData, setMovilesZonasData] = useState<any[]>([]);
+  const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<'all' | 'pedidos' | 'services'>('all');
 
   // Cuando se cambia de vista de datos
   const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas') => {
@@ -467,7 +468,7 @@ function DashboardContent() {
     if (dataViewMode === 'normal') {
       setAllZonasData([]);
       setDemorasData(new Map());
-      setMovilesZonasCount(new Map());
+      setMovilesZonasData([]);
       return;
     }
 
@@ -513,16 +514,12 @@ function DashboardContent() {
           }
         }
 
-        // 3) Si es vista Móviles en Zonas, cargar conteo
+        // 3) Si es vista Móviles en Zonas, cargar datos crudos
         if (dataViewMode === 'moviles-zonas') {
           const mzRes = await fetch('/api/moviles-zonas');
           const mzResult = await mzRes.json();
           if (mzResult.success && mzResult.data) {
-            const countMap = new Map<number, number>();
-            for (const mz of mzResult.data) {
-              countMap.set(mz.zona_id, (countMap.get(mz.zona_id) || 0) + 1);
-            }
-            setMovilesZonasCount(countMap);
+            setMovilesZonasData(mzResult.data);
           }
         }
       } catch (err) {
@@ -1961,7 +1958,9 @@ function DashboardContent() {
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
                 demorasData={demorasData}
-                movilesZonasCount={movilesZonasCount}
+                movilesZonasData={movilesZonasData}
+                movilesZonasServiceFilter={movilesZonasServiceFilter}
+                onMovilesZonasServiceFilterChange={setMovilesZonasServiceFilter}
                 allZonas={allZonasData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
                 zonaOpacity={preferences.zonaOpacity ?? 50}

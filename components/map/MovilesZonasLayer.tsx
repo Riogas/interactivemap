@@ -1,7 +1,7 @@
 'use client';
 
-import React, { memo, useMemo } from 'react';
-import { Polygon, Marker } from 'react-leaflet';
+import React, { memo, useMemo, useEffect } from 'react';
+import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
@@ -14,18 +14,60 @@ export interface MovilesZonaData {
   escenario_id: number;
 }
 
+/** Registro crudo de la tabla moviles_zonas */
+export interface MovilZonaRecord {
+  movil_id: string;
+  zona_id: number;
+  prioridad_o_transito: number; // 1=prioridad, 2=tránsito
+  tipo_de_servicio: string; // 'NOCTURNO', 'URGENTE', 'SERVICE', etc.
+  escenario_id: number;
+  activa: boolean;
+}
+
+export type MovilesZonasServiceFilter = 'all' | 'pedidos' | 'services';
+
 interface MovilesZonasLayerProps {
   zonas: MovilesZonaData[];
-  /** Map from zona_id → count of assigned móviles */
-  movilesCount: Map<number, number>;
+  /** Registros crudos de moviles_zonas */
+  movilesZonasData: MovilZonaRecord[];
+  /** Filtro por tipo de servicio */
+  serviceFilter: MovilesZonasServiceFilter;
+  /** Callback para cambiar filtro */
+  onServiceFilterChange: (f: MovilesZonasServiceFilter) => void;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
 }
 
 /**
- * Capa de zonas con cantidad de móviles asignados.
- * Muestra cada zona pintada con una etiqueta con el nro de zona y la cantidad de móviles.
+ * Calcula el centroide de un polígono usando la fórmula del área con signo.
  */
+function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, number] {
+  if (pts.length < 3) {
+    const latS = pts.reduce((s, p) => s + p.lat, 0);
+    const lngS = pts.reduce((s, p) => s + p.lng, 0);
+    return [latS / pts.length, lngS / pts.length];
+  }
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i].lng, yi = pts[i].lat;
+    const xj = pts[j].lng, yj = pts[j].lat;
+    const cross = xi * yj - xj * yi;
+    area += cross;
+    cx += (xi + xj) * cross;
+    cy += (yi + yj) * cross;
+  }
+  area *= 0.5;
+  if (Math.abs(area) < 1e-12) {
+    const latS = pts.reduce((s, p) => s + p.lat, 0);
+    const lngS = pts.reduce((s, p) => s + p.lng, 0);
+    return [latS / pts.length, lngS / pts.length];
+  }
+  const factor = 1 / (6 * area);
+  return [cy * factor, cx * factor];
+}
+
 // Ajusta opacidad base: 50%=valor original, 100%=sólido (1.0), <50%=más transparente
 function adjustOpacity(base: number, zonaOpacity: number): number {
   const f = zonaOpacity / 50;
@@ -33,7 +75,84 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount, zonaOpacity = 50 }: MovilesZonasLayerProps) {
+/** Clasificar tipo_de_servicio en 'pedidos' o 'services' */
+function classifyService(tipo: string): 'pedidos' | 'services' {
+  const t = (tipo || '').toUpperCase().trim();
+  // SERVICE = services, todo lo demás (NOCTURNO, URGENTE, GAS, vacío) = pedidos
+  if (t === 'SERVICE') return 'services';
+  return 'pedidos';
+}
+
+/** Control Leaflet para filtro Pedidos/Services */
+function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange }: { serviceFilter: MovilesZonasServiceFilter; onServiceFilterChange: (f: MovilesZonasServiceFilter) => void }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const FilterCtrl = L.Control.extend({
+      options: { position: 'bottomleft' as L.ControlPosition },
+      onAdd() {
+        const container = L.DomUtil.create('div', 'mz-filter-control');
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+
+        container.innerHTML = `
+          <div class="mz-filter-inner">
+            <span class="mz-filter-label">Móviles de:</span>
+            <select class="mz-filter-select">
+              <option value="all">📦🔧 Todos</option>
+              <option value="pedidos">📦 Pedidos</option>
+              <option value="services">🔧 Services</option>
+            </select>
+          </div>
+        `;
+
+        const select = container.querySelector('.mz-filter-select') as HTMLSelectElement;
+        select.value = serviceFilter;
+        select.addEventListener('change', () => {
+          onServiceFilterChange(select.value as MovilesZonasServiceFilter);
+        });
+
+        return container;
+      },
+    });
+
+    const ctrl = new FilterCtrl();
+    ctrl.addTo(map);
+    return () => { ctrl.remove(); };
+  }, [map, serviceFilter, onServiceFilterChange]);
+
+  return null;
+}
+
+const MovilesZonasLayer = memo(function MovilesZonasLayer({
+  zonas,
+  movilesZonasData,
+  serviceFilter,
+  onServiceFilterChange,
+  zonaOpacity = 50,
+}: MovilesZonasLayerProps) {
+
+  // Filtrar registros de moviles_zonas según el filtro seleccionado
+  const filteredData = useMemo(() => {
+    if (serviceFilter === 'all') return movilesZonasData;
+    return movilesZonasData.filter(mz => classifyService(mz.tipo_de_servicio) === serviceFilter);
+  }, [movilesZonasData, serviceFilter]);
+
+  // Computar conteos por zona: { prioridad, transito }
+  const zonaCounts = useMemo(() => {
+    const map = new Map<number, { prioridad: number; transito: number }>();
+    for (const mz of filteredData) {
+      const existing = map.get(mz.zona_id) || { prioridad: 0, transito: 0 };
+      if (mz.prioridad_o_transito === 1) {
+        existing.prioridad++;
+      } else {
+        existing.transito++;
+      }
+      map.set(mz.zona_id, existing);
+    }
+    return map;
+  }, [filteredData]);
+
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -54,40 +173,39 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount,
 
       if (!Array.isArray(geo) || geo.length < 3) return null;
 
-      // Filtrar puntos válidos (lat/lng pueden venir como string desde la DB)
       const validGeo = geo
         .map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }))
         .filter((p: any) => isFinite(p.lat) && isFinite(p.lng));
       if (validGeo.length < 3) return null;
 
       const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
+      const center: [number, number] = polygonCentroid(validGeo);
 
-      const latSum = validGeo.reduce((s: number, p: any) => s + p.lat, 0);
-      const lngSum = validGeo.reduce((s: number, p: any) => s + p.lng, 0);
-      const center: [number, number] = [latSum / validGeo.length, lngSum / validGeo.length];
-
-      const count = movilesCount.get(zona.zona_id) ?? 0;
+      const counts = zonaCounts.get(zona.zona_id) || { prioridad: 0, transito: 0 };
+      const total = counts.prioridad + counts.transito;
       const fillColor = zona.color || '#3b82f6';
 
       // Intensidad basada en cantidad de móviles
-      const fillOpacity = count > 0 ? Math.min(0.15 + (count / 10) * 0.25, 0.50) : 0.08;
+      const fillOpacity = total > 0 ? Math.min(0.15 + (total / 10) * 0.25, 0.50) : 0.08;
 
-      return { zona, positions, center, fillColor, fillOpacity, count };
+      return { zona, positions, center, fillColor, fillOpacity, counts, total };
     }).filter(Boolean) as Array<{
       zona: MovilesZonaData;
       positions: LatLngExpression[];
       center: [number, number];
       fillColor: string;
       fillOpacity: number;
-      count: number;
+      counts: { prioridad: number; transito: number };
+      total: number;
     }>;
-  }, [zonas, movilesCount]);
+  }, [zonas, zonaCounts]);
 
   if (items.length === 0) return null;
 
   return (
     <>
-      {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => (
+      <MovilesZonasFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
+      {items.map(({ zona, positions, center, fillColor, fillOpacity, counts, total }) => (
         <React.Fragment key={zona.zona_id}>
           <Polygon
             positions={positions}
@@ -102,15 +220,15 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({ zonas, movilesCount,
           <Marker
             position={center}
             icon={L.divIcon({
-              className: 'moviles-count-label',
+              className: 'mz-label',
               html: `
-                <div class="moviles-count-inner">
-                  <span class="moviles-count-zona">Z${zona.zona_id}</span>
-                  <span class="moviles-count-badge ${count === 0 ? 'count-zero' : ''}">${count} 🚛</span>
+                <div class="mz-label-inner">
+                  <span class="mz-label-zona">${zona.zona_id}</span>
+                  <span class="mz-label-counts ${total === 0 ? 'mz-counts-zero' : ''}">${counts.prioridad}/${counts.transito}</span>
                 </div>
               `,
-              iconSize: [70, 36],
-              iconAnchor: [35, 18],
+              iconSize: [60, 40],
+              iconAnchor: [30, 20],
             })}
             interactive={false}
           />
