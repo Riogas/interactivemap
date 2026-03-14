@@ -426,7 +426,7 @@ export default function MovilSelector({
 
   // Categorías disponibles
   const categories: Category[] = [
-    { key: 'moviles', title: 'Móviles', icon: '🚗', count: moviles.length },
+    { key: 'moviles', title: 'Móviles', icon: '🚗', count: filteredMoviles.length },
     { key: 'pedidos', title: 'Pedidos', icon: '📦', count: filteredPedidos.length },
     { key: 'pedidosFinalizados', title: 'Pedidos Finalizados', icon: '✅', count: filteredPedidosFinalizados.length },
     { key: 'services', title: 'Services', icon: '🔧', count: filteredServices.length },

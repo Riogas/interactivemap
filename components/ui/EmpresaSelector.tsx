@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { EmpresaFleteraSupabase } from '@/types';
 
@@ -18,7 +18,9 @@ export default function EmpresaSelector({
   isLoading = false,
 }: EmpresaSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -30,6 +32,20 @@ export default function EmpresaSelector({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Focus search when dropdown opens
+  useEffect(() => {
+    if (isOpen) {
+      setSearch('');
+      setTimeout(() => searchRef.current?.focus(), 100);
+    }
+  }, [isOpen]);
+
+  const filteredEmpresas = useMemo(() => {
+    if (!search.trim()) return empresas;
+    const q = search.toLowerCase();
+    return empresas.filter(e => e.nombre.toLowerCase().includes(q));
+  }, [empresas, search]);
 
   const handleToggleEmpresa = (empresaId: number) => {
     if (selectedEmpresas.includes(empresaId)) {
@@ -103,11 +119,11 @@ export default function EmpresaSelector({
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="absolute z-50 min-w-[320px] right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
+            className="absolute z-50 min-w-[280px] right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
           >
-            <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-blue-100 border-b">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold text-gray-800"> Empresas Fleteras</h3>
+            <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-blue-100 border-b">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-gray-800 text-sm">Empresas Fleteras</h3>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-600">{selectedEmpresas.length} de {empresas.length}</span>
@@ -117,29 +133,49 @@ export default function EmpresaSelector({
                 </div>
               </div>
             </div>
-            
-            <div className="max-h-80 overflow-y-auto">
-              {empresas.map((empresa) => (
-                <label
-                  key={empresa.empresa_fletera_id}
-                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer ${selectedEmpresas.includes(empresa.empresa_fletera_id) ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedEmpresas.includes(empresa.empresa_fletera_id)}
-                    onChange={() => handleToggleEmpresa(empresa.empresa_fletera_id)}
-                    className="w-5 h-5 rounded text-blue-600"
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900">{empresa.nombre}</div>
-                    <div className="text-xs text-gray-500">ID: {empresa.empresa_fletera_id}</div>
-                  </div>
-                </label>
-              ))}
+
+            {/* Buscador */}
+            <div className="px-3 py-2 border-b bg-white">
+              <div className="relative">
+                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar empresa..."
+                  className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
+                />
+              </div>
             </div>
             
-            <div className="px-4 py-3 bg-gray-50">
-              <button onClick={() => setIsOpen(false)} className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">Aplicar Filtro</button>
+            <div className="max-h-72 overflow-y-auto">
+              {filteredEmpresas.length === 0 ? (
+                <div className="px-3 py-3 text-center text-xs text-gray-400">Sin resultados</div>
+              ) : (
+                filteredEmpresas.map((empresa) => (
+                  <label
+                    key={empresa.empresa_fletera_id}
+                    className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer text-sm transition-colors ${
+                      selectedEmpresas.includes(empresa.empresa_fletera_id) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedEmpresas.includes(empresa.empresa_fletera_id)}
+                      onChange={() => handleToggleEmpresa(empresa.empresa_fletera_id)}
+                      className="w-4 h-4 rounded text-blue-600 flex-shrink-0"
+                    />
+                    <span className="font-medium text-gray-800 truncate">{empresa.nombre}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            
+            <div className="px-3 py-2 bg-gray-50 border-t">
+              <button onClick={() => setIsOpen(false)} className="w-full py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">Aplicar Filtro</button>
             </div>
           </motion.div>
         )}
