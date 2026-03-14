@@ -264,7 +264,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                 })()}
                 <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-lg p-2 border border-gray-200">
                   <div className="text-[9px] text-gray-500 font-semibold mb-0.5">Id Terminal</div>
-                  <div className="font-bold text-gray-800 text-[10px] font-mono truncate" title={movil.terminalId || 'N/A'}>{movil.terminalId || 'N/A'}</div>
+                  <div className="font-bold text-gray-800 text-[10px] font-mono truncate" title={sessionData?.idTerminal || movil.terminalId || 'N/A'}>{sessionData?.idTerminal || movil.terminalId || 'N/A'}</div>
                 </div>
               </div>
             </div>

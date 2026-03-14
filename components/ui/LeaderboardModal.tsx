@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, PedidoSupabase, ServiceSupabase } from '@/types';
+import { computeDelayMinutes } from '@/utils/pedidoDelay';
 
 interface LeaderboardModalProps {
   isOpen: boolean;
@@ -12,7 +13,7 @@ interface LeaderboardModalProps {
   services: ServiceSupabase[];
 }
 
-type SortKey = 'entregados' | 'pendientes' | 'total' | 'enHora' | 'cumplimiento';
+type SortKey = 'atrasados' | 'pendientes' | 'noEntregados' | 'entregados' | 'cumplimiento' | 'cumplimientoEnHora';
 type ViewMode = 'pedidos' | 'services';
 
 
@@ -23,7 +24,6 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
   const [viewMode, setViewMode] = useState<ViewMode>('pedidos');
 
   const leaderboard = useMemo(() => {
-    // Build stats per movil
     const movilStats = moviles
       .filter(m => {
         if (showOnlyActive && (m.estadoNro === 3 || m.estadoNro === 4)) return false;
@@ -31,86 +31,76 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
       })
       .map(movil => {
         const movilId = Number(movil.id);
+        const items = viewMode === 'pedidos'
+          ? pedidos.filter(p => Number(p.movil) === movilId)
+          : services.filter(s => Number(s.movil) === movilId);
 
-        // Pedidos of this movil
-        const movilPedidos = pedidos.filter(p => Number(p.movil) === movilId);
-        const pedidosPendientes = movilPedidos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5').length;
-        const pedidosEntregados = movilPedidos.filter(p => Number(p.estado_nro) === 2).length;
-        const pedidosTotal = movilPedidos.length;
+        // Pendientes: estado_nro = 1
+        const pendientesList = items.filter(i => Number(i.estado_nro) === 1);
+        const pendientesCount = pendientesList.length;
 
-        // Services of this movil
-        const movilServices = services.filter(s => Number(s.movil) === movilId);
-        const servicesPendientes = movilServices.filter(s => Number(s.estado_nro) === 1).length;
-        const servicesRealizados = movilServices.filter(s => Number(s.estado_nro) === 2).length;
-        const servicesTotal = movilServices.length;
-
-        // "En hora": entregas (pedidos + services) delivered before fch_hora_max_ent_comp
-        const pedidosEnHora = movilPedidos.filter(p => {
-          if (Number(p.estado_nro) !== 2) return false;
-          if (!p.fch_hora_mov || !p.fch_hora_max_ent_comp) return false;
-          return new Date(p.fch_hora_mov) <= new Date(p.fch_hora_max_ent_comp);
+        // Atrasados: estado_nro = 1 && delay < 0
+        const atrasadosCount = pendientesList.filter(i => {
+          const delay = computeDelayMinutes(i.fch_hora_max_ent_comp);
+          return delay !== null && delay < 0;
         }).length;
 
-        const servicesEnHora = movilServices.filter(s => {
-          if (Number(s.estado_nro) !== 2) return false;
-          if (!s.fch_hora_mov || !s.fch_hora_max_ent_comp) return false;
-          return new Date(s.fch_hora_mov) <= new Date(s.fch_hora_max_ent_comp);
+        // No Entregados: estado_nro = 2 && sub_estado_desc != '3'
+        const noEntregadosCount = items.filter(i =>
+          Number(i.estado_nro) === 2 && String(i.sub_estado_desc) !== '3'
+        ).length;
+
+        // Entregados: estado_nro = 2 && sub_estado_desc = '3'
+        const entregadosCount = items.filter(i =>
+          Number(i.estado_nro) === 2 && String(i.sub_estado_desc) === '3'
+        ).length;
+
+        // % Cumplimiento
+        const relevantes = entregadosCount + pendientesCount;
+        const cumplimiento = relevantes > 0 ? Math.round((entregadosCount / relevantes) * 100) : 0;
+
+        // % Cumplimiento en hora
+        const entregadosEnHora = items.filter(i => {
+          if (Number(i.estado_nro) !== 2 || String(i.sub_estado_desc) !== '3') return false;
+          if (!i.fch_hora_mov || !i.fch_hora_max_ent_comp) return false;
+          return new Date(i.fch_hora_mov) <= new Date(i.fch_hora_max_ent_comp);
         }).length;
-
-        const entregadosEnHora = pedidosEnHora + servicesEnHora;
-
-        // Totals depend on viewMode
-        const entregas = viewMode === 'pedidos' ? pedidosEntregados : viewMode === 'services' ? servicesRealizados : pedidosEntregados + servicesRealizados;
-        const pend = viewMode === 'pedidos' ? pedidosPendientes : viewMode === 'services' ? servicesPendientes : pedidosPendientes + servicesPendientes;
-        const items = viewMode === 'pedidos' ? pedidosTotal : viewMode === 'services' ? servicesTotal : pedidosTotal + servicesTotal;
-        const enHora = viewMode === 'pedidos' ? pedidosEnHora : viewMode === 'services' ? servicesEnHora : pedidosEnHora + servicesEnHora;
-        const relevantes = entregas + pend;
-        const cumplimiento = relevantes > 0 ? Math.round((entregas / relevantes) * 100) : 0;
+        const cumplimientoEnHora = entregadosCount > 0 ? Math.round((entregadosEnHora / entregadosCount) * 100) : 0;
 
         return {
           id: movilId,
           name: movil.name || String(movilId),
           color: movil.color,
-          estadoNro: movil.estadoNro,
-          pedidosEntregados,
-          pedidosPendientes,
-          pedidosTotal,
-          servicesRealizados,
-          servicesPendientes,
-          servicesTotal,
-          entregadosEnHora: enHora,
-          totalEntregas: entregas,
-          totalPendientes: pend,
-          totalItems: items,
+          estadoNro: movil.estadoNro ?? 0,
+          atrasados: atrasadosCount,
+          pendientes: pendientesCount,
+          noEntregados: noEntregadosCount,
+          entregados: entregadosCount,
           cumplimiento,
-          capacidad: movil.tamanoLote || 0,
+          cumplimientoEnHora,
         };
       });
 
-    // Sort
-    const sorted = [...movilStats].sort((a, b) => {
+    return [...movilStats].sort((a, b) => {
       switch (sortBy) {
-        case 'entregados': return b.totalEntregas - a.totalEntregas;
-        case 'pendientes': return b.totalPendientes - a.totalPendientes;
-        case 'total': return b.totalItems - a.totalItems;
-        case 'enHora': return b.entregadosEnHora - a.entregadosEnHora;
+        case 'atrasados': return b.atrasados - a.atrasados;
+        case 'pendientes': return b.pendientes - a.pendientes;
+        case 'noEntregados': return b.noEntregados - a.noEntregados;
+        case 'entregados': return b.entregados - a.entregados;
         case 'cumplimiento': return b.cumplimiento - a.cumplimiento;
+        case 'cumplimientoEnHora': return b.cumplimientoEnHora - a.cumplimientoEnHora;
         default: return 0;
       }
     });
-
-    return sorted;
   }, [moviles, pedidos, services, sortBy, showOnlyActive, viewMode]);
 
   // Summary stats
   const summary = useMemo(() => {
-    const totalEntregas = leaderboard.reduce((s, m) => s + m.totalEntregas, 0);
-    const totalPendientes = leaderboard.reduce((s, m) => s + m.totalPendientes, 0);
-    const totalEnHora = leaderboard.reduce((s, m) => s + m.entregadosEnHora, 0);
-    const totalItems = leaderboard.reduce((s, m) => s + m.totalItems, 0);
-    const totalRelevantes = totalEntregas + totalPendientes;
-    const avgCumplimiento = totalRelevantes > 0 ? Math.round((totalEntregas / totalRelevantes) * 100) : 0;
-    return { totalEntregas, totalPendientes, totalEnHora, avgCumplimiento, movilesCount: leaderboard.length };
+    const totalEntregados = leaderboard.reduce((s, m) => s + m.entregados, 0);
+    const totalPendientes = leaderboard.reduce((s, m) => s + m.pendientes, 0);
+    const totalRelevantes = totalEntregados + totalPendientes;
+    const avgCumplimiento = totalRelevantes > 0 ? Math.round((totalEntregados / totalRelevantes) * 100) : 0;
+    return { totalEntregados, avgCumplimiento, movilesCount: leaderboard.length };
   }, [leaderboard]);
 
   if (!isOpen) return null;
@@ -132,7 +122,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden border border-yellow-500/30"
+          className="bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border border-yellow-500/30"
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
@@ -174,21 +164,21 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 px-4 relative z-10">
+          <div className="grid grid-cols-3 gap-2 px-4 relative z-10">
             <SummaryCard icon="🚗" label="Móviles" value={summary.movilesCount} color="blue" />
-            <SummaryCard icon="✅" label={viewMode === 'pedidos' ? 'Entregados' : 'Realizados'} value={summary.totalEntregas} color="green" />
-            <SummaryCard icon="⏱️" label="En Hora" value={summary.totalEnHora} color="amber" />
+            <SummaryCard icon="✅" label="Entregados" value={summary.totalEntregados} color="green" />
             <SummaryCard icon="📊" label="Cumplimiento" value={`${summary.avgCumplimiento}%`} color="purple" />
           </div>
 
           {/* Controls */}
           <div className="flex items-center justify-between px-4 pt-3 pb-2">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <SortButton active={sortBy === 'entregados'} onClick={() => setSortBy('entregados')}>✅ Entregas</SortButton>
-              <SortButton active={sortBy === 'cumplimiento'} onClick={() => setSortBy('cumplimiento')}>📊 Cumplimiento</SortButton>
-              <SortButton active={sortBy === 'enHora'} onClick={() => setSortBy('enHora')}>⏱️ En Hora</SortButton>
-              <SortButton active={sortBy === 'pendientes'} onClick={() => setSortBy('pendientes')}>📦 Pendientes</SortButton>
-              <SortButton active={sortBy === 'total'} onClick={() => setSortBy('total')}>🔢 Total</SortButton>
+              <SortButton active={sortBy === 'entregados'} onClick={() => setSortBy('entregados')}>✅ Entreg.</SortButton>
+              <SortButton active={sortBy === 'cumplimiento'} onClick={() => setSortBy('cumplimiento')}>📊 Cumpl.</SortButton>
+              <SortButton active={sortBy === 'cumplimientoEnHora'} onClick={() => setSortBy('cumplimientoEnHora')}>⏱️ En Hora</SortButton>
+              <SortButton active={sortBy === 'atrasados'} onClick={() => setSortBy('atrasados')}>🔴 Atras.</SortButton>
+              <SortButton active={sortBy === 'pendientes'} onClick={() => setSortBy('pendientes')}>⏳ Pend.</SortButton>
+              <SortButton active={sortBy === 'noEntregados'} onClick={() => setSortBy('noEntregados')}>❌ No Ent.</SortButton>
             </div>
             <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
               <input
@@ -206,24 +196,24 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="text-gray-400 text-[10px] uppercase tracking-wider bg-slate-800/95 backdrop-blur-sm">
-                  <th className="text-left py-2 px-2 w-12">#</th>
                   <th className="text-left py-2 px-2">Móvil</th>
                   <th className="text-center py-2 px-1">
-                    <span title={viewMode === 'pedidos' ? 'Pedidos Entregados' : 'Services Realizados'}>
-                      {viewMode === 'pedidos' ? '📦 Entreg.' : '🔧 Realiz.'}
-                    </span>
+                    <span title="Pendientes con atraso (delay < 0 y estado 1)">🔴 Atras.</span>
                   </th>
                   <th className="text-center py-2 px-1">
-                    <span title="Total asignados">🔢 Total</span>
+                    <span title="Pendientes (estado 1)">⏳ Pend.</span>
                   </th>
                   <th className="text-center py-2 px-1">
-                    <span title="Pendientes">⏳ Pend.</span>
+                    <span title="No Entregados (estado 2, sub_estado != 3)">❌ No Ent.</span>
                   </th>
                   <th className="text-center py-2 px-1">
-                    <span title="Entregas en hora">⏱️ En Hora</span>
+                    <span title="Entregados (estado 2, sub_estado = 3)">✅ Entreg.</span>
                   </th>
-                  <th className="text-center py-2 px-1 w-28">
-                    <span title="Porcentaje de cumplimiento">📊 Cumpl.</span>
+                  <th className="text-center py-2 px-1 w-24">
+                    <span title="% Cumplimiento = entregados/(entregados+pendientes)">📊 Cumpl.</span>
+                  </th>
+                  <th className="text-center py-2 px-1 w-24">
+                    <span title="% en hora = entregados en hora/entregados">⏱️ En Hora</span>
                   </th>
                 </tr>
               </thead>
@@ -244,52 +234,49 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
                         ${isFirst ? 'bg-yellow-500/10' : isTop3 ? 'bg-white/5' : 'hover:bg-white/5'}
                       `}
                     >
-                      {/* Rank */}
-                      <td className="py-2 px-2">
-                        <span className={`font-mono text-xs font-bold ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-500'}`}>{rank}</span>
-                      </td>
-
-                      {/* Movil name */}
+                      {/* Movil name with rank */}
                       <td className="py-2 px-2">
                         <div className="flex items-center gap-2">
+                          <span className={`font-mono text-[10px] font-bold w-5 ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-500'}`}>{rank}</span>
                           <div
                             className="w-3 h-3 rounded-full flex-shrink-0 border border-white/20"
                             style={{ backgroundColor: m.color || '#22c55e' }}
                           />
-                          <span className={`font-bold ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-300'}`}>
+                          <span className={`font-bold text-xs ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-300'}`}>
                             {m.name}
                           </span>
-                          {m.capacidad > 0 && (
-                            <span className="text-[9px] text-gray-500 font-mono">Cap:{m.capacidad}</span>
-                          )}
                         </div>
                       </td>
 
-                      {/* Entregados / Realizados */}
+                      {/* Atrasados */}
                       <td className="text-center py-2 px-1">
-                        <span className={`font-black text-base ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-200'}`}>
-                          {m.totalEntregas}
+                        <span className={`font-bold ${m.atrasados > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                          {m.atrasados}
                         </span>
-                      </td>
-
-                      {/* Total asignados */}
-                      <td className="text-center py-2 px-1">
-                        <span className="text-gray-300 font-bold">{m.totalItems}</span>
                       </td>
 
                       {/* Pendientes */}
                       <td className="text-center py-2 px-1">
-                        <span className={`font-medium ${m.totalPendientes > 0 ? 'text-orange-400' : 'text-gray-600'}`}>
-                          {m.totalPendientes}
+                        <span className={`font-medium ${m.pendientes > 0 ? 'text-orange-400' : 'text-gray-600'}`}>
+                          {m.pendientes}
                         </span>
                       </td>
 
-                      {/* En Hora */}
+                      {/* No Entregados */}
                       <td className="text-center py-2 px-1">
-                        <span className="text-amber-400 font-bold">{m.entregadosEnHora}</span>
+                        <span className={`font-medium ${m.noEntregados > 0 ? 'text-rose-400' : 'text-gray-600'}`}>
+                          {m.noEntregados}
+                        </span>
                       </td>
 
-                      {/* Cumplimiento */}
+                      {/* Entregados */}
+                      <td className="text-center py-2 px-1">
+                        <span className={`font-black text-base ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-green-400'}`}>
+                          {m.entregados}
+                        </span>
+                      </td>
+
+                      {/* % Cumplimiento */}
                       <td className="py-2 px-1">
                         <div className="flex items-center gap-1.5">
                           <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
@@ -310,6 +297,31 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
                             m.cumplimiento > 0 ? 'text-orange-400' : 'text-gray-600'
                           }`}>
                             {m.cumplimiento}%
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* % Cumplimiento en Hora */}
+                      <td className="py-2 px-1">
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${m.cumplimientoEnHora}%` }}
+                              transition={{ delay: idx * 0.03 + 0.3, duration: 0.5 }}
+                              className={`h-full rounded-full ${
+                                m.cumplimientoEnHora >= 80 ? 'bg-cyan-500' :
+                                m.cumplimientoEnHora >= 50 ? 'bg-amber-500' :
+                                m.cumplimientoEnHora > 0 ? 'bg-rose-500' : 'bg-gray-600'
+                              }`}
+                            />
+                          </div>
+                          <span className={`text-xs font-bold min-w-[32px] text-right ${
+                            m.cumplimientoEnHora >= 80 ? 'text-cyan-400' :
+                            m.cumplimientoEnHora >= 50 ? 'text-amber-400' :
+                            m.cumplimientoEnHora > 0 ? 'text-rose-400' : 'text-gray-600'
+                          }`}>
+                            {m.cumplimientoEnHora}%
                           </span>
                         </div>
                       </td>

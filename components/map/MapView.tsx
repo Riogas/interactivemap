@@ -89,8 +89,9 @@ interface MapViewProps {
   onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
-  movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro Pedidos/Services
+  movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
   onMovilesZonasServiceFilterChange?: (f: MovilesZonasServiceFilter) => void; // Callback cambio filtro
+  tiposServicioDisponibles?: string[]; // Valores distintos de servicio_nombre
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
   zonaOpacity?: number; // Opacidad de las capas de zonas (0-100)
@@ -478,6 +479,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.demorasData?.size === next.demorasData?.size &&
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
+    prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
     prev.showDemoraLabels === next.showDemoraLabels &&
     prev.zonaOpacity === next.zonaOpacity &&
     prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
@@ -538,6 +540,7 @@ const MapView = memo(function MapView({
   movilesZonasData = [],
   movilesZonasServiceFilter = 'all',
   onMovilesZonasServiceFilterChange,
+  tiposServicioDisponibles = [],
   allZonas = [],
   showDemoraLabels = false,
   zonaOpacity = 50,
@@ -1855,7 +1858,7 @@ const MapView = memo(function MapView({
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} zonaOpacity={zonaOpacity} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (

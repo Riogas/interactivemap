@@ -79,7 +79,7 @@ export async function GET(
       chofer: data.Chofer || null,
       telefono: data.Telefono || null,
       fechaInicio: data.FechaInicio || null,
-      idTerminal: data.idTerminal || null,
+      idTerminal: data.IdTerminal || data.idTerminal || null,
       historial: (data.Historial || []).map((h: { ChoferHistorico: string; InicioHistorico: string }) => ({
         chofer: h.ChoferHistorico,
         inicio: h.InicioHistorico,

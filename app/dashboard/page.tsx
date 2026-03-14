@@ -142,7 +142,7 @@ function DashboardContent() {
   const [allZonasData, setAllZonasData] = useState<any[]>([]);
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
   const [movilesZonasData, setMovilesZonasData] = useState<any[]>([]);
-  const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<'all' | 'pedidos' | 'services'>('all');
+  const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<string>('all');
 
   // Cuando se cambia de vista de datos
   const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas') => {
@@ -192,24 +192,9 @@ function DashboardContent() {
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ atraso: [], tipoServicio: 'all' });
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all' });
   
-  // Tipos de servicio dinámicos desde moviles_zonas.tipo_de_servicio
+  // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services
   const [tiposServicio, setTiposServicio] = useState<string[]>([]);
-  useEffect(() => {
-    async function loadTiposServicio() {
-      try {
-        const res = await fetch('/api/moviles-zonas?activa=true');
-        const json = await res.json();
-        if (json.success && json.data) {
-          const tipos = [...new Set(json.data.map((mz: any) => mz.tipo_de_servicio).filter(Boolean))] as string[];
-          tipos.sort((a, b) => a.localeCompare(b));
-          setTiposServicio(tipos);
-        }
-      } catch (e) {
-        console.warn('⚠️ No se pudieron cargar tipos de servicio:', e);
-      }
-    }
-    loadTiposServicio();
-  }, []);
+  // Se recalcula cuando cambian pedidos/services completos (ver useMemo más abajo)
   
   // 🔥 NUEVO: Hook para escuchar cambios en pedidos en tiempo real
   const { 
@@ -1220,10 +1205,11 @@ function DashboardContent() {
     setSelectedMovil(movilId); // Activa la animación
   }, [moviles, fetchMovilHistory, selectedMoviles]);
 
-  // Handler para mostrar pendientes en el mapa
+  // Handler para mostrar pendientes en el mapa (abre tabla de pedidos)
   const handleShowPendientes = useCallback(() => {
     setShowPendientes(true); // Muestra los marcadores de pedidos
     setShowCompletados(false); // Oculta completados
+    setIsPedidosTableOpen(true); // Abre la tabla de pedidos
     setPopupMovil(undefined); // Cierra el popup
   }, []);
 
@@ -1368,6 +1354,15 @@ function DashboardContent() {
     console.log(`🔧 DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
   }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate]);
+
+  // Derivar tipos de servicio dinámicos de servicio_nombre de pedidos y services
+  useEffect(() => {
+    const nombres = new Set<string>();
+    pedidosCompletos.forEach(p => { if (p.servicio_nombre) nombres.add(p.servicio_nombre.trim()); });
+    servicesCompletos.forEach(s => { if (s.servicio_nombre) nombres.add(s.servicio_nombre.trim()); });
+    const sorted = [...nombres].filter(Boolean).sort((a, b) => a.localeCompare(b));
+    setTiposServicio(sorted);
+  }, [pedidosCompletos, servicesCompletos]);
 
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
@@ -1610,18 +1605,6 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* Botón de Leaderboard/Ranking */}
-          <button
-            id="tour-fab-ranking"
-            onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
-            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700"
-            title="Ranking de Móviles"
-          >
-            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>
-            </svg>
-          </button>
-
           {/* Botón de Tracking */}
           <button
             id="tour-fab-tracking"
@@ -1846,6 +1829,7 @@ function DashboardContent() {
                   servicesFilters={servicesFilters}
                   onServicesFiltersChange={setServicesFilters}
                   tiposServicio={tiposServicio}
+                  onOpenRanking={() => setIsLeaderboardOpen(true)}
                   movilesHidden={movilesHidden}
                   onToggleMovilesHidden={() => setMovilesHidden(!movilesHidden)}
                   pedidosHidden={pedidosHidden}
@@ -1961,6 +1945,7 @@ function DashboardContent() {
                 movilesZonasData={movilesZonasData}
                 movilesZonasServiceFilter={movilesZonasServiceFilter}
                 onMovilesZonasServiceFilterChange={setMovilesZonasServiceFilter}
+                tiposServicioDisponibles={tiposServicio}
                 allZonas={allZonasData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
                 zonaOpacity={preferences.zonaOpacity ?? 50}
