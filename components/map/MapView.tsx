@@ -98,6 +98,8 @@ interface MapViewProps {
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
+  pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
+  servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
 }
 
 function MapUpdater({ 
@@ -547,6 +549,8 @@ const MapView = memo(function MapView({
   reloadMarkersTrigger = 0,
   poisHidden = false,
   hiddenPoiCategories = new Set(),
+  pedidosVista = 'pendientes',
+  servicesVista = 'pendientes',
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -1609,6 +1613,149 @@ const MapView = memo(function MapView({
     return createServiceIconByDelay(fchHoraMaxEntComp);
   }, [serviceMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
 
+  // ✅ Iconos para PEDIDOS FINALIZADOS - verde con tick
+  const createFinalizadoPedidoIcon = useCallback(() => {
+    return getCachedIcon('pedido-finalizado', () => L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width: 20px;
+          height: 20px;
+          position: absolute;
+          left: -10px;
+          top: -10px;
+          background: linear-gradient(135deg, #16a34a 0%, #4ade80 100%);
+          border: 2px solid white;
+          border-radius: 5px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px rgba(22, 163, 74, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          cursor: pointer;
+          transition: transform 0.2s;
+          color: white;
+          font-weight: bold;
+        "
+        onmouseover="this.style.transform='scale(1.15)'"
+        onmouseout="this.style.transform='scale(1)'">✓</div>
+      `,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+    }));
+  }, []);
+
+  // ✅ Iconos COMPACTOS para pedidos finalizados (verde con tick)
+  const createFinalizadoPedidoIconCompact = useCallback(() => {
+    const cacheKey = `pedido-finalizado-compact-${pedidoShape}`;
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `<div style="
+        width: 14px; height: 14px; position: absolute; left: -7px; top: -7px;
+        background: linear-gradient(135deg, #16a34a 0%, #4ade80 100%);
+        border: 1.5px solid white; border-radius: 3px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 9px; color: white; font-weight: bold; cursor: pointer;
+      ">✓</div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    }));
+  }, [pedidoShape]);
+
+  // ✅ Iconos MINI para pedidos finalizados (verde)
+  const createFinalizadoPedidoIconMini = useCallback(() => {
+    const cacheKey = `pedido-finalizado-mini-${pedidoShape}`;
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `<div style="
+        width: 10px; height: 10px; position: absolute; left: -5px; top: -5px;
+        background: #16a34a; border: 1px solid white; border-radius: 2px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.3); cursor: pointer;
+      "></div>`,
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+    }));
+  }, [pedidoShape]);
+
+  // 🔵 Iconos para SERVICES FINALIZADOS - azul con tick
+  const createFinalizadoServiceIcon = useCallback(() => {
+    return getCachedIcon('service-finalizado', () => L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width: 20px;
+          height: 20px;
+          position: absolute;
+          left: -10px;
+          top: -10px;
+          background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
+          border: 2px solid white;
+          border-radius: 5px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px rgba(37, 99, 235, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          cursor: pointer;
+          transition: transform 0.2s;
+          color: white;
+          font-weight: bold;
+        "
+        onmouseover="this.style.transform='scale(1.15)'"
+        onmouseout="this.style.transform='scale(1)'">✓</div>
+      `,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+    }));
+  }, []);
+
+  // 🔵 Iconos COMPACTOS para services finalizados (azul con tick)
+  const createFinalizadoServiceIconCompact = useCallback(() => {
+    const cacheKey = `service-finalizado-compact-${serviceShape}`;
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `<div style="
+        width: 14px; height: 14px; position: absolute; left: -7px; top: -7px;
+        background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
+        border: 1.5px solid white; border-radius: 3px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 9px; color: white; font-weight: bold; cursor: pointer;
+      ">✓</div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    }));
+  }, [serviceShape]);
+
+  // 🔵 Iconos MINI para services finalizados (azul)
+  const createFinalizadoServiceIconMini = useCallback(() => {
+    const cacheKey = `service-finalizado-mini-${serviceShape}`;
+    return getCachedIcon(cacheKey, () => L.divIcon({
+      className: '',
+      html: `<div style="
+        width: 10px; height: 10px; position: absolute; left: -5px; top: -5px;
+        background: #2563eb; border: 1px solid white; border-radius: 2px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.3); cursor: pointer;
+      "></div>`,
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+    }));
+  }, [serviceShape]);
+
+  // 🚀 Funciones selectoras de icono finalizado por estilo
+  const getFinalizadoPedidoIcon = useCallback(() => {
+    if (pedidoMarkerStyle === 'mini') return createFinalizadoPedidoIconMini();
+    if (pedidoMarkerStyle === 'compact') return createFinalizadoPedidoIconCompact();
+    return createFinalizadoPedidoIcon();
+  }, [pedidoMarkerStyle, createFinalizadoPedidoIcon, createFinalizadoPedidoIconCompact, createFinalizadoPedidoIconMini]);
+
+  const getFinalizadoServiceIcon = useCallback(() => {
+    if (serviceMarkerStyle === 'mini') return createFinalizadoServiceIconMini();
+    if (serviceMarkerStyle === 'compact') return createFinalizadoServiceIconCompact();
+    return createFinalizadoServiceIcon();
+  }, [serviceMarkerStyle, createFinalizadoServiceIcon, createFinalizadoServiceIconCompact, createFinalizadoServiceIconMini]);
+
   // 🚀 OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
   const createCompletadoIcon = useCallback((tipo: 'PEDIDO' | 'SERVICIO') => {
     const cacheKey = `completado-${tipo}`;
@@ -2517,7 +2664,7 @@ const MapView = memo(function MapView({
               <OptimizedMarker
                 key={`pedido-tabla-${pedido.id}`}
                 position={[pedido.latitud!, pedido.longitud!]}
-                icon={getPedidoIcon(pedido.fch_hora_max_ent_comp)}
+                icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon() : getPedidoIcon(pedido.fch_hora_max_ent_comp)}
                 eventHandlers={{
                   click: () => {
                     onPedidoClick && onPedidoClick(pedido.id);
@@ -2529,9 +2676,13 @@ const MapView = memo(function MapView({
                     <div className="font-bold">Pedido #{pedido.id}</div>
                     <div>{pedido.cliente_nombre}</div>
                     <div className="text-gray-600">{pedido.producto_nom}</div>
-                    <div style={{ color: delayInfo.color, fontWeight: 'bold' }}>
-                      {delayInfo.label}: {delayInfo.badgeText}
-                    </div>
+                    {pedidosVista === 'finalizados' ? (
+                      <div style={{ color: '#16a34a', fontWeight: 'bold' }}>✓ Finalizado</div>
+                    ) : (
+                      <div style={{ color: delayInfo.color, fontWeight: 'bold' }}>
+                        {delayInfo.label}: {delayInfo.badgeText}
+                      </div>
+                    )}
                   </div>
                 </Tooltip>
               </OptimizedMarker>
@@ -2555,7 +2706,7 @@ const MapView = memo(function MapView({
               <OptimizedMarker
                 key={`service-tabla-${service.id}`}
                 position={[service.latitud!, service.longitud!]}
-                icon={getServiceIcon(service.fch_hora_max_ent_comp)}
+                icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(service.fch_hora_max_ent_comp)}
                 eventHandlers={{
                   click: () => {
                     onServiceClick && onServiceClick(service.id);
@@ -2567,9 +2718,13 @@ const MapView = memo(function MapView({
                     <div className="font-bold">Service #{service.id}</div>
                     <div>{service.cliente_nombre}</div>
                     <div className="text-gray-600">{service.defecto}</div>
-                    <div style={{ color: delayInfo.color, fontWeight: 'bold' }}>
-                      {delayInfo.label}: {delayInfo.badgeText}
-                    </div>
+                    {servicesVista === 'finalizados' ? (
+                      <div style={{ color: '#2563eb', fontWeight: 'bold' }}>✓ Finalizado</div>
+                    ) : (
+                      <div style={{ color: delayInfo.color, fontWeight: 'bold' }}>
+                        {delayInfo.label}: {delayInfo.badgeText}
+                      </div>
+                    )}
                   </div>
                 </Tooltip>
               </OptimizedMarker>

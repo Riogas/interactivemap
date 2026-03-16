@@ -1963,6 +1963,8 @@ function DashboardContent() {
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
                 hiddenPoiCategories={hiddenPoiCategories}
+                pedidosVista={pedidosFilters.vista}
+                servicesVista={servicesFilters.vista}
               />
             </motion.div>
           </>
