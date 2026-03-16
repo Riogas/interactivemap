@@ -101,6 +101,7 @@ interface MapViewProps {
   pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
+  allMovilEstados?: Map<string, number>; // Mapa completo movil_nro → estadoNro (todos los moviles)
 }
 
 function MapUpdater({ 
@@ -553,6 +554,7 @@ const MapView = memo(function MapView({
   pedidosVista = 'pendientes',
   servicesVista = 'pendientes',
   onZonaClick,
+  allMovilEstados = new Map(),
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];

@@ -80,6 +80,9 @@ function DashboardContent() {
   // Estado para modal de tracking
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
   
+  // Mapa completo movil_nro → estadoNro (para todos los moviles, no solo los con GPS)
+  const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
+  
   // Estado para modal de leaderboard/ranking
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   
@@ -633,7 +636,16 @@ function DashboardContent() {
           return movil;
         });
 
-        console.log(`✅ Enriched ${enrichedMoviles.length} moviles`);
+        // Guardar mapa completo de estados (cubre moviles sin GPS)
+        const estadosMap = new Map<string, number>();
+        for (const item of result.data) {
+          if (item.estadoNro !== undefined && item.estadoNro !== null) {
+            estadosMap.set(String(item.nro), item.estadoNro);
+          }
+        }
+        setAllMovilEstados(estadosMap);
+
+        console.log(`✅ Enriched ${enrichedMoviles.length} moviles, ${estadosMap.size} estados`);
         return enrichedMoviles;
       }
 
@@ -2075,6 +2087,7 @@ function DashboardContent() {
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
                 demorasData={demorasData}
+                allMovilEstados={allMovilEstados}
                 movilesZonasData={movilesZonasData}
                 movilesZonasServiceFilter={movilesZonasServiceFilter}
                 onMovilesZonasServiceFilterChange={setMovilesZonasServiceFilter}

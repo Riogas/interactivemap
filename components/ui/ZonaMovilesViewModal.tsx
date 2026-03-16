@@ -14,7 +14,7 @@ interface Zona {
 }
 
 /** Estados de móvil que se muestran tachados (inactivos) */
-const ESTADOS_TACHADOS = new Set([3, 5, 15]);
+const ESTADOS_TACHADOS = new Set([3, 5, 16]);
 
 /** Opciones fijas de tipo de servicio */
 const TIPOS_SERVICIO = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;
@@ -191,13 +191,6 @@ export default function ZonaMovilesViewModal({
         <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ml-auto flex-shrink-0 ${isTachado ? 'text-gray-600 bg-gray-800/30' : 'text-gray-400 bg-gray-800/50'}`}>
           #{record.movil_id}
         </span>
-
-        {/* Estado badge si tachado */}
-        {isTachado && (
-          <span className="text-[9px] font-medium text-red-400/70 bg-red-500/10 px-1.5 py-0.5 rounded flex-shrink-0">
-            Est.{estado}
-          </span>
-        )}
       </div>
     );
   };
