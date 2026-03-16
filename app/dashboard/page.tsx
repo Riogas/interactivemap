@@ -89,9 +89,7 @@ function DashboardContent() {
   
   // Estado para modal de estadísticas por zona
   const [isZonaEstadisticasOpen, setIsZonaEstadisticasOpen] = useState(false);
-  const [estadisticasZonas, setEstadisticasZonas] = useState<Array<{ zona_id: number; nombre: string | null }>>([]);
-  // Limpiar cache de zonas cuando cambian las empresas seleccionadas
-  useEffect(() => { setEstadisticasZonas([]); }, [selectedEmpresas]);
+  const [estadisticasZonas, setEstadisticasZonas] = useState<Array<{ zona_id: number; nombre: string | null }>>([]); 
   
   // Estado para modal de asignación de zonas
   const [isZonasAsignacionOpen, setIsZonasAsignacionOpen] = useState(false);
@@ -203,6 +201,8 @@ function DashboardContent() {
   // Estado para empresas fleteras
   const [empresas, setEmpresas] = useState<EmpresaFleteraSupabase[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
+  // Limpiar cache de zonas estadísticas cuando cambian las empresas
+  useEffect(() => { setEstadisticasZonas([]); }, [selectedEmpresas]);
   
   // � Móviles filtrados por empresas fleteras seleccionadas
   const movilesFiltered = useMemo(() => {
