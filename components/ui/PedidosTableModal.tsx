@@ -90,16 +90,24 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  // Aplicar pre-filtro de móvil con delay para que la tabla cargue primero
+  // Aplicar pre-filtro de móvil inmediatamente
   useEffect(() => {
     if (preFilterMovil && isOpen) {
-      const timer = setTimeout(() => {
-        setFilters(f => ({ ...f, movil: preFilterMovil }));
-        setPage(0);
-      }, 600);
-      return () => clearTimeout(timer);
+      console.log(`🔍 PRE-FILTER: Aplicando filtro de móvil ${preFilterMovil}`);
+      console.log(`🔍 PRE-FILTER: pedidosBase tiene ${pedidos.length} pedidos total`);
+      const match = pedidos.filter(p => Number(p.movil) === preFilterMovil);
+      console.log(`🔍 PRE-FILTER: Pedidos con movil=${preFilterMovil}: ${match.length}`);
+      if (match.length > 0) {
+        console.log(`🔍 PRE-FILTER: Ejemplo - movil raw:`, match[0].movil, `tipo:`, typeof match[0].movil, `estado_nro:`, match[0].estado_nro, `sub_estado_desc:`, match[0].sub_estado_desc);
+      }
+      // Buscar también con String comparison
+      const matchStr = pedidos.filter(p => String(p.movil) === String(preFilterMovil));
+      console.log(`🔍 PRE-FILTER: Pedidos con String(movil)==='${preFilterMovil}': ${matchStr.length}`);
+      
+      setFilters(f => ({ ...f, movil: preFilterMovil }));
+      setPage(0);
     }
-  }, [preFilterMovil, isOpen]);
+  }, [preFilterMovil, isOpen, pedidos]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
@@ -185,7 +193,11 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
 
     // Movil filter
     if (filters.movil !== null) {
-      result = result.filter(({ pedido: p }) => Number(p.movil) === filters.movil);
+      console.log(`🔍 FILTER: Filtrando por movil=${filters.movil} (type: ${typeof filters.movil})`);
+      console.log(`🔍 FILTER: Antes del filtro: ${result.length} pedidos`);
+      console.log(`🔍 FILTER: Moviles en datos:`, [...new Set(result.map(({pedido: p}) => `${p.movil}(${typeof p.movil})`))].slice(0, 10));
+      result = result.filter(({ pedido: p }) => String(p.movil) === String(filters.movil));
+      console.log(`🔍 FILTER: Después del filtro: ${result.length} pedidos`);
     }
 
     // Producto filter
