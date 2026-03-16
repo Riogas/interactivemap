@@ -43,7 +43,9 @@ interface PedidosTableModalProps {
   pedidos: PedidoSupabase[];
   moviles: MovilData[];
   onPedidoClick?: (pedidoId: number) => void;
+  onMovilClick?: (movilId: number) => void;
   vista?: 'pendientes' | 'finalizados';
+  onVistaChange?: (vista: 'pendientes' | 'finalizados') => void;
   selectedMoviles?: number[];
   externalAtraso?: string[];
   externalTipoServicio?: string;
@@ -70,7 +72,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, vista = 'pendientes', selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all' }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all' }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -354,7 +356,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
               {isFinalizados ? (
                 <div className="flex items-center gap-1.5 text-xs text-green-400">
                   <div className="w-2 h-2 rounded-full bg-green-400" />
-                  <span>Pedidos Entregados</span>
+                  <span>Pedidos Finalizados</span>
                 </div>
               ) : (
                 <>{ATRASO_OPTIONS.map(opt => (
@@ -365,6 +367,26 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                   </div>
                 ))}</>
               )}
+              {/* Vista toggle */}
+              <div className="flex items-center gap-1 ml-4 bg-gray-800/60 rounded-lg p-0.5">
+                <button
+                  onClick={() => onVistaChange?.('pendientes')}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
+                    !isFinalizados ? 'bg-teal-500/30 text-teal-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Pendientes
+                </button>
+                <button
+                  onClick={() => onVistaChange?.('finalizados')}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
+                    isFinalizados ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Finalizados
+                </button>
+              </div>
+
               <div className="ml-auto text-xs text-gray-500">
                 Total: <span className="font-bold text-gray-300">{pedidosBase.length}</span>
               </div>
@@ -497,15 +519,16 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200" onClick={() => handleSort('cliente')}>
                       Cliente <SortArrow col="cliente" />
                     </th>
-                    <th className="px-4 py-3 whitespace-nowrap">Dirección</th>
+                    <th className="px-4 py-3 whitespace-nowrap" style={{ minWidth: '280px' }}>Dirección</th>
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200" onClick={() => handleSort('producto')}>
                       Producto <SortArrow col="producto" />
                     </th>
-                    <th className="px-4 py-3 whitespace-nowrap">Cant.</th>
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('importe')}>
                       Importe <SortArrow col="importe" />
                     </th>
                     <th className="px-4 py-3 whitespace-nowrap">H. Máx</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Obs Pedido</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Obs Cliente</th>
                     <th className="px-4 py-3 whitespace-nowrap">Estado</th>
                     <th className="px-4 py-3 whitespace-nowrap">Coords</th>
                   </tr>
@@ -513,7 +536,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                 <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="text-center py-12 text-gray-500">
+                      <td colSpan={14} className="text-center py-12 text-gray-500">
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
@@ -524,14 +547,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                     paginated.map(({ pedido: p, delayMins, delayInfo }) => (
                       <tr
                         key={p.id}
-                        onClick={() => onPedidoClick?.(p.id)}
                         className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : getRowBg(delayInfo)}`}
                       >
                         {/* Atraso badge */}
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
                           {isFinalizados ? (
                             <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap bg-green-500/25 text-green-300">
-                              ✔ Entregado
+                              ✔ Finalizado
                             </span>
                           ) : (
                             <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${getDelayBadgeStyle(delayInfo)}`}>
@@ -541,36 +563,36 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                         </td>
 
                         {/* ID */}
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
                           <span className="font-bold text-white">#{p.id}</span>
                         </td>
 
                         {/* Movil */}
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
+                        <td className="px-4 py-2.5" onClick={(e) => { e.stopPropagation(); if (p.movil) onMovilClick?.(Number(p.movil)); }}>
+                          <div className="flex items-center gap-2 hover:bg-gray-700/40 rounded px-1 -mx-1 transition-colors" title="Ver detalle del móvil">
                             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: getMovilColor(p.movil) }} />
-                            <span className="text-gray-200 text-xs whitespace-nowrap">{getMovilName(p.movil)}</span>
+                            <span className="text-gray-200 text-xs whitespace-nowrap underline decoration-dotted">{getMovilName(p.movil)}</span>
                           </div>
                         </td>
 
                         {/* Zona */}
-                        <td className="px-4 py-2.5 text-gray-300 text-xs">
+                        <td className="px-4 py-2.5 text-gray-300 text-xs" onClick={() => onPedidoClick?.(p.id)}>
                           {p.zona_nro || '—'}
                         </td>
 
-                        {/* Cliente */}
-                        <td className="px-4 py-2.5">
-                          <div className="text-gray-200 text-xs truncate max-w-[180px]" title={p.cliente_nombre || undefined}>
-                            {p.cliente_nombre || '—'}
+                        {/* Cliente - teléfono arriba (grande), nombre abajo (chico) */}
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
+                          <div className="text-gray-100 text-xs font-semibold" title={p.cliente_tel || undefined}>
+                            {p.cliente_tel || '—'}
                           </div>
-                          {p.cliente_tel && (
-                            <div className="text-[10px] text-gray-500">{p.cliente_tel}</div>
+                          {p.cliente_nombre && (
+                            <div className="text-[10px] text-gray-500 truncate max-w-[180px]" title={p.cliente_nombre}>{p.cliente_nombre}</div>
                           )}
                         </td>
 
-                        {/* Dirección */}
-                        <td className="px-4 py-2.5">
-                          <div className="text-gray-300 text-xs truncate max-w-[200px]" title={p.cliente_direccion || undefined}>
+                        {/* Dirección - más ancha */}
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
+                          <div className="text-gray-300 text-xs truncate max-w-[280px]" title={p.cliente_direccion || undefined}>
                             {p.cliente_direccion || '—'}
                           </div>
                           {p.cliente_ciudad && (
@@ -578,37 +600,50 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                           )}
                         </td>
 
-                        {/* Producto */}
-                        <td className="px-4 py-2.5">
-                          <div className="text-gray-300 text-xs truncate max-w-[140px]" title={p.producto_nom || undefined}>
-                            {p.producto_nom || '—'}
+                        {/* Producto + Cantidad unificados */}
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
+                          <div className="text-gray-300 text-xs truncate max-w-[200px]" title={p.producto_nom || undefined}>
+                            {p.producto_nom ? `${p.producto_nom}${p.producto_cant ? ` x${p.producto_cant}` : ''}` : '—'}
                           </div>
                         </td>
 
-                        {/* Cantidad */}
-                        <td className="px-4 py-2.5 text-gray-300 text-xs text-center">
-                          {p.producto_cant ?? '—'}
-                        </td>
-
                         {/* Importe */}
-                        <td className="px-4 py-2.5 text-gray-300 text-xs whitespace-nowrap">
+                        <td className="px-4 py-2.5 text-gray-300 text-xs whitespace-nowrap" onClick={() => onPedidoClick?.(p.id)}>
                           {formatCurrency(p.imp_bruto)}
                         </td>
 
                         {/* Hora máxima */}
-                        <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap font-mono">
+                        <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap font-mono" onClick={() => onPedidoClick?.(p.id)}>
                           {formatTime(p.fch_hora_max_ent_comp)}
                         </td>
 
+                        {/* Obs Pedido */}
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
+                          {p.pedido_obs ? (
+                            <div className="text-gray-400 text-[10px] truncate max-w-[120px]" title={p.pedido_obs}>{p.pedido_obs}</div>
+                          ) : (
+                            <span className="text-gray-600 text-[10px]">—</span>
+                          )}
+                        </td>
+
+                        {/* Obs Cliente */}
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
+                          {p.cliente_obs ? (
+                            <div className="text-gray-400 text-[10px] truncate max-w-[120px]" title={p.cliente_obs}>{p.cliente_obs}</div>
+                          ) : (
+                            <span className="text-gray-600 text-[10px]">—</span>
+                          )}
+                        </td>
+
                         {/* Estado */}
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
                           <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full whitespace-nowrap">
                             {getEstadoDescripcion(p.sub_estado_nro, p.sub_estado_desc)}
                           </span>
                         </td>
 
                         {/* Coords indicator */}
-                        <td className="px-4 py-2.5 text-center">
+                        <td className="px-4 py-2.5 text-center" onClick={() => onPedidoClick?.(p.id)}>
                           {p.latitud && p.longitud ? (
                             <span className="text-green-400 text-xs" title={`${p.latitud}, ${p.longitud}`}>✓</span>
                           ) : (

@@ -1710,7 +1710,9 @@ function DashboardContent() {
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
         onPedidoClick={handlePedidoClick}
+        onMovilClick={(movilId) => handleMovilClick(movilId)}
         vista={pedidosFilters.vista}
+        onVistaChange={(v) => setPedidosFilters(prev => ({ ...prev, vista: v }))}
         selectedMoviles={selectedMoviles}
         externalAtraso={pedidosFilters.atraso}
         externalTipoServicio={pedidosFilters.tipoServicio}
@@ -1723,7 +1725,9 @@ function DashboardContent() {
         services={servicesCompletos}
         moviles={movilesFiltered}
         onServiceClick={handleServiceClick}
+        onMovilClick={(movilId) => handleMovilClick(movilId)}
         vista={servicesFilters.vista}
+        onVistaChange={(v) => setServicesFilters(prev => ({ ...prev, vista: v }))}
         selectedMoviles={selectedMoviles}
         externalAtraso={servicesFilters.atraso}
         externalTipoServicio={servicesFilters.tipoServicio}

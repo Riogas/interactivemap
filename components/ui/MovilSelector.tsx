@@ -1197,9 +1197,9 @@ export default function MovilSelector({
                                         <span 
                                           className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
                                           style={{ backgroundColor: '#22c55e22' }}
-                                          title="Entregado"
+                                          title="Finalizado"
                                         >
-                                          ✔ Entregado
+                                          ✔ Finalizado
                                         </span>
                                       ) : (
                                         <span 
@@ -1267,9 +1267,9 @@ export default function MovilSelector({
                                         <span 
                                           className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
                                           style={{ backgroundColor: '#22c55e22' }}
-                                          title="Completado"
+                                          title="Finalizado"
                                         >
-                                          ✔ Completado
+                                          ✔ Finalizado
                                         </span>
                                       ) : (
                                         <span 
