@@ -145,19 +145,21 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cliente</h4>
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-2 border border-blue-200">
-                <div className="font-bold text-blue-900 text-sm">{pedido.cliente_nombre || 'Sin nombre'}</div>
                 {pedido.cliente_tel && (
                   <a
                     href={`tel:${pedido.cliente_tel}`}
-                    className="inline-flex items-center gap-1.5 mt-1 px-2 py-1 bg-blue-200/60 hover:bg-blue-300/60 rounded-md transition-colors"
+                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-200/60 hover:bg-blue-300/60 rounded-md transition-colors"
                   >
                     <span className="text-sm">📞</span>
                     <span className="text-sm font-bold text-blue-900 tracking-wide">{pedido.cliente_tel}</span>
                   </a>
                 )}
-                {pedido.cliente_direccion && (
-                  <div className="text-[10px] text-blue-600 mt-1">📍 {pedido.cliente_direccion}</div>
-                )}
+                <div className="text-[10px] text-blue-700 mt-1 leading-relaxed">
+                  {pedido.cliente_nombre && <span className="font-semibold">{pedido.cliente_nombre}</span>}
+                  {pedido.cliente_nombre && pedido.cliente_direccion && ' – '}
+                  {pedido.cliente_direccion && <span className="text-blue-600">{pedido.cliente_direccion}</span>}
+                  {!pedido.cliente_nombre && !pedido.cliente_direccion && <span className="text-blue-400">Sin datos</span>}
+                </div>
               </div>
             </div>
 
@@ -180,28 +182,34 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                   <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
                   <div className="font-bold text-green-900 text-xs">
                     {getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc)}
+                    {pedido.movil && <span className="text-green-700 font-normal"> – #{pedido.movil}</span>}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Móvil Asignado y Forma de Pago */}
-            {(pedido.movil || pedido.fpago_obs1) && (
+            {/* Obs Pedido y Obs Cliente */}
+            {(pedido.pedido_obs || pedido.cliente_obs) && (
               <div>
-                <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Asignación</h4>
                 <div className="grid grid-cols-2 gap-2">
-                  {pedido.movil && (
-                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-2 border border-indigo-200">
-                      <div className="text-[9px] text-indigo-600 font-semibold mb-0.5">Móvil</div>
-                      <div className="font-bold text-indigo-900 text-sm">#{pedido.movil}</div>
-                    </div>
-                  )}
-                  {pedido.fpago_obs1 && (
-                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-2 border border-orange-200">
-                      <div className="text-[9px] text-orange-600 font-semibold mb-0.5">Forma de Pago</div>
-                      <div className="font-bold text-orange-900 text-xs">{pedido.fpago_obs1}</div>
-                    </div>
-                  )}
+                  <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-2 border border-amber-200">
+                    <div className="text-[9px] text-amber-600 font-semibold mb-0.5">Obs Pedido</div>
+                    <div className="text-[10px] text-amber-900 leading-relaxed">{pedido.pedido_obs || '—'}</div>
+                  </div>
+                  <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-lg p-2 border border-teal-200">
+                    <div className="text-[9px] text-teal-600 font-semibold mb-0.5">Obs Cliente</div>
+                    <div className="text-[10px] text-teal-900 leading-relaxed">{pedido.cliente_obs || '—'}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Forma de Pago */}
+            {pedido.fpago_obs1 && (
+              <div>
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-2 border border-orange-200">
+                  <div className="text-[9px] text-orange-600 font-semibold mb-0.5">Forma de Pago</div>
+                  <div className="font-bold text-orange-900 text-xs">{pedido.fpago_obs1}</div>
                 </div>
               </div>
             )}
@@ -221,17 +229,7 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
               </div>
             )}
 
-            {/* Observaciones */}
-            {pedido.pedido_obs && (
-              <div>
-                <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Observaciones</h4>
-                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-2 border border-amber-200">
-                  <div className="text-[10px] text-amber-900 leading-relaxed">
-                    {pedido.pedido_obs}
-                  </div>
-                </div>
-              </div>
-            )}
+
 
             {/* Fecha */}
             {(pedido.fch_hora_mov || pedido.fch_hora_para || pedido.fch_hora_max_ent_comp) && (

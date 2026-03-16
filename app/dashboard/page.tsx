@@ -90,6 +90,9 @@ function DashboardContent() {
   
   // Estado para modal de vista extendida de services
   const [isServicesTableOpen, setIsServicesTableOpen] = useState(false);
+
+  // Pre-filtro de móvil para vista extendida (cuando se abre desde popup de un móvil)
+  const [preFilterMovil, setPreFilterMovil] = useState<number | undefined>();
   
   // Estado para modal de importación OSM
   const [isOsmImportOpen, setIsOsmImportOpen] = useState(false);
@@ -1239,13 +1242,18 @@ function DashboardContent() {
     setSelectedMovil(movilId); // Activa la animación
   }, [moviles, fetchMovilHistory, selectedMoviles]);
 
-  // Handler para mostrar pendientes en el mapa (abre tabla de pedidos)
+  // Handler para mostrar pendientes en el mapa (abre tabla de pedidos filtrada por móvil)
   const handleShowPendientes = useCallback(() => {
     setShowPendientes(true); // Muestra los marcadores de pedidos
     setShowCompletados(false); // Oculta completados
+    // Pre-filtrar la vista extendida por el móvil actual del popup
+    if (popupMovil) {
+      setPreFilterMovil(popupMovil);
+    }
     setIsPedidosTableOpen(true); // Abre la tabla de pedidos
+    setIsServicesTableOpen(true); // También abre la tabla de services
     setPopupMovil(undefined); // Cierra el popup
-  }, []);
+  }, [popupMovil]);
 
   // Handler para mostrar completados en el mapa
   const handleShowCompletados = useCallback(() => {
@@ -1742,7 +1750,7 @@ function DashboardContent() {
       {/* Modal de Vista Extendida de Pedidos */}
       <PedidosTableModal
         isOpen={isPedidosTableOpen}
-        onClose={() => setIsPedidosTableOpen(false)}
+        onClose={() => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); }}
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
         onPedidoClick={handlePedidoClick}
@@ -1752,12 +1760,14 @@ function DashboardContent() {
         selectedMoviles={selectedMoviles}
         externalAtraso={pedidosFilters.atraso}
         externalTipoServicio={pedidosFilters.tipoServicio}
+        preFilterMovil={preFilterMovil}
+        onClearPreFilter={() => setPreFilterMovil(undefined)}
       />
 
       {/* Modal de Vista Extendida de Services */}
       <ServicesTableModal
         isOpen={isServicesTableOpen}
-        onClose={() => setIsServicesTableOpen(false)}
+        onClose={() => { setIsServicesTableOpen(false); setPreFilterMovil(undefined); }}
         services={servicesCompletos}
         moviles={movilesFiltered}
         onServiceClick={handleServiceClick}
@@ -1767,6 +1777,8 @@ function DashboardContent() {
         selectedMoviles={selectedMoviles}
         externalAtraso={servicesFilters.atraso}
         externalTipoServicio={servicesFilters.tipoServicio}
+        preFilterMovil={preFilterMovil}
+        onClearPreFilter={() => setPreFilterMovil(undefined)}
       />
 
       {/* Modal de importación de POIs desde OpenStreetMap */}

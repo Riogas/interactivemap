@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ServiceSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
@@ -48,6 +48,8 @@ interface ServicesTableModalProps {
   selectedMoviles?: number[];
   externalAtraso?: string[];
   externalTipoServicio?: string;
+  preFilterMovil?: number;
+  onClearPreFilter?: () => void;
 }
 
 // ========== Row bg colors ==========
@@ -71,7 +73,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all' }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, onClearPreFilter }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -86,6 +88,14 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Aplicar pre-filtro de móvil cuando se abre desde popup de un móvil
+  useEffect(() => {
+    if (isOpen && preFilterMovil) {
+      setFilters(f => ({ ...f, movil: preFilterMovil }));
+      setPage(0);
+    }
+  }, [isOpen, preFilterMovil]);
 
   // ========== Services base: según vista (pendientes/finalizados) + filtros externos ==========
   const servicesBase = useMemo(() => {

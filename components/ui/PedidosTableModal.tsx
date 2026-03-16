@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
@@ -49,6 +49,8 @@ interface PedidosTableModalProps {
   selectedMoviles?: number[];
   externalAtraso?: string[];
   externalTipoServicio?: string;
+  preFilterMovil?: number;
+  onClearPreFilter?: () => void;
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -72,7 +74,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all' }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, onClearPreFilter }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -87,6 +89,14 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Aplicar pre-filtro de móvil cuando se abre desde popup de un móvil
+  useEffect(() => {
+    if (isOpen && preFilterMovil) {
+      setFilters(f => ({ ...f, movil: preFilterMovil }));
+      setPage(0);
+    }
+  }, [isOpen, preFilterMovil]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
