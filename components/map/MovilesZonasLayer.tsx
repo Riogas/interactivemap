@@ -41,6 +41,9 @@ export interface MovilZonaRecord {
 /** Filtro: 'all' = sin filtro, o un valor de servicio_nombre concreto */
 export type MovilesZonasServiceFilter = string; // 'all' | 'URGENTE' | 'SERVICE' | etc.
 
+/** Estados de móvil que se excluyen del conteo en zonas */
+const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
+
 interface MovilesZonasLayerProps {
   zonas: MovilesZonaData[];
   /** Registros crudos de moviles_zonas */
@@ -53,6 +56,8 @@ interface MovilesZonasLayerProps {
   tiposServicioDisponibles?: string[];
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
+  /** Mapa de movil_id → estadoNro para excluir móviles inactivos del conteo */
+  movilEstados?: Map<string, number>;
 }
 
 /**
@@ -165,13 +170,25 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   onServiceFilterChange,
   tiposServicioDisponibles = [],
   zonaOpacity = 50,
+  movilEstados,
 }: MovilesZonasLayerProps) {
 
   // Filtrar registros de moviles_zonas según el filtro seleccionado
+  // y excluir móviles con estado_nro 3, 5 o 15
   const filteredData = useMemo(() => {
-    if (serviceFilter === 'all') return movilesZonasData;
-    return movilesZonasData.filter(mz => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter.toUpperCase());
-  }, [movilesZonasData, serviceFilter]);
+    let data = movilesZonasData;
+    if (serviceFilter !== 'all') {
+      data = data.filter(mz => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter.toUpperCase());
+    }
+    // Excluir móviles con estados inactivos (3=no activo, 5=?, 15=?)
+    if (movilEstados && movilEstados.size > 0) {
+      data = data.filter(mz => {
+        const estado = movilEstados.get(String(mz.movil_id));
+        return estado === undefined || !EXCLUDED_ESTADOS.has(estado);
+      });
+    }
+    return data;
+  }, [movilesZonasData, serviceFilter, movilEstados]);
 
   // Computar conteos por zona: { prioridad, transito }
   const zonaCounts = useMemo(() => {

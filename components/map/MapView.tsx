@@ -555,7 +555,18 @@ const MapView = memo(function MapView({
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
 
-  // 🔷 Generador de HTML para formas geométricas (compact/mini)
+  // � Mapa de movil_id → estadoNro para que MovilesZonasLayer excluya estados 3/5/15
+  const movilEstadosMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const movil of moviles) {
+      if (movil.estadoNro !== undefined && movil.estadoNro !== null) {
+        m.set(String(movil.id), movil.estadoNro);
+      }
+    }
+    return m;
+  }, [moviles]);
+
+  // �🔷 Generador de HTML para formas geométricas (compact/mini)
   const getShapeHtml = useCallback((shape: MarkerShape, size: number, color: string, lightColor?: string) => {
     const half = size / 2;
     const border = size > 12 ? 1.5 : 1;
@@ -2005,7 +2016,7 @@ const MapView = memo(function MapView({
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
