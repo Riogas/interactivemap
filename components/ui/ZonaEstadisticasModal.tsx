@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase } from '@/types';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
@@ -17,10 +17,10 @@ interface ZonaEstadisticasModalProps {
   isOpen: boolean;
   onClose: () => void;
   pedidos: PedidoSupabase[];
-  zonas: ZonaInfo[];
-  movilesZonasData: MovilZonaRecord[];
+  /** escenario_ids para filtrar zonas */
+  escenarioIds: number[];
+  /** Map<string(movilNro), estadoNro> – siempre disponible desde allMovilEstados */
   movilEstados?: Map<string, number>;
-  demorasData?: Map<number, { minutos: number; activa: boolean }>;
 }
 
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
@@ -33,13 +33,79 @@ export default function ZonaEstadisticasModal({
   isOpen,
   onClose,
   pedidos,
-  zonas,
-  movilesZonasData,
+  escenarioIds,
   movilEstados = new Map(),
-  demorasData = new Map(),
 }: ZonaEstadisticasModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  // Data fetched internally
+  const [zonas, setZonas] = useState<ZonaInfo[]>([]);
+  const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
+  const [movilesZonasData, setMovilesZonasData] = useState<MovilZonaRecord[]>([]);
+
+  // Stable key for escenarioIds to avoid re-fetching on each render
+  const escenarioKey = JSON.stringify(escenarioIds);
+
+  // Fetch all data when modal opens
+  useEffect(() => {
+    if (!isOpen || escenarioIds.length === 0) return;
+
+    let cancelled = false;
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [zonasRes, demorasRes, mzRes] = await Promise.all([
+          fetch('/api/zonas'),
+          fetch('/api/demoras'),
+          fetch('/api/moviles-zonas'),
+        ]);
+        const [zonasResult, demorasResult, mzResult] = await Promise.all([
+          zonasRes.json(),
+          demorasRes.json(),
+          mzRes.json(),
+        ]);
+
+        if (cancelled) return;
+
+        // Zonas
+        if (zonasResult.success && zonasResult.data) {
+          const filtered = zonasResult.data
+            .filter((z: any) => z.activa !== false && escenarioIds.includes(z.escenario_id))
+            .map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre }));
+          setZonas(filtered);
+        }
+
+        // Demoras
+        if (demorasResult.success && demorasResult.data) {
+          const dMap = new Map<number, { minutos: number; activa: boolean }>();
+          for (const d of demorasResult.data) {
+            if (escenarioIds.includes(d.escenario_id)) {
+              const existing = dMap.get(d.zona_id);
+              if (!existing || d.minutos > existing.minutos) {
+                dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
+              }
+            }
+          }
+          setDemorasData(dMap);
+        }
+
+        // Moviles-Zonas
+        if (mzResult.success && mzResult.data) {
+          setMovilesZonasData(mzResult.data);
+        }
+      } catch (err) {
+        console.error('Error loading estadísticas data:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchData();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, escenarioKey]);
 
   const stats = useMemo(() => {
     // Build zona name map
@@ -321,7 +387,12 @@ export default function ZonaEstadisticasModal({
                 {sorted.length === 0 && (
                   <tr>
                     <td colSpan={10} className="py-8 text-center text-gray-500 text-sm">
-                      No hay datos de zonas disponibles
+                      {loading ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                          Cargando datos...
+                        </span>
+                      ) : 'No hay datos de zonas disponibles'}
                     </td>
                   </tr>
                 )}

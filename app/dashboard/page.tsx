@@ -89,7 +89,6 @@ function DashboardContent() {
   
   // Estado para modal de estadísticas por zona
   const [isZonaEstadisticasOpen, setIsZonaEstadisticasOpen] = useState(false);
-  const [estadisticasZonas, setEstadisticasZonas] = useState<Array<{ zona_id: number; nombre: string | null }>>([]); 
   
   // Estado para modal de asignación de zonas
   const [isZonasAsignacionOpen, setIsZonasAsignacionOpen] = useState(false);
@@ -201,8 +200,15 @@ function DashboardContent() {
   // Estado para empresas fleteras
   const [empresas, setEmpresas] = useState<EmpresaFleteraSupabase[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
-  // Limpiar cache de zonas estadísticas cuando cambian las empresas
-  useEffect(() => { setEstadisticasZonas([]); }, [selectedEmpresas]);
+
+  // Escenario IDs derivados de las empresas seleccionadas (stable reference)
+  const selectedEscenarioIds = useMemo(() => {
+    return [...new Set(
+      selectedEmpresas
+        .map(id => empresas.find(e => e.empresa_fletera_id === id)?.escenario_id)
+        .filter((v): v is number => v != null)
+    )];
+  }, [selectedEmpresas, empresas]);
   
   // � Móviles filtrados por empresas fleteras seleccionadas
   const movilesFiltered = useMemo(() => {
@@ -1900,10 +1906,8 @@ function DashboardContent() {
         isOpen={isZonaEstadisticasOpen}
         onClose={() => setIsZonaEstadisticasOpen(false)}
         pedidos={pedidosCompletos}
-        zonas={estadisticasZonas.length > 0 ? estadisticasZonas : allZonasData.length > 0 ? allZonasData.map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre })) : zonasData.map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre }))}
-        movilesZonasData={movilesZonasData}
+        escenarioIds={selectedEscenarioIds}
         movilEstados={allMovilEstados}
-        demorasData={demorasData}
       />
 
       {/* Indicador de conexión Realtime - Debajo del navbar, a la derecha */}
@@ -2112,30 +2116,7 @@ function DashboardContent() {
                 serviceShape={preferences.serviceShape || 'triangle'}
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
-                onOpenEstadisticas={async () => {
-                  setIsZonaEstadisticasOpen(true);
-                  // Cargar zonas si no tenemos datos
-                  if (estadisticasZonas.length === 0) {
-                    try {
-                      const res = await fetch('/api/zonas');
-                      const result = await res.json();
-                      if (result.success && result.data) {
-                        const uniqueEscenarios = [...new Set(
-                          selectedEmpresas
-                            .map(id => empresas.find((e: any) => e.empresa_id === id))
-                            .filter(Boolean)
-                            .map((e: any) => e.escenario_id)
-                        )] as number[];
-                        const zonasFiltradas = result.data
-                          .filter((z: any) => z.activa !== false && uniqueEscenarios.includes(z.escenario_id))
-                          .map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre }));
-                        setEstadisticasZonas(zonasFiltradas);
-                      }
-                    } catch (err) {
-                      console.error('Error loading zonas for estadísticas:', err);
-                    }
-                  }
-                }}
+                onOpenEstadisticas={() => setIsZonaEstadisticasOpen(true)}
                 demorasData={demorasData}
                 allMovilEstados={allMovilEstados}
                 movilesZonasData={movilesZonasData}
