@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
@@ -80,7 +80,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     search: '',
     atraso: [],
     zona: null,
-    movil: preFilterMovil ?? null,
+    movil: null,
     producto: null,
     soloSinCoords: false,
   });
@@ -89,6 +89,17 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Aplicar pre-filtro de móvil con delay para que la tabla cargue primero
+  useEffect(() => {
+    if (preFilterMovil && isOpen) {
+      const timer = setTimeout(() => {
+        setFilters(f => ({ ...f, movil: preFilterMovil }));
+        setPage(0);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [preFilterMovil, isOpen]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {

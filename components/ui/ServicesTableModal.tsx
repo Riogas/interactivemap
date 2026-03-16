@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ServiceSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
@@ -79,7 +79,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     search: '',
     atraso: [],
     zona: null,
-    movil: preFilterMovil ?? null,
+    movil: null,
     defecto: null,
     soloSinCoords: false,
   });
@@ -88,6 +88,17 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Aplicar pre-filtro de móvil con delay para que la tabla cargue primero
+  useEffect(() => {
+    if (preFilterMovil && isOpen) {
+      const timer = setTimeout(() => {
+        setFilters(f => ({ ...f, movil: preFilterMovil }));
+        setPage(0);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [preFilterMovil, isOpen]);
 
   // ========== Services base: según vista (pendientes/finalizados) + filtros externos ==========
   const servicesBase = useMemo(() => {
