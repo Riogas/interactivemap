@@ -102,6 +102,7 @@ interface MapViewProps {
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
   allMovilEstados?: Map<string, number>; // Mapa completo movil_nro → estadoNro (todos los moviles)
+  onOpenEstadisticas?: () => void; // Abrir modal de estadísticas por zona
 }
 
 function MapUpdater({ 
@@ -555,6 +556,7 @@ const MapView = memo(function MapView({
   servicesVista = 'pendientes',
   onZonaClick,
   allMovilEstados = new Map(),
+  onOpenEstadisticas,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2002,7 +2004,7 @@ const MapView = memo(function MapView({
 
         {/* � Control de vista de datos (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
-          <DataViewControl value={dataViewMode} onChange={onDataViewChange} />
+          <DataViewControl value={dataViewMode} onChange={onDataViewChange} onOpenEstadisticas={onOpenEstadisticas} />
         )}
 
         {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}

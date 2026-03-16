@@ -19,6 +19,7 @@ import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonasAsignacionModal from '@/components/ui/ZonasAsignacionModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
+import ZonaEstadisticasModal from '@/components/ui/ZonaEstadisticasModal';
 import PedidosTableModal from '@/components/ui/PedidosTableModal';
 import ServicesTableModal from '@/components/ui/ServicesTableModal';
 import OsmImportModal from '@/components/ui/OsmImportModal';
@@ -85,6 +86,12 @@ function DashboardContent() {
   
   // Estado para modal de leaderboard/ranking
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  
+  // Estado para modal de estadísticas por zona
+  const [isZonaEstadisticasOpen, setIsZonaEstadisticasOpen] = useState(false);
+  const [estadisticasZonas, setEstadisticasZonas] = useState<Array<{ zona_id: number; nombre: string | null }>>([]);
+  // Limpiar cache de zonas cuando cambian las empresas seleccionadas
+  useEffect(() => { setEstadisticasZonas([]); }, [selectedEmpresas]);
   
   // Estado para modal de asignación de zonas
   const [isZonasAsignacionOpen, setIsZonasAsignacionOpen] = useState(false);
@@ -1888,6 +1895,17 @@ function DashboardContent() {
         }}
       />
 
+      {/* Modal de Estadísticas por Zona */}
+      <ZonaEstadisticasModal
+        isOpen={isZonaEstadisticasOpen}
+        onClose={() => setIsZonaEstadisticasOpen(false)}
+        pedidos={pedidosCompletos}
+        zonas={estadisticasZonas.length > 0 ? estadisticasZonas : allZonasData.length > 0 ? allZonasData.map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre })) : zonasData.map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre }))}
+        movilesZonasData={movilesZonasData}
+        movilEstados={allMovilEstados}
+        demorasData={demorasData}
+      />
+
       {/* Indicador de conexión Realtime - Debajo del navbar, a la derecha */}
       {/* right-4 siempre, los botones ya no están en < xl */}
       <div id="tour-realtime-indicator" className="absolute right-4 top-[68px] z-50">
@@ -2094,6 +2112,30 @@ function DashboardContent() {
                 serviceShape={preferences.serviceShape || 'triangle'}
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
+                onOpenEstadisticas={async () => {
+                  setIsZonaEstadisticasOpen(true);
+                  // Cargar zonas si no tenemos datos
+                  if (estadisticasZonas.length === 0) {
+                    try {
+                      const res = await fetch('/api/zonas');
+                      const result = await res.json();
+                      if (result.success && result.data) {
+                        const uniqueEscenarios = [...new Set(
+                          selectedEmpresas
+                            .map(id => empresas.find((e: any) => e.empresa_id === id))
+                            .filter(Boolean)
+                            .map((e: any) => e.escenario_id)
+                        )] as number[];
+                        const zonasFiltradas = result.data
+                          .filter((z: any) => z.activa !== false && uniqueEscenarios.includes(z.escenario_id))
+                          .map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre }));
+                        setEstadisticasZonas(zonasFiltradas);
+                      }
+                    } catch (err) {
+                      console.error('Error loading zonas for estadísticas:', err);
+                    }
+                  }
+                }}
                 demorasData={demorasData}
                 allMovilEstados={allMovilEstados}
                 movilesZonasData={movilesZonasData}

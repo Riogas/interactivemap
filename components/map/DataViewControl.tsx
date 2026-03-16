@@ -9,6 +9,7 @@ export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zona
 interface DataViewControlProps {
   value: DataViewMode;
   onChange: (mode: DataViewMode) => void;
+  onOpenEstadisticas?: () => void;
 }
 
 /**
@@ -18,10 +19,12 @@ interface DataViewControlProps {
  * - Cant Móviles en Zonas
  * Se posiciona arriba del control de capas (bottomright).
  */
-export default function DataViewControl({ value, onChange }: DataViewControlProps) {
+export default function DataViewControl({ value, onChange, onOpenEstadisticas }: DataViewControlProps) {
   const map = useMap();
   const controlRef = useRef<L.Control | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const onOpenEstadisticasRef = useRef(onOpenEstadisticas);
+  onOpenEstadisticasRef.current = onOpenEstadisticas;
 
   useEffect(() => {
     if (!map) return;
@@ -59,6 +62,10 @@ export default function DataViewControl({ value, onChange }: DataViewControlProp
               <input type="radio" name="dv-mode" value="moviles-zonas" />
               <span class="dv-icon">🚛</span> Móviles en Zonas
             </label>
+            <div style="border-top: 1px solid #e0e0e0; margin: 4px 0;"></div>
+            <button class="dv-estadisticas-btn" style="width:100%; text-align:left; padding:5px 10px; cursor:pointer; background:none; border:none; font-size:14px; font-family:inherit; color:#374151; display:flex; align-items:center; gap:6px; border-radius:4px; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='none'">
+              <span class="dv-icon">📊</span> Estadísticas
+            </button>
           </div>
         `;
 
@@ -84,6 +91,15 @@ export default function DataViewControl({ value, onChange }: DataViewControlProp
             }
           });
         });
+
+        // Estadísticas button handler
+        const estBtn = container.querySelector('.dv-estadisticas-btn') as HTMLElement;
+        if (estBtn) {
+          estBtn.addEventListener('click', () => {
+            panel.style.display = 'none';
+            if (onOpenEstadisticasRef.current) onOpenEstadisticasRef.current();
+          });
+        }
 
         // Set initial checked
         const initialRadio = container.querySelector<HTMLInputElement>(`input[value="${value}"]`);
