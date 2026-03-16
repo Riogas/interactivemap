@@ -1049,8 +1049,8 @@ const MapView = memo(function MapView({
     return deduplicados;
   }, [moviles, focusedMovil, showCompletados]);
 
-  // Móvil actual del popup
-  const movilActual = popupMovil ? moviles.find(m => m.id === popupMovil) : null;
+  // Móvil actual del popup (buscar en moviles filtrados primero, luego en allMoviles)
+  const movilActual = popupMovil ? (moviles.find(m => m.id === popupMovil) || allMoviles.find(m => m.id === popupMovil) || null) : null;
   
   // Móvil seleccionado para mostrar pendientes
   const movilConPendientes = (popupMovil || focusedMovil) ? moviles.find(m => m.id === (popupMovil || focusedMovil)) : null;
@@ -2875,7 +2875,7 @@ const MapView = memo(function MapView({
       )}
 
       {/* Popup de información del móvil */}
-      {popupMovil && movilActual && movilActual.currentPosition && (
+      {popupMovil && movilActual && (
         <MovilInfoPopup 
           movil={movilActual} 
           selectedMovilesCount={selectedMovilesCount}
