@@ -192,9 +192,7 @@ function DashboardContent() {
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ atraso: [], tipoServicio: 'all' });
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all' });
   
-  // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services
-  const [tiposServicio, setTiposServicio] = useState<string[]>([]);
-  // Se recalcula cuando cambian pedidos/services completos (ver useMemo más abajo)
+  // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
   
   // 🔥 NUEVO: Hook para escuchar cambios en pedidos en tiempo real
   const { 
@@ -1356,12 +1354,11 @@ function DashboardContent() {
   }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate]);
 
   // Derivar tipos de servicio dinámicos de servicio_nombre de pedidos y services
-  useEffect(() => {
+  const tiposServicio = useMemo(() => {
     const nombres = new Set<string>();
     pedidosCompletos.forEach(p => { if (p.servicio_nombre) nombres.add(p.servicio_nombre.trim()); });
     servicesCompletos.forEach(s => { if (s.servicio_nombre) nombres.add(s.servicio_nombre.trim()); });
-    const sorted = [...nombres].filter(Boolean).sort((a, b) => a.localeCompare(b));
-    setTiposServicio(sorted);
+    return [...nombres].filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [pedidosCompletos, servicesCompletos]);
 
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
