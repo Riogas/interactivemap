@@ -44,7 +44,7 @@ interface MovilSelectorProps {
 }
 
 // Definir las categorías del árbol
-type CategoryKey = 'moviles' | 'pedidos' | 'pedidosFinalizados' | 'services' | 'servicesFinalizados' | 'pois';
+type CategoryKey = 'moviles' | 'pedidos' | 'services' | 'pois';
 
 interface Category {
   key: CategoryKey;
@@ -94,9 +94,7 @@ export default function MovilSelector({
   // Estados de búsqueda por categoría
   const [movilesSearch, setMovilesSearch] = useState('');
   const [pedidosSearch, setPedidosSearch] = useState('');
-  const [finalizadosSearch, setFinalizadosSearch] = useState('');
   const [servicesSearch, setServicesSearch] = useState('');
-  const [servicesFinalizadosSearch, setServicesFinalizadosSearch] = useState('');
   const [poisSearch, setPoisSearch] = useState('');
 
   // Estado para sub-categorías expandidas dentro de POIs
@@ -139,10 +137,11 @@ export default function MovilSelector({
     actividad: 'activo', // Por defecto mostrar solo activos
   });
   // Filtros de pedidos/services: usar props si vienen del padre, si no estado local (fallback)
-  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all' });
+  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
   const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({ 
     atraso: [], 
-    tipoServicio: 'all' 
+    tipoServicio: 'all',
+    vista: 'pendientes'
   });
   const servicesFilters = servicesFiltersProp ?? localServicesFilters;
   const pedidosFilters = pedidosFiltersProp ?? localPedidosFilters;
@@ -245,15 +244,19 @@ export default function MovilSelector({
 
   const allSelected = filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
 
-  // Filtrar y ordenar pedidos
+  // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
     let result = [...pedidos];
     
-    // Filtrar pedidos pendientes (estado 1, sub_estado_desc 5 = Asignados) con móvil asignado
-    result = result.filter(pedido => {
-      const estado = Number(pedido.estado_nro);
-      return estado === 1 && String(pedido.sub_estado_desc) === '5' && pedido.movil && Number(pedido.movil) > 0;
-    });
+    // Filtrar según vista: pendientes (estado 1 + sub_estado 5) o finalizados (estado 2)
+    if (pedidosFilters.vista === 'finalizados') {
+      result = result.filter(pedido => Number(pedido.estado_nro) === 2);
+    } else {
+      result = result.filter(pedido => {
+        const estado = Number(pedido.estado_nro);
+        return estado === 1 && String(pedido.sub_estado_desc) === '5' && pedido.movil && Number(pedido.movil) > 0;
+      });
+    }
     
     // 🔥 FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
     if (selectedMoviles.length > 0) {
@@ -270,20 +273,19 @@ export default function MovilSelector({
       );
     }
     
-    // Filtrar por tipo de servicio (dinámico desde moviles_zonas.tipo_de_servicio)
-    if (pedidosFilters.tipoServicio && pedidosFilters.tipoServicio !== 'all') {
+    // Filtrar por tipo de servicio (solo para pendientes)
+    if (pedidosFilters.vista === 'pendientes' && pedidosFilters.tipoServicio && pedidosFilters.tipoServicio !== 'all') {
       const tipoUpper = pedidosFilters.tipoServicio.toUpperCase();
       result = result.filter(pedido => 
         pedido.servicio_nombre && pedido.servicio_nombre.toUpperCase() === tipoUpper
       );
     }
     
-    // Filtrar por atraso (multi-selección)
-    if (pedidosFilters.atraso.length > 0) {
+    // Filtrar por atraso (solo para pendientes)
+    if (pedidosFilters.vista === 'pendientes' && pedidosFilters.atraso.length > 0) {
       result = result.filter(pedido => {
         const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
         const info = getDelayInfo(delayMins);
-        // Mapear label de getDelayInfo a value del filtro
         const categoryMap: Record<string, string> = {
           'En Hora': 'en_hora',
           'Hora Límite Cercana': 'limite_cercana',
@@ -296,53 +298,33 @@ export default function MovilSelector({
       });
     }
     
-    // Ordenar por mayor atraso primero (menor delay = más atrasado)
-    const sorted = result.sort((a, b) => {
-      const delayA = computeDelayMinutes(a.fch_hora_max_ent_comp);
-      const delayB = computeDelayMinutes(b.fch_hora_max_ent_comp);
-      if (delayA === null && delayB === null) return 0;
-      if (delayA === null) return 1;
-      if (delayB === null) return -1;
-      return delayA - delayB; // Más negativo (más atrasado) primero
-    });
-    
-    return sorted;
-  }, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles]);
-
-  // Filtrar y ordenar pedidos finalizados (estado_nro = 2)
-  const filteredPedidosFinalizados = useMemo(() => {
-    let result = [...pedidos];
-    
-    // Filtrar pedidos finalizados (estado 2)
-    result = result.filter(pedido => {
-      const estado = Number(pedido.estado_nro);
-      return estado === 2;
-    });
-    
-    // 🔥 FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
-    if (selectedMoviles.length > 0) {
-      result = result.filter(pedido => pedido.movil && selectedMoviles.some(id => Number(id) === Number(pedido.movil)));
-    }
-    
-    // Filtrar por búsqueda
-    if (finalizadosSearch.trim()) {
-      const searchLower = finalizadosSearch.toLowerCase();
-      result = result.filter(pedido => 
-        pedido.id.toString().includes(searchLower) ||
-        (pedido.servicio_nombre && pedido.servicio_nombre.toLowerCase().includes(searchLower)) ||
-        (pedido.cliente_tel && pedido.cliente_tel.includes(searchLower))
-      );
+    // Ordenar: pendientes por mayor atraso primero, finalizados por id desc
+    if (pedidosFilters.vista === 'pendientes') {
+      result.sort((a, b) => {
+        const delayA = computeDelayMinutes(a.fch_hora_max_ent_comp);
+        const delayB = computeDelayMinutes(b.fch_hora_max_ent_comp);
+        if (delayA === null && delayB === null) return 0;
+        if (delayA === null) return 1;
+        if (delayB === null) return -1;
+        return delayA - delayB;
+      });
+    } else {
+      result.sort((a, b) => Number(b.id) - Number(a.id));
     }
     
     return result;
-  }, [pedidos, finalizadosSearch, selectedMoviles]);
+  }, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles]);
 
-  // Filtrar y ordenar services (estado_nro = 1, pendientes)
+  // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
     let result = [...services];
     
-    // Solo services pendientes (estado 1)
-    result = result.filter(service => Number(service.estado_nro) === 1);
+    // Filtrar según vista: pendientes (estado 1) o finalizados (estado 2)
+    if (servicesFilters.vista === 'finalizados') {
+      result = result.filter(service => Number(service.estado_nro) === 2);
+    } else {
+      result = result.filter(service => Number(service.estado_nro) === 1);
+    }
     
     // Filtrar por móviles seleccionados
     if (selectedMoviles.length > 0) {
@@ -360,16 +342,16 @@ export default function MovilSelector({
       );
     }
     
-    // Filtrar por tipo de servicio (dinámico desde moviles_zonas.tipo_de_servicio)
-    if (servicesFilters.tipoServicio && servicesFilters.tipoServicio !== 'all') {
+    // Filtrar por tipo de servicio (solo para pendientes)
+    if (servicesFilters.vista === 'pendientes' && servicesFilters.tipoServicio && servicesFilters.tipoServicio !== 'all') {
       const tipoUpper = servicesFilters.tipoServicio.toUpperCase();
       result = result.filter(service => 
         service.servicio_nombre && service.servicio_nombre.toUpperCase() === tipoUpper
       );
     }
     
-    // Filtrar por atraso (multi-selección)
-    if (servicesFilters.atraso.length > 0) {
+    // Filtrar por atraso (solo para pendientes)
+    if (servicesFilters.vista === 'pendientes' && servicesFilters.atraso.length > 0) {
       result = result.filter(service => {
         const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
         const info = getDelayInfo(delayMins);
@@ -385,52 +367,28 @@ export default function MovilSelector({
       });
     }
     
-    // Ordenar por delay (más atrasado primero)
-    result.sort((a, b) => {
-      const delayA = computeDelayMinutes(a.fch_hora_max_ent_comp);
-      const delayB = computeDelayMinutes(b.fch_hora_max_ent_comp);
-      if (delayA === null && delayB === null) return 0;
-      if (delayA === null) return 1;
-      if (delayB === null) return -1;
-      return delayA - delayB;
-    });
+    // Ordenar: pendientes por delay, finalizados por id desc
+    if (servicesFilters.vista === 'pendientes') {
+      result.sort((a, b) => {
+        const delayA = computeDelayMinutes(a.fch_hora_max_ent_comp);
+        const delayB = computeDelayMinutes(b.fch_hora_max_ent_comp);
+        if (delayA === null && delayB === null) return 0;
+        if (delayA === null) return 1;
+        if (delayB === null) return -1;
+        return delayA - delayB;
+      });
+    } else {
+      result.sort((a, b) => Number(b.id) - Number(a.id));
+    }
     
     return result;
   }, [services, servicesSearch, servicesFilters, selectedMoviles]);
-
-  // Filtrar services finalizados (estado_nro = 2)
-  const filteredServicesFinalizados = useMemo(() => {
-    let result = [...services];
-    
-    // Filtrar services finalizados (estado 2)
-    result = result.filter(service => Number(service.estado_nro) === 2);
-    
-    // Filtrar por móviles seleccionados
-    if (selectedMoviles.length > 0) {
-      result = result.filter(service => service.movil && selectedMoviles.some(id => Number(id) === Number(service.movil)));
-    }
-    
-    // Filtrar por búsqueda
-    if (servicesFinalizadosSearch.trim()) {
-      const searchLower = servicesFinalizadosSearch.toLowerCase();
-      result = result.filter(service => 
-        service.id.toString().includes(searchLower) ||
-        (service.defecto && service.defecto.toLowerCase().includes(searchLower)) ||
-        (service.cliente_nombre && service.cliente_nombre.toLowerCase().includes(searchLower)) ||
-        (service.cliente_tel && service.cliente_tel.includes(searchLower))
-      );
-    }
-    
-    return result;
-  }, [services, servicesFinalizadosSearch, selectedMoviles]);
 
   // Categorías disponibles
   const categories: Category[] = [
     { key: 'moviles', title: 'Móviles', icon: '🚗', count: filteredMoviles.length },
     { key: 'pedidos', title: 'Pedidos', icon: '📦', count: filteredPedidos.length },
-    { key: 'pedidosFinalizados', title: 'Pedidos Finalizados', icon: '✅', count: filteredPedidosFinalizados.length },
     { key: 'services', title: 'Services', icon: '🔧', count: filteredServices.length },
-    { key: 'servicesFinalizados', title: 'Services Finalizados', icon: '✅', count: filteredServicesFinalizados.length },
     { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: puntosInteres.length },
   ];
 
@@ -465,6 +423,15 @@ export default function MovilSelector({
           searchPlaceholder: 'Buscar service...',
           filters: [
             {
+              id: 'vista',
+              label: 'Vista',
+              options: [
+                { value: 'pendientes', label: '⏳ Pendientes' },
+                { value: 'finalizados', label: '✅ Finalizados' },
+              ],
+              value: servicesFilters.vista,
+            },
+            ...(servicesFilters.vista === 'pendientes' ? [{
               id: 'tipoServicio',
               label: 'Tipo de Servicio',
               options: [
@@ -472,9 +439,9 @@ export default function MovilSelector({
                 ...tiposServicio.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() })),
               ],
               value: servicesFilters.tipoServicio ?? 'all',
-            }
+            }] : []),
           ],
-          multiSelectFilters: [
+          multiSelectFilters: servicesFilters.vista === 'pendientes' ? [
             {
               id: 'atraso',
               label: 'Estado de Atraso',
@@ -487,12 +454,18 @@ export default function MovilSelector({
               ],
               values: servicesFilters.atraso,
             }
-          ],
+          ] : [],
           onFilterChange: (filterId: string, value: string) => {
             if (filterId === 'tipoServicio') {
               setServicesFilters(prev => ({ 
                 ...prev, 
                 tipoServicio: value
+              }));
+            }
+            if (filterId === 'vista') {
+              setServicesFilters(prev => ({ 
+                ...prev, 
+                vista: value as 'pendientes' | 'finalizados'
               }));
             }
           },
@@ -503,24 +476,6 @@ export default function MovilSelector({
           }
         };
 
-      case 'servicesFinalizados':
-        return {
-          searchValue: servicesFinalizadosSearch,
-          onSearchChange: setServicesFinalizadosSearch,
-          searchPlaceholder: 'Buscar service finalizado...',
-          filters: [],
-          onFilterChange: () => {},
-        };
-
-      case 'pedidosFinalizados':
-        return {
-          searchValue: finalizadosSearch,
-          onSearchChange: setFinalizadosSearch,
-          searchPlaceholder: 'Buscar pedido finalizado...',
-          filters: [],
-          onFilterChange: () => {},
-        };
-
       case 'pedidos':
         return {
           searchValue: pedidosSearch,
@@ -528,6 +483,15 @@ export default function MovilSelector({
           searchPlaceholder: 'Buscar pedido...',
           filters: [
             {
+              id: 'vista',
+              label: 'Vista',
+              options: [
+                { value: 'pendientes', label: '⏳ Pendientes' },
+                { value: 'finalizados', label: '✅ Finalizados' },
+              ],
+              value: pedidosFilters.vista,
+            },
+            ...(pedidosFilters.vista === 'pendientes' ? [{
               id: 'tipoServicio',
               label: 'Tipo de Servicio',
               options: [
@@ -535,9 +499,9 @@ export default function MovilSelector({
                 ...tiposServicio.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() })),
               ],
               value: pedidosFilters.tipoServicio,
-            }
+            }] : []),
           ],
-          multiSelectFilters: [
+          multiSelectFilters: pedidosFilters.vista === 'pendientes' ? [
             {
               id: 'atraso',
               label: 'Estado de Atraso',
@@ -550,12 +514,18 @@ export default function MovilSelector({
               ],
               values: pedidosFilters.atraso,
             }
-          ],
+          ] : [],
           onFilterChange: (filterId: string, value: string) => {
             if (filterId === 'tipoServicio') {
               setPedidosFilters(prev => ({ 
                 ...prev, 
                 tipoServicio: value
+              }));
+            }
+            if (filterId === 'vista') {
+              setPedidosFilters(prev => ({ 
+                ...prev, 
+                vista: value as 'pendientes' | 'finalizados'
               }));
             }
           },
@@ -975,7 +945,7 @@ export default function MovilSelector({
                   )}
 
                   {/* Botón de ayuda */}
-                  {(category.key === 'moviles' || category.key === 'pedidos' || category.key === 'pedidosFinalizados' || category.key === 'services' || category.key === 'servicesFinalizados') && (
+                  {(category.key === 'moviles' || category.key === 'pedidos' || category.key === 'services') && (
                     <span
                       role="button"
                       tabIndex={0}
@@ -1186,7 +1156,7 @@ export default function MovilSelector({
                         <div ref={listContainerRef}>
                           {filteredPedidos.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
-                              <p>📦 Sin pedidos</p>
+                              <p>{pedidosFilters.vista === 'finalizados' ? '✅ Sin pedidos finalizados' : '📦 Sin pedidos'}</p>
                               <p className="text-xs mt-1">No hay pedidos para mostrar</p>
                             </div>
                           ) : (
@@ -1197,8 +1167,9 @@ export default function MovilSelector({
                               overscanCount={8}
                               renderItem={(pedido, _index) => {
                                 if (!pedido) return null;
-                                const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
-                                const delayInfo = getDelayInfo(delayMins);
+                                const isFinalizados = pedidosFilters.vista === 'finalizados';
+                                const delayMins = !isFinalizados ? computeDelayMinutes(pedido.fch_hora_max_ent_comp) : null;
+                                const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
 
                                 return (
                                   <button
@@ -1206,7 +1177,9 @@ export default function MovilSelector({
                                     onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
                                     className={clsx(
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
-                                      delayInfo.bgClass
+                                      isFinalizados 
+                                        ? 'bg-green-50 border-green-200 hover:bg-green-100' 
+                                        : delayInfo?.bgClass
                                     )}
                                   >
                                     <div className="flex items-center gap-2 text-xs">
@@ -1220,66 +1193,26 @@ export default function MovilSelector({
                                       {pedido.servicio_nombre && (
                                         <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
                                       )}
-                                      <span 
-                                        className={clsx(
-                                          'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
-                                          delayInfo.textColor
-                                        )}
-                                        style={{ backgroundColor: `${delayInfo.color}22` }}
-                                        title={delayInfo.label}
-                                      >
-                                        ⏱{delayInfo.badgeText}
-                                      </span>
-                                    </div>
-                                  </button>
-                                );
-                              }}
-                            />
-                          )}
-                        </div>
-                      )}
-
-                      {/* Contenido de Pedidos Finalizados - 🚀 VIRTUALIZADO */}
-                      {category.key === 'pedidosFinalizados' && (
-                        <div>
-                          {filteredPedidosFinalizados.length === 0 ? (
-                            <div className="text-center py-4 text-gray-500 text-sm">
-                              <p>✅ Sin pedidos finalizados</p>
-                              <p className="text-xs mt-1">No hay pedidos finalizados para mostrar</p>
-                            </div>
-                          ) : (
-                            <VirtualList
-                              items={filteredPedidosFinalizados}
-                              height={Math.min(filteredPedidosFinalizados.length * 38, Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 350))}
-                              itemHeight={38}
-                              overscanCount={8}
-                              renderItem={(pedido, _index) => {
-                                if (!pedido) return null;
-
-                                return (
-                                  <button
-                                    key={pedido.id}
-                                    onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
-                                    className="w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1 bg-green-50 border-green-200 hover:bg-green-100"
-                                  >
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="font-bold text-gray-900">#{pedido.id}</span>
-                                      {(!pedido.latitud || !pedido.longitud) && (
-                                        <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
-                                          📍❌
+                                      {isFinalizados ? (
+                                        <span 
+                                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
+                                          style={{ backgroundColor: '#22c55e22' }}
+                                          title="Entregado"
+                                        >
+                                          ✔ Entregado
+                                        </span>
+                                      ) : (
+                                        <span 
+                                          className={clsx(
+                                            'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
+                                            delayInfo?.textColor
+                                          )}
+                                          style={{ backgroundColor: `${delayInfo?.color}22` }}
+                                          title={delayInfo?.label}
+                                        >
+                                          ⏱{delayInfo?.badgeText}
                                         </span>
                                       )}
-                                      <span className="text-gray-700">🚗{pedido.movil}</span>
-                                      {pedido.servicio_nombre && (
-                                        <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
-                                      )}
-                                      <span 
-                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
-                                        style={{ backgroundColor: '#22c55e22' }}
-                                        title="Entregado"
-                                      >
-                                        ✔ Entregado
-                                      </span>
                                     </div>
                                   </button>
                                 );
@@ -1293,7 +1226,7 @@ export default function MovilSelector({
                         <div>
                           {filteredServices.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
-                              <p>🔧 Sin services pendientes</p>
+                              <p>{servicesFilters.vista === 'finalizados' ? '✅ Sin services finalizados' : '🔧 Sin services pendientes'}</p>
                               <p className="text-xs mt-1">No hay services para mostrar</p>
                             </div>
                           ) : (
@@ -1304,8 +1237,9 @@ export default function MovilSelector({
                               overscanCount={8}
                               renderItem={(service, _index) => {
                                 if (!service) return null;
-                                const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
-                                const delayInfo = getDelayInfo(delayMins);
+                                const isFinalizados = servicesFilters.vista === 'finalizados';
+                                const delayMins = !isFinalizados ? computeDelayMinutes(service.fch_hora_max_ent_comp) : null;
+                                const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
 
                                 return (
                                   <button
@@ -1313,7 +1247,9 @@ export default function MovilSelector({
                                     onClick={() => onServiceClick && onServiceClick(service.id)}
                                     className={clsx(
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
-                                      delayInfo.bgClass
+                                      isFinalizados
+                                        ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                                        : delayInfo?.bgClass
                                     )}
                                   >
                                     <div className="flex items-center gap-2 text-xs">
@@ -1327,66 +1263,26 @@ export default function MovilSelector({
                                       {service.defecto && (
                                         <span className="text-gray-600 truncate flex-1">🔧{service.defecto}</span>
                                       )}
-                                      <span 
-                                        className={clsx(
-                                          'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
-                                          delayInfo.textColor
-                                        )}
-                                        style={{ backgroundColor: `${delayInfo.color}22` }}
-                                        title={delayInfo.label}
-                                      >
-                                        ⏱{delayInfo.badgeText}
-                                      </span>
-                                    </div>
-                                  </button>
-                                );
-                              }}
-                            />
-                          )}
-                        </div>
-                      )}
-
-                      {/* Contenido de Services Finalizados */}
-                      {category.key === 'servicesFinalizados' && (
-                        <div>
-                          {filteredServicesFinalizados.length === 0 ? (
-                            <div className="text-center py-4 text-gray-500 text-sm">
-                              <p>✅ Sin services finalizados</p>
-                              <p className="text-xs mt-1">No hay services finalizados para mostrar</p>
-                            </div>
-                          ) : (
-                            <VirtualList
-                              items={filteredServicesFinalizados}
-                              height={Math.min(filteredServicesFinalizados.length * 38, Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 350))}
-                              itemHeight={38}
-                              overscanCount={8}
-                              renderItem={(service, _index) => {
-                                if (!service) return null;
-
-                                return (
-                                  <button
-                                    key={service.id}
-                                    onClick={() => onServiceClick && onServiceClick(service.id)}
-                                    className="w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1 bg-green-50 border-green-200 hover:bg-green-100"
-                                  >
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="font-bold text-gray-900">#{service.id}</span>
-                                      {(!service.latitud || !service.longitud) && (
-                                        <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
-                                          📍❌
+                                      {isFinalizados ? (
+                                        <span 
+                                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
+                                          style={{ backgroundColor: '#22c55e22' }}
+                                          title="Completado"
+                                        >
+                                          ✔ Completado
+                                        </span>
+                                      ) : (
+                                        <span 
+                                          className={clsx(
+                                            'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
+                                            delayInfo?.textColor
+                                          )}
+                                          style={{ backgroundColor: `${delayInfo?.color}22` }}
+                                          title={delayInfo?.label}
+                                        >
+                                          ⏱{delayInfo?.badgeText}
                                         </span>
                                       )}
-                                      <span className="text-gray-700">🚗{service.movil}</span>
-                                      {service.defecto && (
-                                        <span className="text-gray-600 truncate flex-1">🔧{service.defecto}</span>
-                                      )}
-                                      <span 
-                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
-                                        style={{ backgroundColor: '#22c55e22' }}
-                                        title="Completado"
-                                      >
-                                        ✔ Completado
-                                      </span>
                                     </div>
                                   </button>
                                 );

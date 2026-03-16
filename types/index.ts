@@ -274,9 +274,11 @@ export interface MovilFilters {
 export interface ServiceFilters {
   atraso: string[]; // Multi-selección: 'en_hora' | 'limite_cercana' | 'atrasado' | 'muy_atrasado' | 'sin_hora'
   tipoServicio: string; // 'all' o valor dinámico de moviles_zonas.tipo_de_servicio
+  vista: 'pendientes' | 'finalizados'; // Filtro de vista: pendientes o finalizados
 }
 
 export interface PedidoFilters {
   atraso: string[]; // Multi-selección: 'en_hora' | 'limite_cercana' | 'atrasado' | 'muy_atrasado' | 'sin_hora'
   tipoServicio: string; // 'all' o valor dinámico de moviles_zonas.tipo_de_servicio
+  vista: 'pendientes' | 'finalizados'; // Filtro de vista: pendientes o finalizados
 }
