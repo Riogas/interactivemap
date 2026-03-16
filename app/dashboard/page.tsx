@@ -1764,6 +1764,7 @@ function DashboardContent() {
 
       {/* Modal de Vista Extendida de Pedidos */}
       <PedidosTableModal
+        key={`pedidos-${preFilterMovil ?? 'all'}`}
         isOpen={isPedidosTableOpen}
         onClose={() => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); }}
         pedidos={pedidosCompletos}
@@ -1781,6 +1782,7 @@ function DashboardContent() {
 
       {/* Modal de Vista Extendida de Services */}
       <ServicesTableModal
+        key={`services-${preFilterMovil ?? 'all'}`}
         isOpen={isServicesTableOpen}
         onClose={() => { setIsServicesTableOpen(false); setPreFilterMovil(undefined); }}
         services={servicesCompletos}

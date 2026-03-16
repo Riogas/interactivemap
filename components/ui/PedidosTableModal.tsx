@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
@@ -89,14 +89,6 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
-
-  // Sincronizar pre-filtro de móvil cuando cambia desde el dashboard
-  useEffect(() => {
-    if (preFilterMovil) {
-      setFilters(f => ({ ...f, movil: preFilterMovil }));
-      setPage(0);
-    }
-  }, [preFilterMovil]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
