@@ -5,6 +5,20 @@ import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
+/**
+ * Color por cantidad de móviles EN PRIORIDAD en la zona.
+ * 0 = rojo, 1 = rosa, 2 = amarillo, 3 = verde, 4+ = verde claro
+ */
+function getColorByPrioridad(prioridadCount: number): string {
+  switch (prioridadCount) {
+    case 0: return '#ef4444'; // rojo
+    case 1: return '#ec4899'; // rosa
+    case 2: return '#eab308'; // amarillo
+    case 3: return '#22c55e'; // verde
+    default: return '#86efac'; // verde claro (4+)
+  }
+}
+
 export interface MovilesZonaData {
   zona_id: number;
   nombre: string | null;
@@ -118,6 +132,32 @@ function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange, tipos
   return null;
 }
 
+/** Leyenda de colores de móviles-zonas (prioridad) como control Leaflet */
+function MovilesZonasLegend() {
+  const map = useMap();
+  useEffect(() => {
+    const LegendControl = L.Control.extend({
+      onAdd() {
+        const div = L.DomUtil.create('div', 'demora-legend');
+        div.innerHTML = `
+          <div class="demora-legend-title">Móviles prioridad</div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">0 móviles</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ec4899"></span><span class="demora-legend-label">1 móvil</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">2 móviles</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">3 móviles</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">4+ móviles</span></div>
+        `;
+        L.DomEvent.disableClickPropagation(div);
+        return div;
+      },
+    });
+    const legend = new LegendControl({ position: 'bottomleft' });
+    legend.addTo(map);
+    return () => { legend.remove(); };
+  }, [map]);
+  return null;
+}
+
 const MovilesZonasLayer = memo(function MovilesZonasLayer({
   zonas,
   movilesZonasData,
@@ -178,10 +218,10 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
 
       const counts = zonaCounts.get(zona.zona_id) || { prioridad: 0, transito: 0 };
       const total = counts.prioridad + counts.transito;
-      const fillColor = zona.color || '#3b82f6';
+      const fillColor = getColorByPrioridad(counts.prioridad);
 
-      // Intensidad basada en cantidad de móviles
-      const fillOpacity = total > 0 ? Math.min(0.15 + (total / 10) * 0.25, 0.50) : 0.08;
+      // Opacidad fija para que los colores sean bien visibles
+      const fillOpacity = 0.45;
 
       return { zona, positions, center, fillColor, fillOpacity, counts, total };
     }).filter(Boolean) as Array<{
@@ -200,6 +240,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   return (
     <>
       <MovilesZonasFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} tiposServicioDisponibles={tiposServicioDisponibles} />
+      <MovilesZonasLegend />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, counts, total }) => (
         <React.Fragment key={zona.zona_id}>
           <Polygon

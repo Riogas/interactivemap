@@ -157,6 +157,11 @@ function DashboardContent() {
     } else {
       setShowZonas(false); // Normal: quitar zonas del mapa
     }
+    // En moviles-zonas, ocultar pedidos y servicios para mostrar solo móviles
+    if (mode === 'moviles-zonas') {
+      updatePreference('pedidosVisible', false);
+      updatePreference('servicesVisible', false);
+    }
   }, [updatePreference]);
   
   // Estado para el panel colapsable
