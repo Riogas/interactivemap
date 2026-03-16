@@ -80,7 +80,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     search: '',
     atraso: [],
     zona: null,
-    movil: null,
+    movil: preFilterMovil ?? null,
     producto: null,
     soloSinCoords: false,
   });
@@ -90,13 +90,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  // Aplicar pre-filtro de móvil cuando se abre desde popup de un móvil
+  // Sincronizar pre-filtro de móvil cuando cambia desde el dashboard
   useEffect(() => {
-    if (isOpen && preFilterMovil) {
+    if (preFilterMovil) {
       setFilters(f => ({ ...f, movil: preFilterMovil }));
       setPage(0);
     }
-  }, [isOpen, preFilterMovil]);
+  }, [preFilterMovil]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {

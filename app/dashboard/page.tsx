@@ -1242,16 +1242,31 @@ function DashboardContent() {
     setSelectedMovil(movilId); // Activa la animación
   }, [moviles, fetchMovilHistory, selectedMoviles]);
 
-  // Handler para mostrar pendientes en el mapa (abre tabla de pedidos filtrada por móvil)
+  // Handler para mostrar pendientes en el mapa (abre tabla filtrada por móvil)
   const handleShowPendientes = useCallback(() => {
     setShowPendientes(true); // Muestra los marcadores de pedidos
     setShowCompletados(false); // Oculta completados
-    // Pre-filtrar la vista extendida por el móvil actual del popup
+    
     if (popupMovil) {
       setPreFilterMovil(popupMovil);
+      
+      // Determinar qué tabla abrir según los pendientes del móvil
+      const movilData = movilesRef.current.find(m => m.id === popupMovil);
+      const hasPedidos = (movilData?.pedidosPendientes ?? 0) > 0;
+      const hasServices = (movilData?.serviciosPendientes ?? 0) > 0;
+      
+      if (hasPedidos && !hasServices) {
+        setIsPedidosTableOpen(true);
+      } else if (hasServices && !hasPedidos) {
+        setIsServicesTableOpen(true);
+      } else {
+        // Ambos o ninguno: abrir pedidos por defecto
+        setIsPedidosTableOpen(true);
+      }
+    } else {
+      setIsPedidosTableOpen(true);
     }
-    setIsPedidosTableOpen(true); // Abre la tabla de pedidos
-    setIsServicesTableOpen(true); // También abre la tabla de services
+    
     setPopupMovil(undefined); // Cierra el popup
   }, [popupMovil]);
 

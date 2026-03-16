@@ -79,7 +79,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     search: '',
     atraso: [],
     zona: null,
-    movil: null,
+    movil: preFilterMovil ?? null,
     defecto: null,
     soloSinCoords: false,
   });
@@ -89,13 +89,13 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  // Aplicar pre-filtro de móvil cuando se abre desde popup de un móvil
+  // Sincronizar pre-filtro de móvil cuando cambia desde el dashboard
   useEffect(() => {
-    if (isOpen && preFilterMovil) {
+    if (preFilterMovil) {
       setFilters(f => ({ ...f, movil: preFilterMovil }));
       setPage(0);
     }
-  }, [isOpen, preFilterMovil]);
+  }, [preFilterMovil]);
 
   // ========== Services base: según vista (pendientes/finalizados) + filtros externos ==========
   const servicesBase = useMemo(() => {
