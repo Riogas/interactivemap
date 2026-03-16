@@ -43,6 +43,10 @@ interface PedidosTableModalProps {
   pedidos: PedidoSupabase[];
   moviles: MovilData[];
   onPedidoClick?: (pedidoId: number) => void;
+  vista?: 'pendientes' | 'finalizados';
+  selectedMoviles?: number[];
+  externalAtraso?: string[];
+  externalTipoServicio?: string;
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -66,7 +70,8 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, vista = 'pendientes', selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all' }: PedidosTableModalProps) {
+  const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
     atraso: [],
@@ -81,12 +86,25 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  // ========== Pedidos base: solo pendientes asignados ==========
+  // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
-    return pedidos.filter(p =>
-      Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5'
-    );
-  }, [pedidos]);
+    let result = isFinalizados
+      ? pedidos.filter(p => Number(p.estado_nro) === 2)
+      : pedidos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5');
+    
+    // Filtrar por móviles seleccionados
+    if (selectedMoviles.length > 0) {
+      result = result.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
+    }
+    
+    // Aplicar filtro externo de tipo de servicio (solo para pendientes)
+    if (!isFinalizados && externalTipoServicio && externalTipoServicio !== 'all') {
+      const tipoUpper = externalTipoServicio.toUpperCase();
+      result = result.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === tipoUpper);
+    }
+    
+    return result;
+  }, [pedidos, isFinalizados, selectedMoviles, externalTipoServicio]);
 
   // ========== Valores únicos para filtros ==========
   const uniqueZonas = useMemo(() => {
@@ -295,7 +313,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                 <div>
                   <h2 className="text-lg font-bold text-white">Vista Extendida de Pedidos</h2>
                   <p className="text-xs text-gray-400">
-                    {sorted.length} pedido{sorted.length !== 1 ? 's' : ''} pendiente{sorted.length !== 1 ? 's' : ''}
+                    {sorted.length} pedido{sorted.length !== 1 ? 's' : ''} {isFinalizados ? 'finalizado' : 'pendiente'}{sorted.length !== 1 ? 's' : ''}
                     {hasActiveFilters ? ` (de ${pedidosBase.length} total)` : ''}
                   </p>
                 </div>
@@ -333,13 +351,20 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
 
             {/* ========== Status Bar ==========  */}
             <div className="flex items-center gap-3 px-6 py-2.5 border-b border-gray-700/30 bg-gray-800/40 flex-shrink-0">
-              {ATRASO_OPTIONS.map(opt => (
-                <div key={opt.key} className="flex items-center gap-1.5 text-xs text-gray-400">
-                  <div className={`w-2 h-2 rounded-full ${opt.dotColor}`} />
-                  <span>{opt.label}:</span>
-                  <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
+              {isFinalizados ? (
+                <div className="flex items-center gap-1.5 text-xs text-green-400">
+                  <div className="w-2 h-2 rounded-full bg-green-400" />
+                  <span>Pedidos Entregados</span>
                 </div>
-              ))}
+              ) : (
+                <>{ATRASO_OPTIONS.map(opt => (
+                  <div key={opt.key} className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <div className={`w-2 h-2 rounded-full ${opt.dotColor}`} />
+                    <span>{opt.label}:</span>
+                    <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
+                  </div>
+                ))}</>
+              )}
               <div className="ml-auto text-xs text-gray-500">
                 Total: <span className="font-bold text-gray-300">{pedidosBase.length}</span>
               </div>
@@ -492,7 +517,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
-                        {hasActiveFilters ? 'No hay pedidos que coincidan con los filtros' : 'No hay pedidos pendientes'}
+                        {hasActiveFilters ? 'No hay pedidos que coincidan con los filtros' : (isFinalizados ? 'No hay pedidos finalizados' : 'No hay pedidos pendientes')}
                       </td>
                     </tr>
                   ) : (
@@ -500,13 +525,19 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                       <tr
                         key={p.id}
                         onClick={() => onPedidoClick?.(p.id)}
-                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${getRowBg(delayInfo)}`}
+                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : getRowBg(delayInfo)}`}
                       >
                         {/* Atraso badge */}
                         <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${getDelayBadgeStyle(delayInfo)}`}>
-                            ⏱ {delayInfo.badgeText}
-                          </span>
+                          {isFinalizados ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap bg-green-500/25 text-green-300">
+                              ✔ Entregado
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${getDelayBadgeStyle(delayInfo)}`}>
+                              ⏱ {delayInfo.badgeText}
+                            </span>
+                          )}
                         </td>
 
                         {/* ID */}

@@ -1710,6 +1710,10 @@ function DashboardContent() {
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
         onPedidoClick={handlePedidoClick}
+        vista={pedidosFilters.vista}
+        selectedMoviles={selectedMoviles}
+        externalAtraso={pedidosFilters.atraso}
+        externalTipoServicio={pedidosFilters.tipoServicio}
       />
 
       {/* Modal de Vista Extendida de Services */}
@@ -1719,6 +1723,10 @@ function DashboardContent() {
         services={servicesCompletos}
         moviles={movilesFiltered}
         onServiceClick={handleServiceClick}
+        vista={servicesFilters.vista}
+        selectedMoviles={selectedMoviles}
+        externalAtraso={servicesFilters.atraso}
+        externalTipoServicio={servicesFilters.tipoServicio}
       />
 
       {/* Modal de importación de POIs desde OpenStreetMap */}
@@ -1896,9 +1904,12 @@ function DashboardContent() {
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
                 pedidos={pedidosHidden ? [] : filterByTipoServicio(filterByDelay(
-                  (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5')).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud)),
-                  pedidosFilters.atraso
-                ), pedidosFilters.tipoServicio)}
+                  (pedidosFilters.vista === 'finalizados'
+                    ? (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 2))
+                    : (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5'))
+                  ).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud)),
+                  pedidosFilters.vista === 'pendientes' ? pedidosFilters.atraso : []
+                ), pedidosFilters.vista === 'pendientes' ? pedidosFilters.tipoServicio : 'all')}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
@@ -1906,9 +1917,12 @@ function DashboardContent() {
                 focusedServiceId={focusedServiceId}
                 focusTrigger={focusTrigger}
                 services={servicesHidden ? [] : filterByTipoServicio(filterByDelay(
-                  (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1)).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud)),
-                  servicesFilters.atraso
-                ), servicesFilters.tipoServicio)}
+                  (servicesFilters.vista === 'finalizados'
+                    ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 2 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 2))
+                    : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1))
+                  ).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud)),
+                  servicesFilters.vista === 'pendientes' ? servicesFilters.atraso : []
+                ), servicesFilters.vista === 'pendientes' ? servicesFilters.tipoServicio : 'all')}
                 allServices={servicesCompletos}
                 onServiceClick={handleServiceClick}
                 popupService={popupService}

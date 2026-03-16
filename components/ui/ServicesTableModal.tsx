@@ -42,6 +42,10 @@ interface ServicesTableModalProps {
   services: ServiceSupabase[];
   moviles: MovilData[];
   onServiceClick?: (serviceId: number) => void;
+  vista?: 'pendientes' | 'finalizados';
+  selectedMoviles?: number[];
+  externalAtraso?: string[];
+  externalTipoServicio?: string;
 }
 
 // ========== Row bg colors ==========
@@ -65,7 +69,8 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, vista = 'pendientes', selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all' }: ServicesTableModalProps) {
+  const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
     atraso: [],
@@ -80,10 +85,25 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  // ========== Services base: solo pendientes ==========
+  // ========== Services base: según vista (pendientes/finalizados) + filtros externos ==========
   const servicesBase = useMemo(() => {
-    return services.filter(s => Number(s.estado_nro) === 1);
-  }, [services]);
+    let result = isFinalizados
+      ? services.filter(s => Number(s.estado_nro) === 2)
+      : services.filter(s => Number(s.estado_nro) === 1);
+    
+    // Filtrar por móviles seleccionados
+    if (selectedMoviles.length > 0) {
+      result = result.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
+    }
+    
+    // Aplicar filtro externo de tipo de servicio (solo para pendientes)
+    if (!isFinalizados && externalTipoServicio && externalTipoServicio !== 'all') {
+      const tipoUpper = externalTipoServicio.toUpperCase();
+      result = result.filter(s => s.servicio_nombre && s.servicio_nombre.toUpperCase() === tipoUpper);
+    }
+    
+    return result;
+  }, [services, isFinalizados, selectedMoviles, externalTipoServicio]);
 
   // ========== Valores únicos para filtros ==========
   const uniqueZonas = useMemo(() => {
@@ -271,7 +291,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                 <div>
                   <h2 className="text-lg font-bold text-white">Vista Extendida de Services</h2>
                   <p className="text-xs text-gray-400">
-                    {sorted.length} service{sorted.length !== 1 ? 's' : ''} pendiente{sorted.length !== 1 ? 's' : ''}
+                    {sorted.length} service{sorted.length !== 1 ? 's' : ''} {isFinalizados ? 'finalizado' : 'pendiente'}{sorted.length !== 1 ? 's' : ''}
                     {hasActiveFilters ? ` (de ${servicesBase.length} total)` : ''}
                   </p>
                 </div>
@@ -302,13 +322,20 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
 
             {/* ========== Status Bar ========== */}
             <div className="flex items-center gap-3 px-6 py-2.5 border-b border-gray-700/30 bg-gray-800/40 flex-shrink-0">
-              {ATRASO_OPTIONS.map(opt => (
-                <div key={opt.key} className="flex items-center gap-1.5 text-xs text-gray-400">
-                  <div className={`w-2 h-2 rounded-full ${opt.dotColor}`} />
-                  <span>{opt.label}:</span>
-                  <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
+              {isFinalizados ? (
+                <div className="flex items-center gap-1.5 text-xs text-green-400">
+                  <div className="w-2 h-2 rounded-full bg-green-400" />
+                  <span>Services Completados</span>
                 </div>
-              ))}
+              ) : (
+                <>{ATRASO_OPTIONS.map(opt => (
+                  <div key={opt.key} className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <div className={`w-2 h-2 rounded-full ${opt.dotColor}`} />
+                    <span>{opt.label}:</span>
+                    <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
+                  </div>
+                ))}</>
+              )}
               <div className="ml-auto text-xs text-gray-500">
                 Total: <span className="font-bold text-gray-300">{servicesBase.length}</span>
               </div>
@@ -450,7 +477,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0" />
                         </svg>
-                        {hasActiveFilters ? 'No hay services que coincidan con los filtros' : 'No hay services pendientes'}
+                        {hasActiveFilters ? 'No hay services que coincidan con los filtros' : (isFinalizados ? 'No hay services finalizados' : 'No hay services pendientes')}
                       </td>
                     </tr>
                   ) : (
@@ -458,12 +485,18 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                       <tr
                         key={s.id}
                         onClick={() => onServiceClick?.(s.id)}
-                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${getRowBg(delayInfo)}`}
+                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : getRowBg(delayInfo)}`}
                       >
                         <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${getDelayBadgeStyle(delayInfo)}`}>
-                            ⏱ {delayInfo.badgeText}
-                          </span>
+                          {isFinalizados ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap bg-green-500/25 text-green-300">
+                              ✔ Completado
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${getDelayBadgeStyle(delayInfo)}`}>
+                              ⏱ {delayInfo.badgeText}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-2.5"><span className="font-bold text-white">#{s.id}</span></td>
                         <td className="px-4 py-2.5">
