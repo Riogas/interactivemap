@@ -58,6 +58,8 @@ interface MovilesZonasLayerProps {
   zonaOpacity?: number;
   /** Mapa de movil_id → estadoNro para excluir móviles inactivos del conteo */
   movilEstados?: Map<string, number>;
+  /** Callback al hacer click en una zona */
+  onZonaClick?: (zonaId: number) => void;
 }
 
 /**
@@ -173,6 +175,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   tiposServicioDisponibles = [],
   zonaOpacity = 50,
   movilEstados,
+  onZonaClick,
 }: MovilesZonasLayerProps) {
 
   // Filtrar registros de moviles_zonas según tipo de servicio seleccionado
@@ -268,6 +271,9 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
               weight: 2,
               opacity: adjustOpacity(0.8, zonaOpacity),
             }}
+            eventHandlers={onZonaClick ? {
+              click: () => onZonaClick(zona.zona_id),
+            } : undefined}
           />
           <Marker
             position={center}

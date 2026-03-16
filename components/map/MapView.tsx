@@ -100,6 +100,7 @@ interface MapViewProps {
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
   pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
+  onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
 }
 
 function MapUpdater({ 
@@ -551,6 +552,7 @@ const MapView = memo(function MapView({
   hiddenPoiCategories = new Set(),
   pedidosVista = 'pendientes',
   servicesVista = 'pendientes',
+  onZonaClick,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2016,7 +2018,7 @@ const MapView = memo(function MapView({
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} onZonaClick={onZonaClick} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (

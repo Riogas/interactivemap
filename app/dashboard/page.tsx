@@ -18,6 +18,7 @@ import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonasAsignacionModal from '@/components/ui/ZonasAsignacionModal';
+import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
 import PedidosTableModal from '@/components/ui/PedidosTableModal';
 import ServicesTableModal from '@/components/ui/ServicesTableModal';
 import OsmImportModal from '@/components/ui/OsmImportModal';
@@ -84,6 +85,16 @@ function DashboardContent() {
   
   // Estado para modal de asignación de zonas
   const [isZonasAsignacionOpen, setIsZonasAsignacionOpen] = useState(false);
+  
+  // Estado para modal de vista móviles por zona (click en mapa)
+  const [zonaViewModalOpen, setZonaViewModalOpen] = useState(false);
+  const [zonaViewModalZonaId, setZonaViewModalZonaId] = useState<number | null>(null);
+  
+  // Handler para click en zona del mapa (solo en modo moviles-zonas)
+  const handleZonaClick = useCallback((zonaId: number) => {
+    setZonaViewModalZonaId(zonaId);
+    setZonaViewModalOpen(true);
+  }, []);
   
   // Estado para modal de vista extendida de pedidos
   const [isPedidosTableOpen, setIsPedidosTableOpen] = useState(false);
@@ -1819,6 +1830,15 @@ function DashboardContent() {
         pedidos={pedidosCompletos}
       />
 
+      {/* Modal de Vista Móviles por Zona (click en mapa) */}
+      <ZonaMovilesViewModal
+        isOpen={zonaViewModalOpen}
+        onClose={() => setZonaViewModalOpen(false)}
+        initialZonaId={zonaViewModalZonaId}
+        moviles={movilesFiltered}
+        movilesZonasData={movilesZonasData}
+      />
+
       {/* Modal de Leaderboard/Ranking */}
       <LeaderboardModal
         isOpen={isLeaderboardOpen}
@@ -2067,6 +2087,7 @@ function DashboardContent() {
                 hiddenPoiCategories={hiddenPoiCategories}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
+                onZonaClick={dataViewMode === 'moviles-zonas' ? handleZonaClick : undefined}
               />
             </motion.div>
           </>
