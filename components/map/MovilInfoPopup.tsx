@@ -118,7 +118,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 100, opacity: 0, scale: 0.9 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[999] pointer-events-auto"
+        className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[10001] pointer-events-auto"
         style={{ maxWidth: '420px', width: '90%', maxHeight: 'calc(100vh - 2rem)' }}
       >
         <div className="bg-white rounded-xl shadow-2xl border-2 flex flex-col" style={{ borderColor: movil.color, maxHeight: 'calc(100vh - 2rem)' }}>
