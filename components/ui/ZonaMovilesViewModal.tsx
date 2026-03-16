@@ -78,16 +78,37 @@ export default function ZonaMovilesViewModal({
     }
   }, [isOpen, zonas, initialZonaId]);
 
-  // ========== Mapa movil_id → estadoNro ==========
+  // ========== Mapa movil_id → estadoNro (desde API, cubre TODOS los moviles) ==========
+  const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
+  
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/moviles-extended')
+      .then(r => r.json())
+      .then(res => {
+        if (res.success && Array.isArray(res.data)) {
+          const m = new Map<string, number>();
+          for (const movil of res.data) {
+            if (movil.estadoNro !== undefined && movil.estadoNro !== null) {
+              m.set(String(movil.nro), movil.estadoNro);
+            }
+          }
+          setAllMovilEstados(m);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
+  // Combinar: primero los de la API (completos), luego override con los del prop moviles
   const movilEstadosMap = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<string, number>(allMovilEstados);
     for (const movil of moviles) {
       if (movil.estadoNro !== undefined && movil.estadoNro !== null) {
         m.set(String(movil.id), movil.estadoNro);
       }
     }
     return m;
-  }, [moviles]);
+  }, [moviles, allMovilEstados]);
 
   // ========== Filtrar registros por tipo de servicio ==========
   const filteredData = useMemo(() => {
