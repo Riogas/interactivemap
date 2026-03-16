@@ -179,6 +179,10 @@ function DashboardContent() {
     if (mode === 'moviles-zonas') {
       updatePreference('pedidosVisible', false);
       updatePreference('servicesVisible', false);
+    } else {
+      // Al salir de moviles-zonas, restaurar visibilidad de pedidos y servicios
+      updatePreference('pedidosVisible', true);
+      updatePreference('servicesVisible', true);
     }
   }, [updatePreference]);
   

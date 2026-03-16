@@ -26,6 +26,7 @@ interface ZonaEstadisticasModalProps {
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
 
 const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
+const TIPOS_SERVICIO = ['URGENTE', 'NOCTURNO', 'SERVICE'] as const;
 
 // ============= Component =============
 
@@ -39,6 +40,7 @@ export default function ZonaEstadisticasModal({
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [serviceFilter, setServiceFilter] = useState<string>('URGENTE');
 
   // Data fetched internally
   const [zonas, setZonas] = useState<ZonaInfo[]>([]);
@@ -107,6 +109,22 @@ export default function ZonaEstadisticasModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, escenarioKey]);
 
+  // Filter pedidos by service type
+  const filteredPedidos = useMemo(() => {
+    const upper = serviceFilter.toUpperCase();
+    return pedidos.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === upper);
+  }, [pedidos, serviceFilter]);
+
+  // Filter movilesZonasData by service type + active + not excluded estado
+  const filteredMovilesZonas = useMemo(() => {
+    const upper = serviceFilter.toUpperCase();
+    return movilesZonasData.filter(r =>
+      r.activa &&
+      r.tipo_de_servicio?.toUpperCase() === upper &&
+      !EXCLUDED_ESTADOS.has(movilEstados.get(r.movil_id) ?? -1)
+    );
+  }, [movilesZonasData, serviceFilter, movilEstados]);
+
   const stats = useMemo(() => {
     // Build zona name map
     const zonaNames = new Map<number, string>();
@@ -114,10 +132,10 @@ export default function ZonaEstadisticasModal({
       zonaNames.set(z.zona_id, z.nombre || `Zona ${z.zona_id}`);
     }
 
-    // Collect all zona_ids from pedidos + zonas list
+    // Collect all zona_ids from zonas list + filtered pedidos
     const zonaIds = new Set<number>();
     for (const z of zonas) zonaIds.add(z.zona_id);
-    for (const p of pedidos) {
+    for (const p of filteredPedidos) {
       if (p.zona_nro) zonaIds.add(p.zona_nro);
     }
 
@@ -137,7 +155,7 @@ export default function ZonaEstadisticasModal({
     }> = [];
 
     for (const zonaId of zonaIds) {
-      const pedidosZona = pedidos.filter(p => p.zona_nro === zonaId);
+      const pedidosZona = filteredPedidos.filter(p => p.zona_nro === zonaId);
 
       // Sin asignar: estado 1, sin movil
       const sinAsignar = pedidosZona.filter(p =>
@@ -177,12 +195,9 @@ export default function ZonaEstadisticasModal({
       const demoraInfo = demorasData.get(zonaId);
       const demora = demoraInfo ? demoraInfo.minutos : null;
 
-      // Moviles en prioridad (excluir estados 3/5/15)
-      const movsPrio = movilesZonasData.filter(r =>
-        r.zona_id === zonaId &&
-        r.prioridad_o_transito === 1 &&
-        r.activa &&
-        !EXCLUDED_ESTADOS.has(movilEstados.get(r.movil_id) ?? -1)
+      // Moviles activos con prioridad para este tipo de servicio (ya pre-filtrados)
+      const movsPrio = filteredMovilesZonas.filter(r =>
+        r.zona_id === zonaId && r.prioridad_o_transito === 1
       ).length;
 
       result.push({
@@ -201,7 +216,7 @@ export default function ZonaEstadisticasModal({
     }
 
     return result;
-  }, [pedidos, zonas, movilesZonasData, movilEstados, demorasData]);
+  }, [filteredPedidos, zonas, filteredMovilesZonas, demorasData]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -282,14 +297,26 @@ export default function ZonaEstadisticasModal({
                   <p className="text-xs text-cyan-100/80 font-medium">Resumen de pedidos por zona del día</p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 flex items-center justify-center transition-colors"
-              >
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-3">
+                <select
+                  value={serviceFilter}
+                  onChange={e => setServiceFilter(e.target.value)}
+                  className="bg-black/30 text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-white/20 focus:outline-none focus:border-white/50 cursor-pointer appearance-none"
+                  style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27white%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M7 10l5 5 5-5z%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center', backgroundSize: '18px', paddingRight: '28px' }}
+                >
+                  {TIPOS_SERVICIO.map(t => (
+                    <option key={t} value={t} className="bg-slate-800 text-white">{t}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -316,7 +343,7 @@ export default function ZonaEstadisticasModal({
                   <ThSort label="#No Ent." sortKey="noEntregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="No Entregados (estado 2, sub_estado ≠ 3)" />
                   <ThSort label="% Cump." sortKey="pctCumplimiento" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Cumplimiento = entregados / (entregados + no entregados)" />
                   <ThSort label="Min Dem." sortKey="demora" current={sortBy} asc={sortAsc} onClick={handleSort} title="Minutos de demora de la zona" />
-                  <ThSort label="#Movs P." sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles en prioridad (excl. est. 3/5/15)" />
+                  <ThSort label="#Movs P." sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles activos en prioridad del tipo de servicio seleccionado (excl. est. 3/5/15)" />
                 </tr>
               </thead>
               <tbody>
