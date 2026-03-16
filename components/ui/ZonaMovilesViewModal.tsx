@@ -14,7 +14,7 @@ interface Zona {
 }
 
 /** Estados de móvil que se muestran tachados (inactivos) */
-const ESTADOS_TACHADOS = new Set([3, 5, 16]);
+const ESTADOS_TACHADOS = new Set([3, 5, 15]);
 
 /** Opciones fijas de tipo de servicio */
 const TIPOS_SERVICIO = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;

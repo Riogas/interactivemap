@@ -2040,7 +2040,15 @@ function DashboardContent() {
                 pedidos={pedidosHidden ? [] : filterByTipoServicio(filterByDelay(
                   (pedidosFilters.vista === 'finalizados'
                     ? (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 2))
-                    : (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5'))
+                    : (selectedMoviles.length > 0
+                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && (
+                            // Asignados: filtrar por móviles seleccionados
+                            (String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) ||
+                            // Sin asignar: siempre se muestran (no filtran por móvil ni empresa)
+                            (!p.movil || Number(p.movil) === 0)
+                          ))
+                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && (String(p.sub_estado_desc) === '5' || !p.movil || Number(p.movil) === 0))
+                      )
                   ).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud)),
                   pedidosFilters.vista === 'pendientes' ? pedidosFilters.atraso : []
                 ), pedidosFilters.vista === 'pendientes' ? pedidosFilters.tipoServicio : 'all')}

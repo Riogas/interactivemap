@@ -42,7 +42,7 @@ export interface MovilZonaRecord {
 export type MovilesZonasServiceFilter = string; // 'all' | 'URGENTE' | 'SERVICE' | etc.
 
 /** Estados de móvil que se excluyen del conteo en zonas */
-const EXCLUDED_ESTADOS = new Set([3, 5, 16]);
+const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
 
 interface MovilesZonasLayerProps {
   zonas: MovilesZonaData[];

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
@@ -561,14 +561,14 @@ const MapView = memo(function MapView({
 
   // � Mapa de movil_id → estadoNro para que MovilesZonasLayer excluya estados 3/5/15
   const movilEstadosMap = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<string, number>(allMovilEstados);
     for (const movil of moviles) {
       if (movil.estadoNro !== undefined && movil.estadoNro !== null) {
         m.set(String(movil.id), movil.estadoNro);
       }
     }
     return m;
-  }, [moviles]);
+  }, [moviles, allMovilEstados]);
 
   // �🔷 Generador de HTML para formas geométricas (compact/mini)
   const getShapeHtml = useCallback((shape: MarkerShape, size: number, color: string, lightColor?: string) => {
@@ -2673,13 +2673,16 @@ const MapView = memo(function MapView({
           if (!pedidosFiltrados?.length) return null;
           
           const pedidoMarkers = pedidosFiltrados.map(pedido => {
+            const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
             const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
             const delayInfo = getDelayInfo(delayMins);
+            // Sin asignar: siempre gris (forzar null para obtener icono gris)
+            const iconFchHora = isSinAsignar ? null : pedido.fch_hora_max_ent_comp;
             return (
               <OptimizedMarker
                 key={`pedido-tabla-${pedido.id}`}
                 position={[pedido.latitud!, pedido.longitud!]}
-                icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon() : getPedidoIcon(pedido.fch_hora_max_ent_comp)}
+                icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon() : getPedidoIcon(iconFchHora)}
                 eventHandlers={{
                   click: () => {
                     onPedidoClick && onPedidoClick(pedido.id);
@@ -2691,10 +2694,13 @@ const MapView = memo(function MapView({
                     <div className="font-bold">Pedido #{pedido.id}</div>
                     <div>{pedido.cliente_nombre}</div>
                     <div className="text-gray-600">{pedido.producto_nom}</div>
+                    {isSinAsignar && (
+                      <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
+                    )}
                     {pedidosVista === 'finalizados' ? (
                       <div style={{ color: '#16a34a', fontWeight: 'bold' }}>✓ Finalizado</div>
                     ) : (
-                      <div style={{ color: delayInfo.color, fontWeight: 'bold' }}>
+                      <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
                         {delayInfo.label}: {delayInfo.badgeText}
                       </div>
                     )}

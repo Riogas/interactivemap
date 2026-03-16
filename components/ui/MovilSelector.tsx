@@ -248,19 +248,27 @@ export default function MovilSelector({
   const filteredPedidos = useMemo(() => {
     let result = [...pedidos];
     
-    // Filtrar según vista: pendientes (estado 1 + sub_estado 5) o finalizados (estado 2)
+    // Filtrar según vista: pendientes (estado 1 + sub_estado 5 + sin asignar) o finalizados (estado 2)
     if (pedidosFilters.vista === 'finalizados') {
       result = result.filter(pedido => Number(pedido.estado_nro) === 2);
     } else {
       result = result.filter(pedido => {
         const estado = Number(pedido.estado_nro);
-        return estado === 1 && String(pedido.sub_estado_desc) === '5' && pedido.movil && Number(pedido.movil) > 0;
+        if (estado !== 1) return false;
+        // Sin asignar: incluir siempre en pendientes
+        if (!pedido.movil || Number(pedido.movil) === 0) return true;
+        // Asignados: solo con sub_estado 5 (MOVIL ASIGNADO)
+        return String(pedido.sub_estado_desc) === '5';
       });
     }
     
-    // 🔥 FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
+    // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles + sin asignar
     if (selectedMoviles.length > 0) {
-      result = result.filter(pedido => pedido.movil && selectedMoviles.some(id => Number(id) === Number(pedido.movil)));
+      result = result.filter(pedido => {
+        // Sin asignar siempre pasan (no filtran por móvil ni empresa)
+        if (!pedido.movil || Number(pedido.movil) === 0) return true;
+        return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
+      });
     }
     
     // Filtrar por búsqueda
@@ -1168,6 +1176,7 @@ export default function MovilSelector({
                               renderItem={(pedido, _index) => {
                                 if (!pedido) return null;
                                 const isFinalizados = pedidosFilters.vista === 'finalizados';
+                                const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
                                 const delayMins = !isFinalizados ? computeDelayMinutes(pedido.fch_hora_max_ent_comp) : null;
                                 const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
 
@@ -1179,7 +1188,9 @@ export default function MovilSelector({
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
                                       isFinalizados 
                                         ? 'bg-green-50 border-green-200 hover:bg-green-100' 
-                                        : delayInfo?.bgClass
+                                        : isSinAsignar
+                                          ? 'bg-gray-100 border-gray-300 hover:bg-gray-200'
+                                          : delayInfo?.bgClass
                                     )}
                                   >
                                     <div className="flex items-center gap-2 text-xs">
@@ -1189,7 +1200,11 @@ export default function MovilSelector({
                                           📍❌
                                         </span>
                                       )}
-                                      <span className="text-gray-700">🚗{pedido.movil}</span>
+                                      {isSinAsignar ? (
+                                        <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Sin asignar</span>
+                                      ) : (
+                                        <span className="text-gray-700">🚗{pedido.movil}</span>
+                                      )}
                                       {pedido.servicio_nombre && (
                                         <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
                                       )}
@@ -1205,10 +1220,10 @@ export default function MovilSelector({
                                         <span 
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
-                                            delayInfo?.textColor
+                                            isSinAsignar ? 'text-gray-500' : delayInfo?.textColor
                                           )}
-                                          style={{ backgroundColor: `${delayInfo?.color}22` }}
-                                          title={delayInfo?.label}
+                                          style={{ backgroundColor: isSinAsignar ? '#9CA3AF22' : `${delayInfo?.color}22` }}
+                                          title={isSinAsignar ? 'Sin asignar' : delayInfo?.label}
                                         >
                                           ⏱{delayInfo?.badgeText}
                                         </span>
