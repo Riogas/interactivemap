@@ -1821,6 +1821,34 @@ function DashboardContent() {
         moviles={applyActivityFilter(movilesFiltered)}
         pedidos={pedidosCompletos}
         services={servicesCompletos}
+        onMovilClick={(movilId) => {
+          setIsLeaderboardOpen(false);
+          handleMovilClick(movilId);
+        }}
+        onStatClick={(movilId, viewMode, stat) => {
+          setIsLeaderboardOpen(false);
+          setPreFilterMovil(movilId);
+          
+          if (stat === 'noEntregados') {
+            // No entregados = finalizados con sub_estado != 3
+            if (viewMode === 'pedidos') {
+              setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
+              setIsPedidosTableOpen(true);
+            } else {
+              setServicesFilters(prev => ({ ...prev, vista: 'finalizados' }));
+              setIsServicesTableOpen(true);
+            }
+          } else {
+            // Atrasados y Pendientes = vista pendientes
+            if (viewMode === 'pedidos') {
+              setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
+              setIsPedidosTableOpen(true);
+            } else {
+              setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
+              setIsServicesTableOpen(true);
+            }
+          }
+        }}
       />
 
       {/* Indicador de conexión Realtime - Debajo del navbar, a la derecha */}

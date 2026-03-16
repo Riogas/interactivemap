@@ -11,6 +11,8 @@ interface LeaderboardModalProps {
   moviles: MovilData[];
   pedidos: PedidoSupabase[];
   services: ServiceSupabase[];
+  onMovilClick?: (movilId: number) => void;
+  onStatClick?: (movilId: number, viewMode: 'pedidos' | 'services', stat: 'atrasados' | 'pendientes' | 'noEntregados') => void;
 }
 
 type SortKey = 'atrasados' | 'pendientes' | 'noEntregados' | 'entregados' | 'cumplimiento' | 'cumplimientoEnHora';
@@ -18,7 +20,7 @@ type ViewMode = 'pedidos' | 'services';
 
 
 
-export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, services }: LeaderboardModalProps) {
+export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, services, onMovilClick, onStatClick }: LeaderboardModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('entregados');
   const [showOnlyActive, setShowOnlyActive] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('pedidos');
@@ -241,13 +243,17 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
                     >
                       {/* Movil name with rank */}
                       <td className="py-2 px-2">
-                        <div className="flex items-center gap-2">
+                        <div
+                          className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => onMovilClick?.(m.id)}
+                          title="Ver detalle del móvil"
+                        >
                           <span className={`font-mono text-[10px] font-bold w-5 ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-500'}`}>{rank}</span>
                           <div
                             className="w-3 h-3 rounded-full flex-shrink-0 border border-white/20"
                             style={{ backgroundColor: m.color || '#22c55e' }}
                           />
-                          <span className={`font-bold text-xs ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-300'}`}>
+                          <span className={`font-bold text-xs underline decoration-dotted underline-offset-2 ${isFirst ? 'text-yellow-400' : isTop3 ? 'text-white' : 'text-gray-300'}`}>
                             {m.name}
                           </span>
                         </div>
@@ -255,21 +261,30 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
 
                       {/* Atrasados */}
                       <td className="text-center py-2 px-1">
-                        <span className={`font-bold ${m.atrasados > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`font-bold ${m.atrasados > 0 ? 'text-red-400 cursor-pointer hover:underline' : 'text-gray-600'}`}
+                          onClick={() => m.atrasados > 0 && onStatClick?.(m.id, viewMode, 'atrasados')}
+                        >
                           {m.atrasados}
                         </span>
                       </td>
 
                       {/* Pendientes */}
                       <td className="text-center py-2 px-1">
-                        <span className={`font-medium ${m.pendientes > 0 ? 'text-orange-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`font-medium ${m.pendientes > 0 ? 'text-orange-400 cursor-pointer hover:underline' : 'text-gray-600'}`}
+                          onClick={() => m.pendientes > 0 && onStatClick?.(m.id, viewMode, 'pendientes')}
+                        >
                           {m.pendientes}
                         </span>
                       </td>
 
                       {/* No Entregados */}
                       <td className="text-center py-2 px-1">
-                        <span className={`font-medium ${m.noEntregados > 0 ? 'text-rose-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`font-medium ${m.noEntregados > 0 ? 'text-rose-400 cursor-pointer hover:underline' : 'text-gray-600'}`}
+                          onClick={() => m.noEntregados > 0 && onStatClick?.(m.id, viewMode, 'noEntregados')}
+                        >
                           {m.noEntregados}
                         </span>
                       </td>
