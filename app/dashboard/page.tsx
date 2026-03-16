@@ -47,6 +47,8 @@ function DashboardContent() {
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
   
   const [moviles, setMoviles] = useState<MovilData[]>([]);
+  const movilesRef = useRef<MovilData[]>([]); // Ref para acceso sincrónico en callbacks
+  movilesRef.current = moviles;
   const [selectedMoviles, setSelectedMoviles] = useState<number[]>([]); // Array de móviles seleccionados
   const userExplicitlyCleared = useRef(false); // Evita auto-selección cuando el usuario intencionalmente deseleccionó
   
@@ -1135,11 +1137,43 @@ function DashboardContent() {
 
   // Handler para clic en el marcador del mapa (abre popup con opciones)
   const handleMovilClick = useCallback(async (movilId: number | undefined) => {
-    setPopupMovil(movilId);
     setSelectedMovil(undefined); // Cierra animación si estaba abierta
     setShowPendientes(false); // Oculta pendientes
     
     if (movilId) {
+      // Verificar si el móvil existe en el estado actual (via ref para acceso sincrónico)
+      const movilExists = movilesRef.current.some(m => m.id === movilId);
+
+      // Si no existe, cargarlo desde la API antes de abrir el popup
+      if (!movilExists) {
+        console.log(`🔍 Móvil ${movilId} no existe en lista para popup, cargándolo desde API...`);
+        try {
+          const res = await fetch(`/api/all-positions?movilId=${movilId}`);
+          const apiResult = await res.json();
+          if (apiResult.success && apiResult.data.length > 0) {
+            const movilData = apiResult.data[0];
+            const newMovil: MovilData = {
+              id: movilData.movilId,
+              name: movilData.movilName,
+              color: movilData.color,
+              empresaFleteraId: movilData.empresa_fletera_id,
+              currentPosition: movilData.position,
+              history: undefined,
+            };
+            console.log(`✅ Móvil ${movilId} cargado desde API para popup`);
+            setMoviles(prev => {
+              if (prev.some(m => m.id === movilId)) return prev;
+              return [...prev, newMovil];
+            });
+          }
+        } catch (err) {
+          console.error(`❌ Error cargando móvil ${movilId} para popup:`, err);
+        }
+      }
+
+      // Ahora abrir el popup (el móvil ya existe en el estado)
+      setPopupMovil(movilId);
+
       // Cargar el historial del móvil (para tener listo si quiere ver animación)
       fetchMovilHistory(movilId);
       
@@ -1171,6 +1205,8 @@ function DashboardContent() {
       } catch (err) {
         console.error(`❌ Error fetching pendientes for móvil ${movilId}:`, err);
       }
+    } else {
+      setPopupMovil(undefined);
     }
   }, [fetchMovilHistory, selectedDate]);
 
