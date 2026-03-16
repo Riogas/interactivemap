@@ -147,7 +147,7 @@ function DashboardContent() {
   const [allZonasData, setAllZonasData] = useState<any[]>([]);
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
   const [movilesZonasData, setMovilesZonasData] = useState<any[]>([]);
-  const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<string>('all');
+  const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<string>('URGENTE');
 
   // Cuando se cambia de vista de datos
   const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas') => {

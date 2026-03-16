@@ -97,8 +97,11 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-/** Control Leaflet para filtro por servicio_nombre dinámico */
-function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange, tiposServicioDisponibles }: { serviceFilter: MovilesZonasServiceFilter; onServiceFilterChange: (f: MovilesZonasServiceFilter) => void; tiposServicioDisponibles: string[] }) {
+/** Opciones fijas de tipo de servicio */
+const TIPOS_SERVICIO_FIJOS = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;
+
+/** Control Leaflet para filtro por tipo de servicio */
+function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange }: { serviceFilter: MovilesZonasServiceFilter; onServiceFilterChange: (f: MovilesZonasServiceFilter) => void }) {
   const map = useMap();
 
   useEffect(() => {
@@ -111,10 +114,9 @@ function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange, tipos
 
         container.innerHTML = `
           <div class="mz-filter-inner">
-            <span class="mz-filter-label">Móviles de:</span>
+            <span class="mz-filter-label">Tipo Servicio:</span>
             <select class="mz-filter-select">
-              <option value="all">� Todos</option>
-              ${tiposServicioDisponibles.map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()}</option>`).join('')}
+              ${TIPOS_SERVICIO_FIJOS.map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()}</option>`).join('')}
             </select>
           </div>
         `;
@@ -132,7 +134,7 @@ function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange, tipos
     const ctrl = new FilterCtrl();
     ctrl.addTo(map);
     return () => { ctrl.remove(); };
-  }, [map, serviceFilter, onServiceFilterChange, tiposServicioDisponibles]);
+  }, [map, serviceFilter, onServiceFilterChange]);
 
   return null;
 }
@@ -173,14 +175,11 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   movilEstados,
 }: MovilesZonasLayerProps) {
 
-  // Filtrar registros de moviles_zonas según el filtro seleccionado
+  // Filtrar registros de moviles_zonas según tipo de servicio seleccionado
   // y excluir móviles con estado_nro 3, 5 o 15
   const filteredData = useMemo(() => {
-    let data = movilesZonasData;
-    if (serviceFilter !== 'all') {
-      data = data.filter(mz => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter.toUpperCase());
-    }
-    // Excluir móviles con estados inactivos (3=no activo, 5=?, 15=?)
+    let data = movilesZonasData.filter(mz => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter.toUpperCase());
+    // Excluir móviles con estados inactivos (3=no activo, 5, 15)
     if (movilEstados && movilEstados.size > 0) {
       data = data.filter(mz => {
         const estado = movilEstados.get(String(mz.movil_id));
@@ -256,7 +255,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
 
   return (
     <>
-      <MovilesZonasFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} tiposServicioDisponibles={tiposServicioDisponibles} />
+      <MovilesZonasFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
       <MovilesZonasLegend />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, counts, total }) => (
         <React.Fragment key={zona.zona_id}>
