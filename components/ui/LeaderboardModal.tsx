@@ -81,7 +81,12 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
         };
       });
 
-    return [...movilStats].sort((a, b) => {
+    // Solo mostrar móviles que tienen al menos un item del tipo seleccionado
+    const movilsConDatos = movilStats.filter(m =>
+      m.entregados > 0 || m.pendientes > 0 || m.noEntregados > 0 || m.atrasados > 0
+    );
+
+    return [...movilsConDatos].sort((a, b) => {
       switch (sortBy) {
         case 'atrasados': return b.atrasados - a.atrasados;
         case 'pendientes': return b.pendientes - a.pendientes;
