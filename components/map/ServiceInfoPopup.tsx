@@ -247,7 +247,7 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
             )}
 
             {/* Importe */}
-            {(service.imp_bruto || service.precio) && (
+            {!!(service.imp_bruto || service.precio) && (
               <div>
                 <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-2 border border-emerald-200">
                   <div className="flex justify-between items-center">

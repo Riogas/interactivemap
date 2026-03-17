@@ -252,7 +252,7 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
             )}
 
             {/* Importe */}
-            {(pedido.imp_bruto || pedido.precio) && (
+            {!!(pedido.imp_bruto || pedido.precio) && (
               <div>
                 <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-2 border border-emerald-200">
                   <div className="flex justify-between items-center">

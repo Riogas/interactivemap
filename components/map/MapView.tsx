@@ -18,6 +18,7 @@ import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
+import DistanceMeasurement from './DistanceMeasurement';
 import DistribucionZonasLayer from './DistribucionZonasLayer';
 import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from './MovilesZonasLayer';
 import dynamic from 'next/dynamic';
@@ -2884,6 +2885,9 @@ const MapView = memo(function MapView({
             </OptimizedMarker>
           );
         })}
+
+        {/* Herramienta de medición de distancia (clic derecho) */}
+        <DistanceMeasurement />
       </MapContainer>
       
       {/* Control de animación (solo visible cuando hay un móvil seleccionado con historial) */}
