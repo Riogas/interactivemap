@@ -171,17 +171,16 @@ export default function DistanceMeasurement() {
         icon: L.divIcon({
           className: '',
           html: `<div style="
-            background: rgba(37,99,235,0.9);
+            background: rgba(37,99,235,0.85);
             color: white;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
             white-space: nowrap;
             pointer-events: none;
-            transform: translate(15px, -25px);
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-          ">📏 ${formatDistance(total)}</div>`,
+            transform: translate(12px, -18px);
+          ">${formatDistance(total)}</div>`,
           iconSize: [0, 0],
           iconAnchor: [0, 0],
         }),
@@ -222,7 +221,6 @@ export default function DistanceMeasurement() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && measuring) {
         setMeasuring(false);
-        map.getContainer().style.cursor = '';
       }
     };
     document.addEventListener('keydown', onKeyDown);
@@ -255,7 +253,6 @@ export default function DistanceMeasurement() {
     setPoints([]);
     setMeasuring(true);
     setMenuPos(null);
-    map.getContainer().style.cursor = 'crosshair';
     // Agregar el punto donde se hizo clic derecho como primer punto
     if (menuPos) {
       setPoints([menuPos.latlng]);
@@ -265,16 +262,14 @@ export default function DistanceMeasurement() {
   // Finalizar medición
   const stopMeasuring = useCallback(() => {
     setMeasuring(false);
-    map.getContainer().style.cursor = '';
-  }, [map]);
+  }, []);
 
   // Limpiar todo
   const clearMeasurement = useCallback(() => {
     setMeasuring(false);
     setPoints([]);
     clearLayers();
-    map.getContainer().style.cursor = '';
-  }, [clearLayers, map]);
+  }, [clearLayers]);
 
   const dist = totalDistance(points);
 
