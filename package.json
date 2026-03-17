@@ -22,7 +22,7 @@
     "leaflet.markercluster": "^1.5.3",
     "marked": "^17.0.1",
     "nanoid": "^5.1.6",
-    "next": "16.1.6",
+    "next": "16.1.7",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hot-toast": "^2.6.0",
