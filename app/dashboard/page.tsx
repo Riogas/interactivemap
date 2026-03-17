@@ -1853,6 +1853,7 @@ function DashboardContent() {
         isOpen={zonaViewModalOpen}
         onClose={() => setZonaViewModalOpen(false)}
         initialZonaId={zonaViewModalZonaId}
+        initialServiceFilter={movilesZonasServiceFilter}
         moviles={movilesFiltered}
         movilesZonasData={movilesZonasData}
       />

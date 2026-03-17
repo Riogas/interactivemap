@@ -134,39 +134,24 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
         );
       })}
 
-      {/* Etiquetas fijas en el centroide */}
-      {labels.map((lbl) => {
-        const bgColor = lbl.activa === true ? '#22c55e' : lbl.activa === false ? '#ef4444' : '#9ca3af';
-        const text = lbl.activa === true ? 'Activa' : lbl.activa === false ? 'Inactiva' : 'Sin dato';
-
-        return (
+      {/* Etiquetas fijas en el centroide (mismo estilo que demoras) */}
+      {labels.map((lbl) => (
           <Marker
             key={`label-${lbl.zona_id}`}
             position={lbl.centroid as [number, number]}
             interactive={false}
             icon={L.divIcon({
-              className: '',
-              html: `<div style="
-                display:flex; flex-direction:column; align-items:center; gap:1px;
-                transform:translate(-50%,-50%); pointer-events:none;
-              ">
-                <div style="
-                  background:rgba(0,0,0,0.75); color:white;
-                  font-size:11px; font-weight:700;
-                  padding:2px 6px; border-radius:4px; white-space:nowrap;
-                ">${lbl.nombre || `Zona ${lbl.zona_id}`}</div>
-                <div style="
-                  background:${bgColor}; color:white;
-                  font-size:10px; font-weight:600;
-                  padding:1px 6px; border-radius:3px; white-space:nowrap;
-                ">${text}${lbl.minutos != null ? ` · ${lbl.minutos} min` : ''}</div>
-              </div>`,
-              iconSize: [0, 0],
-              iconAnchor: [0, 0],
+              className: 'demora-label',
+              html: `
+                <div class="demora-label-inner">
+                  <span class="demora-label-zona">${lbl.zona_id}</span>
+                </div>
+              `,
+              iconSize: [60, 36],
+              iconAnchor: [30, 18],
             })}
           />
-        );
-      })}
+      ))}
     </>
   );
 });

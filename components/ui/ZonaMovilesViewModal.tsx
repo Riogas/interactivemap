@@ -35,6 +35,8 @@ interface ZonaMovilesViewModalProps {
   onClose: () => void;
   /** Zona ID a preseleccionar al abrir */
   initialZonaId?: number | null;
+  /** Filtro de tipo de servicio inicial (sincronizado desde el mapa) */
+  initialServiceFilter?: string;
   /** Todos los móviles cargados */
   moviles: MovilData[];
   /** Registros crudos de moviles_zonas */
@@ -45,6 +47,7 @@ export default function ZonaMovilesViewModal({
   isOpen,
   onClose,
   initialZonaId,
+  initialServiceFilter,
   moviles,
   movilesZonasData,
 }: ZonaMovilesViewModalProps) {
@@ -52,6 +55,13 @@ export default function ZonaMovilesViewModal({
   const [loadingZonas, setLoadingZonas] = useState(false);
   const [selectedZonaId, setSelectedZonaId] = useState<number | null>(null);
   const [serviceFilter, setServiceFilter] = useState<string>('URGENTE');
+
+  // Sincronizar filtro de servicio desde el mapa cuando se abre el modal
+  useEffect(() => {
+    if (isOpen && initialServiceFilter) {
+      setServiceFilter(initialServiceFilter);
+    }
+  }, [isOpen, initialServiceFilter]);
 
   // ========== Fetch zonas ==========
   useEffect(() => {
