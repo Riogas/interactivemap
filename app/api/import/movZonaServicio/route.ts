@@ -142,24 +142,45 @@ export async function POST(request: NextRequest) {
     const supabase = getServerSupabaseClient();
 
     // 1) Borrar asignaciones anteriores
-    // Si viene TipoDeServicio en el body raíz, borrar solo ese tipo de servicio por escenario
-    // Si no, borrar todo el escenario (comportamiento legacy)
+    // Si viene TipoDeServicio en el body raíz:
+    //   - Borrar filas que coincidan con ese tipo_de_servicio
+    //   - También borrar filas con tipo_de_servicio vacío (datos legacy/corruptos)
+    // Si no viene: borrar todo el escenario (comportamiento legacy)
     for (const escId of escenarioIds) {
-      let deleteQuery = (supabase as any)
-        .from('moviles_zonas')
-        .delete()
-        .eq('escenario_id', escId);
-
       if (rootTipoDeServicio) {
-        deleteQuery = deleteQuery.eq('tipo_de_servicio', rootTipoDeServicio);
-        console.log(`🗑️ Borrando moviles_zonas escenario=${escId} tipo_de_servicio="${rootTipoDeServicio}"`);
-      } else {
-        console.log(`🗑️ Borrando ALL moviles_zonas escenario=${escId}`);
-      }
+        // Borrar filas del tipo de servicio específico
+        const { error: delError1 } = await (supabase as any)
+          .from('moviles_zonas')
+          .delete()
+          .eq('escenario_id', escId)
+          .eq('tipo_de_servicio', rootTipoDeServicio);
 
-      const { error: delError } = await deleteQuery;
-      if (delError) {
-        console.error(`❌ Error al limpiar escenario ${escId}:`, delError);
+        if (delError1) {
+          console.error(`❌ Error al limpiar escenario ${escId} tipo=${rootTipoDeServicio}:`, delError1);
+        }
+
+        // También borrar filas con tipo_de_servicio vacío (residuos de imports anteriores con bug)
+        const { error: delError2 } = await (supabase as any)
+          .from('moviles_zonas')
+          .delete()
+          .eq('escenario_id', escId)
+          .eq('tipo_de_servicio', '');
+
+        if (delError2) {
+          console.error(`❌ Error al limpiar escenario ${escId} tipo=EMPTY:`, delError2);
+        }
+
+        console.log(`🗑️ Borrando moviles_zonas escenario=${escId} tipo_de_servicio="${rootTipoDeServicio}" + vacíos`);
+      } else {
+        const { error: delError } = await (supabase as any)
+          .from('moviles_zonas')
+          .delete()
+          .eq('escenario_id', escId);
+
+        if (delError) {
+          console.error(`❌ Error al limpiar escenario ${escId}:`, delError);
+        }
+        console.log(`🗑️ Borrando ALL moviles_zonas escenario=${escId}`);
       }
     }
 
