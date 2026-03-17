@@ -1287,6 +1287,7 @@ function DashboardContent() {
   const handleShowPendientes = useCallback(() => {
     setShowPendientes(true); // Muestra los marcadores de pedidos
     setShowCompletados(false); // Oculta completados
+    setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' })); // Forzar vista pendientes
     
     if (popupMovil) {
       setPreFilterMovil(popupMovil);

@@ -301,12 +301,6 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                         <div className="text-[9px] text-indigo-600 font-semibold">Chofer</div>
                         <div className="font-bold text-indigo-900 text-xs truncate">{sessionData.chofer}</div>
                       </div>
-                      {sessionData.telefono && (
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-[9px] text-gray-500">📞 Teléfono</div>
-                          <div className="text-[10px] font-semibold text-gray-800">{sessionData.telefono}</div>
-                        </div>
-                      )}
                     </div>
                     {/* Hora de inicio de sesión */}
                     {sessionData.fechaInicio && (
