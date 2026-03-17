@@ -56,26 +56,19 @@ function mapGxItem(item: any): Record<string, any>[] {
  * POST /api/import/movZonaServicio
  * Importar asignaciones móvil-zona desde Genexus.
  *
- * Formato nuevo (con TipoDeServicio a nivel raíz):
+ * Formato esperado (TipoDeServicio a nivel raíz es OBLIGATORIO):
  * {
- *   "TipoDeServicio": "GAS",
+ *   "TipoDeServicio": "URGENTE",
  *   "MovZonas": [
- *     { "EscenarioId": 1000, "TipoDeZona": "Distribucion", "TipoDeServicio": "GAS", "Zona": "3", "PrioridadOTransito": 1, "Moviles": [304, 305] },
- *     ...
- *   ]
- * }
- * Cuando viene TipoDeServicio a nivel raíz, solo se borran las asignaciones
- * del escenario con ese tipo_de_servicio antes de insertar las nuevas.
- *
- * Formato legacy (sin TipoDeServicio raíz, borra TODO el escenario):
- * {
- *   "MovZonas": [
- *     { "Movil": 330, "EscenarioId": 1000, "TipoDeZona": "...", "TipoDeServicio": "GAS", "Zona": "10", "PrioridadOTransito": 0 },
+ *     { "EscenarioId": 1000, "TipoDeZona": "Distribucion", "Zona": "3", "PrioridadOTransito": 1, "Moviles": [304, 305] },
+ *     { "EscenarioId": 1000, "TipoDeZona": "Distribucion", "Zona": "10", "PrioridadOTransito": 0, "Movil": 330 },
  *     ...
  *   ]
  * }
  *
- * También acepta: { "asignaciones": [...] } o un array directo.
+ * Comportamiento:
+ *   1) Borra filas de moviles_zonas del escenario con tipo_de_servicio = TipoDeServicio (+ vacíos)
+ *   2) Inserta las nuevas filas
  */
 export async function POST(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -96,14 +89,19 @@ export async function POST(request: NextRequest) {
     console.log('📦 Body crudo (keys):', Object.keys(body));
     console.log('📦 Body completo:', JSON.stringify(body, null, 2).substring(0, 3000));
 
-    // Leer TipoDeServicio del nivel raíz si existe (nuevo formato GX)
+    // TipoDeServicio a nivel raíz es OBLIGATORIO
     const rootTipoDeServicio = (body.TipoDeServicio || '').trim().toUpperCase();
-    if (rootTipoDeServicio) {
-      console.log(`🏷️ TipoDeServicio raíz detectado: "${rootTipoDeServicio}"`);
+    if (!rootTipoDeServicio) {
+      console.error('❌ Falta TipoDeServicio a nivel raíz');
+      return NextResponse.json(
+        { error: 'Se requiere TipoDeServicio a nivel raíz del body (ej: "URGENTE", "SERVICE", "NOCTURNO")' },
+        { status: 400 }
+      );
     }
+    console.log(`🏷️ TipoDeServicio raíz: "${rootTipoDeServicio}"`);
 
-    // Aceptar body de Genexus (MovZonas), formato legacy (asignaciones), o array directo
-    let rawItems = body.MovZonas || body.asignaciones || body;
+    // Aceptar body de Genexus (MovZonas)
+    let rawItems = body.MovZonas || [];
     if (!Array.isArray(rawItems)) rawItems = [rawItems];
 
     console.log(`📋 Items crudos recibidos: ${rawItems.length}`);
@@ -141,47 +139,32 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServerSupabaseClient();
 
-    // 1) Borrar asignaciones anteriores
-    // Si viene TipoDeServicio en el body raíz:
-    //   - Borrar filas que coincidan con ese tipo_de_servicio
-    //   - También borrar filas con tipo_de_servicio vacío (datos legacy/corruptos)
-    // Si no viene: borrar todo el escenario (comportamiento legacy)
+    // 1) Borrar asignaciones anteriores por escenario + tipo_de_servicio
+    //    También limpia filas con tipo_de_servicio vacío (datos corruptos)
     for (const escId of escenarioIds) {
-      if (rootTipoDeServicio) {
-        // Borrar filas del tipo de servicio específico
-        const { error: delError1 } = await (supabase as any)
-          .from('moviles_zonas')
-          .delete()
-          .eq('escenario_id', escId)
-          .eq('tipo_de_servicio', rootTipoDeServicio);
+      // Borrar filas del tipo de servicio específico
+      const { error: delError1 } = await (supabase as any)
+        .from('moviles_zonas')
+        .delete()
+        .eq('escenario_id', escId)
+        .eq('tipo_de_servicio', rootTipoDeServicio);
 
-        if (delError1) {
-          console.error(`❌ Error al limpiar escenario ${escId} tipo=${rootTipoDeServicio}:`, delError1);
-        }
-
-        // También borrar filas con tipo_de_servicio vacío (residuos de imports anteriores con bug)
-        const { error: delError2 } = await (supabase as any)
-          .from('moviles_zonas')
-          .delete()
-          .eq('escenario_id', escId)
-          .eq('tipo_de_servicio', '');
-
-        if (delError2) {
-          console.error(`❌ Error al limpiar escenario ${escId} tipo=EMPTY:`, delError2);
-        }
-
-        console.log(`🗑️ Borrando moviles_zonas escenario=${escId} tipo_de_servicio="${rootTipoDeServicio}" + vacíos`);
-      } else {
-        const { error: delError } = await (supabase as any)
-          .from('moviles_zonas')
-          .delete()
-          .eq('escenario_id', escId);
-
-        if (delError) {
-          console.error(`❌ Error al limpiar escenario ${escId}:`, delError);
-        }
-        console.log(`🗑️ Borrando ALL moviles_zonas escenario=${escId}`);
+      if (delError1) {
+        console.error(`❌ Error al limpiar escenario ${escId} tipo=${rootTipoDeServicio}:`, delError1);
       }
+
+      // También borrar filas con tipo_de_servicio vacío (residuos de imports anteriores)
+      const { error: delError2 } = await (supabase as any)
+        .from('moviles_zonas')
+        .delete()
+        .eq('escenario_id', escId)
+        .eq('tipo_de_servicio', '');
+
+      if (delError2) {
+        console.error(`❌ Error al limpiar escenario ${escId} tipo=EMPTY:`, delError2);
+      }
+
+      console.log(`🗑️ Borrando moviles_zonas escenario=${escId} tipo_de_servicio="${rootTipoDeServicio}" + vacíos`);
     }
 
     // 2) Insertar en lotes de 500 (límite seguro de Supabase)
@@ -226,8 +209,10 @@ export async function POST(request: NextRequest) {
 
 /**
  * PUT /api/import/movZonaServicio
- * Upsert asignaciones móvil-zona (insertar o actualizar por movil_id + zona_id).
- * Acepta tanto formato Genexus (MovZonas / PascalCase) como snake_case.
+ * Mismo comportamiento que POST: importar asignaciones móvil-zona desde Genexus.
+ *
+ * TipoDeServicio a nivel raíz es OBLIGATORIO.
+ * Borra filas del escenario con ese tipo_de_servicio (+ vacíos) e inserta las nuevas.
  */
 export async function PUT(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -243,66 +228,105 @@ export async function PUT(request: NextRequest) {
     console.log('📦 Body crudo (keys):', Object.keys(body));
     console.log('📦 Body completo:', JSON.stringify(body, null, 2).substring(0, 3000));
 
-    let rawItems = body.MovZonas || body.asignaciones || body;
+    // TipoDeServicio a nivel raíz es OBLIGATORIO
+    const rootTipoDeServicio = (body.TipoDeServicio || '').trim().toUpperCase();
+    if (!rootTipoDeServicio) {
+      console.error('❌ Falta TipoDeServicio a nivel raíz');
+      return NextResponse.json(
+        { error: 'Se requiere TipoDeServicio a nivel raíz del body (ej: "URGENTE", "SERVICE", "NOCTURNO")' },
+        { status: 400 }
+      );
+    }
+    console.log(`🏷️ TipoDeServicio raíz: "${rootTipoDeServicio}"`);
+
+    let rawItems = body.MovZonas || [];
     if (!Array.isArray(rawItems)) rawItems = [rawItems];
 
     console.log(`📋 Items crudos recibidos: ${rawItems.length}`);
     if (rawItems.length > 0) {
       console.log('📋 Primer item crudo:', JSON.stringify(rawItems[0]));
+      if (rawItems.length > 1) console.log('📋 Último item crudo:', JSON.stringify(rawItems[rawItems.length - 1]));
     }
 
     if (rawItems.length === 0) {
       return NextResponse.json(
-        { error: 'Se requiere al menos una asignación para actualizar' },
+        { error: 'Se requiere al menos una asignación en MovZonas' },
         { status: 400 }
       );
     }
 
-    const items = rawItems.flatMap(mapGxItem);
+    // Mapear items — inyectar rootTipoDeServicio en cada item que no lo tenga
+    const items = rawItems.flatMap((item: any) => {
+      if (rootTipoDeServicio && !item.TipoDeServicio && !item.tipo_de_servicio) {
+        return mapGxItem({ ...item, TipoDeServicio: rootTipoDeServicio });
+      }
+      return mapGxItem(item);
+    });
 
-    console.log('🔄 PUT items mapeados:', items.length);
-    if (items.length > 0) console.log('🔄 Primer item mapeado:', JSON.stringify(items[0]));
+    if (items.length > 0) {
+      console.log('🔄 Primer item mapeado:', JSON.stringify(items[0]));
+      if (items.length > 1) console.log('🔄 Último item mapeado:', JSON.stringify(items[items.length - 1]));
+    }
+
+    const escenarioIds = [...new Set(items.map((i: any) => i.escenario_id))];
+    console.log(`📦 PUT importando ${items.length} asignación(es) para escenarios [${escenarioIds.join(', ')}] tipo_de_servicio="${rootTipoDeServicio}"`);
 
     const supabase = getServerSupabaseClient();
 
-    // Borrar las filas existentes que coincidan (por movil_id + zona_id + escenario_id + tipo_de_servicio)
-    // y luego insertar las nuevas, evitando problemas de constraint
-    for (const item of items) {
-      const { error: delError } = await (supabase as any)
+    // 1) Borrar asignaciones anteriores por escenario + tipo_de_servicio + vacíos
+    for (const escId of escenarioIds) {
+      const { error: delError1 } = await (supabase as any)
         .from('moviles_zonas')
         .delete()
-        .eq('movil_id', item.movil_id)
-        .eq('zona_id', item.zona_id)
-        .eq('escenario_id', item.escenario_id)
-        .eq('tipo_de_servicio', item.tipo_de_servicio);
+        .eq('escenario_id', escId)
+        .eq('tipo_de_servicio', rootTipoDeServicio);
 
-      if (delError) {
-        console.error('❌ Error al borrar fila previa:', delError);
+      if (delError1) {
+        console.error(`❌ Error al limpiar escenario ${escId} tipo=${rootTipoDeServicio}:`, delError1);
       }
+
+      // También borrar filas con tipo_de_servicio vacío (residuos)
+      const { error: delError2 } = await (supabase as any)
+        .from('moviles_zonas')
+        .delete()
+        .eq('escenario_id', escId)
+        .eq('tipo_de_servicio', '');
+
+      if (delError2) {
+        console.error(`❌ Error al limpiar escenario ${escId} tipo=EMPTY:`, delError2);
+      }
+
+      console.log(`🗑️ Borrando moviles_zonas escenario=${escId} tipo_de_servicio="${rootTipoDeServicio}" + vacíos`);
     }
 
-    // Insertar todas las filas nuevas
-    const { data, error } = await (supabase as any)
-      .from('moviles_zonas')
-      .insert(items)
-      .select();
+    // 2) Insertar en lotes de 500
+    const BATCH_SIZE = 500;
+    let totalInserted = 0;
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
+      const { data, error } = await (supabase as any)
+        .from('moviles_zonas')
+        .insert(batch)
+        .select();
 
-    if (error) {
-      console.error('❌ Error al actualizar moviles_zonas:', error);
-      return NextResponse.json(
-        { error: 'Error al actualizar asignaciones', details: error.message },
-        { status: 500 }
-      );
+      if (error) {
+        console.error(`❌ Error al importar lote ${i / BATCH_SIZE + 1}:`, error);
+        return NextResponse.json(
+          { error: 'Error al importar asignaciones', details: error.message, inserted_so_far: totalInserted },
+          { status: 500 }
+        );
+      }
+      totalInserted += data?.length || 0;
     }
 
-    console.log(`✅ ${data?.length || 0} asignaciones actualizadas`);
+    console.log(`✅ ${totalInserted} asignaciones importadas via PUT (escenarios: ${escenarioIds.join(', ')})`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return NextResponse.json({
       success: true,
-      message: `${data?.length || 0} asignaciones actualizadas correctamente`,
-      count: data?.length || 0,
-      data,
+      message: `${totalInserted} asignaciones importadas correctamente`,
+      count: totalInserted,
+      escenarios: escenarioIds,
     });
   } catch (error: any) {
     console.error('❌ Error inesperado en PUT /api/import/movZonaServicio:', error);
