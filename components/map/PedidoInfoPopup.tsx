@@ -145,25 +145,30 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                 ⏱ {delayInfo.badgeText}
               </span>
             </div>
-            ) : (
-            <div 
-              className="flex items-center justify-between rounded-lg px-3 py-2 border"
-              style={{ 
-                backgroundColor: '#22c55e15',
-                borderColor: '#22c55e40',
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }} />
-                <span className="text-xs font-bold" style={{ color: '#22c55e' }}>
-                  Entregado
-                </span>
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#22c55e' }}>
-                ✔ Completado
-              </span>
-            </div>
-            )}
+            ) : (() => {
+              const esEntregado = String(pedido.sub_estado_desc) === '3';
+              const bannerColor = esEntregado ? '#22c55e' : '#ef4444';
+              const estadoDesc = getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc);
+              return (
+                <div 
+                  className="flex items-center justify-between rounded-lg px-3 py-2 border"
+                  style={{ 
+                    backgroundColor: `${bannerColor}15`,
+                    borderColor: `${bannerColor}40`,
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: bannerColor }} />
+                    <span className="text-xs font-bold" style={{ color: bannerColor }}>
+                      {estadoDesc}
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: bannerColor }}>
+                    {esEntregado ? '✔ Entregado' : '✗ No Entregado'}
+                  </span>
+                </div>
+              );
+            })()}
             {/* Cliente */}
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cliente</h4>
@@ -202,10 +207,9 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                   )}
                 </div>
                 <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-2 border border-green-200">
-                  <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
+                  <div className="text-[9px] text-green-600 font-semibold mb-0.5">Móvil</div>
                   <div className="font-bold text-green-900 text-xs">
-                    {(!pedido.movil || Number(pedido.movil) === 0) ? 'SIN ASIGNAR' : getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc)}
-                    {!!pedido.movil && Number(pedido.movil) !== 0 && <span className="text-green-700 font-normal"> – #{pedido.movil}</span>}
+                    {(!pedido.movil || Number(pedido.movil) === 0) ? 'Sin Asignar' : `Asignado #${pedido.movil}`}
                   </div>
                 </div>
               </div>
