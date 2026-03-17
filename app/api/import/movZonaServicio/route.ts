@@ -120,7 +120,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Mapear todos los items al formato de la tabla (flatMap porque un item con Moviles[] genera múltiples filas)
-    const items = rawItems.flatMap(mapGxItem);
+    // Si hay rootTipoDeServicio, inyectarlo en cada item que no lo tenga
+    const items = rawItems.flatMap((item: any) => {
+      if (rootTipoDeServicio && !item.TipoDeServicio && !item.tipo_de_servicio) {
+        return mapGxItem({ ...item, TipoDeServicio: rootTipoDeServicio });
+      }
+      return mapGxItem(item);
+    });
 
     // 🔍 DEBUG: Mostrar resultado del mapeo
     if (items.length > 0) {
