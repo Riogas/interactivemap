@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 
-export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas';
+export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas';
 
 interface DataViewControlProps {
   value: DataViewMode;
@@ -61,6 +61,10 @@ export default function DataViewControl({ value, onChange, onOpenEstadisticas }:
             <label class="dv-option">
               <input type="radio" name="dv-mode" value="moviles-zonas" />
               <span class="dv-icon">🚛</span> Móviles en Zonas
+            </label>
+            <label class="dv-option">
+              <input type="radio" name="dv-mode" value="zonas-activas" />
+              <span class="dv-icon">✅</span> Zonas Activas
             </label>
             <div style="border-top: 1px solid #e0e0e0; margin: 4px 0;"></div>
             <button class="dv-estadisticas-btn" style="width:100%; text-align:left; padding:5px 10px; cursor:pointer; background:none; border:none; font-size:14px; font-family:inherit; color:#374151; display:flex; align-items:center; gap:6px; border-radius:4px; transition:background 0.15s;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='none'">

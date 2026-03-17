@@ -164,7 +164,7 @@ function DashboardContent() {
   const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<string>('URGENTE');
 
   // Cuando se cambia de vista de datos
-  const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas') => {
+  const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas') => {
     updatePreference('dataViewMode', mode);
     if (mode !== 'normal') {
       setShowZonas(true); // Auto-activar zonas para distribucion/demoras/moviles-zonas
@@ -514,8 +514,8 @@ function DashboardContent() {
           setAllZonasData(zonasFiltradas);
         }
 
-        // 2) Si es vista Demoras, cargar demoras desde la tabla demoras
-        if (dataViewMode === 'demoras') {
+        // 2) Si es vista Demoras o Zonas Activas, cargar demoras desde la tabla demoras
+        if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
           const demorasRes = await fetch('/api/demoras');
           const demorasResult = await demorasRes.json();
           if (demorasResult.success && demorasResult.data) {

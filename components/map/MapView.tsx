@@ -21,6 +21,7 @@ import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
 import DistanceMeasurement from './DistanceMeasurement';
 import DistribucionZonasLayer from './DistribucionZonasLayer';
 import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from './MovilesZonasLayer';
+import ZonasActivasLayer from './ZonasActivasLayer';
 import dynamic from 'next/dynamic';
 import './DataViewControl.css';
 import toast from 'react-hot-toast';
@@ -2036,6 +2037,11 @@ const MapView = memo(function MapView({
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
           <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} onZonaClick={onZonaClick} />
+        )}
+
+        {/* ✅ Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}
+        {dataViewMode === 'zonas-activas' && (allZonas.length > 0 || zonas.length > 0) && (
+          <ZonasActivasLayer zonas={allZonas.length > 0 ? allZonas : zonas} demoras={demorasData} zonaOpacity={zonaOpacity} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
