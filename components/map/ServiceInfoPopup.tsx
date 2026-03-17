@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ServiceSupabase } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
@@ -26,6 +26,29 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
   service, 
   onClose,
 }) => {
+  const [movilTel, setMovilTel] = useState<string | null>(null);
+  const [movilChofer, setMovilChofer] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMovilTel(null);
+    setMovilChofer(null);
+    if (!service?.movil) return;
+    const fetchMovilSession = async () => {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const res = await fetch(`/api/movil-session/${service.movil}?fecha=${today}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMovilTel(data.telefono || null);
+          setMovilChofer(data.chofer || null);
+        }
+      } catch (err) {
+        console.error('Error fetching movil session:', err);
+      }
+    };
+    fetchMovilSession();
+  }, [service?.movil]);
+
   if (!service) return null;
 
   const getEstadoColor = (estadoNro: number | null) => {
@@ -185,6 +208,26 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
                   </div>
                 </div>
               </div>
+              {/* Teléfono y Chofer del Móvil */}
+              {service.movil && (movilTel || movilChofer) && (
+                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-2 border border-indigo-200 mt-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[9px] text-indigo-600 font-semibold mb-0.5">Móvil #{service.movil}</div>
+                      {movilChofer && <div className="text-[10px] text-indigo-800 font-medium">{movilChofer}</div>}
+                    </div>
+                    {movilTel && (
+                      <a
+                        href={`tel:${movilTel}`}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-200/60 hover:bg-indigo-300/60 rounded-md transition-colors"
+                      >
+                        <span className="text-xs">📞</span>
+                        <span className="text-xs font-bold text-indigo-900">{movilTel}</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Obs Pedido y Obs Cliente */}
