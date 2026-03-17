@@ -204,13 +204,13 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                 <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-2 border border-green-200">
                   <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
                   <div className="font-bold text-green-900 text-xs">
-                    {getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc)}
-                    {pedido.movil && <span className="text-green-700 font-normal"> – #{pedido.movil}</span>}
+                    {(!pedido.movil || Number(pedido.movil) === 0) ? 'SIN ASIGNAR' : getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc)}
+                    {pedido.movil && Number(pedido.movil) !== 0 && <span className="text-green-700 font-normal"> – #{pedido.movil}</span>}
                   </div>
                 </div>
               </div>
               {/* Teléfono y Chofer del Móvil */}
-              {pedido.movil && (movilTel || movilChofer) && (
+              {!!pedido.movil && Number(pedido.movil) !== 0 && (movilTel || movilChofer) && (
                 <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-2 border border-indigo-200 mt-2">
                   <div className="flex items-center justify-between">
                     <div>
