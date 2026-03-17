@@ -116,6 +116,8 @@ function MapUpdater({
   focusedPuntoId,
   pedidos,
   services,
+  allPedidos,
+  allServices,
   customMarkers
 }: { 
   moviles: MovilData[]; 
@@ -128,6 +130,8 @@ function MapUpdater({
   focusedPuntoId?: string;
   pedidos?: PedidoSupabase[];
   services?: ServiceSupabase[];
+  allPedidos?: PedidoSupabase[];
+  allServices?: ServiceSupabase[];
   customMarkers?: CustomMarker[];
 }) {
   const map = useMap();
@@ -160,18 +164,26 @@ function MapUpdater({
     if (focusTrigger === undefined || focusTrigger === lastFocusTrigger.current) return;
     lastFocusTrigger.current = focusTrigger;
 
-    if (focusedPedidoId && pedidos && pedidos.length > 0) {
-      const pedido = pedidos.find(p => p.id === focusedPedidoId);
-      if (pedido?.latitud && pedido?.longitud) {
-        map.setView([pedido.latitud, pedido.longitud], 16, { animate: true });
+    if (focusedPedidoId) {
+      const searchArrays = [pedidos, allPedidos].filter(Boolean) as PedidoSupabase[][];
+      for (const arr of searchArrays) {
+        const pedido = arr.find(p => p.id === focusedPedidoId);
+        if (pedido?.latitud && pedido?.longitud) {
+          map.setView([pedido.latitud, pedido.longitud], 16, { animate: true });
+          break;
+        }
       }
-    } else if (focusedServiceId && services && services.length > 0) {
-      const service = services.find(s => s.id === focusedServiceId);
-      if (service?.latitud && service?.longitud) {
-        map.setView([service.latitud, service.longitud], 16, { animate: true });
+    } else if (focusedServiceId) {
+      const searchArrays = [services, allServices].filter(Boolean) as ServiceSupabase[][];
+      for (const arr of searchArrays) {
+        const service = arr.find(s => s.id === focusedServiceId);
+        if (service?.latitud && service?.longitud) {
+          map.setView([service.latitud, service.longitud], 16, { animate: true });
+          break;
+        }
       }
     }
-  }, [map, focusTrigger, focusedPedidoId, focusedServiceId, pedidos, services]);
+  }, [map, focusTrigger, focusedPedidoId, focusedServiceId, pedidos, services, allPedidos, allServices]);
 
   // ✅ NUEVO: Efecto para centrar el mapa en un punto de interés
   useEffect(() => {
@@ -2770,6 +2782,8 @@ const MapView = memo(function MapView({
           focusedPuntoId={focusedPuntoId}
           pedidos={pedidos}
           services={services}
+          allPedidos={allPedidos}
+          allServices={allServices}
           customMarkers={customMarkers}
         />
         <AnimationFollower 

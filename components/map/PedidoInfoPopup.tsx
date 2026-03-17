@@ -204,24 +204,13 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
               </div>
             )}
 
-            {/* Forma de Pago */}
-            {pedido.fpago_obs1 && (
-              <div>
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-2 border border-orange-200">
-                  <div className="text-[9px] text-orange-600 font-semibold mb-0.5">Forma de Pago</div>
-                  <div className="font-bold text-orange-900 text-xs">{pedido.fpago_obs1}</div>
-                </div>
-              </div>
-            )}
-
             {/* Importe */}
             {(pedido.imp_bruto || pedido.precio) && (
               <div>
-                <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Importe</h4>
                 <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-2 border border-emerald-200">
                   <div className="flex justify-between items-center">
                     <div className="text-[9px] text-emerald-600 font-semibold">Total</div>
-                    <div className="text-lg font-bold text-emerald-900">
+                    <div className="text-sm font-bold text-emerald-900">
                       {formatPrecio(pedido.imp_bruto || pedido.precio || null)}
                     </div>
                   </div>
