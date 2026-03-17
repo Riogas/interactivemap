@@ -191,15 +191,13 @@ export default function MovilSelector({
       });
     }
     
-    // 🆕 Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3=NO ACTIVO | 4=BAJA MOMENTÁNEA)
-    if (movilesFilters.actividad !== 'todos') {
+    // 🆕 Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3=NO ACTIVO)
+    {
       result = result.filter(movil => {
         const estadoNro = movil.estadoNro;
         const esActivo = estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
-        const esBajaMomentanea = estadoNro === 4;
         if (movilesFilters.actividad === 'activo') return esActivo;
         if (movilesFilters.actividad === 'no_activo') return estadoNro === 3;
-        if (movilesFilters.actividad === 'baja_momentanea') return esBajaMomentanea;
         return true;
       });
     }
@@ -584,16 +582,14 @@ export default function MovilSelector({
         
         // Badge de estado de actividad (siempre visible)
         const actividadLabels: Record<string, { label: string; icon: string; color: string }> = {
-          'todos': { label: 'Todos', icon: '🔵', color: 'bg-blue-100 text-blue-700' },
           'activo': { label: 'Activos', icon: '🟢', color: 'bg-green-100 text-green-700' },
           'no_activo': { label: 'No Activos', icon: '🔴', color: 'bg-red-100 text-red-700' },
-          'baja_momentanea': { label: 'Baja Momentánea', icon: '⏸️', color: 'bg-violet-100 text-violet-700' },
         };
-        const actInfo = actividadLabels[movilesFilters.actividad] || actividadLabels['todos'];
+        const actInfo = actividadLabels[movilesFilters.actividad] || actividadLabels['activo'];
         badges.push({
           label: `${actInfo.icon} Estado: ${actInfo.label}`,
           color: actInfo.color,
-          onClear: movilesFilters.actividad !== 'todos' ? () => setMovilesFilters(prev => ({ ...prev, actividad: 'todos' })) : undefined,
+          onClear: movilesFilters.actividad !== 'activo' ? () => setMovilesFilters(prev => ({ ...prev, actividad: 'activo' })) : undefined,
         });
 
         // Badge de móviles seleccionados
@@ -698,14 +694,10 @@ export default function MovilSelector({
                           "w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all",
                           movilesFilters.actividad === 'activo' && "bg-green-50 border-green-300 text-green-800",
                           movilesFilters.actividad === 'no_activo' && "bg-red-50 border-red-300 text-red-800",
-                          movilesFilters.actividad === 'baja_momentanea' && "bg-violet-50 border-violet-300 text-violet-800",
-                          movilesFilters.actividad === 'todos' && "bg-white border-gray-300 text-gray-700",
                         )}
                       >
-                        <option value="todos">🔵 Todos</option>
                         <option value="activo">🟢 Activo</option>
                         <option value="no_activo">🔴 No Activo</option>
-                        <option value="baja_momentanea">⏸️ Baja Momentánea</option>
                       </select>
                     </div>
 
@@ -715,7 +707,7 @@ export default function MovilSelector({
                       </svg>
                       Filtros Avanzados
                     </h5>
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       {[
                         { value: 'no_reporta_gps', label: 'No reporta GPS', icon: '📡', color: 'text-red-600' },
                         { value: 'baja_momentanea', label: 'Baja Momentánea', icon: '⏸️', color: 'text-violet-600' },
@@ -727,7 +719,7 @@ export default function MovilSelector({
                           <label
                             key={opcion.value}
                             className={clsx(
-                              "flex items-center gap-3 p-2 rounded-md cursor-pointer transition-all",
+                              "flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer transition-all text-sm",
                               isChecked
                                 ? "bg-blue-50 border border-blue-300"
                                 : "hover:bg-gray-50"
@@ -747,7 +739,7 @@ export default function MovilSelector({
                               }}
                               className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                             />
-                            <span className="text-lg">{opcion.icon}</span>
+                            <span className="text-base">{opcion.icon}</span>
                             <span className={clsx("text-sm font-medium flex-1", opcion.color)}>
                               {opcion.label}
                             </span>
@@ -755,9 +747,9 @@ export default function MovilSelector({
                         );
                       })}
                     </div>
-                    {(movilesFilters.estado.length > 0 || movilesFilters.actividad !== 'todos') && (
+                    {(movilesFilters.estado.length > 0 || movilesFilters.actividad !== 'activo') && (
                       <button
-                        onClick={() => setMovilesFilters(prev => ({ ...prev, estado: [], actividad: 'todos' }))}
+                        onClick={() => setMovilesFilters(prev => ({ ...prev, estado: [], actividad: 'activo' }))}
                         className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium"
                       >
                         Limpiar filtros avanzados

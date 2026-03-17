@@ -324,6 +324,34 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                 </div>
               </div>
 
+              {/* Vista toggle - en el centro del header */}
+              <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5">
+                <button
+                  onClick={() => onVistaChange?.('pendientes')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
+                    vista === 'pendientes' ? 'bg-violet-500/30 text-violet-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Pendientes
+                </button>
+                <button
+                  onClick={() => onVistaChange?.('sin-asignar')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
+                    isSinAsignar ? 'bg-gray-500/30 text-gray-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Sin Asignar
+                </button>
+                <button
+                  onClick={() => onVistaChange?.('finalizados')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
+                    isFinalizados ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Finalizados
+                </button>
+              </div>
+
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
@@ -368,34 +396,6 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                   </div>
                 ))}</>
               )}
-              {/* Vista toggle */}
-              <div className="flex items-center gap-1 ml-4 bg-gray-800/60 rounded-lg p-0.5">
-                <button
-                  onClick={() => onVistaChange?.('pendientes')}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
-                    vista === 'pendientes' ? 'bg-violet-500/30 text-violet-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  Pendientes
-                </button>
-                <button
-                  onClick={() => onVistaChange?.('sin-asignar')}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
-                    isSinAsignar ? 'bg-gray-500/30 text-gray-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  Sin Asignar
-                </button>
-                <button
-                  onClick={() => onVistaChange?.('finalizados')}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
-                    isFinalizados ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  Finalizados
-                </button>
-              </div>
-
               <div className="ml-auto text-xs text-gray-500">
                 Total: <span className="font-bold text-gray-300">{servicesBase.length}</span>
               </div>
@@ -453,16 +453,6 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                         <option value="">Todos los defectos</option>
                         {uniqueDefectos.map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
-
-                      <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-400 hover:text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={filters.soloSinCoords}
-                          onChange={(e) => { setFilters(f => ({ ...f, soloSinCoords: e.target.checked })); setPage(0); }}
-                          className="rounded bg-gray-700 border-gray-600 text-violet-500 focus:ring-violet-500/20"
-                        />
-                        Solo sin coords
-                      </label>
 
                       {hasActiveFilters && (
                         <button onClick={clearFilters} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
@@ -546,7 +536,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                     paginated.map(({ service: s, delayInfo }) => (
                       <tr
                         key={s.id}
-                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : getRowBg(delayInfo)}`}
+                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : isSinAsignar ? 'bg-gray-400/15 hover:bg-gray-400/25 border-l-gray-400' : getRowBg(delayInfo)}`}
                       >
                         <td className="px-4 py-2.5" onClick={() => onServiceClick?.(s.id)}>
                           {isFinalizados ? (
