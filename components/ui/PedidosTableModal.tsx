@@ -124,14 +124,17 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     
     // Cuando hay pre-filtro de móvil, NO filtrar por selectedMoviles
     // (el móvil del popup puede no estar en la selección lateral)
-    if (preFilterMovil) {
+    // Sin asignar: no filtrar por selectedMoviles ni tipoServicio
+    if (isSinAsignar) {
+      // No aplicar filtros de móviles ni tipo de servicio a pedidos sin asignar
+    } else if (preFilterMovil) {
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
     } else if (selectedMoviles.length > 0) {
       result = result.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
     }
     
     // Aplicar filtro externo de tipo de servicio (solo para pendientes)
-    if (!isFinalizados && externalTipoServicio && externalTipoServicio !== 'all') {
+    if (!isFinalizados && !isSinAsignar && externalTipoServicio && externalTipoServicio !== 'all') {
       const tipoUpper = externalTipoServicio.toUpperCase();
       result = result.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === tipoUpper);
     }

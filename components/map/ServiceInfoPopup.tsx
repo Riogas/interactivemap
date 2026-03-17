@@ -204,7 +204,7 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
                   <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
                   <div className="font-bold text-green-900 text-xs">
                     {(!service.movil || Number(service.movil) === 0) ? 'SIN ASIGNAR' : getEstadoDescripcion(service.sub_estado_nro, service.sub_estado_desc)}
-                    {service.movil && Number(service.movil) !== 0 && <span className="text-green-700 font-normal"> – #{service.movil}</span>}
+                    {!!service.movil && Number(service.movil) !== 0 && <span className="text-green-700 font-normal"> – #{service.movil}</span>}
                   </div>
                 </div>
               </div>

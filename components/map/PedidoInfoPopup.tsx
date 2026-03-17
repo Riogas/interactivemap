@@ -205,7 +205,7 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                   <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
                   <div className="font-bold text-green-900 text-xs">
                     {(!pedido.movil || Number(pedido.movil) === 0) ? 'SIN ASIGNAR' : getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc)}
-                    {pedido.movil && Number(pedido.movil) !== 0 && <span className="text-green-700 font-normal"> – #{pedido.movil}</span>}
+                    {!!pedido.movil && Number(pedido.movil) !== 0 && <span className="text-green-700 font-normal"> – #{pedido.movil}</span>}
                   </div>
                 </div>
               </div>

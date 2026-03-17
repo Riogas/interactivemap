@@ -114,14 +114,17 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     // Cuando hay pre-filtro de móvil, NO filtrar por selectedMoviles
-    if (preFilterMovil) {
+    // Sin asignar: no filtrar por selectedMoviles ni tipoServicio
+    if (isSinAsignar) {
+      // No aplicar filtros de móviles ni tipo de servicio a services sin asignar
+    } else if (preFilterMovil) {
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
     } else if (selectedMoviles.length > 0) {
       result = result.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
     }
     
     // Aplicar filtro externo de tipo de servicio (solo para pendientes)
-    if (!isFinalizados && externalTipoServicio && externalTipoServicio !== 'all') {
+    if (!isFinalizados && !isSinAsignar && externalTipoServicio && externalTipoServicio !== 'all') {
       const tipoUpper = externalTipoServicio.toUpperCase();
       result = result.filter(s => s.servicio_nombre && s.servicio_nombre.toUpperCase() === tipoUpper);
     }
