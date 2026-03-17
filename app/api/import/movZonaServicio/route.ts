@@ -56,15 +56,18 @@ function mapGxItem(item: any): Record<string, any>[] {
  * POST /api/import/movZonaServicio
  * Importar asignaciones móvil-zona desde Genexus.
  *
- * Body esperado (formato nuevo con array de Moviles):
+ * Formato nuevo (con TipoDeServicio a nivel raíz):
  * {
+ *   "TipoDeServicio": "GAS",
  *   "MovZonas": [
- *     { "EscenarioId": 1000, "TipoDeZona": "Distribucion", "TipoDeServicio": "URGENTE", "Zona": "3", "PrioridadOTransito": 1, "Moviles": [304, 305] },
+ *     { "EscenarioId": 1000, "TipoDeZona": "Distribucion", "TipoDeServicio": "GAS", "Zona": "3", "PrioridadOTransito": 1, "Moviles": [304, 305] },
  *     ...
  *   ]
  * }
+ * Cuando viene TipoDeServicio a nivel raíz, solo se borran las asignaciones
+ * del escenario con ese tipo_de_servicio antes de insertar las nuevas.
  *
- * Formato legacy (un Movil por item):
+ * Formato legacy (sin TipoDeServicio raíz, borra TODO el escenario):
  * {
  *   "MovZonas": [
  *     { "Movil": 330, "EscenarioId": 1000, "TipoDeZona": "...", "TipoDeServicio": "GAS", "Zona": "10", "PrioridadOTransito": 0 },
@@ -73,12 +76,6 @@ function mapGxItem(item: any): Record<string, any>[] {
  * }
  *
  * También acepta: { "asignaciones": [...] } o un array directo.
- *
- * Comportamiento: REEMPLAZA todas las asignaciones del escenario recibido.
- * 1. Borra todas las filas del escenario_id recibido.
- * 2. Expande items con Moviles[] en filas individuales (1 fila por móvil).
- * 3. Inserta las nuevas filas.
- * Esto asegura consistencia con el estado completo que envía Genexus.
  */
 export async function POST(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -98,6 +95,12 @@ export async function POST(request: NextRequest) {
     }));
     console.log('📦 Body crudo (keys):', Object.keys(body));
     console.log('📦 Body completo:', JSON.stringify(body, null, 2).substring(0, 3000));
+
+    // Leer TipoDeServicio del nivel raíz si existe (nuevo formato GX)
+    const rootTipoDeServicio = (body.TipoDeServicio || '').trim().toUpperCase();
+    if (rootTipoDeServicio) {
+      console.log(`🏷️ TipoDeServicio raíz detectado: "${rootTipoDeServicio}"`);
+    }
 
     // Aceptar body de Genexus (MovZonas), formato legacy (asignaciones), o array directo
     let rawItems = body.MovZonas || body.asignaciones || body;
@@ -128,16 +131,27 @@ export async function POST(request: NextRequest) {
     // Determinar escenario_ids involucrados para limpiar antes de insertar
     const escenarioIds = [...new Set(items.map((i: any) => i.escenario_id))];
 
-    console.log(`📦 Importando ${items.length} asignación(es) móvil-zona para escenarios [${escenarioIds.join(', ')}]...`);
+    console.log(`📦 Importando ${items.length} asignación(es) móvil-zona para escenarios [${escenarioIds.join(', ')}]${rootTipoDeServicio ? ` tipo_de_servicio="${rootTipoDeServicio}"` : ''}...`);
 
     const supabase = getServerSupabaseClient();
 
-    // 1) Borrar asignaciones anteriores de los escenarios recibidos
+    // 1) Borrar asignaciones anteriores
+    // Si viene TipoDeServicio en el body raíz, borrar solo ese tipo de servicio por escenario
+    // Si no, borrar todo el escenario (comportamiento legacy)
     for (const escId of escenarioIds) {
-      const { error: delError } = await (supabase as any)
+      let deleteQuery = (supabase as any)
         .from('moviles_zonas')
         .delete()
         .eq('escenario_id', escId);
+
+      if (rootTipoDeServicio) {
+        deleteQuery = deleteQuery.eq('tipo_de_servicio', rootTipoDeServicio);
+        console.log(`🗑️ Borrando moviles_zonas escenario=${escId} tipo_de_servicio="${rootTipoDeServicio}"`);
+      } else {
+        console.log(`🗑️ Borrando ALL moviles_zonas escenario=${escId}`);
+      }
+
+      const { error: delError } = await deleteQuery;
       if (delError) {
         console.error(`❌ Error al limpiar escenario ${escId}:`, delError);
       }

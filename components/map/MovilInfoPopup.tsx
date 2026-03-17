@@ -262,9 +262,19 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                     </div>
                   );
                 })()}
-                <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-lg p-2 border border-gray-200">
-                  <div className="text-[9px] text-gray-500 font-semibold mb-0.5">Id Terminal</div>
-                  <div className="font-bold text-gray-800 text-[10px] font-mono truncate" title={sessionData?.idTerminal || movil.terminalId || 'N/A'}>{sessionData?.idTerminal || movil.terminalId || 'N/A'}</div>
+                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-2 border border-indigo-200">
+                  <div className="text-[9px] text-indigo-600 font-semibold mb-0.5">Teléfono</div>
+                  {sessionData?.telefono ? (
+                    <a
+                      href={`tel:${sessionData.telefono}`}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-200/60 hover:bg-indigo-300/60 rounded-md transition-colors"
+                    >
+                      <span className="text-xs">📞</span>
+                      <span className="text-sm font-bold text-indigo-900 tracking-wide">{sessionData.telefono}</span>
+                    </a>
+                  ) : (
+                    <div className="text-xs font-bold text-gray-400">—</div>
+                  )}
                 </div>
               </div>
             </div>
