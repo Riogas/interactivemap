@@ -17,7 +17,6 @@ import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
-import ZonasAsignacionModal from '@/components/ui/ZonasAsignacionModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
 import ZonaEstadisticasModal from '@/components/ui/ZonaEstadisticasModal';
 import PedidosTableModal from '@/components/ui/PedidosTableModal';
@@ -90,10 +89,7 @@ function DashboardContent() {
   // Estado para modal de estadísticas por zona
   const [isZonaEstadisticasOpen, setIsZonaEstadisticasOpen] = useState(false);
   
-  // Estado para modal de asignación de zonas
-  const [isZonasAsignacionOpen, setIsZonasAsignacionOpen] = useState(false);
-  
-  // Estado para modal de vista móviles por zona (click en mapa)
+  // Estado para modal de vista móviles por zona (click en mapa o botón)
   const [zonaViewModalOpen, setZonaViewModalOpen] = useState(false);
   const [zonaViewModalZonaId, setZonaViewModalZonaId] = useState<number | null>(null);
   
@@ -1697,7 +1693,7 @@ function DashboardContent() {
           {/* Botón de Asignación de Zonas */}
           <button
             id="tour-fab-zonas"
-            onClick={() => { setIsZonasAsignacionOpen(true); setIsActionsExpanded(false); }}
+            onClick={() => { setZonaViewModalZonaId(null); setZonaViewModalOpen(true); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700"
             title="Asignación de Móviles a Zonas"
           >
@@ -1787,8 +1783,8 @@ function DashboardContent() {
         onClose={() => setIsTourOpen(false)}
         expandFab={() => setIsActionsExpanded(true)}
         collapseFab={() => setIsActionsExpanded(false)}
-        openZonas={() => setIsZonasAsignacionOpen(true)}
-        closeZonas={() => setIsZonasAsignacionOpen(false)}
+        openZonas={() => { setZonaViewModalZonaId(null); setZonaViewModalOpen(true); }}
+        closeZonas={() => setZonaViewModalOpen(false)}
         openRanking={() => setIsLeaderboardOpen(true)}
         closeRanking={() => setIsLeaderboardOpen(false)}
         openTracking={() => setIsTrackingModalOpen(true)}
@@ -1851,15 +1847,7 @@ function DashboardContent() {
         usuarioEmail={user?.email || user?.username || ''}
       />
 
-      {/* Modal de Asignación de Zonas */}
-      <ZonasAsignacionModal
-        isOpen={isZonasAsignacionOpen}
-        onClose={() => setIsZonasAsignacionOpen(false)}
-        moviles={movilesFiltered}
-        pedidos={pedidosCompletos}
-      />
-
-      {/* Modal de Vista Móviles por Zona (click en mapa) */}
+      {/* Modal de Vista Móviles por Zona (click en mapa o botón) */}
       <ZonaMovilesViewModal
         isOpen={zonaViewModalOpen}
         onClose={() => setZonaViewModalOpen(false)}
