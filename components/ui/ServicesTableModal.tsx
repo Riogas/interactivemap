@@ -43,8 +43,8 @@ interface ServicesTableModalProps {
   moviles: MovilData[];
   onServiceClick?: (serviceId: number) => void;
   onMovilClick?: (movilId: number) => void;
-  vista?: 'pendientes' | 'finalizados';
-  onVistaChange?: (vista: 'pendientes' | 'finalizados') => void;
+  vista?: 'pendientes' | 'finalizados' | 'sin-asignar';
+  onVistaChange?: (vista: 'pendientes' | 'finalizados' | 'sin-asignar') => void;
   selectedMoviles?: number[];
   externalAtraso?: string[];
   externalTipoServicio?: string;
@@ -75,6 +75,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
 
 export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, onClearPreFilter }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
+  const isSinAsignar = vista === 'sin-asignar';
   const [filters, setFilters] = useState<Filters>({
     search: '',
     atraso: [],
@@ -102,9 +103,15 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
 
   // ========== Services base: según vista (pendientes/finalizados) + filtros externos ==========
   const servicesBase = useMemo(() => {
-    let result = isFinalizados
-      ? services.filter(s => Number(s.estado_nro) === 2)
-      : services.filter(s => Number(s.estado_nro) === 1);
+    let result: ServiceSupabase[];
+    if (isFinalizados) {
+      result = services.filter(s => Number(s.estado_nro) === 2);
+    } else if (isSinAsignar) {
+      result = services.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0));
+    } else {
+      // Pendientes: estado 1 con movil asignado
+      result = services.filter(s => Number(s.estado_nro) === 1 && s.movil && Number(s.movil) !== 0);
+    }
     
     // Cuando hay pre-filtro de móvil, NO filtrar por selectedMoviles
     if (preFilterMovil) {
@@ -120,7 +127,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil]);
+  }, [services, isFinalizados, isSinAsignar, selectedMoviles, externalTipoServicio, preFilterMovil]);
 
   // ========== Valores únicos para filtros ==========
   const uniqueZonas = useMemo(() => {
@@ -308,7 +315,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                 <div>
                   <h2 className="text-lg font-bold text-white">Vista Extendida de Services</h2>
                   <p className="text-xs text-gray-400">
-                    {sorted.length} service{sorted.length !== 1 ? 's' : ''} {isFinalizados ? 'finalizado' : 'pendiente'}{sorted.length !== 1 ? 's' : ''}
+                    {sorted.length} service{sorted.length !== 1 ? 's' : ''} {isFinalizados ? 'finalizado' : isSinAsignar ? 'sin asignar' : 'pendiente'}{sorted.length !== 1 ? 's' : ''}
                     {hasActiveFilters ? ` (de ${servicesBase.length} total)` : ''}
                   </p>
                 </div>
@@ -344,6 +351,11 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                   <div className="w-2 h-2 rounded-full bg-green-400" />
                   <span>Services Finalizados</span>
                 </div>
+              ) : isSinAsignar ? (
+                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <div className="w-2 h-2 rounded-full bg-gray-400" />
+                  <span>Services Sin Asignar</span>
+                </div>
               ) : (
                 <>{ATRASO_OPTIONS.map(opt => (
                   <div key={opt.key} className="flex items-center gap-1.5 text-xs text-gray-400">
@@ -358,10 +370,18 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                 <button
                   onClick={() => onVistaChange?.('pendientes')}
                   className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
-                    !isFinalizados ? 'bg-violet-500/30 text-violet-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                    vista === 'pendientes' ? 'bg-violet-500/30 text-violet-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
                   }`}
                 >
                   Pendientes
+                </button>
+                <button
+                  onClick={() => onVistaChange?.('sin-asignar')}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
+                    isSinAsignar ? 'bg-gray-500/30 text-gray-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Sin Asignar
                 </button>
                 <button
                   onClick={() => onVistaChange?.('finalizados')}
@@ -516,7 +536,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0" />
                         </svg>
-                        {hasActiveFilters ? 'No hay services que coincidan con los filtros' : (isFinalizados ? 'No hay services finalizados' : 'No hay services pendientes')}
+                        {hasActiveFilters ? 'No hay services que coincidan con los filtros' : (isFinalizados ? 'No hay services finalizados' : isSinAsignar ? 'No hay services sin asignar' : 'No hay services pendientes')}
                       </td>
                     </tr>
                   ) : (

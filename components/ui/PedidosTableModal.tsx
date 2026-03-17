@@ -44,8 +44,8 @@ interface PedidosTableModalProps {
   moviles: MovilData[];
   onPedidoClick?: (pedidoId: number) => void;
   onMovilClick?: (movilId: number) => void;
-  vista?: 'pendientes' | 'finalizados';
-  onVistaChange?: (vista: 'pendientes' | 'finalizados') => void;
+  vista?: 'pendientes' | 'finalizados' | 'sin-asignar';
+  onVistaChange?: (vista: 'pendientes' | 'finalizados' | 'sin-asignar') => void;
   selectedMoviles?: number[];
   externalAtraso?: string[];
   externalTipoServicio?: string;
@@ -76,6 +76,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
 
 export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, onClearPreFilter }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
+  const isSinAsignar = vista === 'sin-asignar';
   const [filters, setFilters] = useState<Filters>({
     search: '',
     atraso: [],
@@ -111,9 +112,15 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
-    let result = isFinalizados
-      ? pedidos.filter(p => Number(p.estado_nro) === 2)
-      : pedidos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5');
+    let result: PedidoSupabase[];
+    if (isFinalizados) {
+      result = pedidos.filter(p => Number(p.estado_nro) === 2);
+    } else if (isSinAsignar) {
+      result = pedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
+    } else {
+      // Pendientes: estado 1 con movil asignado (sub_estado 5)
+      result = pedidos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5');
+    }
     
     // Cuando hay pre-filtro de móvil, NO filtrar por selectedMoviles
     // (el móvil del popup puede no estar en la selección lateral)
@@ -130,7 +137,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil]);
+  }, [pedidos, isFinalizados, isSinAsignar, selectedMoviles, externalTipoServicio, preFilterMovil]);
 
   // ========== Valores únicos para filtros ==========
   const uniqueZonas = useMemo(() => {
@@ -343,7 +350,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                 <div>
                   <h2 className="text-lg font-bold text-white">Vista Extendida de Pedidos</h2>
                   <p className="text-xs text-gray-400">
-                    {sorted.length} pedido{sorted.length !== 1 ? 's' : ''} {isFinalizados ? 'finalizado' : 'pendiente'}{sorted.length !== 1 ? 's' : ''}
+                    {sorted.length} pedido{sorted.length !== 1 ? 's' : ''} {isFinalizados ? 'finalizado' : isSinAsignar ? 'sin asignar' : 'pendiente'}{sorted.length !== 1 ? 's' : ''}
                     {hasActiveFilters ? ` (de ${pedidosBase.length} total)` : ''}
                   </p>
                 </div>
@@ -386,6 +393,11 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                   <div className="w-2 h-2 rounded-full bg-green-400" />
                   <span>Pedidos Finalizados</span>
                 </div>
+              ) : isSinAsignar ? (
+                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <div className="w-2 h-2 rounded-full bg-gray-400" />
+                  <span>Pedidos Sin Asignar</span>
+                </div>
               ) : (
                 <>{ATRASO_OPTIONS.map(opt => (
                   <div key={opt.key} className="flex items-center gap-1.5 text-xs text-gray-400">
@@ -400,10 +412,18 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                 <button
                   onClick={() => onVistaChange?.('pendientes')}
                   className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
-                    !isFinalizados ? 'bg-teal-500/30 text-teal-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                    vista === 'pendientes' ? 'bg-teal-500/30 text-teal-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
                   }`}
                 >
                   Pendientes
+                </button>
+                <button
+                  onClick={() => onVistaChange?.('sin-asignar')}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-all font-medium ${
+                    isSinAsignar ? 'bg-gray-500/30 text-gray-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Sin Asignar
                 </button>
                 <button
                   onClick={() => onVistaChange?.('finalizados')}
@@ -568,7 +588,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
-                        {hasActiveFilters ? 'No hay pedidos que coincidan con los filtros' : (isFinalizados ? 'No hay pedidos finalizados' : 'No hay pedidos pendientes')}
+                        {hasActiveFilters ? 'No hay pedidos que coincidan con los filtros' : (isFinalizados ? 'No hay pedidos finalizados' : isSinAsignar ? 'No hay pedidos sin asignar' : 'No hay pedidos pendientes')}
                       </td>
                     </tr>
                   ) : (
