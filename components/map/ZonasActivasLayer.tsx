@@ -53,15 +53,27 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-/** Valida que todos los puntos del geojson tengan lat/lng numéricos válidos */
+/** Valida y normaliza geojson: soporta [{lat,lng}], Feature, Polygon, MultiPolygon */
 function parseGeo(raw: any): Array<{ lat: number; lng: number }> | null {
   let geo = raw;
   if (typeof geo === 'string') { try { geo = JSON.parse(geo); } catch { return null; } }
+
+  // Si es GeoJSON Feature/Geometry, extraer coordenadas
+  if (geo && typeof geo === 'object' && !Array.isArray(geo)) {
+    if (geo.type === 'Feature' && geo.geometry) geo = geo.geometry;
+    if (geo.type === 'Polygon' && geo.coordinates) {
+      geo = geo.coordinates[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
+    } else if (geo.type === 'MultiPolygon' && geo.coordinates) {
+      geo = geo.coordinates[0]?.[0]?.map((c: number[]) => ({ lat: c[1], lng: c[0] })) || [];
+    }
+  }
+
   if (!Array.isArray(geo) || geo.length < 3) return null;
-  const valid = geo.filter((p: any) =>
-    p && typeof p.lat === 'number' && typeof p.lng === 'number' &&
-    isFinite(p.lat) && isFinite(p.lng)
-  );
+
+  // parseFloat para soportar strings desde la DB
+  const valid = geo
+    .map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }))
+    .filter((p: any) => isFinite(p.lat) && isFinite(p.lng));
   return valid.length >= 3 ? valid : null;
 }
 
