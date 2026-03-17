@@ -47,7 +47,15 @@ function parseDemorasBody(body: any): any[] {
   }
 
   // 3) Array directo o un solo objeto
-  return Array.isArray(body) ? body : [body];
+  const raw = Array.isArray(body) ? body : [body];
+
+  // Normalizar campo "activa": si viene como "S"/"N" string, convertir a boolean
+  return raw.map((row: any) => {
+    if (typeof row.activa === 'string') {
+      row.activa = row.activa.toUpperCase() === 'S';
+    }
+    return row;
+  });
 }
 
 // =====================================================================
