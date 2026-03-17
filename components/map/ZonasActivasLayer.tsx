@@ -53,6 +53,18 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
+/** Valida que todos los puntos del geojson tengan lat/lng numéricos válidos */
+function parseGeo(raw: any): Array<{ lat: number; lng: number }> | null {
+  let geo = raw;
+  if (typeof geo === 'string') { try { geo = JSON.parse(geo); } catch { return null; } }
+  if (!Array.isArray(geo) || geo.length < 3) return null;
+  const valid = geo.filter((p: any) =>
+    p && typeof p.lat === 'number' && typeof p.lng === 'number' &&
+    isFinite(p.lat) && isFinite(p.lng)
+  );
+  return valid.length >= 3 ? valid : null;
+}
+
 /**
  * Capa "Zonas Activas": dibuja polígonos de zonas coloreados según el campo
  * `activa` de la tabla demoras.  Verde = activa, Rojo = inactiva.
@@ -67,19 +79,16 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
   // Pre-calcular etiquetas
   const labels = useMemo(() => {
     return zonas
-      .filter((z) => {
-        let geo = z.geojson;
-        if (typeof geo === 'string') { try { geo = JSON.parse(geo); } catch { return false; } }
-        return Array.isArray(geo) && geo.length >= 3;
-      })
       .map((z) => {
-        let geo = z.geojson!;
-        if (typeof geo === 'string') geo = JSON.parse(geo as any);
-        const centroid = polygonCentroid(geo as Array<{ lat: number; lng: number }>);
+        const geo = parseGeo(z.geojson);
+        if (!geo) return null;
+        const centroid = polygonCentroid(geo);
+        if (!isFinite(centroid[0]) || !isFinite(centroid[1])) return null;
         const info = demoras.get(z.zona_id);
-        const activa = info?.activa ?? null; // null = sin dato
+        const activa = info?.activa ?? null;
         return { zona_id: z.zona_id, nombre: z.nombre, centroid, activa, minutos: info?.minutos ?? null };
-      });
+      })
+      .filter(Boolean) as Array<{ zona_id: number; nombre: string | null; centroid: [number, number]; activa: boolean | null; minutos: number | null }>;
   }, [zonas, demoras]);
 
   if (!zonas || zonas.length === 0) return null;
@@ -87,11 +96,10 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
   return (
     <>
       {zonas.map((zona) => {
-        let geo = zona.geojson;
-        if (typeof geo === 'string') { try { geo = JSON.parse(geo); } catch { return null; } }
-        if (!Array.isArray(geo) || geo.length < 3) return null;
+        const geo = parseGeo(zona.geojson);
+        if (!geo) return null;
 
-        const positions: LatLngExpression[] = (geo as Array<{ lat: number; lng: number }>).map((p) => [p.lat, p.lng]);
+        const positions: LatLngExpression[] = geo.map((p) => [p.lat, p.lng]);
         const info = demoras.get(zona.zona_id);
         const activa = info?.activa ?? null;
 
