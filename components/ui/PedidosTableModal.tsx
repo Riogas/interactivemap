@@ -584,16 +584,18 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                       </td>
                     </tr>
                   ) : (
-                    paginated.map(({ pedido: p, delayMins, delayInfo }) => (
+                    paginated.map(({ pedido: p, delayMins, delayInfo }) => {
+                      const esEntregado = isFinalizados && String(p.sub_estado_desc) === '3';
+                      return (
                       <tr
                         key={p.id}
-                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : isSinAsignar ? 'bg-gray-400/15 hover:bg-gray-400/25 border-l-gray-400' : getRowBg(delayInfo)}`}
+                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? (esEntregado ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : 'bg-red-500/10 hover:bg-red-500/20 border-l-red-500') : isSinAsignar ? 'bg-gray-400/15 hover:bg-gray-400/25 border-l-gray-400' : getRowBg(delayInfo)}`}
                       >
                         {/* Atraso badge */}
                         <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
                           {isFinalizados ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap bg-green-500/25 text-green-300">
-                              ✔ Finalizado
+                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${esEntregado ? 'bg-green-500/25 text-green-300' : 'bg-red-500/25 text-red-300'}`}>
+                              {esEntregado ? '✔ Entregado' : '✗ No Entregado'}
                             </span>
                           ) : (
                             <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${getDelayBadgeStyle(delayInfo)}`}>
@@ -691,7 +693,8 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                           )}
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
