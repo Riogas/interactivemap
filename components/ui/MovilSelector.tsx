@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
+import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, ServiceSupabase, CustomMarker, EmpresaFleteraSupabase } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion } from '@/utils/estadoPedido';
 import clsx from 'clsx';
@@ -41,10 +41,15 @@ interface MovilSelectorProps {
   onServicesFiltersChange?: (filters: ServiceFilters) => void; // Callback para cambios en filtros de services
   tiposServicio?: string[]; // Tipos de servicio dinámicos desde moviles_zonas
   onOpenRanking?: () => void; // Abrir modal de ranking de móviles
+  // Empresa fletera props
+  empresas?: EmpresaFleteraSupabase[];
+  selectedEmpresas?: number[];
+  onEmpresasChange?: (ids: number[]) => void;
+  showEmpresaSelector?: boolean;
 }
 
 // Definir las categorías del árbol
-type CategoryKey = 'moviles' | 'pedidos' | 'services' | 'pois';
+type CategoryKey = 'empresas' | 'moviles' | 'pedidos' | 'services' | 'pois';
 
 interface Category {
   key: CategoryKey;
@@ -84,6 +89,10 @@ export default function MovilSelector({
   onServicesFiltersChange,
   tiposServicio = [],
   onOpenRanking,
+  empresas = [],
+  selectedEmpresas = [],
+  onEmpresasChange,
+  showEmpresaSelector = false,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -390,8 +399,17 @@ export default function MovilSelector({
     return result;
   }, [services, servicesSearch, servicesFilters, selectedMoviles]);
 
+  // Estado de búsqueda para empresas
+  const [empresaSearch, setEmpresaSearch] = useState('');
+  const filteredEmpresas = useMemo(() => {
+    if (!empresaSearch.trim()) return empresas;
+    const q = empresaSearch.toLowerCase();
+    return empresas.filter(e => e.nombre.toLowerCase().includes(q));
+  }, [empresas, empresaSearch]);
+
   // Categorías disponibles
   const categories: Category[] = [
+    ...(showEmpresaSelector ? [{ key: 'empresas' as CategoryKey, title: 'Empresa Fletera', icon: '🏢', count: selectedEmpresas.length }] : []),
     { key: 'moviles', title: 'Móviles', icon: '🚗', count: filteredMoviles.length },
     { key: 'pedidos', title: 'Pedidos', icon: '📦', count: filteredPedidos.length },
     { key: 'services', title: 'Services', icon: '🔧', count: filteredServices.length },
@@ -993,6 +1011,59 @@ export default function MovilSelector({
                   >
                     <div className="p-3 bg-white border-t border-gray-200">
                       {/* Contenido según la categoría */}
+                      {category.key === 'empresas' && onEmpresasChange && (
+                        <div className="space-y-2">
+                          {/* Barra de acciones */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-600">{selectedEmpresas.length} de {empresas.length}</span>
+                            <div className="flex gap-2">
+                              <button onClick={() => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Todas</button>
+                              <button onClick={() => onEmpresasChange([])} className="text-xs text-gray-600 hover:text-gray-800 font-medium">Ninguna</button>
+                            </div>
+                          </div>
+                          {/* Buscador */}
+                          {empresas.length > 5 && (
+                            <div className="relative">
+                              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                              <input
+                                type="text"
+                                value={empresaSearch}
+                                onChange={(e) => setEmpresaSearch(e.target.value)}
+                                placeholder="Buscar empresa..."
+                                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              />
+                            </div>
+                          )}
+                          {/* Lista de empresas */}
+                          <div className="max-h-56 overflow-y-auto space-y-0.5">
+                            {filteredEmpresas.map((empresa) => (
+                              <label
+                                key={empresa.empresa_fletera_id}
+                                className={clsx(
+                                  'flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm transition-colors',
+                                  selectedEmpresas.includes(empresa.empresa_fletera_id) ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedEmpresas.includes(empresa.empresa_fletera_id)}
+                                  onChange={() => {
+                                    if (selectedEmpresas.includes(empresa.empresa_fletera_id)) {
+                                      onEmpresasChange(selectedEmpresas.filter(id => id !== empresa.empresa_fletera_id));
+                                    } else {
+                                      onEmpresasChange([...selectedEmpresas, empresa.empresa_fletera_id]);
+                                    }
+                                  }}
+                                  className="w-4 h-4 rounded text-blue-600 flex-shrink-0"
+                                />
+                                <span className="font-medium text-gray-800 truncate">{empresa.nombre}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {category.key === 'moviles' && (
                         <div className="space-y-2">
                           {/* Botón Seleccionar Todos */}

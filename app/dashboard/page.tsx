@@ -1664,7 +1664,7 @@ function DashboardContent() {
           selectedEmpresas={selectedEmpresas}
           onEmpresasChange={setSelectedEmpresas}
           isLoadingEmpresas={isLoadingEmpresas}
-          showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
+          showEmpresaSelector={false}
         >
           <DashboardIndicators
             moviles={markInactiveMoviles(movilesFiltered)}
@@ -2005,6 +2005,10 @@ function DashboardContent() {
                   onTogglePoisHidden={() => setPoisHidden(!poisHidden)}
                   hiddenPoiCategories={hiddenPoiCategories}
                   onTogglePoiCategory={togglePoiCategory}
+                  empresas={empresas}
+                  selectedEmpresas={selectedEmpresas}
+                  onEmpresasChange={setSelectedEmpresas}
+                  showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
                 />
               </div>
             </motion.div>
