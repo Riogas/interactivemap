@@ -144,75 +144,75 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cliente</h4>
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-2 border border-blue-200">
-                <div className="font-bold text-blue-900 text-sm">{service.cliente_nombre || 'Sin nombre'}</div>
                 {service.cliente_tel && (
                   <a
                     href={`tel:${service.cliente_tel}`}
-                    className="inline-flex items-center gap-1.5 mt-1 px-2 py-1 bg-blue-200/60 hover:bg-blue-300/60 rounded-md transition-colors"
+                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-200/60 hover:bg-blue-300/60 rounded-md transition-colors"
                   >
                     <span className="text-sm">📞</span>
                     <span className="text-sm font-bold text-blue-900 tracking-wide">{service.cliente_tel}</span>
                   </a>
                 )}
-                {service.cliente_direccion && (
-                  <div className="text-[10px] text-blue-600 mt-1">📍 {service.cliente_direccion}</div>
-                )}
+                <div className="text-[10px] text-blue-700 mt-1 leading-relaxed">
+                  {service.cliente_nombre && <span className="font-semibold">{service.cliente_nombre}</span>}
+                  {service.cliente_nombre && service.cliente_direccion && ' – '}
+                  {service.cliente_direccion && <span className="text-blue-600">{service.cliente_direccion}</span>}
+                  {!service.cliente_nombre && !service.cliente_direccion && <span className="text-blue-400">Sin datos</span>}
+                </div>
               </div>
             </div>
 
-            {/* Estado */}
+            {/* Producto y Estado */}
             <div>
               <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Detalles del Service</h4>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-2 border border-green-200">
-                <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
-                <div className="font-bold text-green-900 text-xs">
-                  {getEstadoDescripcion(service.sub_estado_nro, service.sub_estado_desc)}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-2 border border-purple-200">
+                  <div className="text-[9px] text-purple-600 font-semibold mb-0.5">Producto</div>
+                  <div className="font-bold text-purple-900 text-xs truncate">
+                    {service.producto_nom || service.producto_cod || 'N/A'}
+                  </div>
+                  {service.producto_cant && (
+                    <div className="text-[10px] text-purple-700 mt-0.5">
+                      Cant: {service.producto_cant}
+                    </div>
+                  )}
+                </div>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-2 border border-green-200">
+                  <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
+                  <div className="font-bold text-green-900 text-xs">
+                    {getEstadoDescripcion(service.sub_estado_nro, service.sub_estado_desc)}
+                    {service.movil && <span className="text-green-700 font-normal"> – #{service.movil}</span>}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Móvil Asignado y Forma de Pago */}
-            {(service.movil || service.fpago_obs1) && (
+            {/* Obs Pedido y Obs Cliente */}
+            {(service.pedido_obs || service.cliente_obs) && (
               <div>
-                <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Asignación</h4>
                 <div className="grid grid-cols-2 gap-2">
-                  {service.movil && (
-                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-2 border border-indigo-200">
-                      <div className="text-[9px] text-indigo-600 font-semibold mb-0.5">Móvil</div>
-                      <div className="font-bold text-indigo-900 text-sm">#{service.movil}</div>
-                    </div>
-                  )}
-                  {service.fpago_obs1 && (
-                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-2 border border-orange-200">
-                      <div className="text-[9px] text-orange-600 font-semibold mb-0.5">Forma de Pago</div>
-                      <div className="font-bold text-orange-900 text-xs">{service.fpago_obs1}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Importe */}
-            {(service.imp_bruto || service.precio) && (service.imp_bruto !== 0 && service.precio !== 0) && (
-              <div>
-                <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Importe</h4>
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-2 border border-emerald-200">
-                  <div className="flex justify-between items-center">
-                    <div className="text-[9px] text-emerald-600 font-semibold">Total</div>
-                    <div className="text-lg font-bold text-emerald-900">
-                      {formatPrecio(service.imp_bruto || service.precio || null)}
-                    </div>
+                  <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-2 border border-amber-200">
+                    <div className="text-[9px] text-amber-600 font-semibold mb-0.5">Obs Service</div>
+                    <div className="text-[10px] text-amber-900 leading-relaxed">{service.pedido_obs || '—'}</div>
+                  </div>
+                  <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-lg p-2 border border-teal-200">
+                    <div className="text-[9px] text-teal-600 font-semibold mb-0.5">Obs Cliente</div>
+                    <div className="text-[10px] text-teal-900 leading-relaxed">{service.cliente_obs || '—'}</div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Observaciones */}
-            {service.pedido_obs && (
+            {/* Importe */}
+            {(service.imp_bruto || service.precio) && (
               <div>
-                <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Observaciones</h4>
-                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-2 border border-amber-200">
-                  <div className="text-[10px] text-amber-900 leading-relaxed">{service.pedido_obs}</div>
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-2 border border-emerald-200">
+                  <div className="flex justify-between items-center">
+                    <div className="text-[9px] text-emerald-600 font-semibold">Total</div>
+                    <div className="text-sm font-bold text-emerald-900">
+                      {formatPrecio(service.imp_bruto || service.precio || null)}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
