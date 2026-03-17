@@ -1,14 +1,13 @@
 'use client';
 
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { MovilData, PedidoSupabase, ServiceSupabase } from '@/types';
-import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
+import { PedidoSupabase } from '@/types';
 import { motion } from 'framer-motion';
 
 interface DashboardIndicatorsProps {
-  moviles: MovilData[];
+  moviles: any[];
   pedidos: PedidoSupabase[];
-  services: ServiceSupabase[];
+  services: any[];
   selectedDate: string;
   selectedMoviles?: number[];
 }
@@ -17,110 +16,30 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
-    // Mismos filtros que MovilSelector: estado 1, sub_estado 5, con móvil asignado
-    let pendientes = pedidos.filter(p => 
-      Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5'
-      && p.movil && Number(p.movil) > 0
-    );
-    let entregados = pedidos.filter(p => Number(p.estado_nro) === 2);
+    // Sin asignar: sin móvil o móvil === 0
+    let sinAsignar = pedidos.filter(p => !p.movil || Number(p.movil) === 0);
     
-    // Filtrar por móviles seleccionados (igual que sidebar)
+    // Finalizados: estado_nro === 2
+    let finalizados = pedidos.filter(p => Number(p.estado_nro) === 2);
+    
+    // Filtrar por móviles seleccionados
     if (selectedMoviles.length > 0) {
-      pendientes = pendientes.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
-      entregados = entregados.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
+      finalizados = finalizados.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
     }
-    const total = pedidos.length;
     
-    // Atrasados: pedidos pendientes con delay "Atrasado" o "Muy Atrasado"
-    const atrasados = pendientes.filter(p => {
-      const delayMins = computeDelayMinutes(p.fch_hora_max_ent_comp);
-      const info = getDelayInfo(delayMins);
-      return info.label === 'Atrasado' || info.label === 'Muy Atrasado';
-    });
-    
-    const cantAtrasados = atrasados.length;
-    const porcentajeAtrasados = pendientes.length > 0 
-      ? Math.round(cantAtrasados / pendientes.length * 100) 
+    // Entregados: finalizados con sub_estado_desc === '3'
+    const entregados = finalizados.filter(p => String(p.sub_estado_desc) === '3').length;
+    const totalFinalizados = finalizados.length;
+    const porcentajeEntregados = totalFinalizados > 0
+      ? Math.round(entregados / totalFinalizados * 100)
       : 0;
     
-    // Pedido más atrasado en minutos (el más negativo de computeDelayMinutes)
-    let masAtrasadoMins = 0;
-    pendientes.forEach(p => {
-      const delayMins = computeDelayMinutes(p.fch_hora_max_ent_comp);
-      if (delayMins !== null && delayMins < 0) {
-        const absMin = Math.abs(delayMins);
-        if (absMin > masAtrasadoMins) masAtrasadoMins = absMin;
-      }
-    });
-    
     return {
-      pendientes: pendientes.length,
-      entregados: entregados.length,
-      cantAtrasados,
-      porcentajeAtrasados,
-      masAtrasadoMins: Math.round(masAtrasadoMins),
-      total,
+      sinAsignar: sinAsignar.length,
+      entregados,
+      porcentajeEntregados,
     };
   }, [pedidos, selectedMoviles]);
-
-  // ============= CÁLCULOS DE SERVICES =============
-  const servicesStats = useMemo(() => {
-    let pendientes = services.filter(s => Number(s.estado_nro) === 1);
-    let realizados = services.filter(s => Number(s.estado_nro) === 2);
-    
-    // Filtrar por móviles seleccionados (igual que sidebar)
-    if (selectedMoviles.length > 0) {
-      pendientes = pendientes.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
-      realizados = realizados.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
-    }
-    const total = services.length;
-    
-    // Atrasados: services pendientes con delay "Atrasado" o "Muy Atrasado"
-    const atrasados = pendientes.filter(s => {
-      const delayMins = computeDelayMinutes(s.fch_hora_max_ent_comp);
-      const info = getDelayInfo(delayMins);
-      return info.label === 'Atrasado' || info.label === 'Muy Atrasado';
-    });
-    
-    const cantAtrasados = atrasados.length;
-    const porcentajeAtrasados = pendientes.length > 0 
-      ? Math.round(cantAtrasados / pendientes.length * 100) 
-      : 0;
-    
-    // Service más atrasado en minutos
-    let masAtrasadoMins = 0;
-    pendientes.forEach(s => {
-      const delayMins = computeDelayMinutes(s.fch_hora_max_ent_comp);
-      if (delayMins !== null && delayMins < 0) {
-        const absMin = Math.abs(delayMins);
-        if (absMin > masAtrasadoMins) masAtrasadoMins = absMin;
-      }
-    });
-    
-    return {
-      pendientes: pendientes.length,
-      realizados: realizados.length,
-      cantAtrasados,
-      porcentajeAtrasados,
-      masAtrasadoMins: Math.round(masAtrasadoMins),
-      total,
-    };
-  }, [services, selectedMoviles]);
-
-  // ============= CÁLCULOS DE MÓVILES =============
-  const movilesStats = useMemo(() => {
-    const total = moviles.length;
-    
-    // Sin coordenadas: usa isInactive que ya respeta maxCoordinateDelayMinutes
-    const sinCoordenadas = moviles.filter(m => m.isInactive).length;
-    const activos = total - sinCoordenadas;
-    
-    return {
-      total,
-      activos,
-      sinCoordenadas,
-    };
-  }, [moviles]);
 
   // ============= SCROLL CON FLECHAS =============
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -173,106 +92,18 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
 
       {/* Contenedor scrollable de indicadores */}
       <div ref={scrollRef} className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar min-w-0 flex-1">
-      {/* ========== ALERTAS CRÍTICAS ========== */}
       <div className="flex items-center gap-1.5">
-        {/* Pedidos Atrasados */}
-        {pedidosStats.cantAtrasados > 0 && (
-          <Indicator
-            icon="⏰"
-            label="Ped. Atrasados"
-            value={pedidosStats.cantAtrasados}
-            subtitle={`${pedidosStats.porcentajeAtrasados}%`}
-            color="red"
-            pulse
-          />
-        )}
-        
-        {/* Pedido Más Atrasado */}
-        {pedidosStats.masAtrasadoMins > 0 && (
-          <Indicator
-            icon="🔴"
-            label="Ped. +Atrasado"
-            value={`${pedidosStats.masAtrasadoMins} min`}
-            color="red"
-          />
-        )}
-        
-        {/* Services Atrasados */}
-        {servicesStats.cantAtrasados > 0 && (
-          <Indicator
-            icon="⏱️"
-            label="Svc. Atrasados"
-            value={servicesStats.cantAtrasados}
-            subtitle={`${servicesStats.porcentajeAtrasados}%`}
-            color="red"
-            pulse
-          />
-        )}
-        
-        {/* Service Más Atrasado */}
-        {servicesStats.masAtrasadoMins > 0 && (
-          <Indicator
-            icon="🔴"
-            label="Svc. +Atrasado"
-            value={`${servicesStats.masAtrasadoMins} min`}
-            color="red"
-          />
-        )}
-      </div>
-
-      {/* Separador */}
-      {(pedidosStats.cantAtrasados > 0 || servicesStats.cantAtrasados > 0) && (
-        <div className="h-6 w-px bg-white/30" />
-      )}
-
-      {/* ========== OPERACIONES ACTIVAS ========== */}
-      <div className="flex items-center gap-1.5">
-        {/* Pedidos Pendientes */}
+        {/* Pedidos Sin Asignar */}
         <Indicator
           icon="📦"
-          label="Ped. Pend."
-          value={pedidosStats.pendientes}
-          color="blue"
+          label="Ped. sin Asig."
+          value={pedidosStats.sinAsignar}
+          color={pedidosStats.sinAsignar > 0 ? 'orange' : 'gray'}
         />
-        
-        {/* Services Pendientes */}
-        <Indicator
-          icon="🔧"
-          label="Svc. Pend."
-          value={servicesStats.pendientes}
-          color="purple"
-        />
-      </div>
 
-      {/* Separador */}
-      <div className="h-6 w-px bg-white/30" />
+        {/* Separador */}
+        <div className="h-6 w-px bg-white/30" />
 
-      {/* ========== RECURSOS (MÓVILES) ========== */}
-      <div className="flex items-center gap-1.5">
-        {/* Móviles Activos */}
-        <Indicator
-          icon="🚗"
-          label="Móviles"
-          value={movilesStats.activos}
-          color="green"
-        />
-        
-        {/* Móviles sin coordenadas */}
-        {movilesStats.sinCoordenadas > 0 && (
-          <Indicator
-            icon="📡"
-            label="Sin Coord."
-            value={movilesStats.sinCoordenadas}
-            color="orange"
-          />
-        )}
-      </div>
-
-      {/* Separador */}
-      <div className="h-6 w-px bg-white/30" />
-
-      {/* ========== RESULTADOS ========== */}
-      <div className="flex items-center gap-1.5">
         {/* Pedidos Entregados */}
         <Indicator
           icon="✅"
@@ -280,13 +111,13 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           value={pedidosStats.entregados}
           color="green"
         />
-        
-        {/* Services OK */}
+
+        {/* % Entregados */}
         <Indicator
-          icon="✔️"
-          label="Services OK"
-          value={servicesStats.realizados}
-          color="green"
+          icon="📊"
+          label="% Entregados"
+          value={`${pedidosStats.porcentajeEntregados}%`}
+          color={pedidosStats.porcentajeEntregados >= 80 ? 'green' : pedidosStats.porcentajeEntregados >= 50 ? 'orange' : 'red'}
         />
       </div>
       </div>

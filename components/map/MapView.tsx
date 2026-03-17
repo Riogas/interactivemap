@@ -1644,9 +1644,13 @@ const MapView = memo(function MapView({
     return createServiceIconByDelay(fchHoraMaxEntComp);
   }, [serviceMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
 
-  // ✅ Iconos para PEDIDOS FINALIZADOS - verde con tick
-  const createFinalizadoPedidoIcon = useCallback(() => {
-    return getCachedIcon('pedido-finalizado', () => L.divIcon({
+  // ✅ Iconos para PEDIDOS FINALIZADOS - verde (entregado) o rojo (no entregado)
+  const createFinalizadoPedidoIcon = useCallback((entregado: boolean) => {
+    const cacheKey = entregado ? 'pedido-finalizado-ok' : 'pedido-finalizado-no';
+    const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
+    const shadow = entregado ? 'rgba(22, 163, 74, 0.3)' : 'rgba(220, 38, 38, 0.3)';
+    const symbol = entregado ? '✓' : '✗';
+    return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `
         <div style="
@@ -1655,10 +1659,10 @@ const MapView = memo(function MapView({
           position: absolute;
           left: -10px;
           top: -10px;
-          background: linear-gradient(135deg, #16a34a 0%, #4ade80 100%);
+          background: ${bg};
           border: 2px solid white;
           border-radius: 5px;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px rgba(22, 163, 74, 0.3);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px ${shadow};
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1669,39 +1673,42 @@ const MapView = memo(function MapView({
           font-weight: bold;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">✓</div>
+        onmouseout="this.style.transform='scale(1)'">${symbol}</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // ✅ Iconos COMPACTOS para pedidos finalizados (verde con tick)
-  const createFinalizadoPedidoIconCompact = useCallback(() => {
-    const cacheKey = `pedido-finalizado-compact-${pedidoShape}`;
+  // ✅ Iconos COMPACTOS para pedidos finalizados
+  const createFinalizadoPedidoIconCompact = useCallback((entregado: boolean) => {
+    const cacheKey = `pedido-finalizado-compact-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
+    const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
+    const symbol = entregado ? '✓' : '✗';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `<div style="
         width: 14px; height: 14px; position: absolute; left: -7px; top: -7px;
-        background: linear-gradient(135deg, #16a34a 0%, #4ade80 100%);
+        background: ${bg};
         border: 1.5px solid white; border-radius: 3px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         display: flex; align-items: center; justify-content: center;
         font-size: 9px; color: white; font-weight: bold; cursor: pointer;
-      ">✓</div>`,
+      ">${symbol}</div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
   }, [pedidoShape]);
 
-  // ✅ Iconos MINI para pedidos finalizados (verde)
-  const createFinalizadoPedidoIconMini = useCallback(() => {
-    const cacheKey = `pedido-finalizado-mini-${pedidoShape}`;
+  // ✅ Iconos MINI para pedidos finalizados
+  const createFinalizadoPedidoIconMini = useCallback((entregado: boolean) => {
+    const cacheKey = `pedido-finalizado-mini-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
+    const color = entregado ? '#16a34a' : '#dc2626';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `<div style="
         width: 10px; height: 10px; position: absolute; left: -5px; top: -5px;
-        background: #16a34a; border: 1px solid white; border-radius: 2px;
+        background: ${color}; border: 1px solid white; border-radius: 2px;
         box-shadow: 0 1px 2px rgba(0,0,0,0.3); cursor: pointer;
       "></div>`,
       iconSize: [10, 10],
@@ -1775,10 +1782,10 @@ const MapView = memo(function MapView({
   }, [serviceShape]);
 
   // 🚀 Funciones selectoras de icono finalizado por estilo
-  const getFinalizadoPedidoIcon = useCallback(() => {
-    if (pedidoMarkerStyle === 'mini') return createFinalizadoPedidoIconMini();
-    if (pedidoMarkerStyle === 'compact') return createFinalizadoPedidoIconCompact();
-    return createFinalizadoPedidoIcon();
+  const getFinalizadoPedidoIcon = useCallback((entregado: boolean) => {
+    if (pedidoMarkerStyle === 'mini') return createFinalizadoPedidoIconMini(entregado);
+    if (pedidoMarkerStyle === 'compact') return createFinalizadoPedidoIconCompact(entregado);
+    return createFinalizadoPedidoIcon(entregado);
   }, [pedidoMarkerStyle, createFinalizadoPedidoIcon, createFinalizadoPedidoIconCompact, createFinalizadoPedidoIconMini]);
 
   const getFinalizadoServiceIcon = useCallback(() => {
@@ -2699,11 +2706,12 @@ const MapView = memo(function MapView({
             const delayInfo = getDelayInfo(delayMins);
             // Sin asignar: siempre gris (forzar null para obtener icono gris)
             const iconFchHora = isSinAsignar ? null : pedido.fch_hora_max_ent_comp;
+            const esEntregado = String(pedido.sub_estado_desc) === '3';
             return (
               <OptimizedMarker
                 key={`pedido-tabla-${pedido.id}`}
                 position={[pedido.latitud!, pedido.longitud!]}
-                icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon() : getPedidoIcon(iconFchHora)}
+                icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon(esEntregado) : getPedidoIcon(iconFchHora)}
                 eventHandlers={{
                   click: () => {
                     onPedidoClick && onPedidoClick(pedido.id);
@@ -2719,7 +2727,9 @@ const MapView = memo(function MapView({
                       <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
                     )}
                     {pedidosVista === 'finalizados' ? (
-                      <div style={{ color: '#16a34a', fontWeight: 'bold' }}>✓ Finalizado</div>
+                      <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
+                        {esEntregado ? '✓ Entregado' : '✗ No Entregado'}
+                      </div>
                     ) : (
                       <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
                         {delayInfo.label}: {delayInfo.badgeText}
