@@ -233,17 +233,31 @@ export async function PUT(request: NextRequest) {
 
     const items = rawItems.flatMap(mapGxItem);
 
-    console.log('🔄 Upsert items mapeados:', items.length);
+    console.log('🔄 PUT items mapeados:', items.length);
     if (items.length > 0) console.log('🔄 Primer item mapeado:', JSON.stringify(items[0]));
 
-    console.log(`🔄 Upsert ${items.length} asignación(es) móvil-zona...`);
-
     const supabase = getServerSupabaseClient();
+
+    // Borrar las filas existentes que coincidan (por movil_id + zona_id + escenario_id + tipo_de_servicio)
+    // y luego insertar las nuevas, evitando problemas de constraint
+    for (const item of items) {
+      const { error: delError } = await (supabase as any)
+        .from('moviles_zonas')
+        .delete()
+        .eq('movil_id', item.movil_id)
+        .eq('zona_id', item.zona_id)
+        .eq('escenario_id', item.escenario_id)
+        .eq('tipo_de_servicio', item.tipo_de_servicio);
+
+      if (delError) {
+        console.error('❌ Error al borrar fila previa:', delError);
+      }
+    }
+
+    // Insertar todas las filas nuevas
     const { data, error } = await (supabase as any)
       .from('moviles_zonas')
-      .upsert(items, {
-        onConflict: 'movil_id,zona_id',
-      })
+      .insert(items)
       .select();
 
     if (error) {
