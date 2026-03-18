@@ -124,9 +124,10 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     
     // Cuando hay pre-filtro de móvil, NO filtrar por selectedMoviles
     // (el móvil del popup puede no estar en la selección lateral)
-    // Sin asignar: no filtrar por selectedMoviles ni tipoServicio
-    if (isSinAsignar) {
-      // No aplicar filtros de móviles ni tipo de servicio a pedidos sin asignar
+    // Sin asignar y Finalizados: no filtrar por selectedMoviles
+    // (el dropdown interno del modal permite filtrar manualmente)
+    if (isSinAsignar || isFinalizados) {
+      // No aplicar filtros de móviles ni tipo de servicio
     } else if (preFilterMovil) {
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
     } else if (selectedMoviles.length > 0) {
