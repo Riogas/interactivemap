@@ -107,6 +107,9 @@ function DashboardContent() {
 
   // Pre-filtro de móvil para vista extendida (cuando se abre desde popup de un móvil)
   const [preFilterMovil, setPreFilterMovil] = useState<number | undefined>();
+
+  // Pre-filtro de zona para vista extendida (cuando se abre desde estadísticas por zona)
+  const [preFilterZona, setPreFilterZona] = useState<number | undefined>();
   
   // Estado para modal de importación OSM
   const [isOsmImportOpen, setIsOsmImportOpen] = useState(false);
@@ -1727,31 +1730,7 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* Botón POI */}
-          <button
-            id="tour-fab-poi"
-            onClick={() => { setIsPlacingMarker(!isPlacingMarker); setIsActionsExpanded(false); }}
-            className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 ${
-              isPlacingMarker
-                ? 'bg-gradient-to-br from-red-500 to-red-600 animate-pulse'
-                : 'bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
-            }`}
-            title={isPlacingMarker ? 'Cancelar modo de colocación' : 'Agregar marcador personalizado'}
-          >
-            <svg className={`w-5 h-5 text-white transition-transform ${isPlacingMarker ? 'scale-110' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
-
-          {/* Botón Importar POIs desde OSM */}
-          <button
-            onClick={() => { setIsOsmImportOpen(true); setIsActionsExpanded(false); }}
-            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
-            title="Importar puntos de interés desde OpenStreetMap"
-          >
-            <span className="text-base">🗺️</span>
-          </button>
+          {/* Botones POI y OSM Import removidos */}
         </div>
 
         {/* Botón toggle FAB ⚡ */}
@@ -1818,9 +1797,9 @@ function DashboardContent() {
 
       {/* Modal de Vista Extendida de Pedidos */}
       <PedidosTableModal
-        key={`pedidos-${preFilterMovil ?? 'all'}`}
+        key={`pedidos-${preFilterMovil ?? 'all'}-z${preFilterZona ?? 'all'}`}
         isOpen={isPedidosTableOpen}
-        onClose={() => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); }}
+        onClose={() => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
         onPedidoClick={handlePedidoClick}
@@ -1831,14 +1810,15 @@ function DashboardContent() {
         externalAtraso={pedidosFilters.atraso}
         externalTipoServicio={pedidosFilters.tipoServicio}
         preFilterMovil={preFilterMovil}
-        onClearPreFilter={() => setPreFilterMovil(undefined)}
+        preFilterZona={preFilterZona}
+        onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
       />
 
       {/* Modal de Vista Extendida de Services */}
       <ServicesTableModal
-        key={`services-${preFilterMovil ?? 'all'}`}
+        key={`services-${preFilterMovil ?? 'all'}-z${preFilterZona ?? 'all'}`}
         isOpen={isServicesTableOpen}
-        onClose={() => { setIsServicesTableOpen(false); setPreFilterMovil(undefined); }}
+        onClose={() => { setIsServicesTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         services={servicesCompletos}
         moviles={movilesFiltered}
         onServiceClick={handleServiceClick}
@@ -1849,7 +1829,8 @@ function DashboardContent() {
         externalAtraso={servicesFilters.atraso}
         externalTipoServicio={servicesFilters.tipoServicio}
         preFilterMovil={preFilterMovil}
-        onClearPreFilter={() => setPreFilterMovil(undefined)}
+        preFilterZona={preFilterZona}
+        onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
       />
 
       {/* Modal de importación de POIs desde OpenStreetMap */}
@@ -1914,6 +1895,31 @@ function DashboardContent() {
         pedidos={pedidosCompletos}
         escenarioIds={selectedEscenarioIds}
         movilEstados={allMovilEstados}
+        onZonaClick={(zonaId, svcFilter) => {
+          setPreFilterZona(zonaId);
+          setPreFilterMovil(undefined);
+          const upper = svcFilter.toUpperCase();
+          if (upper === 'SERVICE') {
+            setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
+            setIsServicesTableOpen(true);
+          } else {
+            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: svcFilter }));
+            setIsPedidosTableOpen(true);
+          }
+        }}
+        onMovsPrioClick={(_zonaId, movilIds, _svcFilter) => {
+          if (movilIds.length === 1) {
+            // Un solo móvil: abrir su popup en mapa
+            setPopupMovil(movilIds[0]);
+          } else if (movilIds.length > 1) {
+            // Múltiples móviles: abrir vista extendida pre-filtrada por el primero
+            // (el usuario puede cambiar en el dropdown)
+            setPreFilterMovil(movilIds[0]);
+            setPreFilterZona(undefined);
+            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
+            setIsPedidosTableOpen(true);
+          }
+        }}
       />
 
       {/* Indicador de conexión Realtime - Debajo del navbar, a la derecha */}

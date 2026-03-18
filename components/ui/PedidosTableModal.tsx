@@ -50,6 +50,7 @@ interface PedidosTableModalProps {
   externalAtraso?: string[];
   externalTipoServicio?: string;
   preFilterMovil?: number;
+  preFilterZona?: number;
   onClearPreFilter?: () => void;
 }
 
@@ -74,7 +75,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, onClearPreFilter }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const isSinAsignar = vista === 'sin-asignar';
   const [filters, setFilters] = useState<Filters>({
@@ -109,6 +110,14 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
       setPage(0);
     }
   }, [preFilterMovil, isOpen, pedidos]);
+
+  // Aplicar pre-filtro de zona inmediatamente
+  useEffect(() => {
+    if (preFilterZona && isOpen) {
+      setFilters(f => ({ ...f, zona: preFilterZona }));
+      setPage(0);
+    }
+  }, [preFilterZona, isOpen]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {

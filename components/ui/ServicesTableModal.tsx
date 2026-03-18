@@ -49,6 +49,7 @@ interface ServicesTableModalProps {
   externalAtraso?: string[];
   externalTipoServicio?: string;
   preFilterMovil?: number;
+  preFilterZona?: number;
   onClearPreFilter?: () => void;
 }
 
@@ -73,7 +74,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, onClearPreFilter }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const isSinAsignar = vista === 'sin-asignar';
   const [filters, setFilters] = useState<Filters>({
@@ -100,6 +101,14 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       return () => clearTimeout(timer);
     }
   }, [preFilterMovil, isOpen]);
+
+  // Aplicar pre-filtro de zona inmediatamente
+  useEffect(() => {
+    if (preFilterZona && isOpen) {
+      setFilters(f => ({ ...f, zona: preFilterZona }));
+      setPage(0);
+    }
+  }, [preFilterZona, isOpen]);
 
   // ========== Services base: según vista (pendientes/finalizados) + filtros externos ==========
   const servicesBase = useMemo(() => {

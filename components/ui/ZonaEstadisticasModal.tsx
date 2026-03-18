@@ -21,6 +21,10 @@ interface ZonaEstadisticasModalProps {
   escenarioIds: number[];
   /** Map<string(movilNro), estadoNro> – siempre disponible desde allMovilEstados */
   movilEstados?: Map<string, number>;
+  /** Callback al clickear una zona: abre vista extendida de pedidos/services */
+  onZonaClick?: (zonaId: number, serviceFilter: string) => void;
+  /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona */
+  onMovsPrioClick?: (zonaId: number, movilIds: number[], serviceFilter: string) => void;
 }
 
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
@@ -36,6 +40,8 @@ export default function ZonaEstadisticasModal({
   pedidos,
   escenarioIds,
   movilEstados = new Map(),
+  onZonaClick,
+  onMovsPrioClick,
 }: ZonaEstadisticasModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
@@ -157,8 +163,10 @@ export default function ZonaEstadisticasModal({
     for (const zonaId of zonaIds) {
       const pedidosZona = filteredPedidos.filter(p => p.zona_nro === zonaId);
 
-      // Sin asignar: estado 1, sin movil
-      const sinAsignar = pedidosZona.filter(p =>
+      // Sin asignar: estado 1, sin movil — usa TODOS los pedidos (sin filtrar por servicio)
+      // porque los pedidos sin asignar no están categorizados por servicio aún
+      const sinAsignar = pedidos.filter(p =>
+        p.zona_nro === zonaId &&
         Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0)
       ).length;
 
@@ -216,7 +224,7 @@ export default function ZonaEstadisticasModal({
     }
 
     return result;
-  }, [filteredPedidos, zonas, filteredMovilesZonas, demorasData]);
+  }, [filteredPedidos, pedidos, zonas, filteredMovilesZonas, demorasData]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -357,7 +365,8 @@ export default function ZonaEstadisticasModal({
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: Math.min(idx * 0.02, 0.5) }}
-                      className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                      className={`border-b border-white/5 hover:bg-white/5 transition-colors ${onZonaClick ? 'cursor-pointer' : ''}`}
+                      onClick={() => onZonaClick?.(z.zonaId, serviceFilter)}
                     >
                       <td className="py-1.5 px-2 text-left">
                         <span className="text-white font-semibold text-xs">{z.zonaNombre}</span>
@@ -404,7 +413,18 @@ export default function ZonaEstadisticasModal({
                         </span>
                       </td>
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.movsPrio > 0 ? 'text-emerald-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${z.movsPrio > 0 ? 'text-emerald-400 cursor-pointer hover:underline' : 'text-gray-600'}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.movsPrio > 0 && onMovsPrioClick) {
+                              const movilIds = filteredMovilesZonas
+                                .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito === 1)
+                                .map(r => Number(r.movil_id));
+                              onMovsPrioClick(z.zonaId, movilIds, serviceFilter);
+                            }
+                          }}
+                        >
                           {z.movsPrio}
                         </span>
                       </td>
@@ -430,7 +450,7 @@ export default function ZonaEstadisticasModal({
           {/* Footer */}
           <div className="px-4 py-2 border-t border-white/10 flex justify-between items-center">
             <span className="text-[10px] text-gray-500">{sorted.length} zonas</span>
-            <span className="text-[10px] text-gray-500">Click en cabecera para ordenar</span>
+            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en #Movs P. = Detalle móvil · Click en cabecera = Ordenar</span>
           </div>
         </motion.div>
       </motion.div>
