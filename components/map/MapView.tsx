@@ -2938,6 +2938,8 @@ const MapView = memo(function MapView({
           selectedMovilesCount={selectedMovilesCount}
           pedidosPendientes={movilActual.pedidosAsignados || 0}
           serviciosPendientes={allServices.filter(s => Number(s.estado_nro) === 1 && Number(s.movil) === popupMovil).length}
+          movilesZonasData={movilesZonasData}
+          allZonas={(allZonas.length > 0 ? allZonas : zonas).map(z => ({ zona_id: z.zona_id, nombre: z.nombre }))}
           onClose={() => {
             if (onMovilClick) {
               onMovilClick(undefined);

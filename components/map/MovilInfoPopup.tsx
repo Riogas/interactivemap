@@ -5,6 +5,7 @@ import { MovilData } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import ZonasMovilModal from '@/components/ui/ZonasMovilModal';
 
 interface SessionHistorial {
   chofer: string;
@@ -27,6 +28,8 @@ interface MovilInfoPopupProps {
   selectedMovilesCount?: number;
   pedidosPendientes?: number;
   serviciosPendientes?: number;
+  movilesZonasData?: Array<{ movil_id: string; zona_id: number; prioridad_o_transito: number; tipo_de_servicio: string; escenario_id: number; activa: boolean }>;
+  allZonas?: Array<{ zona_id: number; nombre: string | null }>;
 }
 
 export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({ 
@@ -37,6 +40,8 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
   selectedMovilesCount = 0,
   pedidosPendientes = 0,
   serviciosPendientes = 0,
+  movilesZonasData = [],
+  allZonas = [],
 }) => {
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -45,6 +50,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
   const [smsMessage, setSmsMessage] = useState('');
   const [smsSending, setSmsSending] = useState(false);
   const [smsSent, setSmsSent] = useState(false);
+  const [zonasModalOpen, setZonasModalOpen] = useState(false);
 
   // Enviar SMS al móvil
   const handleSendSms = async () => {
@@ -112,6 +118,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
     : [];
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         initial={{ y: 100, opacity: 0, scale: 0.9 }}
@@ -139,7 +146,17 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                {/* Botón enviar mensaje */}
+                {/* Botón ver zonas del móvil */}
+                <button
+                  onClick={() => setZonasModalOpen(true)}
+                  className="w-7 h-7 rounded-full bg-white bg-opacity-90 hover:bg-white transition-all flex items-center justify-center shadow-md"
+                  title="Ver zonas asignadas"
+                >
+                  <svg className="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                </button>
+                {/* Botón enviar mensaje */}}
                 <button
                   onClick={() => { setSmsOpen(!smsOpen); setSmsSent(false); }}
                   className={`w-7 h-7 rounded-full transition-all flex items-center justify-center shadow-md ${
@@ -492,5 +509,19 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
         </div>
       </motion.div>
     </AnimatePresence>
+
+    {/* Modal de Zonas del Móvil */}
+    {movil && (
+      <ZonasMovilModal
+        isOpen={zonasModalOpen}
+        onClose={() => setZonasModalOpen(false)}
+        movilId={movil.id}
+        movilName={movil.name || `Móvil ${movil.id}`}
+        movilColor={movil.color}
+        zonaRecords={movilesZonasData}
+        zonas={allZonas}
+      />
+    )}
+    </>
   );
 }
