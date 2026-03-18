@@ -19,8 +19,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
-    // Sin asignar: sin móvil o móvil === 0
-    let sinAsignar = pedidos.filter(p => !p.movil || Number(p.movil) === 0);
+    // Sin asignar: pendientes (estado 1) sin móvil o móvil === 0
+    let sinAsignar = pedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
     
     // Finalizados: estado_nro === 2
     let finalizados = pedidos.filter(p => Number(p.estado_nro) === 2);
