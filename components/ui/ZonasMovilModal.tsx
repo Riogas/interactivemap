@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface MovilZonaRecord {
@@ -50,10 +50,61 @@ export default function ZonasMovilModal({
 }: ZonasMovilModalProps) {
   const [tipoFilter, setTipoFilter] = useState<string>('all');
 
+  // ========== Fetch propio si los props vienen vacíos ==========
+  const [internalRecords, setInternalRecords] = useState<MovilZonaRecord[]>([]);
+  const [internalZonas, setInternalZonas] = useState<ZonaInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const effectiveRecords = zonaRecords.length > 0 ? zonaRecords : internalRecords;
+  const effectiveZonas = zonas.length > 0 ? zonas : internalZonas;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setInternalRecords([]);
+      setInternalZonas([]);
+      setTipoFilter('all');
+      return;
+    }
+
+    // Si ya tenemos datos por prop, no hace falta fetch
+    if (zonaRecords.length > 0 && zonas.length > 0) return;
+
+    setLoading(true);
+    const fetches: Promise<void>[] = [];
+
+    if (zonaRecords.length === 0) {
+      fetches.push(
+        fetch(`/api/moviles-zonas?movilId=${movilId}`)
+          .then(r => r.json())
+          .then(res => {
+            if (res.success && res.data) {
+              setInternalRecords(res.data);
+            }
+          })
+          .catch(() => {})
+      );
+    }
+
+    if (zonas.length === 0) {
+      fetches.push(
+        fetch('/api/zonas')
+          .then(r => r.json())
+          .then(res => {
+            if (res.success && res.data) {
+              setInternalZonas(res.data.map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre })));
+            }
+          })
+          .catch(() => {})
+      );
+    }
+
+    Promise.all(fetches).finally(() => setLoading(false));
+  }, [isOpen, movilId, zonaRecords.length, zonas.length]);
+
   // Zones for this movil
   const movilZonas = useMemo(() => {
-    return zonaRecords.filter(r => String(r.movil_id) === String(movilId));
-  }, [zonaRecords, movilId]);
+    return effectiveRecords.filter(r => String(r.movil_id) === String(movilId));
+  }, [effectiveRecords, movilId]);
 
   // Available service types
   const tiposDisponibles = useMemo(() => {
@@ -72,9 +123,9 @@ export default function ZonasMovilModal({
 
   // Zone name lookup
   const getZonaNombre = useCallback((zonaId: number) => {
-    const z = zonas.find(z => z.zona_id === zonaId);
+    const z = effectiveZonas.find(z => z.zona_id === zonaId);
     return z?.nombre || null;
-  }, [zonas]);
+  }, [effectiveZonas]);
 
   // Stats per tipo
   const statsByTipo = useMemo(() => {
@@ -171,7 +222,12 @@ export default function ZonasMovilModal({
 
             {/* Zone list */}
             <div className="flex-1 overflow-auto min-h-0 p-2">
-              {filtered.length === 0 ? (
+              {loading ? (
+                <div className="text-center py-12 text-gray-500">
+                  <div className="w-6 h-6 border-2 border-gray-600 border-t-gray-300 rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-sm">Cargando zonas...</p>
+                </div>
+              ) : filtered.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />

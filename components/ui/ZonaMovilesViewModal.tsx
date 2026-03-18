@@ -56,6 +56,10 @@ export default function ZonaMovilesViewModal({
   const [selectedZonaId, setSelectedZonaId] = useState<number | null>(null);
   const [serviceFilter, setServiceFilter] = useState<string>('URGENTE');
 
+  // ========== Datos internos de moviles_zonas (fetch propio si prop viene vacío) ==========
+  const [internalMzData, setInternalMzData] = useState<MovilZonaRecord[]>([]);
+  const effectiveMzData = movilesZonasData.length > 0 ? movilesZonasData : internalMzData;
+
   // Sincronizar filtro de servicio desde el mapa cuando se abre el modal
   useEffect(() => {
     if (isOpen && initialServiceFilter) {
@@ -63,20 +67,38 @@ export default function ZonaMovilesViewModal({
     }
   }, [isOpen, initialServiceFilter]);
 
-  // ========== Fetch zonas ==========
+  // ========== Fetch zonas + moviles_zonas (si prop está vacío) ==========
   useEffect(() => {
     if (!isOpen) return;
     setLoadingZonas(true);
-    fetch('/api/zonas')
-      .then(r => r.json())
-      .then(res => {
-        if (res.success && res.data) {
-          setZonas(res.data);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingZonas(false));
-  }, [isOpen]);
+
+    const fetches: Promise<void>[] = [
+      fetch('/api/zonas')
+        .then(r => r.json())
+        .then(res => {
+          if (res.success && res.data) {
+            setZonas(res.data);
+          }
+        })
+        .catch(() => {}),
+    ];
+
+    // Si no nos pasaron datos de moviles_zonas, cargarlos nosotros
+    if (movilesZonasData.length === 0) {
+      fetches.push(
+        fetch('/api/moviles-zonas')
+          .then(r => r.json())
+          .then(res => {
+            if (res.success && res.data) {
+              setInternalMzData(res.data);
+            }
+          })
+          .catch(() => {})
+      );
+    }
+
+    Promise.all(fetches).finally(() => setLoadingZonas(false));
+  }, [isOpen, movilesZonasData.length]);
 
   // ========== Auto-seleccionar zona inicial cuando llegan los datos ==========
   useEffect(() => {
@@ -122,10 +144,10 @@ export default function ZonaMovilesViewModal({
 
   // ========== Filtrar registros por tipo de servicio ==========
   const filteredData = useMemo(() => {
-    return movilesZonasData.filter(
+    return effectiveMzData.filter(
       mz => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter.toUpperCase()
     );
-  }, [movilesZonasData, serviceFilter]);
+  }, [effectiveMzData, serviceFilter]);
 
   // ========== Asignaciones por zona (desde filteredData) ==========
   const asignacionesPorZona = useMemo(() => {
@@ -166,6 +188,7 @@ export default function ZonaMovilesViewModal({
     if (!isOpen) {
       setSelectedZonaId(null);
       setServiceFilter('URGENTE');
+      setInternalMzData([]);
     }
   }, [isOpen]);
 
