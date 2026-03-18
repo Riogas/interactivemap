@@ -126,7 +126,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     // Sin asignar: no filtrar por selectedMoviles ni tipoServicio
     if (isSinAsignar) {
       // No aplicar filtros de móviles ni tipo de servicio a services sin asignar
-    } else if (preFilterMovil) {
+    } else if (preFilterMovil || preFilterZona) {
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
     } else if (selectedMoviles.length > 0) {
       result = result.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
@@ -139,7 +139,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, isFinalizados, isSinAsignar, selectedMoviles, externalTipoServicio, preFilterMovil]);
+  }, [services, isFinalizados, isSinAsignar, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona]);
 
   // ========== Valores únicos para filtros ==========
   const uniqueZonas = useMemo(() => {

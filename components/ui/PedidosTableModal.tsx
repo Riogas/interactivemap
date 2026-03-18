@@ -137,7 +137,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     // (el dropdown interno del modal permite filtrar manualmente)
     if (isSinAsignar || isFinalizados) {
       // No aplicar filtros de móviles ni tipo de servicio
-    } else if (preFilterMovil) {
+    } else if (preFilterMovil || preFilterZona) {
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
     } else if (selectedMoviles.length > 0) {
       result = result.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
@@ -150,7 +150,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     }
     
     return result;
-  }, [pedidos, isFinalizados, isSinAsignar, selectedMoviles, externalTipoServicio, preFilterMovil]);
+  }, [pedidos, isFinalizados, isSinAsignar, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona]);
 
   // ========== Valores únicos para filtros ==========
   const uniqueZonas = useMemo(() => {

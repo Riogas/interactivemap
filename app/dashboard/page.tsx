@@ -1896,6 +1896,7 @@ function DashboardContent() {
         escenarioIds={selectedEscenarioIds}
         movilEstados={allMovilEstados}
         onZonaClick={(zonaId, svcFilter) => {
+          setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);
           setPreFilterMovil(undefined);
           const upper = svcFilter.toUpperCase();
