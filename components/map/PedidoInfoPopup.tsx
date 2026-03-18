@@ -146,7 +146,7 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
               </span>
             </div>
             ) : (() => {
-              const esEntregado = String(pedido.sub_estado_desc) === '3';
+              const esEntregado = ['3','16'].includes(String(pedido.sub_estado_desc));
               const bannerColor = esEntregado ? '#22c55e' : '#ef4444';
               const estadoDesc = getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc);
               return (

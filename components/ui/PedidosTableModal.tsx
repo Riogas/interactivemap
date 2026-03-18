@@ -8,7 +8,7 @@ import { getEstadoDescripcion } from '@/utils/estadoPedido';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
-type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'producto' | 'importe';
+type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'producto' | 'importe' | 'direccion' | 'hora_max' | 'obs_pedido' | 'obs_cliente' | 'estado';
 type SortDir = 'asc' | 'desc';
 
 interface Filters {
@@ -239,6 +239,11 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
         case 'cliente': return (a.pedido.cliente_nombre || '').localeCompare(b.pedido.cliente_nombre || '') * dir;
         case 'producto': return (a.pedido.producto_nom || '').localeCompare(b.pedido.producto_nom || '') * dir;
         case 'importe': return ((a.pedido.imp_bruto || 0) - (b.pedido.imp_bruto || 0)) * dir;
+        case 'direccion': return (a.pedido.cliente_direccion || '').localeCompare(b.pedido.cliente_direccion || '') * dir;
+        case 'hora_max': return (a.pedido.fch_hora_max_ent_comp || '').localeCompare(b.pedido.fch_hora_max_ent_comp || '') * dir;
+        case 'obs_pedido': return (a.pedido.pedido_obs || '').localeCompare(b.pedido.pedido_obs || '') * dir;
+        case 'obs_cliente': return (a.pedido.cliente_obs || '').localeCompare(b.pedido.cliente_obs || '') * dir;
+        case 'estado': return ((a.pedido.sub_estado_nro || 0) - (b.pedido.sub_estado_nro || 0)) * dir;
         default: return 0;
       }
     });
@@ -559,24 +564,33 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200" onClick={() => handleSort('cliente')}>
                       Cliente <SortArrow col="cliente" />
                     </th>
-                    <th className="px-4 py-3 whitespace-nowrap" style={{ minWidth: '280px' }}>Dirección</th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" style={{ minWidth: '280px' }} onClick={() => handleSort('direccion')}>
+                      Dirección <SortArrow col="direccion" />
+                    </th>
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200" onClick={() => handleSort('producto')}>
                       Producto <SortArrow col="producto" />
                     </th>
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('importe')}>
                       Importe <SortArrow col="importe" />
                     </th>
-                    <th className="px-4 py-3 whitespace-nowrap">H. Máx</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Obs Pedido</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Obs Cliente</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Estado</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Coords</th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('hora_max')}>
+                      H. Máx <SortArrow col="hora_max" />
+                    </th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('obs_pedido')}>
+                      Obs Pedido <SortArrow col="obs_pedido" />
+                    </th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('obs_cliente')}>
+                      Obs Cliente <SortArrow col="obs_cliente" />
+                    </th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('estado')}>
+                      Estado <SortArrow col="estado" />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={14} className="text-center py-12 text-gray-500">
+                      <td colSpan={12} className="text-center py-12 text-gray-500">
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
@@ -585,7 +599,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                     </tr>
                   ) : (
                     paginated.map(({ pedido: p, delayMins, delayInfo }) => {
-                      const esEntregado = isFinalizados && String(p.sub_estado_desc) === '3';
+                      const esEntregado = isFinalizados && ['3','16'].includes(String(p.sub_estado_desc));
                       return (
                       <tr
                         key={p.id}
@@ -684,14 +698,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                           </span>
                         </td>
 
-                        {/* Coords indicator */}
-                        <td className="px-4 py-2.5 text-center" onClick={() => onPedidoClick?.(p.id)}>
-                          {p.latitud && p.longitud ? (
-                            <span className="text-green-400 text-xs" title={`${p.latitud}, ${p.longitud}`}>✓</span>
-                          ) : (
-                            <span className="text-red-400 text-xs" title="Sin coordenadas">✗</span>
-                          )}
-                        </td>
+
                       </tr>
                       );
                     })

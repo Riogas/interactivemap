@@ -5,9 +5,11 @@ Usa JT400 (Open Source IBM Toolbox para Java) via JayDeBeAPI
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict, Any
 import jaydebeapi
 import os
+import json
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import logging
@@ -21,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 # Cargar variables de entorno
 load_dotenv()
+
+# 🔧 ENCODING FIX: Forzar UTF-8 como encoding por defecto del proceso Python
+import sys
+if sys.stdout.encoding != 'utf-8':
+    logger.warning(f"⚠️ stdout encoding es {sys.stdout.encoding}, no UTF-8")
+os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 # 🔥 CACHÉ SIMPLE para evitar consultas repetitivas a AS400
 # Cache de últimas posiciones con TTL de 30 segundos
@@ -56,10 +64,27 @@ def set_cached_data(cache_key: str, data: Any):
     CACHE[cache_key]['timestamp'] = datetime.now()
     logger.info(f"💾 Cache actualizado para {cache_key}")
 
+# 🔧 ENCODING FIX: Respuesta JSON con charset=utf-8 explícito y ensure_ascii=False
+# para que ñ, á, é, í, ó, ú se serialicen correctamente (no como \u00f1 etc.)
+class UTF8JSONResponse(JSONResponse):
+    media_type = "application/json; charset=utf-8"
+    
+    def render(self, content: Any) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=None,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+
+
 app = FastAPI(
     title="TrackMovil AS400 API",
     description="API REST para consultar datos de tracking de vehículos desde AS400 DB2",
-    version="1.0.0"
+    version="1.0.0",
+    default_response_class=UTF8JSONResponse,
 )
 
 # Middleware deshabilitado temporalmente para diagnosticar
@@ -97,9 +122,13 @@ app.add_middleware(
 )
 
 # Configuración AS400
+# 🔧 ENCODING FIX: Se agregan propiedades de traducción de caracteres al JDBC URL.
+# - translate binary=true: Fuerza traducción de campos CCSID 65535 (binary/hex) al CCSID del job
+# - ccsid=1208: Solicita que el driver convierta datos a UTF-8 (CCSID 1208 = UTF-8 en AS400)
+# Sin estas propiedades, ñ y vocales acentuadas (á,é,í,ó,ú) llegan con caracteres incorrectos.
 AS400_CONFIG = {
     'driver': 'com.ibm.as400.access.AS400JDBCDriver',
-    'url': f"jdbc:as400://{os.getenv('DB_HOST', '192.168.1.8')}",
+    'url': f"jdbc:as400://{os.getenv('DB_HOST', '192.168.1.8')};translate binary=true;ccsid=1208",
     'user': os.getenv('DB_USER', 'qsecofr'),
     'password': os.getenv('DB_PASSWORD', 'wwm868'),
     'schema': os.getenv('DB_SCHEMA', 'GXICAGEO')
@@ -115,10 +144,20 @@ def _connect_to_db():
     os.environ['JAVA_HOME'] = r'C:\Program Files\Java\jdk-21'
     logger.info(f"☕ Usando JAVA_HOME: {os.environ['JAVA_HOME']}")
     
+    # 🔧 ENCODING FIX: Pasar propiedades de conexión para forzar traducción de caracteres
+    # Estas propiedades complementan las del JDBC URL y aseguran la conversión EBCDIC → UTF-8
+    conn_props = {
+        'user': AS400_CONFIG['user'],
+        'password': AS400_CONFIG['password'],
+        'translate binary': 'true',
+        'sort': 'language',
+        'sort language': 'ESP',
+    }
+    
     return jaydebeapi.connect(
         AS400_CONFIG['driver'],
         AS400_CONFIG['url'],
-        [AS400_CONFIG['user'], AS400_CONFIG['password']],
+        conn_props,
         JT400_JAR
     )
 
@@ -178,6 +217,22 @@ def execute_query(query: str) -> List[Dict[str, Any]]:
                     row_dict[col_name] = value.isoformat()
                 elif value is None:
                     row_dict[col_name] = None
+                elif isinstance(value, (bytes, bytearray)):
+                    # 🔧 ENCODING FIX: JayDeBeAPI puede devolver bytes para campos CHAR/VARCHAR
+                    # de AS400 con CCSID 65535. Intentar decodificar con múltiples encodings.
+                    try:
+                        row_dict[col_name] = value.decode('utf-8')
+                    except UnicodeDecodeError:
+                        try:
+                            row_dict[col_name] = value.decode('latin-1')
+                        except UnicodeDecodeError:
+                            try:
+                                row_dict[col_name] = value.decode('cp1252')
+                            except UnicodeDecodeError:
+                                row_dict[col_name] = value.decode('utf-8', errors='replace')
+                                logger.warning(f"⚠️ Encoding fallback (replace) para columna {col_name}")
+                elif isinstance(value, str):
+                    row_dict[col_name] = value
                 else:
                     row_dict[col_name] = value
             

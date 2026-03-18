@@ -1,7 +1,7 @@
 'use client';
 
-import React, { memo, useMemo } from 'react';
-import { Polygon, Marker } from 'react-leaflet';
+import React, { memo, useMemo, useEffect } from 'react';
+import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
@@ -75,6 +75,32 @@ function parseGeo(raw: any): Array<{ lat: number; lng: number }> | null {
     .map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }))
     .filter((p: any) => isFinite(p.lat) && isFinite(p.lng));
   return valid.length >= 3 ? valid : null;
+}
+
+/**
+ * Leyenda de colores de zonas activas como control Leaflet
+ */
+function ZonasActivasLegend() {
+  const map = useMap();
+  useEffect(() => {
+    const LegendControl = L.Control.extend({
+      onAdd() {
+        const div = L.DomUtil.create('div', 'demora-legend');
+        div.innerHTML = `
+          <div class="demora-legend-title">Zonas Activas</div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">Activa</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">No Activa</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#9ca3af"></span><span class="demora-legend-label">Sin dato</span></div>
+        `;
+        L.DomEvent.disableClickPropagation(div);
+        return div;
+      },
+    });
+    const legend = new LegendControl({ position: 'bottomleft' });
+    legend.addTo(map);
+    return () => { legend.remove(); };
+  }, [map]);
+  return null;
 }
 
 /**
@@ -152,6 +178,9 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
             })}
           />
       ))}
+
+      {/* Leyenda de colores */}
+      <ZonasActivasLegend />
     </>
   );
 });

@@ -10,9 +10,12 @@ interface DashboardIndicatorsProps {
   services: any[];
   selectedDate: string;
   selectedMoviles?: number[];
+  onSinAsignarClick?: () => void;
+  onEntregadosClick?: () => void;
+  onPorcentajeClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [] }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], onSinAsignarClick, onEntregadosClick, onPorcentajeClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -27,8 +30,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       finalizados = finalizados.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
     }
     
-    // Entregados: finalizados con sub_estado_desc === '3'
-    const entregados = finalizados.filter(p => String(p.sub_estado_desc) === '3').length;
+    // Entregados: finalizados con sub_estado_desc === '3' o '16'
+    const entregados = finalizados.filter(p => ['3','16'].includes(String(p.sub_estado_desc))).length;
     const totalFinalizados = finalizados.length;
     const porcentajeEntregados = totalFinalizados > 0
       ? Math.round(entregados / totalFinalizados * 100)
@@ -99,6 +102,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           label="Ped. sin Asig."
           value={pedidosStats.sinAsignar}
           color={pedidosStats.sinAsignar > 0 ? 'orange' : 'gray'}
+          onClick={onSinAsignarClick}
         />
 
         {/* Separador */}
@@ -110,6 +114,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           label="Entregados"
           value={pedidosStats.entregados}
           color="green"
+          onClick={onEntregadosClick}
         />
 
         {/* % Entregados */}
@@ -118,6 +123,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           label="% Entregados"
           value={`${pedidosStats.porcentajeEntregados}%`}
           color={pedidosStats.porcentajeEntregados >= 80 ? 'green' : pedidosStats.porcentajeEntregados >= 50 ? 'orange' : 'red'}
+          onClick={onPorcentajeClick}
         />
       </div>
       </div>
@@ -148,9 +154,10 @@ interface IndicatorProps {
   subtitle?: string;
   color?: 'blue' | 'green' | 'red' | 'orange' | 'purple' | 'gray';
   pulse?: boolean;
+  onClick?: () => void;
 }
 
-function Indicator({ icon, label, value, subtitle, color = 'blue', pulse = false }: IndicatorProps) {
+function Indicator({ icon, label, value, subtitle, color = 'blue', pulse = false, onClick }: IndicatorProps) {
   const colorClasses = {
     blue: 'bg-blue-500/20 border-blue-400/30 text-white',
     green: 'bg-green-500/20 border-green-400/30 text-white',
@@ -164,11 +171,12 @@ function Indicator({ icon, label, value, subtitle, color = 'blue', pulse = false
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
+      onClick={onClick}
       className={`
         backdrop-blur-sm rounded-md px-1.5 py-0.5 lg:px-2 lg:py-1 border
         ${colorClasses[color]}
         ${pulse ? 'animate-pulse' : ''}
-        hover:scale-105 transition-transform cursor-default
+        hover:scale-105 transition-transform ${onClick ? 'cursor-pointer' : 'cursor-default'}
         whitespace-nowrap
         h-[32px] lg:h-[38px] flex items-center
       `}

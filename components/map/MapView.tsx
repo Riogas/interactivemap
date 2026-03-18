@@ -2706,7 +2706,7 @@ const MapView = memo(function MapView({
             const delayInfo = getDelayInfo(delayMins);
             // Sin asignar: siempre gris (forzar null para obtener icono gris)
             const iconFchHora = isSinAsignar ? null : pedido.fch_hora_max_ent_comp;
-            const esEntregado = String(pedido.sub_estado_desc) === '3';
+            const esEntregado = ['3','16'].includes(String(pedido.sub_estado_desc));
             return (
               <OptimizedMarker
                 key={`pedido-tabla-${pedido.id}`}

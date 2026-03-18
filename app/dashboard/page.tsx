@@ -1669,6 +1669,18 @@ function DashboardContent() {
             services={servicesCompletos}
             selectedDate={selectedDate}
             selectedMoviles={selectedMoviles}
+            onSinAsignarClick={() => {
+              setPedidosFilters(prev => ({ ...prev, vista: 'sin-asignar' }));
+              setIsPedidosTableOpen(true);
+            }}
+            onEntregadosClick={() => {
+              setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
+              setIsPedidosTableOpen(true);
+            }}
+            onPorcentajeClick={() => {
+              setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
+              setIsPedidosTableOpen(true);
+            }}
           />
         </NavbarSimple>
       </div>

@@ -7,7 +7,7 @@ import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDela
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
-type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'defecto' | 'importe';
+type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'defecto' | 'importe' | 'direccion' | 'servicio' | 'hora_max' | 'obs_service' | 'obs_cliente';
 type SortDir = 'asc' | 'desc';
 
 interface Filters {
@@ -215,6 +215,11 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
         case 'cliente': return (a.service.cliente_nombre || '').localeCompare(b.service.cliente_nombre || '') * dir;
         case 'defecto': return (a.service.defecto || '').localeCompare(b.service.defecto || '') * dir;
         case 'importe': return ((a.service.imp_bruto || 0) - (b.service.imp_bruto || 0)) * dir;
+        case 'direccion': return (a.service.cliente_direccion || '').localeCompare(b.service.cliente_direccion || '') * dir;
+        case 'servicio': return (a.service.servicio_nombre || '').localeCompare(b.service.servicio_nombre || '') * dir;
+        case 'hora_max': return (a.service.fch_hora_max_ent_comp || '').localeCompare(b.service.fch_hora_max_ent_comp || '') * dir;
+        case 'obs_service': return (a.service.pedido_obs || '').localeCompare(b.service.pedido_obs || '') * dir;
+        case 'obs_cliente': return (a.service.cliente_obs || '').localeCompare(b.service.cliente_obs || '') * dir;
         default: return 0;
       }
     });
@@ -508,24 +513,33 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200" onClick={() => handleSort('cliente')}>
                       Cliente <SortArrow col="cliente" />
                     </th>
-                    <th className="px-4 py-3 whitespace-nowrap" style={{ minWidth: '280px' }}>Dirección</th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" style={{ minWidth: '280px' }} onClick={() => handleSort('direccion')}>
+                      Dirección <SortArrow col="direccion" />
+                    </th>
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200" onClick={() => handleSort('defecto')}>
                       Defecto <SortArrow col="defecto" />
                     </th>
-                    <th className="px-4 py-3 whitespace-nowrap">Servicio</th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('servicio')}>
+                      Servicio <SortArrow col="servicio" />
+                    </th>
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('importe')}>
                       Importe <SortArrow col="importe" />
                     </th>
-                    <th className="px-4 py-3 whitespace-nowrap">H. Máx</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Obs Service</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Obs Cliente</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Coords</th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('hora_max')}>
+                      H. Máx <SortArrow col="hora_max" />
+                    </th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('obs_service')}>
+                      Obs Service <SortArrow col="obs_service" />
+                    </th>
+                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('obs_cliente')}>
+                      Obs Cliente <SortArrow col="obs_cliente" />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="text-center py-12 text-gray-500">
+                      <td colSpan={12} className="text-center py-12 text-gray-500">
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0" />
                         </svg>
@@ -589,13 +603,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                             <span className="text-gray-600 text-[10px]">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-center" onClick={() => onServiceClick?.(s.id)}>
-                          {s.latitud && s.longitud ? (
-                            <span className="text-green-400 text-xs" title={`${s.latitud}, ${s.longitud}`}>✓</span>
-                          ) : (
-                            <span className="text-red-400 text-xs" title="Sin coordenadas">✗</span>
-                          )}
-                        </td>
+
                       </tr>
                     ))
                   )}

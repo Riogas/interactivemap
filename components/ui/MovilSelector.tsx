@@ -1242,7 +1242,7 @@ export default function MovilSelector({
                                 const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
                                 const delayMins = !isFinalizados ? computeDelayMinutes(pedido.fch_hora_max_ent_comp) : null;
                                 const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
-                                const esEntregado = isFinalizados && String(pedido.sub_estado_desc) === '3';
+                                const esEntregado = isFinalizados && ['3','16'].includes(String(pedido.sub_estado_desc));
 
                                 return (
                                   <button
