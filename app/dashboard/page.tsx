@@ -1803,7 +1803,7 @@ function DashboardContent() {
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
         onPedidoClick={handlePedidoClick}
-        onMovilClick={(movilId) => { setPopupMovil(movilId); }}
+        onMovilClick={(movilId) => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); setPopupMovil(movilId); }}
         vista={pedidosFilters.vista}
         onVistaChange={(v) => setPedidosFilters(prev => ({ ...prev, vista: v }))}
         selectedMoviles={selectedMoviles}
@@ -1822,7 +1822,7 @@ function DashboardContent() {
         services={servicesCompletos}
         moviles={movilesFiltered}
         onServiceClick={handleServiceClick}
-        onMovilClick={(movilId) => { setPopupMovil(movilId); }}
+        onMovilClick={(movilId) => { setIsServicesTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); setPopupMovil(movilId); }}
         vista={servicesFilters.vista}
         onVistaChange={(v) => setServicesFilters(prev => ({ ...prev, vista: v }))}
         selectedMoviles={selectedMoviles}
