@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { MovilData } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
@@ -117,7 +118,8 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
     ? [...sessionData.historial].sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime())
     : [];
 
-  return (
+  // Usar portal para escapar del stacking context del mapa
+  const content = (
     <>
     <AnimatePresence>
       <motion.div
@@ -524,4 +526,8 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
     )}
     </>
   );
+
+  // Portal to document.body para escapar del stacking context del mapa
+  if (typeof document === 'undefined') return content;
+  return createPortal(content, document.body);
 }
