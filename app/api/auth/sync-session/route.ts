@@ -127,7 +127,6 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ Sesión de Supabase creada exitosamente');
-    console.log('   Session ID:', data.session?.access_token?.substring(0, 20) + '...');
     console.log('   User ID:', data.user?.id);
     console.log('   Expires at:', data.session?.expires_at);
 

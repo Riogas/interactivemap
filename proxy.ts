@@ -88,8 +88,8 @@ export function proxy(request: NextRequest) {
     plog(`⚠️ Origin no en lista - usando fallback: ${allowedOrigins[0]}`);
     corsHeaders['Access-Control-Allow-Origin'] = allowedOrigins[0];
   } else {
-    plog('ℹ️ No hay ALLOWED_ORIGINS configurados - usando wildcard (NGINX maneja CORS)');
-    corsHeaders['Access-Control-Allow-Origin'] = '*';
+    pwarn('⚠️ No hay ALLOWED_ORIGINS configurados — bloqueando CORS (configurar NEXT_PUBLIC_APP_URL)');
+    // No establecer Access-Control-Allow-Origin = denegado implícito
   }
 
   plog(`🔒 CORS Headers configurados:`, corsHeaders);

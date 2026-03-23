@@ -29,13 +29,16 @@ const ALLOWED_PATHS = [
   /^gestion\/puntoventa$/,
   /^gestion\/empresas$/,
   /^gestion\/demoras$/,
-  /^gestion\/.*$/,  // Permitir todas las rutas de gestion por ahora
+  /^gestion\/servicios$/,
+  /^gestion\/servicios\/\d+$/,
+  /^gestion\/user-atributos$/,
+  /^gestion\/user-atributos\/\d+$/,
 ];
 
 // Agente HTTPS que ignora errores de certificado SSL
-// NOTA: Solo para desarrollo o certificados auto-firmados internos
+// NOTA: Solo para certificados auto-firmados internos de la API de gestión
 const httpsAgent = new https.Agent({
-  rejectUnauthorized: false
+  rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ? false : true
 });
 
 /**

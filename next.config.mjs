@@ -21,6 +21,37 @@ const nextConfig = {
   
   // Configurar root de output para silenciar warning de múltiples lockfiles
   outputFileTracingRoot: process.cwd(),
+
+  // 🔒 SECURITY HEADERS
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=(self)',
+          },
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on',
+          },
+        ],
+      },
+    ];
+  },
   
   // Evita warnings de Leaflet en SSR
   webpack: (config, { isServer }) => {

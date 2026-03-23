@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getGPSQueue } from '@/lib/gps-batch-queue';
 import { gpsLog } from '@/lib/debug-config';
+import { safeCompare } from '@/lib/auth-middleware';
 
 /**
  * Transforma campos del body a formato de base de datos
@@ -100,12 +101,13 @@ export async function POST(request: NextRequest) {
     const { token } = body;
     let { gps } = body;
     
-    // 🔒 AUTENTICACIÓN FLEXIBLE
+    // 🔒 AUTENTICACIÓN FLEXIBLE (timing-safe)
     // Opción 1: Validar API Key en header (uso interno)
-    const hasApiKey = request.headers.get('X-API-Key') === process.env.INTERNAL_API_KEY;
+    const apiKeyHeader = request.headers.get('X-API-Key') || '';
+    const hasApiKey = !!process.env.INTERNAL_API_KEY && safeCompare(apiKeyHeader, process.env.INTERNAL_API_KEY);
     
     // Opción 2: Validar token en body (app móvil)
-    const hasValidToken = token && token === process.env.GPS_TRACKING_TOKEN;
+    const hasValidToken = !!token && !!process.env.GPS_TRACKING_TOKEN && safeCompare(token, process.env.GPS_TRACKING_TOKEN);
     
     if (!hasApiKey && !hasValidToken) {
       console.warn('⚠️ Intento de acceso sin autenticación válida a /api/import/gps');
@@ -176,9 +178,10 @@ export async function DELETE(request: NextRequest) {
     const body = await request.json();
     const { gps_ids, token } = body;
     
-    // 🔒 AUTENTICACIÓN FLEXIBLE
-    const hasApiKey = request.headers.get('X-API-Key') === process.env.INTERNAL_API_KEY;
-    const hasValidToken = token && token === process.env.GPS_TRACKING_TOKEN;
+    // 🔒 AUTENTICACIÓN FLEXIBLE (timing-safe)
+    const apiKeyHeader = request.headers.get('X-API-Key') || '';
+    const hasApiKey = !!process.env.INTERNAL_API_KEY && safeCompare(apiKeyHeader, process.env.INTERNAL_API_KEY);
+    const hasValidToken = !!token && !!process.env.GPS_TRACKING_TOKEN && safeCompare(token, process.env.GPS_TRACKING_TOKEN);
     
     if (!hasApiKey && !hasValidToken) {
       console.warn('⚠️ Intento de acceso sin autenticación válida a DELETE /api/import/gps');

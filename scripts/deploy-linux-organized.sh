@@ -95,14 +95,14 @@ NEXT_PUBLIC_EXTERNAL_API_URL=https://sgm.glp.riogas.com.uy
 # Security
 INTERNAL_API_KEY=96c596ab9a239195c517000e92101c89fed22da7f13843440357493b0d911cd3
 GPS_TRACKING_TOKEN=IcA.FwL.1710.!
-ENABLE_SECURITY_CHECKS=false
+ENABLE_SECURITY_CHECKS=true
 
 # Node
 NODE_ENV=production
 PORT=3000
 HOSTNAME=0.0.0.0
 NEXT_TELEMETRY_DISABLED=1
-NODE_TLS_REJECT_UNAUTHORIZED=0
+# NODE_TLS_REJECT_UNAUTHORIZED=0  # REMOVIDO POR SEGURIDAD — habilitar solo si el cert es auto-firmado
 EOF
     echo -e "${GREEN}✓ Archivo .env creado en $INSTALL_DIR/.env${NC}"
     echo -e "${YELLOW}⚠ IMPORTANTE: Edita el archivo .env si es necesario${NC}"

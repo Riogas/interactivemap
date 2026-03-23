@@ -5,13 +5,14 @@
  * para proteger las rutas API de la aplicación TrackMovil.
  * 
  * VARIABLE DE ENTORNO:
- * - ENABLE_SECURITY_CHECKS: true/false (default: false)
+ * - ENABLE_SECURITY_CHECKS: true/false (default: true)
  *   Controla si se aplican las validaciones de seguridad (requireAuth, requireApiKey, requireRole)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { timingSafeEqual } from 'crypto';
 
 /**
  * Tipo de respuesta de autenticación
@@ -38,8 +39,27 @@ function mwarn(...args: unknown[]) {
 
 /** * � Variable de control de seguridad
  * Si es false, todos los checks de seguridad se saltan
+ * SEGURIDAD HABILITADA POR DEFECTO — solo se desactiva con ENABLE_SECURITY_CHECKS=false explícito
  */
-const SECURITY_ENABLED = process.env.ENABLE_SECURITY_CHECKS === 'true';
+const SECURITY_ENABLED = process.env.ENABLE_SECURITY_CHECKS !== 'false';
+
+/**
+ * 🔑 Comparación segura de strings para evitar timing attacks
+ */
+export function safeCompare(a: string, b: string): boolean {
+  try {
+    const bufA = Buffer.from(a, 'utf-8');
+    const bufB = Buffer.from(b, 'utf-8');
+    if (bufA.length !== bufB.length) {
+      // Comparar con bufA contra sí mismo para mantener tiempo constante
+      timingSafeEqual(bufA, bufA);
+      return false;
+    }
+    return timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * �🔑 Verificar autenticación de usuario mediante Supabase Auth
@@ -219,8 +239,8 @@ export function requireApiKey(request: NextRequest): true | NextResponse {
     );
   }
 
-  // Validar que la API Key sea correcta
-  if (apiKey !== validApiKey) {
+  // Validar que la API Key sea correcta (timing-safe)
+  if (!safeCompare(apiKey, validApiKey)) {
     mwarn('⚠️  API Key inválida:', apiKey.substring(0, 8) + '...');
     return NextResponse.json(
       {

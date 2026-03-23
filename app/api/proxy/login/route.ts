@@ -4,9 +4,9 @@ import { fetchExternalAPI } from '@/lib/fetch-with-timeout';
 import https from 'https';
 
 // Agente HTTPS que ignora errores de certificado SSL
-// NOTA: Solo para desarrollo o certificados auto-firmados internos
+// NOTA: Solo para certificados auto-firmados internos de la API de gestión
 const httpsAgent = new https.Agent({
-  rejectUnauthorized: false
+  rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ? false : true
 });
 
 export async function POST(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     console.log('🔐 Login Request');
-    console.log('📤 Body:', body);
+    // No loguear body — contiene credenciales
 
     const loginUrl = `${API_BASE_URL}/gestion/login`;
     
@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
     
     if (contentType && contentType.includes('application/json')) {
       data = await response.json();
-      console.log('📥 Login Response Data (raw):', data);
       
       // 🔧 FIX: GeneXus devuelve JSON anidado como string
       // Si viene "RespuestaLogin" como string, parsearlo
@@ -53,14 +52,13 @@ export async function POST(request: NextRequest) {
             rawLogin = rawLogin.substring(0, lastBrace + 1);
           }
           const parsedLogin = JSON.parse(rawLogin);
-          console.log('🔄 RespuestaLogin parseado:', parsedLogin);
           data = parsedLogin; // Reemplazar con el objeto parseado
         } catch (e) {
           console.error('❌ Error al parsear RespuestaLogin:', e);
         }
       }
       
-      console.log('📥 Login Response Data (final):', data);
+      // No loguear data de login — puede contener tokens
     } else {
       const text = await response.text();
       console.log('📥 Login Response Text:', text);

@@ -27,7 +27,7 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3002,
         HOSTNAME: '0.0.0.0',
-        NODE_TLS_REJECT_UNAUTHORIZED: '0',  // Ignorar errores de certificado SSL
+        // NODE_TLS_REJECT_UNAUTHORIZED: '0',  // REMOVIDO POR SEGURIDAD — habilitar solo si el cert es auto-firmado
         UV_THREADPOOL_SIZE: 8,              // Aumentado para 100+ móviles (más I/O paralelo)
         NODE_OPTIONS: '--max-old-space-size=2048', // Límite heap V8 (2GB) para alta carga
       },

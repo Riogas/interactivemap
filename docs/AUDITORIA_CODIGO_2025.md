@@ -346,4 +346,45 @@ let sinAsignar = pedidos.filter(p =>
 
 ---
 
+## 6. Correcciones Aplicadas (2025-07-07)
+
+### Dependencias
+- **Next.js**: Actualizado de 16.1.6 a **16.1.7** — corrige 5 CVEs (HTTP request smuggling, image cache DoS, postponed buffering DoS, CSRF bypass, HMR websocket CSRF)
+
+### VULN-01: Seguridad deshabilitada en producción — **CORREGIDO**
+- `lib/auth-middleware.ts`: `SECURITY_ENABLED` ahora es `!== 'false'` (habilitado por defecto)
+- `scripts/deploy-linux.sh`, `scripts/deploy-linux-organized.sh`, `scripts/install-trackmovil-git.sh`: `ENABLE_SECURITY_CHECKS=true`
+
+### VULN-05: TLS deshabilitado globalmente — **CORREGIDO**
+- `pm2.config.js`: Removido `NODE_TLS_REJECT_UNAUTHORIZED=0`
+- `scripts/*.sh`: Comentado `NODE_TLS_REJECT_UNAUTHORIZED=0`
+- `app/api/proxy/[...path]/route.ts` y `app/api/proxy/login/route.ts`: `rejectUnauthorized` ahora lee de env var (configurable)
+
+### VULN-09: Token GPS — timing-safe — **CORREGIDO**
+- `lib/auth-middleware.ts`: API key comparación con `timingSafeEqual` via `safeCompare()`
+- `app/api/import/gps/route.ts`: Token y API key comparación con `safeCompare()`
+
+### VULN-11: CORS wildcard — **CORREGIDO**
+- `proxy.ts`: Fallback CORS ya no usa `*`, se omite `Access-Control-Allow-Origin` si no hay origins configurados
+
+### VULN-15: Logging de credenciales — **CORREGIDO**
+- `app/api/auth/sync-session/route.ts`: Removido logging de `access_token`
+- `app/api/proxy/login/route.ts`: Removido logging de body (credenciales) y data cruda
+
+### VULN-17: Proxy SSRF whitelist amplia — **CORREGIDO**
+- `app/api/proxy/[...path]/route.ts`: Removido `gestion\/.*$` catch-all, reemplazado con rutas específicas
+
+### Security Headers — **NUEVO**
+- `next.config.mjs`: Agregados X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, X-DNS-Prefetch-Control
+
+### Pendientes (no corregidos en este commit)
+- **VULN-02**: Credenciales hardcodeadas en Git — requiere rotación manual
+- **VULN-03**: SQL injection en AS400 — requiere refactor de api_as400.py
+- **VULN-04**: service_role key en scripts — requiere gestor de secretos
+- **VULN-06/07/08**: Rutas sin auth / IDOR — requiere agregar `requireAuth()` a cada ruta
+- **VULN-10**: Tokens en localStorage — requiere migración a httpOnly cookies
+- **flatted** CVE: Dependencia transitiva de eslint, requiere actualización de eslint
+
+---
+
 *Documento generado automáticamente como parte de auditoría de código. No se realizó ninguna modificación al código fuente.*
