@@ -3,11 +3,9 @@ const nextConfig = {
   // ✅ IMPORTANTE: Necesario para Docker
   output: 'standalone',
   
-  // Deshabilitar type-checking en build de producción (Docker)
+  // Type-checking habilitado en build de producción
   typescript: {
-    // ⚠️ ADVERTENCIA: Esto deshabilita type-checking en producción
-    // Solo para build de Docker temporal
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   
   // Permite importaciones de módulos externos

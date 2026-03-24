@@ -15,6 +15,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
+import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
+import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
+import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
@@ -77,42 +80,25 @@ function DashboardContent() {
   // Estado para marcadores personalizados
   const [isPlacingMarker, setIsPlacingMarker] = useState(false);
   
-  // Estado para modal de tracking
-  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
-  
+  // 🔧 Modal state (extracted to useDashboardModals hook)
+  const {
+    isTrackingModalOpen, setIsTrackingModalOpen,
+    isLeaderboardOpen, setIsLeaderboardOpen,
+    isZonaEstadisticasOpen, setIsZonaEstadisticasOpen,
+    zonaViewModalOpen, setZonaViewModalOpen,
+    zonaViewModalZonaId, openZonaView,
+    isPedidosTableOpen, setIsPedidosTableOpen,
+    isServicesTableOpen, setIsServicesTableOpen,
+    preFilterMovil, setPreFilterMovil,
+    preFilterZona, setPreFilterZona,
+    isOsmImportOpen, setIsOsmImportOpen,
+    isTourOpen, setIsTourOpen,
+    isActionsExpanded, setIsActionsExpanded,
+    closePedidosTable, closeServicesTable,
+  } = useDashboardModals();
+
   // Mapa completo movil_nro → estadoNro (para todos los moviles, no solo los con GPS)
   const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
-  
-  // Estado para modal de leaderboard/ranking
-  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
-  
-  // Estado para modal de estadísticas por zona
-  const [isZonaEstadisticasOpen, setIsZonaEstadisticasOpen] = useState(false);
-  
-  // Estado para modal de vista móviles por zona (click en mapa o botón)
-  const [zonaViewModalOpen, setZonaViewModalOpen] = useState(false);
-  const [zonaViewModalZonaId, setZonaViewModalZonaId] = useState<number | null>(null);
-  
-  // Handler para click en zona del mapa (solo en modo moviles-zonas)
-  const handleZonaClick = useCallback((zonaId: number) => {
-    setZonaViewModalZonaId(zonaId);
-    setZonaViewModalOpen(true);
-  }, []);
-  
-  // Estado para modal de vista extendida de pedidos
-  const [isPedidosTableOpen, setIsPedidosTableOpen] = useState(false);
-  
-  // Estado para modal de vista extendida de services
-  const [isServicesTableOpen, setIsServicesTableOpen] = useState(false);
-
-  // Pre-filtro de móvil para vista extendida (cuando se abre desde popup de un móvil)
-  const [preFilterMovil, setPreFilterMovil] = useState<number | undefined>();
-
-  // Pre-filtro de zona para vista extendida (cuando se abre desde estadísticas por zona)
-  const [preFilterZona, setPreFilterZona] = useState<number | undefined>();
-  
-  // Estado para modal de importación OSM
-  const [isOsmImportOpen, setIsOsmImportOpen] = useState(false);
   
   // Trigger para recargar marcadores del mapa tras importación OSM
   const [reloadMarkersTrigger, setReloadMarkersTrigger] = useState(0);
@@ -139,51 +125,11 @@ function DashboardContent() {
     updatePreference('hiddenPoiCategories', next);
   }, [preferences.hiddenPoiCategories, updatePreference]);
   
-  // Estado para expandir/colapsar botones de acción rápida (FAB)
-  const [isActionsExpanded, setIsActionsExpanded] = useState(false);
-  
-  // Estado para el tour interactivo
-  const [isTourOpen, setIsTourOpen] = useState(false);
-  
   // Estado para puntos de interés
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
 
-  // Estado para mostrar zonas en el mapa
-  const [showZonas, setShowZonas] = useState(false);
-  const [zonasData, setZonasData] = useState<any[]>([]);
-
-  // 📊 Estado para vista de datos del mapa (Normal / Demoras / Móviles en Zonas) — persistido en preferencias
+  // 📊 Vista de datos del mapa — dataViewMode persistido en preferencias
   const dataViewMode = preferences.dataViewMode;
-
-  // Sincronizar showZonas cuando dataViewMode se carga desde preferencias
-  useEffect(() => {
-    if (dataViewMode !== 'normal') {
-      setShowZonas(true);
-    }
-  }, [dataViewMode]);
-  const [allZonasData, setAllZonasData] = useState<any[]>([]);
-  const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
-  const [movilesZonasData, setMovilesZonasData] = useState<any[]>([]);
-  const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<string>('URGENTE');
-
-  // Cuando se cambia de vista de datos
-  const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas') => {
-    updatePreference('dataViewMode', mode);
-    if (mode !== 'normal') {
-      setShowZonas(true); // Auto-activar zonas para distribucion/demoras/moviles-zonas
-    } else {
-      setShowZonas(false); // Normal: quitar zonas del mapa
-    }
-    // En moviles-zonas, ocultar pedidos y servicios para mostrar solo móviles
-    if (mode === 'moviles-zonas') {
-      updatePreference('pedidosVisible', false);
-      updatePreference('servicesVisible', false);
-    } else {
-      // Al salir de moviles-zonas, restaurar visibilidad de pedidos y servicios
-      updatePreference('pedidosVisible', true);
-      updatePreference('servicesVisible', true);
-    }
-  }, [updatePreference]);
   
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -203,6 +149,21 @@ function DashboardContent() {
   // Estado para empresas fleteras
   const [empresas, setEmpresas] = useState<EmpresaFleteraSupabase[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
+
+  // 🔧 Map data view state + effects (extracted to useMapDataView hook)
+  const {
+    showZonas, setShowZonas,
+    zonasData, allZonasData, demorasData,
+    movilesZonasData, movilesZonasServiceFilter, setMovilesZonasServiceFilter,
+    handleDataViewChange,
+  } = useMapDataView({
+    dataViewMode,
+    selectedEmpresas,
+    empresas,
+    demorasPollingSeconds: preferences.demorasPollingSeconds ?? 30,
+    movilesZonasPollingSeconds: preferences.movilesZonasPollingSeconds ?? 30,
+    updatePreference,
+  });
 
   // Escenario IDs derivados de las empresas seleccionadas (stable reference)
   const selectedEscenarioIds = useMemo(() => {
@@ -270,146 +231,12 @@ function DashboardContent() {
     return today.toISOString().split('T')[0]; // Formato YYYY-MM-DD
   });
 
-  // Helper para eliminar móviles duplicados
-  const removeDuplicateMoviles = useCallback((moviles: MovilData[]): MovilData[] => {
-    const seen = new Set<number>();
-    return moviles.filter(movil => {
-      if (seen.has(movil.id)) {
-        console.warn(`⚠️ Móvil duplicado encontrado y eliminado: ${movil.id}`);
-        return false;
-      }
-      seen.add(movil.id);
-      return true;
-    });
-  }, []);
-
-  // Helper para marcar móviles inactivos según preferencias del usuario
-  const markInactiveMoviles = useCallback((moviles: MovilData[]): MovilData[] => {
-    return moviles.map(movil => {
-      // Si no hay posición actual, marcar como inactivo si showActiveMovilesOnly está activado
-      if (!movil.currentPosition) {
-        return {
-          ...movil,
-          isInactive: preferences.showActiveMovilesOnly
-        };
-      }
-
-      // Verificar el retraso máximo de coordenadas
-      const coordDate = new Date(movil.currentPosition.fechaInsLog);
-      const now = new Date();
-      const minutesDiff = (now.getTime() - coordDate.getTime()) / (1000 * 60);
-      
-      // Si excede el retraso máximo configurado, marcar como inactivo
-      if (minutesDiff > preferences.maxCoordinateDelayMinutes) {
-        console.log(`👻 Móvil ${movil.id} marcado como inactivo: coordenada de hace ${Math.round(minutesDiff)} minutos (máximo: ${preferences.maxCoordinateDelayMinutes})`);
-        return {
-          ...movil,
-          isInactive: true
-        };
-      }
-
-      // Móvil activo
-      return {
-        ...movil,
-        isInactive: false
-      };
-    });
-  }, [preferences.showActiveMovilesOnly, preferences.maxCoordinateDelayMinutes]);
-
-  // 🆕 Aplicar filtros avanzados de estado a los móviles
-  // Filtro geográfico: solo mostrar datos dentro de Uruguay
-  const URUGUAY_BOUNDS = { latMin: -35.8, latMax: -30.0, lngMin: -58.5, lngMax: -53.0 };
-  const isInUruguay = useCallback((lat: number, lng: number): boolean => {
-    return lat >= URUGUAY_BOUNDS.latMin && lat <= URUGUAY_BOUNDS.latMax &&
-           lng >= URUGUAY_BOUNDS.lngMin && lng <= URUGUAY_BOUNDS.lngMax;
-  }, []);
-
-  // Helper: mapear delay label → filter value key
-  const DELAY_CATEGORY_MAP: Record<string, string> = {
-    'En Hora': 'en_hora',
-    'Hora Límite Cercana': 'limite_cercana',
-    'Atrasado': 'atrasado',
-    'Muy Atrasado': 'muy_atrasado',
-    'Sin hora': 'sin_hora',
-  };
-
-  // Filtrar pedidos/services por atraso (reutilizado para MapView)
-  const filterByDelay = useCallback(<T extends { fch_hora_max_ent_comp?: string | null }>(
-    items: T[],
-    atrasoFilter: string[]
-  ): T[] => {
-    if (atrasoFilter.length === 0) return items;
-    return items.filter(item => {
-      const delayMins = computeDelayMinutes(item.fch_hora_max_ent_comp ?? null);
-      const info = getDelayInfo(delayMins);
-      const category = DELAY_CATEGORY_MAP[info.label] || 'sin_hora';
-      return atrasoFilter.includes(category);
-    });
-  }, []);
-
-  // Filtrar pedidos/services por tipo de servicio (dinámico desde moviles_zonas)
-  const filterByTipoServicio = useCallback(<T extends { servicio_nombre?: string | null }>(
-    items: T[],
-    tipoServicio: string
-  ): T[] => {
-    if (!tipoServicio || tipoServicio === 'all') return items;
-    const tipoUpper = tipoServicio.toUpperCase();
-    return items.filter(item => 
-      item.servicio_nombre && item.servicio_nombre.toUpperCase() === tipoUpper
-    );
-  }, []);
-
-  const applyAdvancedFilters = useCallback((moviles: MovilData[]): MovilData[] => {
-    // Si no hay filtros de estado activos, retornar todos
-    if (movilesFilters.estado.length === 0) {
-      return moviles;
-    }
-
-    return moviles.filter(movil => {
-      const tamanoLote = movil.tamanoLote || 6;
-      const pedidosAsignados = movil.pedidosAsignados || 0;
-      const capacidadRestante = tamanoLote - pedidosAsignados;
-
-      // Verificar cada estado seleccionado
-      return movilesFilters.estado.some(estado => {
-        switch (estado) {
-          case 'no_reporta_gps':
-            // Móviles sin posición o inactivos
-            return !movil.currentPosition || movil.isInactive;
-          
-          case 'baja_momentanea':
-            // Móviles con baja momentánea (estado_nro 4)
-            return movil.estadoNro === 4;
-          
-          case 'con_capacidad':
-            // Móviles con capacidad disponible (> 0)
-            return capacidadRestante > 0;
-          
-          case 'sin_capacidad':
-            // Móviles sin capacidad (0% disponible)
-            return capacidadRestante === 0;
-          
-          default:
-            return true;
-        }
-      });
-    });
-  }, [movilesFilters.estado]);
-
-  // 🆕 Filtrar por estado de actividad (activo / no_activo / baja_momentanea)
-  const applyActivityFilter = useCallback((moviles: MovilData[]): MovilData[] => {
-    if (movilesFilters.actividad === 'todos') return moviles;
-    return moviles.filter(movil => {
-      const estadoNro = movil.estadoNro;
-      const esActivo = estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
-      switch (movilesFilters.actividad) {
-        case 'activo': return esActivo;
-        case 'no_activo': return estadoNro === 3;
-        case 'baja_momentanea': return estadoNro === 4;
-        default: return true;
-      }
-    });
-  }, [movilesFilters.actividad]);
+  // 🔧 Filter helpers (extracted to useFilterHelpers hook)
+  const {
+    isInUruguay, filterByDelay, filterByTipoServicio,
+    applyAdvancedFilters, applyActivityFilter,
+    removeDuplicateMoviles, markInactiveMoviles, getMovilColorByOccupancy,
+  } = useFilterHelpers(movilesFilters, preferences);
 
   // Cargar empresas fleteras al montar el componente
   useEffect(() => {
@@ -449,154 +276,9 @@ function DashboardContent() {
     loadEmpresas();
   }, [user?.allowedEmpresas]);
 
-  // 🗺️ Cargar zonas cuando se activa showZonas, filtradas por escenario_id de empresas seleccionadas
-  useEffect(() => {
-    if (!showZonas) {
-      setZonasData([]);
-      return;
-    }
-    const loadZonas = async () => {
-      try {
-        // Obtener escenario_ids de las empresas seleccionadas
-        const escenarioIds = empresas
-          .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
-          .map(e => e.escenario_id);
-        const uniqueEscenarios = [...new Set(escenarioIds)];
 
-        if (uniqueEscenarios.length === 0) {
-          setZonasData([]);
-          return;
-        }
 
-        const response = await fetch('/api/zonas');
-        const result = await response.json();
-        if (result.success && result.data) {
-          // Filtrar por escenario_id de las empresas seleccionadas y activa = true
-          const zonasFiltradas = result.data.filter(
-            (z: any) => z.activa !== false && uniqueEscenarios.includes(z.escenario_id)
-          );
-          console.log(`🗺️ ${zonasFiltradas.length} zonas activas para escenarios [${uniqueEscenarios.join(', ')}]`);
-          setZonasData(zonasFiltradas);
-        }
-      } catch (err) {
-        console.error('❌ Error loading zonas:', err);
-      }
-    };
-    loadZonas();
-  }, [showZonas, selectedEmpresas, empresas]);
 
-  // 📊 Cargar datos cuando se selecciona una vista de datos (Demoras / Móviles en Zonas)
-  // Con polling automático: cada X segundos según preferencias del usuario
-  useEffect(() => {
-    if (dataViewMode === 'normal') {
-      setAllZonasData([]);
-      setDemorasData(new Map());
-      setMovilesZonasData([]);
-      return;
-    }
-
-    const escenarioIds = empresas
-      .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
-      .map(e => e.escenario_id);
-    const uniqueEscenarios = [...new Set(escenarioIds)];
-
-    if (uniqueEscenarios.length === 0) return;
-
-    const loadDataView = async () => {
-      try {
-        console.log(`📊 Cargando vista "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
-
-        // 1) Cargar todas las zonas con geojson
-        const zonasRes = await fetch('/api/zonas');
-        const zonasResult = await zonasRes.json();
-        if (zonasResult.success && zonasResult.data) {
-          const zonasFiltradas = zonasResult.data.filter(
-            (z: any) => uniqueEscenarios.includes(z.escenario_id) && z.geojson
-          );
-          console.log(`📊 ${zonasFiltradas.length} zonas con geojson (de ${zonasResult.data.length} total)`);
-          setAllZonasData(zonasFiltradas);
-        }
-
-        // 2) Si es vista Demoras o Zonas Activas, cargar demoras desde la tabla demoras
-        if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
-          const demorasRes = await fetch('/api/demoras');
-          const demorasResult = await demorasRes.json();
-          if (demorasResult.success && demorasResult.data) {
-            const dMap = new Map<number, { minutos: number; activa: boolean }>();
-            for (const d of demorasResult.data) {
-              if (uniqueEscenarios.includes(d.escenario_id)) {
-                // Si hay varias demoras para una zona, quédarse con la más alta
-                const existing = dMap.get(d.zona_id);
-                if (!existing || d.minutos > existing.minutos) {
-                  dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
-                }
-              }
-            }
-            console.log(`📊 ${dMap.size} demoras cargadas`);
-            setDemorasData(dMap);
-          }
-        }
-
-        // 3) Si es vista Móviles en Zonas, cargar datos crudos
-        if (dataViewMode === 'moviles-zonas') {
-          const mzRes = await fetch('/api/moviles-zonas');
-          const mzResult = await mzRes.json();
-          if (mzResult.success && mzResult.data) {
-            setMovilesZonasData(mzResult.data);
-          }
-        }
-      } catch (err) {
-        console.error('❌ Error loading data view:', err);
-      }
-    };
-
-    // Carga inicial inmediata
-    loadDataView();
-
-    // Polling: intervalo según vista activa (configurable en preferencias)
-    let intervalMs = 0;
-    if (dataViewMode === 'demoras') {
-      intervalMs = (preferences.demorasPollingSeconds ?? 30) * 1000;
-    } else if (dataViewMode === 'moviles-zonas') {
-      intervalMs = (preferences.movilesZonasPollingSeconds ?? 30) * 1000;
-    }
-
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-    if (intervalMs > 0) {
-      console.log(`🔄 Polling activado para "${dataViewMode}" cada ${intervalMs / 1000}s`);
-      intervalId = setInterval(loadDataView, intervalMs);
-    }
-
-    return () => {
-      if (intervalId) {
-        console.log(`🔄 Polling desactivado para "${dataViewMode}"`);
-        clearInterval(intervalId);
-      }
-    };
-  }, [dataViewMode, selectedEmpresas, empresas, preferences.demorasPollingSeconds, preferences.movilesZonasPollingSeconds]);
-
-  // 🎨 Función para calcular el color del móvil según ocupación
-  const getMovilColorByOccupancy = useCallback((pedidosAsignados: number, capacidad: number): string => {
-    // Si no hay capacidad definida, usar color por defecto
-    if (!capacidad || capacidad === 0) {
-      return '#3B82F6'; // Azul por defecto
-    }
-
-    // Calcular porcentaje de ocupación
-    const occupancyPercentage = (pedidosAsignados / capacidad) * 100;
-
-    // Asignar color según porcentaje:
-    // 100% (lleno) = Negro
-    // 67-99% (casi lleno) = Amarillo
-    // 0-66% (disponible) = Verde
-    if (occupancyPercentage >= 100) {
-      return '#000000'; // Negro - Lote lleno
-    } else if (occupancyPercentage >= 67) {
-      return '#EAB308'; // Amarillo - Casi lleno (4-5/6 en una capacidad de 6)
-    } else {
-      return '#22C55E'; // Verde - Disponible (0-3/6 en una capacidad de 6)
-    }
-  }, []);
 
   // 🔥 NUEVO: Función para enriquecer móviles con datos extendidos de Supabase
   const enrichMovilesWithExtendedData = useCallback(async (moviles: MovilData[]): Promise<MovilData[]> => {
@@ -1709,7 +1391,7 @@ function DashboardContent() {
           {/* Botón de Asignación de Zonas */}
           <button
             id="tour-fab-zonas"
-            onClick={() => { setZonaViewModalZonaId(null); setZonaViewModalOpen(true); setIsActionsExpanded(false); }}
+            onClick={() => { openZonaView(null); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700"
             title="Asignación de Móviles a Zonas"
           >
@@ -1775,7 +1457,7 @@ function DashboardContent() {
         onClose={() => setIsTourOpen(false)}
         expandFab={() => setIsActionsExpanded(true)}
         collapseFab={() => setIsActionsExpanded(false)}
-        openZonas={() => { setZonaViewModalZonaId(null); setZonaViewModalOpen(true); }}
+        openZonas={() => { openZonaView(null); }}
         closeZonas={() => setZonaViewModalOpen(false)}
         openRanking={() => setIsLeaderboardOpen(true)}
         closeRanking={() => setIsLeaderboardOpen(false)}
@@ -2146,9 +1828,9 @@ function DashboardContent() {
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
                 hiddenPoiCategories={hiddenPoiCategories}
-                pedidosVista={pedidosFilters.vista}
-                servicesVista={servicesFilters.vista}
-                onZonaClick={dataViewMode === 'moviles-zonas' ? handleZonaClick : undefined}
+                pedidosVista={pedidosFilters.vista === 'sin-asignar' ? undefined : pedidosFilters.vista}
+                servicesVista={servicesFilters.vista === 'sin-asignar' ? undefined : servicesFilters.vista}
+                onZonaClick={dataViewMode === 'moviles-zonas' ? openZonaView : undefined}
               />
             </motion.div>
           </>

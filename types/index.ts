@@ -268,7 +268,7 @@ export interface PuntoInteresData {
 export interface MovilFilters {
   capacidad: 'all' | '1-3' | '4-6' | '7-10' | '10+';
   estado: string[]; // Filtro multi-selección de estados
-  actividad: 'activo' | 'no_activo'; // Filtro por estado de actividad del móvil
+  actividad: 'todos' | 'activo' | 'no_activo' | 'baja_momentanea'; // Filtro por estado de actividad del móvil
 }
 
 export interface ServiceFilters {

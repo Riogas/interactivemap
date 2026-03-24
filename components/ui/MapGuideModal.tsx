@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 
-type GuideCategory = 'moviles' | 'pedidos' | 'pedidosFinalizados' | 'services' | 'servicesFinalizados' | 'pois';
+type GuideCategory = 'empresas' | 'moviles' | 'pedidos' | 'pedidosFinalizados' | 'services' | 'servicesFinalizados' | 'pois';
 
 interface MapGuideModalProps {
   isOpen: boolean;
@@ -513,6 +513,7 @@ function DefaultGuide({ category }: { category: string }) {
 
 export default function MapGuideModal({ isOpen, onClose, category }: MapGuideModalProps) {
   const guideContent: Record<GuideCategory, React.ReactNode> = {
+    empresas: <DefaultGuide category="empresas" />,
     moviles: <MovilesGuide />,
     pedidos: <PedidosGuide />,
     pedidosFinalizados: <PedidosGuide />,
