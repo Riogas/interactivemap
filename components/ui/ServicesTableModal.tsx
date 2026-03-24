@@ -17,6 +17,8 @@ interface Filters {
   movil: number | null;
   defecto: string | null;
   soloSinCoords: boolean;
+  asignacion: 'todos' | 'con_movil' | 'sin_movil';
+  entrega: 'todos' | 'entregados' | 'no_entregados';
 }
 
 const ATRASO_OPTIONS: { key: AtrasoFilter; label: string; color: string; dotColor: string }[] = [
@@ -43,8 +45,8 @@ interface ServicesTableModalProps {
   moviles: MovilData[];
   onServiceClick?: (serviceId: number) => void;
   onMovilClick?: (movilId: number) => void;
-  vista?: 'pendientes' | 'finalizados' | 'sin-asignar';
-  onVistaChange?: (vista: 'pendientes' | 'finalizados' | 'sin-asignar') => void;
+  vista?: 'pendientes' | 'finalizados';
+  onVistaChange?: (vista: 'pendientes' | 'finalizados') => void;
   selectedMoviles?: number[];
   externalAtraso?: string[];
   externalTipoServicio?: string;
@@ -76,7 +78,6 @@ function getDelayBadgeStyle(info: DelayInfo): string {
 
 export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
-  const isSinAsignar = vista === 'sin-asignar';
   const [filters, setFilters] = useState<Filters>({
     search: '',
     atraso: [],
@@ -84,6 +85,8 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     movil: null,
     defecto: null,
     soloSinCoords: false,
+    asignacion: 'todos',
+    entrega: 'todos',
   });
   const [sortKey, setSortKey] = useState<SortKey>('delay');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -115,31 +118,42 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     let result: ServiceSupabase[];
     if (isFinalizados) {
       result = services.filter(s => Number(s.estado_nro) === 2);
-    } else if (isSinAsignar) {
-      result = services.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0));
+      
+      // Filtro de entrega (solo para finalizados)
+      if (filters.entrega === 'entregados') {
+        result = result.filter(s => ['3', '16'].includes(String(s.sub_estado_desc)));
+      } else if (filters.entrega === 'no_entregados') {
+        result = result.filter(s => !['3', '16'].includes(String(s.sub_estado_desc)));
+      }
     } else {
-      // Pendientes: estado 1 con movil asignado
-      result = services.filter(s => Number(s.estado_nro) === 1 && s.movil && Number(s.movil) !== 0);
+      // Pendientes: todos los estado_nro = 1 (con y sin móvil asignado)
+      result = services.filter(s => Number(s.estado_nro) === 1);
+      
+      // Filtro de asignación (con móvil / sin móvil)
+      if (filters.asignacion === 'sin_movil') {
+        result = result.filter(s => !s.movil || Number(s.movil) === 0);
+      } else if (filters.asignacion === 'con_movil') {
+        result = result.filter(s => s.movil && Number(s.movil) !== 0);
+      }
     }
     
     // Cuando hay pre-filtro de móvil, NO filtrar por selectedMoviles
-    // Sin asignar: no filtrar por selectedMoviles ni tipoServicio
-    if (isSinAsignar) {
-      // No aplicar filtros de móviles ni tipo de servicio a services sin asignar
+    if (isFinalizados) {
+      // No aplicar filtros de móviles ni tipo de servicio
     } else if (preFilterMovil || preFilterZona) {
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
-    } else if (selectedMoviles.length > 0) {
+    } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
       result = result.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
     }
     
     // Aplicar filtro externo de tipo de servicio (solo para pendientes)
-    if (!isFinalizados && !isSinAsignar && externalTipoServicio && externalTipoServicio !== 'all') {
+    if (!isFinalizados && externalTipoServicio && externalTipoServicio !== 'all') {
       const tipoUpper = externalTipoServicio.toUpperCase();
       result = result.filter(s => s.servicio_nombre && s.servicio_nombre.toUpperCase() === tipoUpper);
     }
     
     return result;
-  }, [services, isFinalizados, isSinAsignar, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona]);
+  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega]);
 
   // ========== Valores únicos para filtros ==========
   const uniqueZonas = useMemo(() => {
@@ -264,7 +278,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   }, []);
 
   const clearFilters = useCallback(() => {
-    setFilters({ search: '', atraso: [], zona: null, movil: null, defecto: null, soloSinCoords: false });
+    setFilters({ search: '', atraso: [], zona: null, movil: null, defecto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos' });
     setPage(0);
   }, []);
 
@@ -332,7 +346,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                 <div>
                   <h2 className="text-lg font-bold text-white">Vista Extendida de Services</h2>
                   <p className="text-xs text-gray-400">
-                    {sorted.length} service{sorted.length !== 1 ? 's' : ''} {isFinalizados ? 'finalizado' : isSinAsignar ? 'sin asignar' : 'pendiente'}{sorted.length !== 1 ? 's' : ''}
+                    {sorted.length} service{sorted.length !== 1 ? 's' : ''} {isFinalizados ? 'finalizado' : 'pendiente'}{sorted.length !== 1 ? 's' : ''}
                     {hasActiveFilters ? ` (de ${servicesBase.length} total)` : ''}
                   </p>
                 </div>
@@ -341,7 +355,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
               {/* Vista toggle - en el centro del header */}
               <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5">
                 <button
-                  onClick={() => onVistaChange?.('pendientes')}
+                  onClick={() => { onVistaChange?.('pendientes'); setFilters(f => ({ ...f, entrega: 'todos' })); }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
                     vista === 'pendientes' ? 'bg-violet-500/30 text-violet-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
                   }`}
@@ -349,15 +363,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                   Pendientes
                 </button>
                 <button
-                  onClick={() => onVistaChange?.('sin-asignar')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
-                    isSinAsignar ? 'bg-gray-500/30 text-gray-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  Sin Asignar
-                </button>
-                <button
-                  onClick={() => onVistaChange?.('finalizados')}
+                  onClick={() => { onVistaChange?.('finalizados'); setFilters(f => ({ ...f, asignacion: 'todos' })); }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
                     isFinalizados ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
                   }`}
@@ -392,23 +398,76 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
             {/* ========== Status Bar ========== */}
             <div className="flex items-center gap-3 px-6 py-2.5 border-b border-gray-700/30 bg-gray-800/40 flex-shrink-0">
               {isFinalizados ? (
-                <div className="flex items-center gap-1.5 text-xs text-green-400">
-                  <div className="w-2 h-2 rounded-full bg-green-400" />
-                  <span>Services Finalizados</span>
-                </div>
-              ) : isSinAsignar ? (
-                <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                  <div className="w-2 h-2 rounded-full bg-gray-400" />
-                  <span>Services Sin Asignar</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-xs text-green-400">
+                    <div className="w-2 h-2 rounded-full bg-green-400" />
+                    <span>Services Finalizados</span>
+                  </div>
+                  {/* Filtro Entregados / No Entregados */}
+                  <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
+                    <button
+                      onClick={() => setFilters(f => ({ ...f, entrega: 'todos' }))}
+                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                        filters.entrega === 'todos' ? 'bg-gray-600/40 text-gray-200 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      onClick={() => setFilters(f => ({ ...f, entrega: 'entregados' }))}
+                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                        filters.entrega === 'entregados' ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Entregados
+                    </button>
+                    <button
+                      onClick={() => setFilters(f => ({ ...f, entrega: 'no_entregados' }))}
+                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                        filters.entrega === 'no_entregados' ? 'bg-red-500/30 text-red-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      No Entregados
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <>{ATRASO_OPTIONS.map(opt => (
-                  <div key={opt.key} className="flex items-center gap-1.5 text-xs text-gray-400">
-                    <div className={`w-2 h-2 rounded-full ${opt.dotColor}`} />
-                    <span>{opt.label}:</span>
-                    <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
+                <div className="flex items-center gap-3">
+                  {ATRASO_OPTIONS.map(opt => (
+                    <div key={opt.key} className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <div className={`w-2 h-2 rounded-full ${opt.dotColor}`} />
+                      <span>{opt.label}:</span>
+                      <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
+                    </div>
+                  ))}
+                  {/* Filtro Asignación: Todos / Con Móvil / Sin Móvil */}
+                  <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
+                    <button
+                      onClick={() => setFilters(f => ({ ...f, asignacion: 'todos' }))}
+                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                        filters.asignacion === 'todos' ? 'bg-gray-600/40 text-gray-200 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      onClick={() => setFilters(f => ({ ...f, asignacion: 'con_movil' }))}
+                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                        filters.asignacion === 'con_movil' ? 'bg-blue-500/30 text-blue-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Con Móvil
+                    </button>
+                    <button
+                      onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
+                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                        filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Sin Móvil
+                    </button>
                   </div>
-                ))}</>
+                </div>
               )}
               <div className="ml-auto text-xs text-gray-500">
                 Total: <span className="font-bold text-gray-300">{servicesBase.length}</span>
@@ -552,14 +611,14 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0" />
                         </svg>
-                        {hasActiveFilters ? 'No hay services que coincidan con los filtros' : (isFinalizados ? 'No hay services finalizados' : isSinAsignar ? 'No hay services sin asignar' : 'No hay services pendientes')}
+                        {hasActiveFilters ? 'No hay services que coincidan con los filtros' : (isFinalizados ? 'No hay services finalizados' : 'No hay services pendientes')}
                       </td>
                     </tr>
                   ) : (
                     paginated.map(({ service: s, delayInfo }) => (
                       <tr
                         key={s.id}
-                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : isSinAsignar ? 'bg-gray-400/15 hover:bg-gray-400/25 border-l-gray-400' : getRowBg(delayInfo)}`}
+                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : (!s.movil || Number(s.movil) === 0) ? 'bg-gray-400/10 hover:bg-gray-400/20 border-l-gray-400' : getRowBg(delayInfo)}`}
                       >
                         <td className="px-4 py-2.5" onClick={() => onServiceClick?.(s.id)}>
                           {isFinalizados ? (

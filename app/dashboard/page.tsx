@@ -1355,7 +1355,7 @@ function DashboardContent() {
             selectedDate={selectedDate}
             selectedMoviles={selectedMoviles}
             onSinAsignarClick={() => {
-              setPedidosFilters(prev => ({ ...prev, vista: 'sin-asignar' }));
+              setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
               setIsPedidosTableOpen(true);
             }}
             onEntregadosClick={() => {
@@ -1828,8 +1828,8 @@ function DashboardContent() {
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
                 hiddenPoiCategories={hiddenPoiCategories}
-                pedidosVista={pedidosFilters.vista === 'sin-asignar' ? undefined : pedidosFilters.vista}
-                servicesVista={servicesFilters.vista === 'sin-asignar' ? undefined : servicesFilters.vista}
+                pedidosVista={pedidosFilters.vista}
+                servicesVista={servicesFilters.vista}
                 onZonaClick={dataViewMode === 'moviles-zonas' ? openZonaView : undefined}
               />
             </motion.div>
