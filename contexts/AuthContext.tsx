@@ -32,6 +32,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ⏰ Duración máxima de sesión: 8 horas (en milisegundos)
+  const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
+
+  /** Verificar si la sesión ha expirado por tiempo */
+  const isSessionExpired = (loginTime: string | undefined): boolean => {
+    if (!loginTime) return true;
+    const elapsed = Date.now() - new Date(loginTime).getTime();
+    return elapsed > SESSION_MAX_AGE_MS;
+  };
+
+  /** Limpiar sesión expirada de localStorage */
+  const clearExpiredSession = () => {
+    console.log('⏰ Sesión expirada (>8h) — cerrando sesión automáticamente');
+    localStorage.removeItem('trackmovil_user');
+    localStorage.removeItem('trackmovil_token');
+    localStorage.removeItem('trackmovil_allowed_empresas');
+    setUser(null);
+  };
+
   // Cargar sesión desde localStorage al iniciar
   useEffect(() => {
     const savedUser = localStorage.getItem('trackmovil_user');
@@ -49,6 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Validar que tenga campos mínimos requeridos
         if (!parsedUser.username || !parsedUser.id) {
           throw new Error('Invalid user data structure');
+        }
+
+        // ⏰ Verificar expiración de sesión (8 horas)
+        if (isSessionExpired(parsedUser.loginTime)) {
+          clearExpiredSession();
+          setIsLoading(false);
+          return;
         }
         
         // Cargar empresas permitidas desde localStorage
@@ -76,6 +102,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setIsLoading(false);
   }, []);
+
+  // ⏰ Chequeo periódico: expirar sesión mientras la app está abierta
+  useEffect(() => {
+    if (!user?.loginTime) return;
+
+    const checkExpiration = () => {
+      if (isSessionExpired(user.loginTime)) {
+        clearExpiredSession();
+      }
+    };
+
+    // Verificar cada 5 minutos
+    const intervalId = setInterval(checkExpiration, 5 * 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, [user?.loginTime]);
 
   const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
