@@ -35,6 +35,7 @@ interface ParsedLoginResponse {
 interface LoginCredentials {
   UserName: string;
   Password: string;
+  Sistema?: string;
 }
 
 // Crear instancia de axios con configuración base
@@ -91,30 +92,14 @@ export const authService = {
         Password: password,
       };
 
-      const response = await apiClient.post<LoginResponse>(
-        '/gestion/login',
+      // Llamar al nuevo endpoint de login (secapi.riogas.com.uy)
+      const response = await axios.post<ParsedLoginResponse>(
+        '/api/auth/login',
         credentials
       );
 
-      // 🔧 FIX: El proxy ya parseó RespuestaLogin
-      // Si response.data ya es un objeto (no string), usarlo directamente
-      let parsedResponse: ParsedLoginResponse;
-      
-      if (typeof response.data === 'string' || response.data.RespuestaLogin) {
-        // Caso legacy: RespuestaLogin viene como string (no debería pasar con proxy actualizado)
-        let rawData = typeof response.data === 'string' ? response.data : response.data.RespuestaLogin;
-        // GeneXus agrega texto basura después del JSON - truncar en el último '}'
-        if (typeof rawData === 'string') {
-          const lastBrace = rawData.lastIndexOf('}');
-          if (lastBrace !== -1 && lastBrace < rawData.length - 1) {
-            rawData = rawData.substring(0, lastBrace + 1);
-          }
-        }
-        parsedResponse = JSON.parse(rawData);
-      } else {
-        // Caso nuevo: El proxy ya devolvió el objeto parseado
-        parsedResponse = response.data as unknown as ParsedLoginResponse;
-      }
+      // La ruta /api/auth/login ya maneja el parseo de RespuestaLogin si aplica
+      const parsedResponse: ParsedLoginResponse = response.data;
 
       if (!parsedResponse.success) {
         throw new Error(parsedResponse.message || 'Error en el login');
