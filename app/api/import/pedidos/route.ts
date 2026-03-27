@@ -219,6 +219,7 @@ function transformPedidoToSupabase(pedido: any) {
     prodsadicionales: pedido.prodsadicionales ?? pedido.ProdsAdicionales ?? '',
     campana: pedido.campana ?? pedido.Campana ?? '',
     obsfletero: pedido.obsfletero ?? pedido.ObsFletero ?? '',
+    fletero: pedido.Fletero?.trim() || pedido.fletero || '',
   };
 }
 

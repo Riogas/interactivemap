@@ -143,6 +143,9 @@ function transformServiceToSupabase(service: any) {
     // Coordenadas geográficas
     latitud: service.Latitud ?? service.latitud ?? null,
     longitud: service.Longitud ?? service.longitud ?? null,
+
+    // Fletero
+    fletero: service.Fletero?.trim() || service.fletero || '',
   };
 }
 

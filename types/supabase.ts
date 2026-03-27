@@ -135,6 +135,7 @@ export interface Database {
           prodsadicionales: string | null
           campana: string | null
           obsfletero: string | null
+          fletero: string | null
           producto_cant: number | null
           producto_cod: string | null
           producto_nom: string | null
@@ -185,6 +186,7 @@ export interface Database {
           prodsadicionales?: string | null
           campana?: string | null
           obsfletero?: string | null
+          fletero?: string | null
           producto_cant?: number | null
           producto_cod?: string | null
           producto_nom?: string | null
@@ -235,6 +237,7 @@ export interface Database {
           prodsadicionales?: string | null
           campana?: string | null
           obsfletero?: string | null
+          fletero?: string | null
           producto_cant?: number | null
           producto_cod?: string | null
           producto_nom?: string | null
@@ -298,6 +301,7 @@ export interface Database {
           ubicacion: string | null
           latitud: number | null
           longitud: number | null
+          fletero: string | null
           created_at: string | null
           updated_at: string | null
         }
@@ -346,6 +350,7 @@ export interface Database {
           ubicacion?: string | null
           latitud?: number | null
           longitud?: number | null
+          fletero?: string | null
           created_at?: string | null
           updated_at?: string | null
         }
@@ -394,6 +399,7 @@ export interface Database {
           ubicacion?: string | null
           latitud?: number | null
           longitud?: number | null
+          fletero?: string | null
           created_at?: string | null
           updated_at?: string | null
         }
