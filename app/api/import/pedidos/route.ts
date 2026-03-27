@@ -144,6 +144,7 @@ function transformPedidoToSupabase(pedido: any) {
     // Campos adicionales
     prodsadicionales: pedido.prodsadicionales ?? pedido.ProdsAdicionales ?? '',
     campana: pedido.campana ?? pedido.Campana ?? '',
+    obsfletero: pedido.obsfletero ?? pedido.ObsFletero ?? '',
   };
 }
 

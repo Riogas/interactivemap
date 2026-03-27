@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from('moviles')
       .upsert(transformedMoviles as any, {
-        onConflict: 'id', // Usar el ID como clave para detectar duplicados
+        onConflict: 'escenario_id,id', // PK compuesta
         ignoreDuplicates: false // Actualizar si existe
       })
       .select();
@@ -301,7 +301,7 @@ export async function PUT(request: NextRequest) {
     const { data, error } = await supabase
       .from('moviles')
       .upsert(transformedMoviles as any, {
-        onConflict: 'id', // PRIMARY KEY de la tabla
+        onConflict: 'escenario_id,id', // PK compuesta
       })
       .select();
 

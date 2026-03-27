@@ -14,6 +14,7 @@ export interface Database {
       moviles: {
         Row: {
           id: string
+          escenario_id: number
           descripcion: string
           detalle_html: string | null
           distancia_max_mts_cump_pedidos: number | null
@@ -42,6 +43,7 @@ export interface Database {
         }
         Insert: {
           id: string
+          escenario_id?: number
           descripcion: string
           detalle_html?: string | null
           distancia_max_mts_cump_pedidos?: number | null
@@ -70,6 +72,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          escenario_id?: number
           descripcion?: string
           detalle_html?: string | null
           distancia_max_mts_cump_pedidos?: number | null
@@ -131,6 +134,7 @@ export interface Database {
           prioridad: number | null
           prodsadicionales: string | null
           campana: string | null
+          obsfletero: string | null
           producto_cant: number | null
           producto_cod: string | null
           producto_nom: string | null
@@ -180,6 +184,7 @@ export interface Database {
           prioridad?: number | null
           prodsadicionales?: string | null
           campana?: string | null
+          obsfletero?: string | null
           producto_cant?: number | null
           producto_cod?: string | null
           producto_nom?: string | null
@@ -229,6 +234,7 @@ export interface Database {
           prioridad?: number | null
           prodsadicionales?: string | null
           campana?: string | null
+          obsfletero?: string | null
           producto_cant?: number | null
           producto_cod?: string | null
           producto_nom?: string | null
