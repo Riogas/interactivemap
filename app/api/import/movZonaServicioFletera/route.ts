@@ -5,14 +5,14 @@ import { requireApiKey } from '@/lib/auth-middleware';
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
- * Parsea MovZonas (strings separados por coma) a un array de números de zona.
+ * Parsea MovZonas a un array de números de zona.
  *
  * Entrada (Genexus):
- *   ["1,2,3,4,5,6,7"]
- *   o ["1", "2", "3"]
- *   o [1, 2, 3]
+ *   [3, 4]         — array de números
+ *   ["3", "4"]     — array de strings
+ *   ["1,2,3,4"]    — string separado por coma
  *
- * Salida: [1, 2, 3, 4, 5, 6, 7]
+ * Salida: [3, 4]
  */
 function parseMovZonas(rawItems: any[]): number[] {
   const zonas: number[] = [];
@@ -45,11 +45,11 @@ function parseMovZonas(rawItems: any[]): number[] {
  *   "TipoServicio-TipoZona-Zona": [
  *     {
  *       "TipoDeServicio": "URGENTE",
- *       "MovZonas": ["1,2,3,4,5,6,7"]
+ *       "MovZonas": [3, 4]
  *     },
  *     {
  *       "TipoDeServicio": "NOCTURNO",
- *       "MovZonas": ["1,2,3,4,5,6,7"]
+ *       "MovZonas": [3, 4]
  *     }
  *   ]
  * }
