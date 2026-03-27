@@ -255,23 +255,12 @@ export default function MovilSelector({
   const filteredPedidos = useMemo(() => {
     let result = [...pedidos];
     
-    // Filtrar según vista: pendientes (estado 1 asignados), sin_asignar (estado 1 sin movil), finalizados (estado 2)
+    // Filtrar según vista: pendientes (estado 1, asignados + sin asignar), finalizados (estado 2)
     if (pedidosFilters.vista === 'finalizados') {
       result = result.filter(pedido => Number(pedido.estado_nro) === 2);
-    } else if (pedidosFilters.vista === 'sin_asignar') {
-      result = result.filter(pedido => {
-        const estado = Number(pedido.estado_nro);
-        if (estado !== 1) return false;
-        return !pedido.movil || Number(pedido.movil) === 0;
-      });
     } else {
-      // pendientes: estado 1 con móvil asignado (sub_estado_nro 5)
-      result = result.filter(pedido => {
-        const estado = Number(pedido.estado_nro);
-        if (estado !== 1) return false;
-        if (!pedido.movil || Number(pedido.movil) === 0) return false;
-        return Number(pedido.sub_estado_nro) === 5;
-      });
+      // pendientes: todos estado 1
+      result = result.filter(pedido => Number(pedido.estado_nro) === 1);
     }
     
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles + sin asignar
@@ -339,21 +328,12 @@ export default function MovilSelector({
   const filteredServices = useMemo(() => {
     let result = [...services];
     
-    // Filtrar según vista: pendientes (estado 1 asignados), sin_asignar (estado 1 sin movil), finalizados (estado 2)
+    // Filtrar según vista: pendientes (estado 1, asignados + sin asignar), finalizados (estado 2)
     if (servicesFilters.vista === 'finalizados') {
       result = result.filter(service => Number(service.estado_nro) === 2);
-    } else if (servicesFilters.vista === 'sin_asignar') {
-      result = result.filter(service => {
-        if (Number(service.estado_nro) !== 1) return false;
-        return !service.movil || Number(service.movil) === 0;
-      });
     } else {
-      // pendientes: estado 1 con móvil asignado (sub_estado_nro 5)
-      result = result.filter(service => {
-        if (Number(service.estado_nro) !== 1) return false;
-        if (Number(service.sub_estado_nro) !== 5) return false;
-        return service.movil && Number(service.movil) !== 0;
-      });
+      // pendientes: todos estado 1
+      result = result.filter(service => Number(service.estado_nro) === 1);
     }
     
     // Filtrar por móviles seleccionados
@@ -466,7 +446,6 @@ export default function MovilSelector({
               label: 'Vista',
               options: [
                 { value: 'pendientes', label: '⏳ Pendientes' },
-                { value: 'sin_asignar', label: '📥 Sin asignar' },
                 { value: 'finalizados', label: '✅ Finalizados' },
               ],
               value: servicesFilters.vista,
@@ -505,7 +484,7 @@ export default function MovilSelector({
             if (filterId === 'vista') {
               setServicesFilters(prev => ({ 
                 ...prev, 
-                vista: value as 'pendientes' | 'sin_asignar' | 'finalizados'
+                vista: value as 'pendientes' | 'finalizados'
               }));
             }
           },
@@ -527,7 +506,6 @@ export default function MovilSelector({
               label: 'Vista',
               options: [
                 { value: 'pendientes', label: '⏳ Pendientes' },
-                { value: 'sin_asignar', label: '📥 Sin asignar' },
                 { value: 'finalizados', label: '✅ Finalizados' },
               ],
               value: pedidosFilters.vista,
@@ -566,7 +544,7 @@ export default function MovilSelector({
             if (filterId === 'vista') {
               setPedidosFilters(prev => ({ 
                 ...prev, 
-                vista: value as 'pendientes' | 'sin_asignar' | 'finalizados'
+                vista: value as 'pendientes' | 'finalizados'
               }));
             }
           },

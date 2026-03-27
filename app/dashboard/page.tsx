@@ -1762,12 +1762,13 @@ function DashboardContent() {
                 pedidos={pedidosHidden ? [] : filterByTipoServicio(filterByDelay(
                   (pedidosFilters.vista === 'finalizados'
                     ? (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 2))
-                    : pedidosFilters.vista === 'sin_asignar'
-                      ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0))
-                      : (selectedMoviles.length > 0
-                          ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
-                          : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5 && !!p.movil && Number(p.movil) !== 0)
-                        )
+                    : (selectedMoviles.length > 0
+                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && (
+                            (p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) ||
+                            (!p.movil || Number(p.movil) === 0)
+                          ))
+                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 1)
+                      )
                   ).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud)),
                   pedidosFilters.vista !== 'finalizados' ? pedidosFilters.atraso : []
                 ), pedidosFilters.vista !== 'finalizados' ? pedidosFilters.tipoServicio : 'all')}
@@ -1780,9 +1781,7 @@ function DashboardContent() {
                 services={servicesHidden ? [] : filterByTipoServicio(filterByDelay(
                   (servicesFilters.vista === 'finalizados'
                     ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 2 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 2))
-                    : servicesFilters.vista === 'sin_asignar'
-                      ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0))
-                      : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && Number(s.sub_estado_nro) === 5 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1 && Number(s.sub_estado_nro) === 5 && !!s.movil && Number(s.movil) !== 0))
+                    : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1))
                   ).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud)),
                   servicesFilters.vista !== 'finalizados' ? servicesFilters.atraso : []
                 ), servicesFilters.vista !== 'finalizados' ? servicesFilters.tipoServicio : 'all')}

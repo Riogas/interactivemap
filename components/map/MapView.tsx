@@ -100,8 +100,8 @@ interface MapViewProps {
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
-  pedidosVista?: 'pendientes' | 'sin_asignar' | 'finalizados'; // Vista actual de pedidos
-  servicesVista?: 'pendientes' | 'sin_asignar' | 'finalizados'; // Vista actual de services
+  pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
+  servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
   allMovilEstados?: Map<string, number>; // Mapa completo movil_nro → estadoNro (todos los moviles)
   onOpenEstadisticas?: () => void; // Abrir modal de estadísticas por zona
