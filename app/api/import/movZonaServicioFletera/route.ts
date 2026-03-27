@@ -5,44 +5,28 @@ import { requireApiKey } from '@/lib/auth-middleware';
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
- * Transforma los items de MovZonas a un array JSON para la columna `zonas`.
+ * Parsea MovZonas (strings separados por coma) a un array de números de zona.
  *
  * Entrada (Genexus):
- *   [
- *     { Zona: "3",  PrioridadOTransito: 1, Moviles: [304, 305] },
- *     { Zona: "10", PrioridadOTransito: 0, Movil: 330 }
- *   ]
+ *   ["1,2,3,4,5,6,7"]
+ *   o ["1", "2", "3"]
+ *   o [1, 2, 3]
  *
- * Salida (JSON para columna zonas):
- *   [
- *     { zona_id: 3,  prioridad_o_transito: 1, moviles: [304, 305] },
- *     { zona_id: 10, prioridad_o_transito: 0, moviles: [330] }
- *   ]
+ * Salida: [1, 2, 3, 4, 5, 6, 7]
  */
-function buildZonasJson(rawItems: any[]): any[] {
-  return rawItems.map((item: any) => {
-    const zona_id = parseInt(String(item.Zona ?? item.zona_id ?? '0'), 10);
-    const prioridad_o_transito = parseInt(
-      String(item.PrioridadOTransito ?? item.prioridad_o_transito ?? '0'),
-      10
-    );
-
-    // Determinar los móviles
-    let moviles: number[] = [];
-    if (Array.isArray(item.Moviles) && item.Moviles.length > 0) {
-      moviles = item.Moviles.map((m: any) => Number(m));
-    } else if (item.Movil !== undefined) {
-      moviles = [Number(item.Movil)];
-    } else if (item.movil_id !== undefined) {
-      moviles = [Number(item.movil_id)];
+function parseMovZonas(rawItems: any[]): number[] {
+  const zonas: number[] = [];
+  for (const item of rawItems) {
+    const str = String(item).trim();
+    // Cada item puede ser "1,2,3,4" separado por comas
+    const parts = str.split(',');
+    for (const part of parts) {
+      const n = parseInt(part.trim(), 10);
+      if (!isNaN(n)) zonas.push(n);
     }
-
-    return {
-      zona_id,
-      prioridad_o_transito,
-      moviles,
-    };
-  });
+  }
+  // Eliminar duplicados y ordenar
+  return [...new Set(zonas)].sort((a, b) => a - b);
 }
 
 // ─── POST & PUT ─────────────────────────────────────────────────────
@@ -61,23 +45,18 @@ function buildZonasJson(rawItems: any[]): any[] {
  *   "TipoServicio-TipoZona-Zona": [
  *     {
  *       "TipoDeServicio": "URGENTE",
- *       "MovZonas": [
- *         { "Zona": "3",  "PrioridadOTransito": 1, "Moviles": [304, 305] },
- *         { "Zona": "10", "PrioridadOTransito": 0, "Movil": 330 }
- *       ]
+ *       "MovZonas": ["1,2,3,4,5,6,7"]
  *     },
  *     {
- *       "TipoDeServicio": "GAS",
- *       "MovZonas": [
- *         { "Zona": "1", "PrioridadOTransito": 1, "Moviles": [100, 101] }
- *       ]
+ *       "TipoDeServicio": "NOCTURNO",
+ *       "MovZonas": ["1,2,3,4,5,6,7"]
  *     }
  *   ]
  * }
  *
  * Tabla destino: fleteras_zonas
  *   PK: (escenario_id, tipo_de_zona, empresa_fletera_id, tipo_de_servicio)
- *   zonas: JSONB — [{ zona_id, prioridad_o_transito, moviles: [...] }, ...]
+ *   zonas: JSONB — array de números de zona, ej: [1, 2, 3, 4, 5, 6, 7]
  *
  * Comportamiento: UPSERT por PK — si ya existe la combinación, reemplaza las zonas.
  */
@@ -157,15 +136,16 @@ async function handleImport(request: NextRequest) {
       if (!Array.isArray(rawItems)) rawItems = [rawItems];
 
       console.log(
-        `\n🔸 TipoDeServicio: "${tipo_de_servicio}" — ${rawItems.length} MovZona(s) crudo(s)`
+        `\n🔸 TipoDeServicio: "${tipo_de_servicio}" — MovZonas raw: ${JSON.stringify(rawItems)}`
       );
 
-      // Construir JSON de zonas
-      const zonas = buildZonasJson(rawItems);
+      // Parsear zonas separadas por coma a array de números
+      const zonas = parseMovZonas(rawItems);
 
-      console.log(`   🔄 Zonas JSON generado: ${zonas.length} zona(s)`);
-      if (zonas.length > 0) {
-        console.log('   Ejemplo:', JSON.stringify(zonas[0]));
+      console.log(`   🔄 Zonas parseadas: [${zonas.join(', ')}] (${zonas.length} zona(s))`);
+      if (zonas.length === 0) {
+        console.warn(`   ⚠️ No se encontraron zonas válidas para "${tipo_de_servicio}", saltando`);
+        continue;
       }
 
       // UPSERT en fleteras_zonas (PK: escenario_id, tipo_de_zona, empresa_fletera_id, tipo_de_servicio)
