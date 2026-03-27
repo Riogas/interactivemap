@@ -51,6 +51,13 @@ export function useFilterHelpers(movilesFilters: MovilFilters, preferences: Filt
   ): T[] => {
     if (!tipoServicio || tipoServicio === 'all') return items;
     const tipoUpper = tipoServicio.toUpperCase();
+    // "PEDIDOS" agrupa URGENTE + NOCTURNO
+    if (tipoUpper === 'PEDIDOS') {
+      return items.filter(item => {
+        const svc = item.servicio_nombre?.toUpperCase();
+        return svc === 'URGENTE' || svc === 'NOCTURNO';
+      });
+    }
     return items.filter(item =>
       item.servicio_nombre && item.servicio_nombre.toUpperCase() === tipoUpper
     );

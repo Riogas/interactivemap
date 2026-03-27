@@ -30,7 +30,9 @@ interface ZonaEstadisticasModalProps {
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
 
 const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
-const TIPOS_SERVICIO = ['URGENTE', 'NOCTURNO', 'SERVICE'] as const;
+const TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE'] as const;
+/** servicio_nombre values que corresponden a "PEDIDOS" */
+const PEDIDOS_SERVICES = new Set(['URGENTE', 'NOCTURNO']);
 
 // ============= Component =============
 
@@ -46,7 +48,7 @@ export default function ZonaEstadisticasModal({
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [serviceFilter, setServiceFilter] = useState<string>('URGENTE');
+  const [serviceFilter, setServiceFilter] = useState<string>('PEDIDOS');
 
   // Data fetched internally
   const [zonas, setZonas] = useState<ZonaInfo[]>([]);
@@ -118,17 +120,21 @@ export default function ZonaEstadisticasModal({
   // Filter pedidos by service type
   const filteredPedidos = useMemo(() => {
     const upper = serviceFilter.toUpperCase();
+    if (upper === 'PEDIDOS') {
+      return pedidos.filter(p => p.servicio_nombre && PEDIDOS_SERVICES.has(p.servicio_nombre.toUpperCase()));
+    }
     return pedidos.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === upper);
   }, [pedidos, serviceFilter]);
 
   // Filter movilesZonasData by service type + active + not excluded estado
   const filteredMovilesZonas = useMemo(() => {
     const upper = serviceFilter.toUpperCase();
-    return movilesZonasData.filter(r =>
-      r.activa &&
-      r.tipo_de_servicio?.toUpperCase() === upper &&
-      !EXCLUDED_ESTADOS.has(movilEstados.get(r.movil_id) ?? -1)
-    );
+    return movilesZonasData.filter(r => {
+      if (!r.activa || EXCLUDED_ESTADOS.has(movilEstados.get(r.movil_id) ?? -1)) return false;
+      const svc = r.tipo_de_servicio?.toUpperCase() || '';
+      if (upper === 'PEDIDOS') return PEDIDOS_SERVICES.has(svc);
+      return svc === upper;
+    });
   }, [movilesZonasData, serviceFilter, movilEstados]);
 
   const stats = useMemo(() => {

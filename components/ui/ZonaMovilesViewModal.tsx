@@ -17,7 +17,9 @@ interface Zona {
 const ESTADOS_TACHADOS = new Set([3, 5, 15]);
 
 /** Opciones fijas de tipo de servicio */
-const TIPOS_SERVICIO = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;
+const TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE'] as const;
+/** servicio_nombre / tipo_de_servicio values que corresponden a "PEDIDOS" */
+const PEDIDOS_SERVICES = new Set(['URGENTE', 'NOCTURNO']);
 
 // ========== Colores de zona ==========
 const ZONA_COLORS = [
@@ -54,7 +56,7 @@ export default function ZonaMovilesViewModal({
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loadingZonas, setLoadingZonas] = useState(false);
   const [selectedZonaId, setSelectedZonaId] = useState<number | null>(null);
-  const [serviceFilter, setServiceFilter] = useState<string>('URGENTE');
+  const [serviceFilter, setServiceFilter] = useState<string>('PEDIDOS');
 
   // ========== Datos internos de moviles_zonas (fetch propio si prop viene vacío) ==========
   const [internalMzData, setInternalMzData] = useState<MovilZonaRecord[]>([]);
@@ -144,9 +146,12 @@ export default function ZonaMovilesViewModal({
 
   // ========== Filtrar registros por tipo de servicio ==========
   const filteredData = useMemo(() => {
-    return effectiveMzData.filter(
-      mz => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter.toUpperCase()
-    );
+    const upper = serviceFilter.toUpperCase();
+    return effectiveMzData.filter(mz => {
+      const svc = (mz.tipo_de_servicio || '').toUpperCase();
+      if (upper === 'PEDIDOS') return PEDIDOS_SERVICES.has(svc);
+      return svc === upper;
+    });
   }, [effectiveMzData, serviceFilter]);
 
   // ========== Asignaciones por zona (desde filteredData) ==========
@@ -187,7 +192,7 @@ export default function ZonaMovilesViewModal({
   useEffect(() => {
     if (!isOpen) {
       setSelectedZonaId(null);
-      setServiceFilter('URGENTE');
+      setServiceFilter('PEDIDOS');
       setInternalMzData([]);
     }
   }, [isOpen]);

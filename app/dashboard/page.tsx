@@ -1586,7 +1586,8 @@ function DashboardContent() {
             setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
             setIsServicesTableOpen(true);
           } else {
-            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: svcFilter }));
+            // PEDIDOS agrupa URGENTE + NOCTURNO; pasar 'PEDIDOS' al filtro
+            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: upper === 'PEDIDOS' ? 'PEDIDOS' : svcFilter }));
             setIsPedidosTableOpen(true);
           }
         }}
