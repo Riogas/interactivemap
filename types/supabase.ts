@@ -392,6 +392,35 @@ export interface Database {
           updated_at?: string | null
         }
       }
+      fleteras_zonas: {
+        Row: {
+          escenario_id: number
+          tipo_de_zona: string
+          empresa_fletera_id: number
+          tipo_de_servicio: string
+          zonas: Json
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          escenario_id: number
+          tipo_de_zona: string
+          empresa_fletera_id: number
+          tipo_de_servicio: string
+          zonas: Json
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          escenario_id?: number
+          tipo_de_zona?: string
+          empresa_fletera_id?: number
+          tipo_de_servicio?: string
+          zonas?: Json
+          created_at?: string | null
+          updated_at?: string | null
+        }
+      }
       empresas_fleteras: {
         Row: {
           empresa_fletera_id: number
