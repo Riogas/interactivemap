@@ -3,6 +3,27 @@ import { supabase } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
+ * Lee el body del request respetando el charset del Content-Type.
+ * GeneXus/AS400 envía Latin-1 (ISO-8859-1) — request.text() siempre
+ * decodifica como UTF-8 y corrompe caracteres como ñ, á, é, etc.
+ */
+async function readRequestBody(request: NextRequest): Promise<string> {
+  const contentType = request.headers.get('content-type') || '';
+  const charsetMatch = contentType.match(/charset=([\w-]+)/i);
+  const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'utf-8';
+  
+  if (charset === 'utf-8' || charset === 'utf8') {
+    return await request.text();
+  }
+  
+  const buffer = await request.arrayBuffer();
+  const decoder = new TextDecoder(charset);
+  const decoded = decoder.decode(buffer);
+  console.log(`🔤 Body decodificado con charset: ${charset}`);
+  return decoded;
+}
+
+/**
  * Transforma campos de PascalCase a snake_case para Supabase
  */
 function transformServiceToSupabase(service: any) {
@@ -138,7 +159,7 @@ export async function POST(request: NextRequest) {
   console.log(`📋 IMPORTACIÓN DE SERVICES [${timestamp}]`);
 
   try {
-    const body = await request.json();
+    const body = JSON.parse(await readRequestBody(request));
 
     let { services } = body;
 
@@ -205,7 +226,7 @@ export async function PUT(request: NextRequest) {
   console.log(`🔄 ACTUALIZACIÓN DE SERVICES [${timestamp}]`);
 
   try {
-    const body = await request.json();
+    const body = JSON.parse(await readRequestBody(request));
 
     let { services } = body;
 
@@ -266,7 +287,7 @@ export async function DELETE(request: NextRequest) {
   if (keyValidation instanceof NextResponse) return keyValidation;
 
   try {
-    const body = await request.json();
+    const body = JSON.parse(await readRequestBody(request));
     const { service_ids } = body;
 
     if (!service_ids || !Array.isArray(service_ids)) {

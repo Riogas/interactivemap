@@ -4,6 +4,25 @@ import { successResponse, errorResponse, logRequest } from '@/lib/api-response';
 import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
+ * Lee el body del request respetando el charset del Content-Type.
+ */
+async function readRequestBody(request: NextRequest): Promise<string> {
+  const contentType = request.headers.get('content-type') || '';
+  const charsetMatch = contentType.match(/charset=([\w-]+)/i);
+  const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'utf-8';
+  
+  if (charset === 'utf-8' || charset === 'utf8') {
+    return await request.text();
+  }
+  
+  const buffer = await request.arrayBuffer();
+  const decoder = new TextDecoder(charset);
+  const decoded = decoder.decode(buffer);
+  console.log(`🔤 Body decodificado con charset: ${charset}`);
+  return decoded;
+}
+
+/**
  * Transforma campos de PascalCase a snake_case para Supabase
  * 
  * Acepta campos en PascalCase (GeneXus) o snake_case (directo)
@@ -65,7 +84,7 @@ export async function POST(request: NextRequest) {
     let body;
     let rawBody = '';
     try {
-      rawBody = await request.text();
+      rawBody = await readRequestBody(request);
       console.log('Body raw (primeros 500 chars):', rawBody.substring(0, 500));
       body = JSON.parse(rawBody);
       console.log('✅ JSON parseado correctamente');
