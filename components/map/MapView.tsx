@@ -1081,13 +1081,14 @@ const MapView = memo(function MapView({
   }, [moviles, focusedMovil, showCompletados]);
 
   // Móvil actual del popup (buscar en moviles filtrados primero, luego en allMoviles)
-  const movilActual = popupMovil ? (moviles.find(m => m.id === popupMovil) || allMoviles.find(m => m.id === popupMovil) || null) : null;
+  // Usar Number() porque movil.id puede llegar como string desde Supabase
+  const movilActual = popupMovil ? (moviles.find(m => Number(m.id) === Number(popupMovil)) || allMoviles?.find(m => Number(m.id) === Number(popupMovil)) || null) : null;
   
   // Móvil seleccionado para mostrar pendientes
-  const movilConPendientes = (popupMovil || focusedMovil) ? moviles.find(m => m.id === (popupMovil || focusedMovil)) : null;
+  const movilConPendientes = (popupMovil || focusedMovil) ? moviles.find(m => Number(m.id) === Number(popupMovil || focusedMovil)) : null;
   
   // Móvil con completados para mostrar (cuando showCompletados está activo)
-  const movilConCompletados = focusedMovil ? moviles.find(m => m.id === focusedMovil) : null;
+  const movilConCompletados = focusedMovil ? moviles.find(m => Number(m.id) === Number(focusedMovil)) : null;
   
   // Los móviles ya vienen filtrados desde page.tsx según la selección múltiple
   // No necesitamos filtrar aquí nuevamente

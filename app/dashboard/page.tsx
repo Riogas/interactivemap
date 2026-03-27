@@ -388,7 +388,7 @@ function DashboardContent() {
             empresa_fletera_id: number;
             position: any 
           }) => ({
-            id: item.movilId,
+            id: Number(item.movilId),
             name: item.movilName,
             color: item.color,
             empresaFleteraId: item.empresa_fletera_id,
@@ -871,7 +871,8 @@ function DashboardContent() {
     
     if (movilId) {
       // Verificar si el móvil existe en el estado actual (via ref para acceso sincrónico)
-      const movilExists = movilesRef.current.some(m => m.id === movilId);
+      // Usar Number() porque movil.id puede llegar como string desde Supabase
+      const movilExists = movilesRef.current.some(m => Number(m.id) === Number(movilId));
 
       // Si no existe, cargarlo desde la API antes de abrir el popup
       if (!movilExists) {
@@ -891,7 +892,7 @@ function DashboardContent() {
             };
             console.log(`✅ Móvil ${movilId} cargado desde API para popup`);
             setMoviles(prev => {
-              if (prev.some(m => m.id === movilId)) return prev;
+              if (prev.some(m => Number(m.id) === Number(movilId))) return prev;
               return [...prev, newMovil];
             });
           }
@@ -919,7 +920,7 @@ function DashboardContent() {
           // Actualizar el móvil con los datos de pendientes
           setMoviles(prevMoviles =>
             prevMoviles.map(movil => {
-              if (movil.id === movilId) {
+              if (Number(movil.id) === Number(movilId)) {
                 return {
                   ...movil,
                   pedidosPendientes: result.pedidosPendientes,

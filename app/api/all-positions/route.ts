@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
       const position = latestPositions.get(movil.id);
       
       return {
-        movilId: movil.id,
+        movilId: Number(movil.id),
         movilName: movil.descripcion || `Móvil-${movil.id}`,
         color: getMovilColor(index),
         empresa_fletera_id: movil.empresa_fletera_id,
