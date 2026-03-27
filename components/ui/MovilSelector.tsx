@@ -620,6 +620,23 @@ export default function MovilSelector({
             onClear: onClearAll,
           });
         }
+
+        // Badge de empresas fleteras seleccionadas
+        if (showEmpresaSelector && selectedEmpresas.length > 0 && empresas.length > 0) {
+          const allSelected = selectedEmpresas.length === empresas.length;
+          const selectedNames = empresas
+            .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
+            .map(e => e.nombre);
+          badges.push({
+            label: allSelected
+              ? '🏢 Empresas: Todas'
+              : `🏢 Empresas: ${selectedNames.length <= 2 ? selectedNames.join(', ') : `${selectedNames.slice(0, 2).join(', ')} +${selectedNames.length - 2}`}`,
+            color: 'bg-amber-100 text-amber-700',
+            onClear: !allSelected && onEmpresasChange
+              ? () => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))
+              : undefined,
+          });
+        }
         
         // Badge de filtros de atraso de pedidos
         if (pedidosFilters.atraso.length > 0) {

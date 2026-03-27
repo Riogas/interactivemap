@@ -33,6 +33,8 @@ export interface UserPreferences {
   serviceShape: MarkerShape; // Forma del marcador de services (compact/mini)
   showDemoraLabels: boolean; // Mostrar etiquetas de demora (minutos) en mapa
   zonaOpacity: number; // Opacidad de las capas de zonas (0-100)
+  nightStartHour: number; // Hora de inicio del horario nocturno (0-23)
+  dayStartHour: number; // Hora de inicio del horario diurno (0-23)
   // Campos de visibilidad y vista de datos (persisten en DB)
   movilesVisible: boolean; // true = mostrar capa de móviles
   pedidosVisible: boolean; // true = mostrar capa de pedidos
@@ -60,6 +62,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   serviceShape: 'triangle',
   showDemoraLabels: false, // Por defecto ocultas
   zonaOpacity: 50, // 50% por defecto
+  nightStartHour: 20, // 20:00 hs por defecto
+  dayStartHour: 6, // 06:00 hs por defecto
   movilesVisible: true,
   pedidosVisible: true,
   servicesVisible: true,
@@ -543,6 +547,49 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </div>
               </label>
+
+              {/* Horario Nocturno / Diurno */}
+              <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 text-lg">🌙</div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Horario Nocturno / Diurno</div>
+                    <p className="text-xs text-gray-500">Define cuándo comienza la noche y el día</p>
+                  </div>
+                </div>
+              </label>
+              <div className="pl-14 pr-3 -mt-2 pb-2 space-y-3">
+                {/* Inicio nocturno */}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600 min-w-[120px]">Inicio nocturno:</span>
+                  <select
+                    value={preferences.nightStartHour}
+                    onChange={(e) => setPreferences({ ...preferences, nightStartHour: parseInt(e.target.value) })}
+                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400">🌙 Comienza la noche</span>
+                </div>
+                {/* Inicio diurno */}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600 min-w-[120px]">Inicio diurno:</span>
+                  <select
+                    value={preferences.dayStartHour}
+                    onChange={(e) => setPreferences({ ...preferences, dayStartHour: parseInt(e.target.value) })}
+                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400">☀️ Comienza el día</span>
+                </div>
+              </div>
+
+              <hr className="border-gray-100" />
 
               {/* ═══════════════════════════════════════════════════════════
                   SECCIÓN 3: Configuración Avanzada (Sliders)

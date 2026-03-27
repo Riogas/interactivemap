@@ -28,7 +28,7 @@ function transformMovilToSupabase(movil: any) {
     distancia_max_mts_cump_pedidos: movil.DistanciaMaxMtsCumpPedidos ?? movil.distancia_max_mts_cump_pedidos ?? 0,
     empresa_fletera_id: empresaFleteraId, // 999 por defecto si no viene
     empresa_fletera_nom: movil.EFleteraNom || movil.empresa_fletera_nom,
-    // escenario_id: movil.EscenarioId ?? movil.escenario_id ?? 1000, // ⚠️ TEMPORALMENTE COMENTADO - PostgREST cache issue
+    escenario_id: movil.escenario ?? movil.EscenarioId ?? movil.escenario_id ?? 1000,
     estado_desc: movil.EstadoDesc || movil.estado_desc || '',
     estado_nro: movil.EstadoNro ?? movil.estado_nro ?? 0,
     fch_hora_mov: parseDate(movil.FchHoraMov || movil.fch_hora_mov),
