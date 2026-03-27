@@ -255,16 +255,21 @@ export default function MovilSelector({
   const filteredPedidos = useMemo(() => {
     let result = [...pedidos];
     
-    // Filtrar según vista: pendientes (estado 1 + sub_estado 5 + sin asignar) o finalizados (estado 2)
+    // Filtrar según vista: pendientes (estado 1 asignados), sin_asignar (estado 1 sin movil), finalizados (estado 2)
     if (pedidosFilters.vista === 'finalizados') {
       result = result.filter(pedido => Number(pedido.estado_nro) === 2);
-    } else {
+    } else if (pedidosFilters.vista === 'sin_asignar') {
       result = result.filter(pedido => {
         const estado = Number(pedido.estado_nro);
         if (estado !== 1) return false;
-        // Sin asignar: incluir siempre en pendientes
-        if (!pedido.movil || Number(pedido.movil) === 0) return true;
-        // Asignados: solo con sub_estado 5 (MOVIL ASIGNADO)
+        return !pedido.movil || Number(pedido.movil) === 0;
+      });
+    } else {
+      // pendientes: estado 1 con móvil asignado (sub_estado 5)
+      result = result.filter(pedido => {
+        const estado = Number(pedido.estado_nro);
+        if (estado !== 1) return false;
+        if (!pedido.movil || Number(pedido.movil) === 0) return false;
         return String(pedido.sub_estado_desc) === '5';
       });
     }
@@ -288,16 +293,16 @@ export default function MovilSelector({
       );
     }
     
-    // Filtrar por tipo de servicio (solo para pendientes)
-    if (pedidosFilters.vista === 'pendientes' && pedidosFilters.tipoServicio && pedidosFilters.tipoServicio !== 'all') {
+    // Filtrar por tipo de servicio (solo para pendientes y sin_asignar)
+    if (pedidosFilters.vista !== 'finalizados' && pedidosFilters.tipoServicio && pedidosFilters.tipoServicio !== 'all') {
       const tipoUpper = pedidosFilters.tipoServicio.toUpperCase();
       result = result.filter(pedido => 
         pedido.servicio_nombre && pedido.servicio_nombre.toUpperCase() === tipoUpper
       );
     }
     
-    // Filtrar por atraso (solo para pendientes)
-    if (pedidosFilters.vista === 'pendientes' && pedidosFilters.atraso.length > 0) {
+    // Filtrar por atraso (solo para pendientes y sin_asignar)
+    if (pedidosFilters.vista !== 'finalizados' && pedidosFilters.atraso.length > 0) {
       result = result.filter(pedido => {
         const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
         const info = getDelayInfo(delayMins);
@@ -313,8 +318,8 @@ export default function MovilSelector({
       });
     }
     
-    // Ordenar: pendientes por mayor atraso primero, finalizados por id desc
-    if (pedidosFilters.vista === 'pendientes') {
+    // Ordenar: pendientes/sin_asignar por mayor atraso primero, finalizados por id desc
+    if (pedidosFilters.vista !== 'finalizados') {
       result.sort((a, b) => {
         const delayA = computeDelayMinutes(a.fch_hora_max_ent_comp);
         const delayB = computeDelayMinutes(b.fch_hora_max_ent_comp);
@@ -334,11 +339,20 @@ export default function MovilSelector({
   const filteredServices = useMemo(() => {
     let result = [...services];
     
-    // Filtrar según vista: pendientes (estado 1) o finalizados (estado 2)
+    // Filtrar según vista: pendientes (estado 1 asignados), sin_asignar (estado 1 sin movil), finalizados (estado 2)
     if (servicesFilters.vista === 'finalizados') {
       result = result.filter(service => Number(service.estado_nro) === 2);
+    } else if (servicesFilters.vista === 'sin_asignar') {
+      result = result.filter(service => {
+        if (Number(service.estado_nro) !== 1) return false;
+        return !service.movil || Number(service.movil) === 0;
+      });
     } else {
-      result = result.filter(service => Number(service.estado_nro) === 1);
+      // pendientes: estado 1 con móvil asignado
+      result = result.filter(service => {
+        if (Number(service.estado_nro) !== 1) return false;
+        return service.movil && Number(service.movil) !== 0;
+      });
     }
     
     // Filtrar por móviles seleccionados
@@ -357,16 +371,16 @@ export default function MovilSelector({
       );
     }
     
-    // Filtrar por tipo de servicio (solo para pendientes)
-    if (servicesFilters.vista === 'pendientes' && servicesFilters.tipoServicio && servicesFilters.tipoServicio !== 'all') {
+    // Filtrar por tipo de servicio (solo para pendientes y sin_asignar)
+    if (servicesFilters.vista !== 'finalizados' && servicesFilters.tipoServicio && servicesFilters.tipoServicio !== 'all') {
       const tipoUpper = servicesFilters.tipoServicio.toUpperCase();
       result = result.filter(service => 
         service.servicio_nombre && service.servicio_nombre.toUpperCase() === tipoUpper
       );
     }
     
-    // Filtrar por atraso (solo para pendientes)
-    if (servicesFilters.vista === 'pendientes' && servicesFilters.atraso.length > 0) {
+    // Filtrar por atraso (solo para pendientes y sin_asignar)
+    if (servicesFilters.vista !== 'finalizados' && servicesFilters.atraso.length > 0) {
       result = result.filter(service => {
         const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
         const info = getDelayInfo(delayMins);
@@ -382,8 +396,8 @@ export default function MovilSelector({
       });
     }
     
-    // Ordenar: pendientes por delay, finalizados por id desc
-    if (servicesFilters.vista === 'pendientes') {
+    // Ordenar: pendientes/sin_asignar por delay, finalizados por id desc
+    if (servicesFilters.vista !== 'finalizados') {
       result.sort((a, b) => {
         const delayA = computeDelayMinutes(a.fch_hora_max_ent_comp);
         const delayB = computeDelayMinutes(b.fch_hora_max_ent_comp);
@@ -451,11 +465,12 @@ export default function MovilSelector({
               label: 'Vista',
               options: [
                 { value: 'pendientes', label: '⏳ Pendientes' },
+                { value: 'sin_asignar', label: '📥 Sin asignar' },
                 { value: 'finalizados', label: '✅ Finalizados' },
               ],
               value: servicesFilters.vista,
             },
-            ...(servicesFilters.vista === 'pendientes' ? [{
+            ...(servicesFilters.vista !== 'finalizados' ? [{
               id: 'tipoServicio',
               label: 'Tipo de Servicio',
               options: [
@@ -465,7 +480,7 @@ export default function MovilSelector({
               value: servicesFilters.tipoServicio ?? 'all',
             }] : []),
           ],
-          multiSelectFilters: servicesFilters.vista === 'pendientes' ? [
+          multiSelectFilters: servicesFilters.vista !== 'finalizados' ? [
             {
               id: 'atraso',
               label: 'Estado de Atraso',
@@ -489,7 +504,7 @@ export default function MovilSelector({
             if (filterId === 'vista') {
               setServicesFilters(prev => ({ 
                 ...prev, 
-                vista: value as 'pendientes' | 'finalizados'
+                vista: value as 'pendientes' | 'sin_asignar' | 'finalizados'
               }));
             }
           },
@@ -511,11 +526,12 @@ export default function MovilSelector({
               label: 'Vista',
               options: [
                 { value: 'pendientes', label: '⏳ Pendientes' },
+                { value: 'sin_asignar', label: '📥 Sin asignar' },
                 { value: 'finalizados', label: '✅ Finalizados' },
               ],
               value: pedidosFilters.vista,
             },
-            ...(pedidosFilters.vista === 'pendientes' ? [{
+            ...(pedidosFilters.vista !== 'finalizados' ? [{
               id: 'tipoServicio',
               label: 'Tipo de Servicio',
               options: [
@@ -525,7 +541,7 @@ export default function MovilSelector({
               value: pedidosFilters.tipoServicio,
             }] : []),
           ],
-          multiSelectFilters: pedidosFilters.vista === 'pendientes' ? [
+          multiSelectFilters: pedidosFilters.vista !== 'finalizados' ? [
             {
               id: 'atraso',
               label: 'Estado de Atraso',
@@ -549,7 +565,7 @@ export default function MovilSelector({
             if (filterId === 'vista') {
               setPedidosFilters(prev => ({ 
                 ...prev, 
-                vista: value as 'pendientes' | 'finalizados'
+                vista: value as 'pendientes' | 'sin_asignar' | 'finalizados'
               }));
             }
           },

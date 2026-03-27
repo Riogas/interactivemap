@@ -45,8 +45,8 @@ interface ServicesTableModalProps {
   moviles: MovilData[];
   onServiceClick?: (serviceId: number) => void;
   onMovilClick?: (movilId: number) => void;
-  vista?: 'pendientes' | 'finalizados';
-  onVistaChange?: (vista: 'pendientes' | 'finalizados') => void;
+  vista?: 'pendientes' | 'sin_asignar' | 'finalizados';
+  onVistaChange?: (vista: 'pendientes' | 'sin_asignar' | 'finalizados') => void;
   selectedMoviles?: number[];
   externalAtraso?: string[];
   externalTipoServicio?: string;
