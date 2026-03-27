@@ -135,8 +135,8 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
         result = result.filter(p => ![3, 16].includes(Number(p.sub_estado_nro)));
       }
     } else {
-      // Pendientes: estado_nro = 1 y sub_estado_nro = 5 (con y sin móvil asignado)
-      result = pedidos.filter(p => Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5);
+      // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
+      result = pedidos.filter(p => Number(p.estado_nro) === 1);
       
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {

@@ -126,8 +126,8 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
         result = result.filter(s => ![3, 16].includes(Number(s.sub_estado_nro)));
       }
     } else {
-      // Pendientes: estado_nro = 1 y sub_estado_nro = 5 (con y sin móvil asignado)
-      result = services.filter(s => Number(s.estado_nro) === 1 && Number(s.sub_estado_nro) === 5);
+      // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
+      result = services.filter(s => Number(s.estado_nro) === 1);
       
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {
