@@ -262,7 +262,6 @@ export default function MovilSelector({
       result = result.filter(pedido => {
         const estado = Number(pedido.estado_nro);
         if (estado !== 1) return false;
-        if (Number(pedido.sub_estado_nro) !== 5) return false;
         return !pedido.movil || Number(pedido.movil) === 0;
       });
     } else {
@@ -346,7 +345,6 @@ export default function MovilSelector({
     } else if (servicesFilters.vista === 'sin_asignar') {
       result = result.filter(service => {
         if (Number(service.estado_nro) !== 1) return false;
-        if (Number(service.sub_estado_nro) !== 5) return false;
         return !service.movil || Number(service.movil) === 0;
       });
     } else {
