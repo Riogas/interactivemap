@@ -140,6 +140,10 @@ function transformPedidoToSupabase(pedido: any) {
     // Coordenadas geográficas
     latitud: pedido.Latitud ?? pedido.latitud ?? null,
     longitud: pedido.Longitud ?? pedido.longitud ?? null,
+
+    // Campos adicionales
+    prodsadicionales: pedido.prodsadicionales ?? pedido.ProdsAdicionales ?? '',
+    campana: pedido.campana ?? pedido.Campana ?? '',
   };
 }
 

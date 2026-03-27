@@ -129,6 +129,8 @@ export interface Database {
           pedido_obs: string | null
           precio: number | null
           prioridad: number | null
+          prodsadicionales: string | null
+          campana: string | null
           producto_cant: number | null
           producto_cod: string | null
           producto_nom: string | null
@@ -176,6 +178,8 @@ export interface Database {
           pedido_obs?: string | null
           precio?: number | null
           prioridad?: number | null
+          prodsadicionales?: string | null
+          campana?: string | null
           producto_cant?: number | null
           producto_cod?: string | null
           producto_nom?: string | null
@@ -223,6 +227,8 @@ export interface Database {
           pedido_obs?: string | null
           precio?: number | null
           prioridad?: number | null
+          prodsadicionales?: string | null
+          campana?: string | null
           producto_cant?: number | null
           producto_cod?: string | null
           producto_nom?: string | null

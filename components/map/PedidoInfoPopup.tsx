@@ -213,6 +213,13 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                   </div>
                 </div>
               </div>
+              {/* Otros productos (prodsadicionales) */}
+              {pedido.prodsadicionales && pedido.prodsadicionales.trim() !== '' && (
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-2 border border-orange-200 mt-2">
+                  <div className="text-[9px] text-orange-600 font-semibold mb-0.5">Otros productos</div>
+                  <div className="text-[10px] text-orange-900 leading-relaxed">{pedido.prodsadicionales}</div>
+                </div>
+              )}
               {/* Teléfono y Chofer del Móvil */}
               {!!pedido.movil && Number(pedido.movil) !== 0 && (movilTel || movilChofer) && (
                 <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-2 border border-indigo-200 mt-2">
@@ -261,6 +268,16 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                       {formatPrecio(pedido.imp_bruto || pedido.precio || null)}
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Obs. Forma de Pago (campana) */}
+            {pedido.campana && pedido.campana.trim() !== '' && (
+              <div>
+                <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-lg p-2 border border-rose-200">
+                  <div className="text-[9px] text-rose-600 font-semibold mb-0.5">Obs. Forma de Pago</div>
+                  <div className="text-[10px] text-rose-900 leading-relaxed">{pedido.campana}</div>
                 </div>
               </div>
             )}
