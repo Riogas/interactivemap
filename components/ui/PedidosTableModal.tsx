@@ -130,13 +130,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
       
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
-        result = result.filter(p => ['3', '16'].includes(String(p.sub_estado_desc)));
+        result = result.filter(p => [3, 16].includes(Number(p.sub_estado_nro)));
       } else if (filters.entrega === 'no_entregados') {
-        result = result.filter(p => !['3', '16'].includes(String(p.sub_estado_desc)));
+        result = result.filter(p => ![3, 16].includes(Number(p.sub_estado_nro)));
       }
     } else {
-      // Pendientes: todos los estado_nro = 1 (con y sin móvil asignado)
-      result = pedidos.filter(p => Number(p.estado_nro) === 1);
+      // Pendientes: estado_nro = 1 y sub_estado_nro = 5 (con y sin móvil asignado)
+      result = pedidos.filter(p => Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5);
       
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {
@@ -667,7 +667,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                     </tr>
                   ) : (
                     paginated.map(({ pedido: p, delayMins, delayInfo }) => {
-                      const esEntregado = isFinalizados && ['3','16'].includes(String(p.sub_estado_desc));
+                      const esEntregado = isFinalizados && [3,16].includes(Number(p.sub_estado_nro));
                       return (
                       <tr
                         key={p.id}

@@ -1166,7 +1166,7 @@ function DashboardContent() {
     
     pedidosCompletos.forEach(pedido => {
       const estadoNum = Number(pedido.estado_nro);
-      if (pedido.movil && estadoNum && ESTADOS_ACTIVOS.includes(estadoNum) && String(pedido.sub_estado_desc) === '5') {
+      if (pedido.movil && estadoNum && ESTADOS_ACTIVOS.includes(estadoNum) && Number(pedido.sub_estado_nro) === 5) {
         const movilNum = Number(pedido.movil);
         const count = pedidosPorMovil.get(movilNum) || 0;
         pedidosPorMovil.set(movilNum, count + 1);
@@ -1763,10 +1763,10 @@ function DashboardContent() {
                   (pedidosFilters.vista === 'finalizados'
                     ? (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 2))
                     : pedidosFilters.vista === 'sin_asignar'
-                      ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0))
+                      ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5 && (!p.movil || Number(p.movil) === 0))
                       : (selectedMoviles.length > 0
-                          ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
-                          : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && !!p.movil && Number(p.movil) !== 0)
+                          ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
+                          : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5 && !!p.movil && Number(p.movil) !== 0)
                         )
                   ).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud)),
                   pedidosFilters.vista !== 'finalizados' ? pedidosFilters.atraso : []
@@ -1781,8 +1781,8 @@ function DashboardContent() {
                   (servicesFilters.vista === 'finalizados'
                     ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 2 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 2))
                     : servicesFilters.vista === 'sin_asignar'
-                      ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0))
-                      : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1 && !!s.movil && Number(s.movil) !== 0))
+                      ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && Number(s.sub_estado_nro) === 5 && (!s.movil || Number(s.movil) === 0))
+                      : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && Number(s.sub_estado_nro) === 5 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1 && Number(s.sub_estado_nro) === 5 && !!s.movil && Number(s.movil) !== 0))
                   ).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud)),
                   servicesFilters.vista !== 'finalizados' ? servicesFilters.atraso : []
                 ), servicesFilters.vista !== 'finalizados' ? servicesFilters.tipoServicio : 'all')}

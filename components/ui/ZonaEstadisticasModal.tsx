@@ -178,7 +178,7 @@ export default function ZonaEstadisticasModal({
 
       // Pendientes: estado 1, con movil asignado (sub_estado 5)
       const pendientesList = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 1 && String(p.sub_estado_desc) === '5' && p.movil && Number(p.movil) > 0
+        Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5 && p.movil && Number(p.movil) > 0
       );
       const pendientes = pendientesList.length;
 
@@ -193,12 +193,12 @@ export default function ZonaEstadisticasModal({
 
       // Entregados: estado 2, sub_estado 3 o 16
       const entregados = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 2 && ['3','16'].includes(String(p.sub_estado_desc))
+        Number(p.estado_nro) === 2 && [3,16].includes(Number(p.sub_estado_nro))
       ).length;
 
       // No Entregados: estado 2, sub_estado != 3 ni 16
       const noEntregados = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 2 && !['3','16'].includes(String(p.sub_estado_desc))
+        Number(p.estado_nro) === 2 && ![3,16].includes(Number(p.sub_estado_nro))
       ).length;
 
       // % Cumplimiento

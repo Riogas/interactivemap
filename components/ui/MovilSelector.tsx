@@ -262,15 +262,16 @@ export default function MovilSelector({
       result = result.filter(pedido => {
         const estado = Number(pedido.estado_nro);
         if (estado !== 1) return false;
+        if (Number(pedido.sub_estado_nro) !== 5) return false;
         return !pedido.movil || Number(pedido.movil) === 0;
       });
     } else {
-      // pendientes: estado 1 con móvil asignado (sub_estado 5)
+      // pendientes: estado 1 con móvil asignado (sub_estado_nro 5)
       result = result.filter(pedido => {
         const estado = Number(pedido.estado_nro);
         if (estado !== 1) return false;
         if (!pedido.movil || Number(pedido.movil) === 0) return false;
-        return String(pedido.sub_estado_desc) === '5';
+        return Number(pedido.sub_estado_nro) === 5;
       });
     }
     
@@ -345,12 +346,14 @@ export default function MovilSelector({
     } else if (servicesFilters.vista === 'sin_asignar') {
       result = result.filter(service => {
         if (Number(service.estado_nro) !== 1) return false;
+        if (Number(service.sub_estado_nro) !== 5) return false;
         return !service.movil || Number(service.movil) === 0;
       });
     } else {
-      // pendientes: estado 1 con móvil asignado
+      // pendientes: estado 1 con móvil asignado (sub_estado_nro 5)
       result = result.filter(service => {
         if (Number(service.estado_nro) !== 1) return false;
+        if (Number(service.sub_estado_nro) !== 5) return false;
         return service.movil && Number(service.movil) !== 0;
       });
     }
@@ -1275,7 +1278,7 @@ export default function MovilSelector({
                                 const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
                                 const delayMins = !isFinalizados ? computeDelayMinutes(pedido.fch_hora_max_ent_comp) : null;
                                 const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
-                                const esEntregado = isFinalizados && ['3','16'].includes(String(pedido.sub_estado_desc));
+                                const esEntregado = isFinalizados && [3,16].includes(Number(pedido.sub_estado_nro));
 
                                 return (
                                   <button

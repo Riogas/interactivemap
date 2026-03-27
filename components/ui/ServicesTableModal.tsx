@@ -121,13 +121,13 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
-        result = result.filter(s => ['3', '16'].includes(String(s.sub_estado_desc)));
+        result = result.filter(s => [3, 16].includes(Number(s.sub_estado_nro)));
       } else if (filters.entrega === 'no_entregados') {
-        result = result.filter(s => !['3', '16'].includes(String(s.sub_estado_desc)));
+        result = result.filter(s => ![3, 16].includes(Number(s.sub_estado_nro)));
       }
     } else {
-      // Pendientes: todos los estado_nro = 1 (con y sin móvil asignado)
-      result = services.filter(s => Number(s.estado_nro) === 1);
+      // Pendientes: estado_nro = 1 y sub_estado_nro = 5 (con y sin móvil asignado)
+      result = services.filter(s => Number(s.estado_nro) === 1 && Number(s.sub_estado_nro) === 5);
       
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {
