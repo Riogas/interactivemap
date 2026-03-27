@@ -7,40 +7,49 @@ import { requireApiKey } from '@/lib/auth-middleware';
  * Intenta reparar JSON con comillas sin escapar dentro de valores string.
  * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS"" 
  * que rompe JSON.parse().
+ * 
+ * Estrategia: usa la posición del error para encontrar la comilla
+ * interna que rompió el parseo, la escapa, y reintenta.
  */
 function safeParseJSON(rawBody: string): any {
   try {
     return JSON.parse(rawBody);
   } catch (firstError) {
     console.warn('⚠️  JSON.parse falló, intentando sanitizar comillas internas...');
-    // Reemplazar comillas sin escapar dentro de valores string
-    // Busca patrones como :"valor "con comillas" valor" y escapa las internas
-    const sanitized = rawBody.replace(
-      /:"([^"]*?)"([^,}\]\n][^"]*?)"/g, 
-      (match, before, after) => `:\"${before}\\\"${after}\"`
-    );
-    // Intento más agresivo: reemplazar comillas entre letras dentro de valores
-    const sanitized2 = rawBody.replace(
-      /"([^"]{0,200})"([A-Za-zÀ-ÿ])/g,
-      (match, p1, p2, offset) => {
-        // Solo si NO es inicio de clave JSON (precedido por , o { o [)
-        const charBefore = rawBody[offset - 1];
-        if (charBefore === ':' || charBefore === ' ') {
-          return `"${p1}\\"${p2}`;
-        }
-        return match;
-      }
-    );
-    try {
-      return JSON.parse(sanitized);
-    } catch {
+    
+    let text = rawBody;
+    const maxAttempts = 50;
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        return JSON.parse(sanitized2);
-      } catch {
-        // Si nada funciona, lanzar el error original
-        throw firstError;
+        const result = JSON.parse(text);
+        console.log(`✅ JSON reparado después de ${attempt + 1} correcciones`);
+        return result;
+      } catch (err: any) {
+        // Extraer la posición del error
+        const posMatch = err.message.match(/position\s+(\d+)/);
+        if (!posMatch) throw firstError;
+        
+        const errorPos = parseInt(posMatch[1], 10);
+        
+        // Buscar la comilla sin escapar más cercana ANTES de errorPos
+        let fixPos = -1;
+        for (let i = errorPos - 1; i >= 0; i--) {
+          if (text[i] === '"' && (i === 0 || text[i - 1] !== '\\')) {
+            fixPos = i;
+            break;
+          }
+        }
+        
+        if (fixPos < 0) throw firstError;
+        
+        console.log(`🔧 Escapando comilla en posición ${fixPos} (intento ${attempt + 1})`);
+        // Insertar \ antes de la comilla para escaparla
+        text = text.substring(0, fixPos) + '\\' + text.substring(fixPos);
       }
     }
+    
+    throw firstError;
   }
 }
 
