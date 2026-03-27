@@ -4,6 +4,47 @@ import { successResponse, errorResponse, logRequest } from '@/lib/api-response';
 import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
+ * Intenta reparar JSON con comillas sin escapar dentro de valores string.
+ * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS"" 
+ * que rompe JSON.parse().
+ */
+function safeParseJSON(rawBody: string): any {
+  try {
+    return JSON.parse(rawBody);
+  } catch (firstError) {
+    console.warn('⚠️  JSON.parse falló, intentando sanitizar comillas internas...');
+    // Reemplazar comillas sin escapar dentro de valores string
+    // Busca patrones como :"valor "con comillas" valor" y escapa las internas
+    const sanitized = rawBody.replace(
+      /:"([^"]*?)"([^,}\]\n][^"]*?)"/g, 
+      (match, before, after) => `:\"${before}\\\"${after}\"`
+    );
+    // Intento más agresivo: reemplazar comillas entre letras dentro de valores
+    const sanitized2 = rawBody.replace(
+      /"([^"]{0,200})"([A-Za-zÀ-ÿ])/g,
+      (match, p1, p2, offset) => {
+        // Solo si NO es inicio de clave JSON (precedido por , o { o [)
+        const charBefore = rawBody[offset - 1];
+        if (charBefore === ':' || charBefore === ' ') {
+          return `"${p1}\\"${p2}`;
+        }
+        return match;
+      }
+    );
+    try {
+      return JSON.parse(sanitized);
+    } catch {
+      try {
+        return JSON.parse(sanitized2);
+      } catch {
+        // Si nada funciona, lanzar el error original
+        throw firstError;
+      }
+    }
+  }
+}
+
+/**
  * Transforma campos de PascalCase a snake_case para Supabase
  * 
  * DEFAULTS:
@@ -15,9 +56,15 @@ function transformMovilToSupabase(movil: any) {
   // Detectar empresa fletera con fallback a 999 "Sin Empresa"
   const empresaFleteraId = movil.EFleteraId ?? movil.empresa_fletera_id ?? 999;
 
-  // Sanitizar fechas: AS400 envía "0000-00-00T00:00:00" para fechas vacías
+  // Sanitizar fechas: AS400 envía fechas inválidas como "0000-00-00T00:00:00" o "100-00-01T00:00:00"
   const parseDate = (dateStr: string | null | undefined) => {
     if (!dateStr || dateStr.startsWith('0000-00-00') || dateStr === '0') return null;
+    // Rechazar años menores a 1900 o mayores a 2100 (basura de AS400)
+    const yearMatch = dateStr.match(/^(\d{1,4})/);
+    if (yearMatch) {
+      const year = parseInt(yearMatch[1], 10);
+      if (year < 1900 || year > 2100) return null;
+    }
     return dateStr;
   };
   
@@ -91,7 +138,7 @@ export async function POST(request: NextRequest) {
       console.log('Body raw (primeros 500 chars):', rawBody.substring(0, 500));
       console.log('Longitud total del body:', rawBody.length, 'caracteres');
       
-      body = JSON.parse(rawBody);
+      body = safeParseJSON(rawBody);
       console.log('✅ JSON parseado correctamente');
       console.log('Claves en el body:', Object.keys(body));
     } catch (parseError: any) {
@@ -271,7 +318,20 @@ export async function PUT(request: NextRequest) {
   if (keyValidation instanceof NextResponse) return keyValidation;
 
   try {
-    const body = await request.json();
+    let rawBody = '';
+    let body;
+    try {
+      rawBody = await request.text();
+      body = safeParseJSON(rawBody);
+    } catch (parseError: any) {
+      console.error('❌ ERROR al parsear JSON en PUT /api/import/moviles:', parseError.message);
+      console.error('📛 Body RAW completo:', rawBody);
+      return errorResponse(
+        'JSON inválido en el body de la petición',
+        400,
+        { originalError: parseError.message, bodyPreview: rawBody.substring(0, 500) }
+      );
+    }
     logRequest('PUT', '/api/import/moviles', body);
 
     let { moviles } = body;

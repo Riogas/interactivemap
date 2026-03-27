@@ -3,13 +3,54 @@ import { supabase } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
+ * Intenta reparar JSON con comillas sin escapar dentro de valores string.
+ * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS"" 
+ */
+function safeParseJSON(rawBody: string): any {
+  try {
+    return JSON.parse(rawBody);
+  } catch (firstError) {
+    console.warn('⚠️  JSON.parse falló, intentando sanitizar comillas internas...');
+    const sanitized = rawBody.replace(
+      /:"([^"]*?)"([^,}\]\n][^"]*?)"/g,
+      (match, before, after) => `:\"${before}\\\"${after}\"`
+    );
+    const sanitized2 = rawBody.replace(
+      /"([^"]{0,200})"([A-Za-zÀ-ÿ])/g,
+      (match, p1, p2, offset) => {
+        const charBefore = rawBody[offset - 1];
+        if (charBefore === ':' || charBefore === ' ') {
+          return `"${p1}\\"${p2}`;
+        }
+        return match;
+      }
+    );
+    try {
+      return JSON.parse(sanitized);
+    } catch {
+      try {
+        return JSON.parse(sanitized2);
+      } catch {
+        throw firstError;
+      }
+    }
+  }
+}
+
+/**
  * Transforma campos de PascalCase a snake_case para Supabase
  */
 function transformPedidoToSupabase(pedido: any) {
-  // Manejar fecha especial "0000-00-00T00:00:00" -> null
+  // Manejar fechas inválidas de AS400: "0000-00-00T00:00:00", "100-00-01T00:00:00", etc.
   const parseDate = (dateStr: string) => {
     if (!dateStr || dateStr.startsWith('0000-00-00')) {
       return null;
+    }
+    // Rechazar años menores a 1900 o mayores a 2100 (basura de AS400)
+    const yearMatch = dateStr.match(/^(\d{1,4})/);
+    if (yearMatch) {
+      const year = parseInt(yearMatch[1], 10);
+      if (year < 1900 || year > 2100) return null;
     }
     return dateStr;
   };
@@ -165,9 +206,22 @@ export async function POST(request: NextRequest) {
   
   try {
     console.log('📥 1. Leyendo body del request...');
-    const body = await request.json();
-    console.log('✅ Body recibido correctamente');
-    console.log('📊 Tipo de body:', typeof body);
+    let rawBody = '';
+    let body;
+    try {
+      rawBody = await request.text();
+      console.log('📊 Body raw (primeros 500 chars):', rawBody.substring(0, 500));
+      console.log('📊 Longitud total del body:', rawBody.length, 'caracteres');
+      body = safeParseJSON(rawBody);
+      console.log('✅ Body parseado correctamente');
+    } catch (parseError: any) {
+      console.error('❌ ERROR al parsear JSON en POST /api/import/pedidos:', parseError.message);
+      console.error('📛 Body RAW completo:', rawBody);
+      return NextResponse.json(
+        { error: 'JSON inválido en el body', details: parseError.message, bodyPreview: rawBody.substring(0, 500) },
+        { status: 400 }
+      );
+    }
     console.log('📊 Claves del body:', Object.keys(body));
     
     console.log('\n🔍 2. Normalizando estructura...');
@@ -269,9 +323,21 @@ export async function PUT(request: NextRequest) {
   
   try {
     console.log('📥 1. Leyendo body del request...');
-    const body = await request.json();
-    console.log('✅ Body recibido correctamente');
-    console.log('📊 Tipo de body:', typeof body);
+    let rawBody = '';
+    let body;
+    try {
+      rawBody = await request.text();
+      console.log('📊 Body raw (primeros 500 chars):', rawBody.substring(0, 500));
+      body = safeParseJSON(rawBody);
+      console.log('✅ Body parseado correctamente');
+    } catch (parseError: any) {
+      console.error('❌ ERROR al parsear JSON en PUT /api/import/pedidos:', parseError.message);
+      console.error('📛 Body RAW completo:', rawBody);
+      return NextResponse.json(
+        { error: 'JSON inválido en el body', details: parseError.message, bodyPreview: rawBody.substring(0, 500) },
+        { status: 400 }
+      );
+    }
     console.log('📊 Claves del body:', Object.keys(body));
     
     console.log('\n🔍 2. Normalizando estructura...');
