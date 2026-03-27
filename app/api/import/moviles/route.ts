@@ -4,6 +4,28 @@ import { successResponse, errorResponse, logRequest } from '@/lib/api-response';
 import { requireApiKey } from '@/lib/auth-middleware';
 
 /**
+ * Lee el body del request respetando el charset del Content-Type.
+ * GeneXus/AS400 envía Latin-1 (ISO-8859-1) — request.text() siempre
+ * decodifica como UTF-8 y corrompe caracteres como ñ, á, é, etc.
+ */
+async function readRequestBody(request: NextRequest): Promise<string> {
+  const contentType = request.headers.get('content-type') || '';
+  const charsetMatch = contentType.match(/charset=([\w-]+)/i);
+  const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'utf-8';
+  
+  if (charset === 'utf-8' || charset === 'utf8') {
+    return await request.text();
+  }
+  
+  // Latin-1, ISO-8859-1, Windows-1252, etc.
+  const buffer = await request.arrayBuffer();
+  const decoder = new TextDecoder(charset);
+  const decoded = decoder.decode(buffer);
+  console.log(`🔤 Body decodificado con charset: ${charset}`);
+  return decoded;
+}
+
+/**
  * Intenta reparar JSON con comillas sin escapar dentro de valores string.
  * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS"" 
  * que rompe JSON.parse().
@@ -143,7 +165,7 @@ export async function POST(request: NextRequest) {
     let body;
     let rawBody = '';
     try {
-      rawBody = await request.text();
+      rawBody = await readRequestBody(request);
       console.log('Body raw (primeros 500 chars):', rawBody.substring(0, 500));
       console.log('Longitud total del body:', rawBody.length, 'caracteres');
       
@@ -330,7 +352,7 @@ export async function PUT(request: NextRequest) {
     let rawBody = '';
     let body;
     try {
-      rawBody = await request.text();
+      rawBody = await readRequestBody(request);
       body = safeParseJSON(rawBody);
     } catch (parseError: any) {
       console.error('❌ ERROR al parsear JSON en PUT /api/import/moviles:', parseError.message);
