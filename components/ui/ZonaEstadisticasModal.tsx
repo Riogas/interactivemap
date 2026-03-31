@@ -193,12 +193,12 @@ export default function ZonaEstadisticasModal({
 
       // Entregados: estado 2, sub_estado 3 o 16
       const entregados = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 2 && [3,16].includes(Number(p.sub_estado_nro))
+        Number(p.estado_nro) === 2 && [3,16].includes(Number(p.sub_estado_desc))
       ).length;
 
       // No Entregados: estado 2, sub_estado != 3 ni 16
       const noEntregados = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 2 && ![3,16].includes(Number(p.sub_estado_nro))
+        Number(p.estado_nro) === 2 && ![3,16].includes(Number(p.sub_estado_desc))
       ).length;
 
       // % Cumplimiento
