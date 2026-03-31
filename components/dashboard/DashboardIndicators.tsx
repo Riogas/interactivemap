@@ -50,8 +50,16 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   }, [pedidos, selectedMoviles]);
 
   // ============= MÓVILES SIN REPORTAR GPS =============
+  // Excluir estadoNro 3 ("No Activo") — esos están fuera de servicio, no es un problema de GPS
+  // Esto coincide con el filtro 'actividad: activo' del sidebar (default)
   const movilesSinReportar = useMemo(() => {
-    return moviles.filter(m => m.isInactive === true).length;
+    return moviles.filter(m => {
+      if (!m.isInactive) return false;
+      // estadoNro 3 = No Activo (excluido del conteo, igual que el sidebar)
+      const estadoNro = m.estadoNro;
+      const esActivo = estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
+      return esActivo;
+    }).length;
   }, [moviles]);
 
   // ============= DATOS DE ZONAS (fetch independiente para indicadores) =============
@@ -256,7 +264,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         {/* Móviles sin Reportar */}
         <Indicator
           icon="📡"
-          label={`Sin GPS >${maxCoordinateDelayMinutes}m`}
+          label="Móviles sin Reportar"
           value={movilesSinReportar}
           color={movilesSinReportar > 0 ? 'red' : 'gray'}
         />
