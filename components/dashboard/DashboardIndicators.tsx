@@ -10,12 +10,14 @@ interface DashboardIndicatorsProps {
   services: any[];
   selectedDate: string;
   selectedMoviles?: number[];
+  escenarioIds?: number[];
+  maxCoordinateDelayMinutes?: number;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], onSinAsignarClick, onEntregadosClick, onPorcentajeClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, onSinAsignarClick, onEntregadosClick, onPorcentajeClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -43,6 +45,76 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       porcentajeEntregados,
     };
   }, [pedidos, selectedMoviles]);
+
+  // ============= MÓVILES SIN REPORTAR GPS =============
+  const movilesSinReportar = useMemo(() => {
+    return moviles.filter(m => m.isInactive === true).length;
+  }, [moviles]);
+
+  // ============= DATOS DE ZONAS (fetch independiente para indicadores) =============
+  const [zonasAllData, setZonasAllData] = useState<any[]>([]);
+  const [movilesZonasRecords, setMovilesZonasRecords] = useState<any[]>([]);
+  const [demorasRecords, setDemorasRecords] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (escenarioIds.length === 0) {
+      setZonasAllData([]);
+      setMovilesZonasRecords([]);
+      setDemorasRecords([]);
+      return;
+    }
+
+    const loadZonasData = async () => {
+      try {
+        // Fetch zonas, moviles-zonas y demoras en paralelo
+        const [zonasRes, mzRes, demorasRes] = await Promise.all([
+          fetch('/api/zonas'),
+          fetch('/api/moviles-zonas'),
+          fetch('/api/demoras'),
+        ]);
+        const [zonasResult, mzResult, demorasResult] = await Promise.all([
+          zonasRes.json(),
+          mzRes.json(),
+          demorasRes.json(),
+        ]);
+
+        if (zonasResult.success) {
+          // Filtrar por escenarios seleccionados
+          setZonasAllData(zonasResult.data.filter((z: any) => escenarioIds.includes(z.escenario_id)));
+        }
+        if (mzResult.success) {
+          setMovilesZonasRecords(mzResult.data || []);
+        }
+        if (demorasResult.success) {
+          setDemorasRecords(demorasResult.data.filter((d: any) => escenarioIds.includes(d.escenario_id)) || []);
+        }
+      } catch (err) {
+        console.error('❌ Error loading zonas data for indicators:', err);
+      }
+    };
+
+    loadZonasData();
+    // Refrescar cada 60 segundos
+    const interval = setInterval(loadZonasData, 60000);
+    return () => clearInterval(interval);
+  }, [escenarioIds]);
+
+  // Zonas sin móviles: zonas que no tienen ningún registro en moviles_zonas (ni prioridad ni tránsito)
+  const zonasSinMoviles = useMemo(() => {
+    if (zonasAllData.length === 0) return 0;
+    const zonasConMoviles = new Set(movilesZonasRecords.map((r: any) => r.zona_id));
+    return zonasAllData.filter((z: any) => !zonasConMoviles.has(z.zona_id)).length;
+  }, [zonasAllData, movilesZonasRecords]);
+
+  // Zonas no activas: zonas que tienen activa = false en la tabla demoras
+  const zonasNoActivas = useMemo(() => {
+    if (demorasRecords.length === 0) return 0;
+    // Contar zonas únicas donde activa === false
+    const zonasInactivas = new Set(
+      demorasRecords.filter((d: any) => d.activa === false).map((d: any) => d.zona_id)
+    );
+    return zonasInactivas.size;
+  }, [demorasRecords]);
 
   // ============= SCROLL CON FLECHAS =============
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -124,6 +196,33 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           value={`${pedidosStats.porcentajeEntregados}%`}
           color={pedidosStats.porcentajeEntregados >= 80 ? 'green' : pedidosStats.porcentajeEntregados >= 50 ? 'orange' : 'red'}
           onClick={onPorcentajeClick}
+        />
+
+        {/* Separador */}
+        <div className="h-6 w-px bg-white/30" />
+
+        {/* Zonas sin Móviles */}
+        <Indicator
+          icon="🗺️"
+          label="Zonas sin Móvil"
+          value={zonasSinMoviles}
+          color={zonasSinMoviles > 0 ? 'orange' : 'gray'}
+        />
+
+        {/* Zonas No Activas */}
+        <Indicator
+          icon="🔴"
+          label="Zonas No Activas"
+          value={zonasNoActivas}
+          color={zonasNoActivas > 0 ? 'red' : 'gray'}
+        />
+
+        {/* Móviles sin Reportar */}
+        <Indicator
+          icon="📡"
+          label={`Sin GPS >${maxCoordinateDelayMinutes}m`}
+          value={movilesSinReportar}
+          color={movilesSinReportar > 0 ? 'red' : 'gray'}
         />
       </div>
       </div>
