@@ -4,6 +4,8 @@ import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { PedidoSupabase } from '@/types';
 import { motion } from 'framer-motion';
 
+const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
+
 interface DashboardIndicatorsProps {
   moviles: any[];
   pedidos: PedidoSupabase[];
@@ -12,12 +14,13 @@ interface DashboardIndicatorsProps {
   selectedMoviles?: number[];
   escenarioIds?: number[];
   maxCoordinateDelayMinutes?: number;
+  allMovilEstados?: Map<string, number>;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, onSinAsignarClick, onEntregadosClick, onPorcentajeClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, onSinAsignarClick, onEntregadosClick, onPorcentajeClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -99,21 +102,53 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     return () => clearInterval(interval);
   }, [escenarioIds]);
 
-  // Zonas sin móviles: zonas que no tienen ningún registro en moviles_zonas (ni prioridad ni tránsito)
+  // Zonas sin móviles: Match MovilesZonasLayer — filtrar por URGENTE + excluir estados 3/5/15
   const zonasSinMoviles = useMemo(() => {
     if (zonasAllData.length === 0) return 0;
-    const zonasConMoviles = new Set(movilesZonasRecords.map((r: any) => r.zona_id));
-    return zonasAllData.filter((z: any) => !zonasConMoviles.has(z.zona_id)).length;
-  }, [zonasAllData, movilesZonasRecords]);
+    // Filtrar por tipo de servicio URGENTE (default del mapa)
+    let filtered = movilesZonasRecords.filter((mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === 'URGENTE');
+    // Excluir móviles con estados inactivos (3, 5, 15) — mismo filtro que MovilesZonasLayer
+    if (allMovilEstados && allMovilEstados.size > 0) {
+      filtered = filtered.filter((mz: any) => {
+        const estado = allMovilEstados.get(String(mz.movil_id));
+        return estado === undefined || !EXCLUDED_ESTADOS.has(estado);
+      });
+    }
+    // Computar conteos por zona {prioridad, transito}
+    const zonaCounts = new Map<number, { prioridad: number; transito: number }>();
+    for (const mz of filtered) {
+      const existing = zonaCounts.get(mz.zona_id) || { prioridad: 0, transito: 0 };
+      if (mz.prioridad_o_transito === 1) {
+        existing.prioridad++;
+      } else {
+        existing.transito++;
+      }
+      zonaCounts.set(mz.zona_id, existing);
+    }
+    // Zonas donde prioridad + tránsito = 0 después de filtrar ("0/0" en el mapa)
+    return zonasAllData.filter((z: any) => {
+      const counts = zonaCounts.get(z.zona_id);
+      return !counts || (counts.prioridad === 0 && counts.transito === 0);
+    }).length;
+  }, [zonasAllData, movilesZonasRecords, allMovilEstados]);
 
-  // Zonas no activas: zonas que tienen activa = false en la tabla demoras
+  // Zonas no activas: Match ZonasActivasLayer — quedarse con la demora de mayor minutos por zona
   const zonasNoActivas = useMemo(() => {
     if (demorasRecords.length === 0) return 0;
-    // Contar zonas únicas donde activa === false
-    const zonasInactivas = new Set(
-      demorasRecords.filter((d: any) => d.activa === false).map((d: any) => d.zona_id)
-    );
-    return zonasInactivas.size;
+    // Construir mapa: zona_id → demora con mayor minutos (mismo criterio que useMapDataView)
+    const dMap = new Map<number, { minutos: number; activa: boolean }>();
+    for (const d of demorasRecords) {
+      const existing = dMap.get(d.zona_id);
+      if (!existing || d.minutos > existing.minutos) {
+        dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
+      }
+    }
+    // Contar zonas donde la demora ganadora tiene activa === false
+    let count = 0;
+    dMap.forEach((val) => {
+      if (val.activa === false) count++;
+    });
+    return count;
   }, [demorasRecords]);
 
   // ============= SCROLL CON FLECHAS =============

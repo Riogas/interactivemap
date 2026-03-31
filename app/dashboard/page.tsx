@@ -1357,6 +1357,7 @@ function DashboardContent() {
             selectedMoviles={selectedMoviles}
             escenarioIds={selectedEscenarioIds}
             maxCoordinateDelayMinutes={preferences.maxCoordinateDelayMinutes}
+            allMovilEstados={allMovilEstados}
             onSinAsignarClick={() => {
               setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
               setIsPedidosTableOpen(true);
