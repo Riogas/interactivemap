@@ -82,8 +82,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         ]);
 
         if (zonasResult.success) {
-          // Filtrar por escenarios seleccionados
-          setZonasAllData(zonasResult.data.filter((z: any) => escenarioIds.includes(z.escenario_id)));
+          // Filtrar por escenarios seleccionados Y con geojson (igual que useMapDataView)
+          setZonasAllData(zonasResult.data.filter((z: any) => escenarioIds.includes(z.escenario_id) && z.geojson));
         }
         if (mzResult.success) {
           setMovilesZonasRecords(mzResult.data || []);
@@ -132,9 +132,9 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     }).length;
   }, [zonasAllData, movilesZonasRecords, allMovilEstados]);
 
-  // Zonas no activas: Match ZonasActivasLayer — quedarse con la demora de mayor minutos por zona
+  // Zonas no activas: Match ZonasActivasLayer — iterar zonas visibles y buscar en demoras
   const zonasNoActivas = useMemo(() => {
-    if (demorasRecords.length === 0) return 0;
+    if (zonasAllData.length === 0 || demorasRecords.length === 0) return 0;
     // Construir mapa: zona_id → demora con mayor minutos (mismo criterio que useMapDataView)
     const dMap = new Map<number, { minutos: number; activa: boolean }>();
     for (const d of demorasRecords) {
@@ -143,13 +143,14 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
         dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
       }
     }
-    // Contar zonas donde la demora ganadora tiene activa === false
+    // Solo contar zonas que existen en zonasAllData (igual que ZonasActivasLayer itera sobre zonas)
     let count = 0;
-    dMap.forEach((val) => {
-      if (val.activa === false) count++;
-    });
+    for (const z of zonasAllData) {
+      const info = dMap.get(z.zona_id);
+      if (info && info.activa === false) count++;
+    }
     return count;
-  }, [demorasRecords]);
+  }, [zonasAllData, demorasRecords]);
 
   // ============= SCROLL CON FLECHAS =============
   const scrollRef = useRef<HTMLDivElement>(null);
