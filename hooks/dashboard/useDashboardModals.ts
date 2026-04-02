@@ -34,6 +34,9 @@ export function useDashboardModals() {
   // Tour interactivo
   const [isTourOpen, setIsTourOpen] = useState(false);
 
+  // Modal de zonas por empresa fletera
+  const [isFleterasZonasOpen, setIsFleterasZonasOpen] = useState(false);
+
   // FAB (floating action buttons) expandido
   const [isActionsExpanded, setIsActionsExpanded] = useState(false);
 
@@ -88,6 +91,8 @@ export function useDashboardModals() {
     isTourOpen, setIsTourOpen,
     // FAB
     isActionsExpanded, setIsActionsExpanded,
+    // Fleteras Zonas
+    isFleterasZonasOpen, setIsFleterasZonasOpen,
     // Helpers
     closePedidosTable, closeServicesTable, clearPreFilters,
   };
