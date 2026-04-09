@@ -28,6 +28,8 @@ import OsmImportModal from '@/components/ui/OsmImportModal';
 import AppTour from '@/components/ui/AppTour';
 import FleterasZonasModal from '@/components/ui/FleterasZonasModal';
 import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
+import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
+import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -101,6 +103,8 @@ function DashboardContent() {
   } = useDashboardModals();
 
   const [isZonasSinMovilOpen, setIsZonasSinMovilOpen] = useState(false);
+  const [isMovilesSinReportarOpen, setIsMovilesSinReportarOpen] = useState(false);
+  const [isZonasNoActivasOpen, setIsZonasNoActivasOpen] = useState(false);
 
   // Mapa completo movil_nro → estadoNro (para todos los moviles, no solo los con GPS)
   const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
@@ -1376,6 +1380,8 @@ function DashboardContent() {
               setIsPedidosTableOpen(true);
             }}
             onZonasSinMovilClick={() => setIsZonasSinMovilOpen(true)}
+            onMovilesSinReportarClick={() => setIsMovilesSinReportarOpen(true)}
+            onZonasNoActivasClick={() => setIsZonasNoActivasOpen(true)}
           />
         </NavbarSimple>
       </div>
@@ -1556,6 +1562,18 @@ function DashboardContent() {
         onClose={() => setIsZonasSinMovilOpen(false)}
         escenarioIds={selectedEscenarioIds}
         allMovilEstados={allMovilEstados}
+      />
+
+      <MovilesSinReportarModal
+        isOpen={isMovilesSinReportarOpen}
+        onClose={() => setIsMovilesSinReportarOpen(false)}
+        moviles={markInactiveMoviles(movilesFiltered)}
+      />
+
+      <ZonasNoActivasModal
+        isOpen={isZonasNoActivasOpen}
+        onClose={() => setIsZonasNoActivasOpen(false)}
+        escenarioIds={selectedEscenarioIds}
       />
 
       {/* Modal de Vista Móviles por Zona (click en mapa o botón) */}
