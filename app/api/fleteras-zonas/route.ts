@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServerSupabaseClient();
 
-    const { data, error } = await (supabase as any)
+    const { error } = await (supabase as any)
       .from('fleteras_zonas')
       .insert({
         escenario_id: parseInt(String(escenario_id)),
@@ -77,9 +77,7 @@ export async function POST(request: NextRequest) {
         tipo_de_servicio: String(tipo_de_servicio).trim().toUpperCase(),
         zonas: Array.isArray(zonas) ? zonas.map(Number) : [],
         updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+      });
 
     if (error) {
       if (error.code === '23505') {
@@ -92,7 +90,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data }, { status: 201 });
+    return NextResponse.json({ success: true }, { status: 201 });
   } catch (err: any) {
     console.error('❌ POST /api/fleteras-zonas unexpected:', err);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
@@ -119,7 +117,7 @@ export async function PUT(request: NextRequest) {
 
     const supabase = getServerSupabaseClient();
 
-    const { data, error } = await (supabase as any)
+    const { error } = await (supabase as any)
       .from('fleteras_zonas')
       .upsert(
         {
@@ -131,16 +129,14 @@ export async function PUT(request: NextRequest) {
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'escenario_id,tipo_de_zona,empresa_fletera_id,tipo_de_servicio' }
-      )
-      .select()
-      .single();
+      );
 
     if (error) {
       console.error('❌ PUT /api/fleteras-zonas:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error('❌ PUT /api/fleteras-zonas unexpected:', err);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });

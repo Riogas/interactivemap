@@ -726,8 +726,8 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
 
                         {/* Producto + Cantidad unificados */}
                         <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
-                          <div className="text-gray-300 text-xs truncate max-w-[200px]" title={p.producto_nom || undefined}>
-                            {p.producto_nom ? `${p.producto_nom}${p.producto_cant ? ` x${p.producto_cant}` : ''}` : '—'}
+                          <div className="text-gray-300 text-xs truncate max-w-[200px]" title={p.producto_nom || p.producto_cod || undefined}>
+                            {(p.producto_nom || p.producto_cod) ? `${p.producto_nom || p.producto_cod}${p.producto_cant ? ` x${p.producto_cant}` : ''}` : '—'}
                           </div>
                         </td>
 

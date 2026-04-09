@@ -100,7 +100,7 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                   <span className="text-lg">📦</span>
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm">Pedido #{pedido.id}</h3>
+                  <h3 className="font-bold text-sm">Pedido #{pedido.id}{pedido.imp_bruto ? ` — ${formatPrecio(pedido.imp_bruto)}` : ''}</h3>
                   {pedido.servicio_nombre && (
                     <p className="text-[10px] font-medium opacity-95">{pedido.servicio_nombre}</p>
                   )}
@@ -285,26 +285,10 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
 
 
             {/* Fecha */}
-            {(pedido.fch_hora_mov || pedido.fch_hora_para || pedido.fch_hora_max_ent_comp) && (
+            {(pedido.fch_hora_para || pedido.fch_hora_max_ent_comp) && (
               <div>
                 <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Fechas y Horarios</h4>
                 <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-2.5 border border-gray-200 space-y-2">
-                  {/* Hora de Asignación */}
-                  {pedido.fch_hora_mov && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <div className="text-[9px] text-gray-500 font-semibold">Hora Asignación</div>
-                        <div className="text-xs font-bold text-gray-900">
-                          {format(parseLocalDate(pedido.fch_hora_mov), "dd/MM/yyyy HH:mm", { locale: es })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   {/* Desde - Hasta */}
                   {(pedido.fch_hora_para || pedido.fch_hora_max_ent_comp) && (
                     <div className="grid grid-cols-2 gap-2">

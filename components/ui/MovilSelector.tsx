@@ -1106,6 +1106,7 @@ export default function MovilSelector({
                             const isInactive = movil.isInactive;
                             const isNoActivo = movil.estadoNro === 3;
                             const isBajaMomentanea = movil.estadoNro === 4;
+                            const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.pedidosAsignados ?? 0) >= (movil.tamanoLote ?? 0);
                             
                             return (
                               <motion.button
@@ -1184,7 +1185,7 @@ export default function MovilSelector({
                                       />
                                     )}
                                     {/* 🔥 Formato compacto: NroMovil – PedAsignados/Capacidad */}
-                                    <span className={clsx("text-sm font-medium leading-tight", (isNoActivo || isBajaMomentanea) && !isSelected && (isNoActivo ? "text-gray-400" : "text-violet-600"))}>
+                                    <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
                                       {movil.id}
                                       {' – '}
                                       {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}

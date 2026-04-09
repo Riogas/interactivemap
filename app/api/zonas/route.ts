@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getServerSupabaseClient } from '@/lib/supabase';
 
 /**
  * GET /api/zonas
@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
  */
 export async function GET() {
   try {
+    const supabase = getServerSupabaseClient();
     const { data, error } = await (supabase as any)
       .from('zonas')
       .select('*')

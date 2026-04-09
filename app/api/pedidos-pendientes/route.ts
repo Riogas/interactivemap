@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
         cliente_nro,
         cliente_tel,
         cliente_obs,
-        empresa_fletera_id
+        empresa_fletera_id,
+        prodsadicionales
       `)
       .eq('escenario', escenarioId)
       .eq('fch_para', fecha) // ✅ FILTRAR POR FECHA EXACTA
