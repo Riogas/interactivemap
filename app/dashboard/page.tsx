@@ -27,6 +27,7 @@ import ServicesTableModal from '@/components/ui/ServicesTableModal';
 import OsmImportModal from '@/components/ui/OsmImportModal';
 import AppTour from '@/components/ui/AppTour';
 import FleterasZonasModal from '@/components/ui/FleterasZonasModal';
+import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -98,6 +99,8 @@ function DashboardContent() {
     isFleterasZonasOpen, setIsFleterasZonasOpen,
     closePedidosTable, closeServicesTable,
   } = useDashboardModals();
+
+  const [isZonasSinMovilOpen, setIsZonasSinMovilOpen] = useState(false);
 
   // Mapa completo movil_nro → estadoNro (para todos los moviles, no solo los con GPS)
   const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
@@ -1372,6 +1375,7 @@ function DashboardContent() {
               setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
               setIsPedidosTableOpen(true);
             }}
+            onZonasSinMovilClick={() => setIsZonasSinMovilOpen(true)}
           />
         </NavbarSimple>
       </div>
@@ -1545,6 +1549,13 @@ function DashboardContent() {
       <FleterasZonasModal
         isOpen={isFleterasZonasOpen}
         onClose={() => setIsFleterasZonasOpen(false)}
+      />
+
+      <ZonasSinMovilModal
+        isOpen={isZonasSinMovilOpen}
+        onClose={() => setIsZonasSinMovilOpen(false)}
+        escenarioIds={selectedEscenarioIds}
+        allMovilEstados={allMovilEstados}
       />
 
       {/* Modal de Vista Móviles por Zona (click en mapa o botón) */}

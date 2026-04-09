@@ -18,9 +18,10 @@ interface DashboardIndicatorsProps {
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
+  onZonasSinMovilClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, onSinAsignarClick, onEntregadosClick, onPorcentajeClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -251,6 +252,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           label="Zonas sin Móvil"
           value={zonasSinMoviles}
           color={zonasSinMoviles > 0 ? 'orange' : 'gray'}
+          onClick={onZonasSinMovilClick}
         />
 
         {/* Zonas No Activas */}

@@ -336,9 +336,12 @@ export default function MovilSelector({
       result = result.filter(service => Number(service.estado_nro) === 1);
     }
     
-    // Filtrar por móviles seleccionados
+    // Filtrar por móviles seleccionados (sin asignar siempre pasan)
     if (selectedMoviles.length > 0) {
-      result = result.filter(service => service.movil && selectedMoviles.some(id => Number(id) === Number(service.movil)));
+      result = result.filter(service => {
+        if (!service.movil || Number(service.movil) === 0) return true;
+        return selectedMoviles.some(id => Number(id) === Number(service.movil));
+      });
     }
     
     // Filtrar por búsqueda
