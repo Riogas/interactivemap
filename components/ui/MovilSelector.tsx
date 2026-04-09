@@ -1110,6 +1110,15 @@ export default function MovilSelector({
                             const isNoActivo = movil.estadoNro === 3;
                             const isBajaMomentanea = movil.estadoNro === 4;
                             const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.pedidosAsignados ?? 0) >= (movil.tamanoLote ?? 0);
+                            // 🎨 Mismo cálculo de color que getMovilColor en MapView
+                            const loteColor = (() => {
+                              if (loteCompleto) return '#1F2937'; // Negro — lote lleno
+                              const tam = movil.tamanoLote || 6;
+                              const ped = movil.pedidosAsignados || 0;
+                              const pct = ((tam - ped) / tam) * 100;
+                              if (pct < 50) return '#F59E0B'; // Amarillo — < 50%
+                              return movil.color; // Color fletera — >= 50%
+                            })();
                             
                             return (
                               <motion.button
@@ -1128,7 +1137,7 @@ export default function MovilSelector({
                                   isBajaMomentanea && !isSelected && 'bg-violet-50 border-violet-300 opacity-85'
                                 )}
                                 style={{
-                                  backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#8B5CF6' : movil.color) : undefined,
+                                  backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#8B5CF6' : loteColor) : undefined,
                                 }}
                               >
                                 <span className="flex items-center justify-between">
@@ -1141,7 +1150,7 @@ export default function MovilSelector({
                                         : "bg-white border-gray-300"
                                     )}>
                                       {isSelected && (
-                                        <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#7C3AED' : movil.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#7C3AED' : loteColor }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                         </svg>
                                       )}
@@ -1184,7 +1193,7 @@ export default function MovilSelector({
                                     ) : (
                                       <div
                                         className="w-4 h-4 rounded-full"
-                                        style={{ backgroundColor: movil.color }}
+                                        style={{ backgroundColor: loteColor }}
                                       />
                                     )}
                                     {/* 🔥 Formato compacto: NroMovil – PedAsignados/Capacidad */}

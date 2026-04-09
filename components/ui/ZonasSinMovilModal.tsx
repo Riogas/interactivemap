@@ -145,7 +145,6 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
                   <tr>
                     <th className="text-left px-4 py-3 text-gray-400 font-semibold uppercase text-xs tracking-wider">ID</th>
                     <th className="text-left px-4 py-3 text-gray-400 font-semibold uppercase text-xs tracking-wider">Nombre de Zona</th>
-                    <th className="text-left px-4 py-3 text-gray-400 font-semibold uppercase text-xs tracking-wider">Escenario</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700/40">
@@ -157,7 +156,6 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
                       <td className="px-4 py-3 text-gray-200">
                         {z.nombre || <span className="text-gray-500 italic">Sin nombre</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{z.escenario_id}</td>
                     </tr>
                   ))}
                 </tbody>
