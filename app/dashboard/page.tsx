@@ -1574,6 +1574,7 @@ function DashboardContent() {
       <MovilesSinReportarModal
         isOpen={isMovilesSinReportarOpen}
         onClose={() => setIsMovilesSinReportarOpen(false)}
+        onMovilClick={(movilId) => { setIsMovilesSinReportarOpen(false); handleMovilClick(movilId); }}
         moviles={markInactiveMoviles(movilesFiltered)}
       />
 

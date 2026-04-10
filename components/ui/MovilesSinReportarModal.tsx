@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { MovilData } from '@/types';
 
@@ -8,11 +8,10 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   moviles: MovilData[];
+  onMovilClick?: (movilId: number) => void;
 }
 
-export default function MovilesSinReportarModal({ isOpen, onClose, moviles }: Props) {
-  const [choferes, setChoferes] = useState<Map<number, string>>(new Map());
-  const [loadingChoferes, setLoadingChoferes] = useState(false);
+export default function MovilesSinReportarModal({ isOpen, onClose, moviles, onMovilClick }: Props) {
 
   const sinReportar = useMemo(() => {
     return moviles
@@ -23,34 +22,6 @@ export default function MovilesSinReportarModal({ isOpen, onClose, moviles }: Pr
       })
       .sort((a, b) => a.id - b.id);
   }, [moviles]);
-
-  // Fetch choferes en paralelo al abrir
-  useEffect(() => {
-    if (!isOpen || sinReportar.length === 0) return;
-
-    let cancelled = false;
-    const fetchChoferes = async () => {
-      setLoadingChoferes(true);
-      const today = new Date().toISOString().split('T')[0];
-      const results = await Promise.allSettled(
-        sinReportar.map(m =>
-          fetch(`/api/movil-session/${m.id}?fecha=${today}`).then(r => r.ok ? r.json() : null)
-        )
-      );
-      if (cancelled) return;
-      const map = new Map<number, string>();
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled' && r.value?.chofer) {
-          map.set(sinReportar[i].id, r.value.chofer);
-        }
-      });
-      setChoferes(map);
-      setLoadingChoferes(false);
-    };
-
-    fetchChoferes();
-    return () => { cancelled = true; };
-  }, [isOpen, sinReportar]);
 
   const formatFecha = (fechaStr?: string) => {
     if (!fechaStr) return '—';
@@ -112,21 +83,18 @@ export default function MovilesSinReportarModal({ isOpen, onClose, moviles }: Pr
                 <thead className="sticky top-0 bg-gray-800/90 backdrop-blur z-10">
                   <tr>
                     <th className="text-left px-4 py-3 text-gray-400 font-semibold uppercase text-xs tracking-wider">Móvil</th>
-                    <th className="text-left px-4 py-3 text-gray-400 font-semibold uppercase text-xs tracking-wider">Chofer</th>
                     <th className="text-left px-4 py-3 text-gray-400 font-semibold uppercase text-xs tracking-wider">Último reporte GPS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700/40">
                   {sinReportar.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-700/30 transition-colors">
+                    <tr
+                      key={m.id}
+                      className="hover:bg-gray-700/30 transition-colors cursor-pointer"
+                      onClick={() => { onClose(); onMovilClick?.(m.id); }}
+                    >
                       <td className="px-4 py-3">
                         <span className="font-mono text-red-400 font-semibold">#{m.id}</span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-200 text-xs">
-                        {loadingChoferes
-                          ? <span className="text-gray-500 italic">...</span>
-                          : choferes.get(m.id) || <span className="text-gray-500 italic">—</span>
-                        }
                       </td>
                       <td className="px-4 py-3 text-gray-400 text-xs font-mono">
                         {formatFecha(m.currentPosition?.fechaInsLog)}

@@ -40,8 +40,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       finalizados = finalizados.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
     }
     
-    // Entregados: finalizados con sub_estado_desc = 3 o 16
-    const entregados = finalizados.filter(p => [3,16].includes(Number(p.sub_estado_desc))).length;
+    // Entregados: finalizados con sub_estado_nro = 3 o 16
+    const entregados = finalizados.filter(p => [3,16].includes(Number(p.sub_estado_nro))).length;
     const totalFinalizados = finalizados.length;
     const porcentajeEntregados = totalFinalizados > 0
       ? Math.round(entregados / totalFinalizados * 100)
