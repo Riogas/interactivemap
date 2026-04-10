@@ -1646,19 +1646,9 @@ function DashboardContent() {
             setIsPedidosTableOpen(true);
           }
         }}
-        onMovsPrioClick={(_zonaId, movilIds, _svcFilter) => {
+        onMovsPrioClick={(zonaId, _movilIds, _svcFilter) => {
           setIsZonaEstadisticasOpen(false);
-          if (movilIds.length === 1) {
-            // Un solo móvil: abrir su popup en mapa
-            setPopupMovil(movilIds[0]);
-          } else if (movilIds.length > 1) {
-            // Múltiples móviles: abrir vista extendida pre-filtrada por el primero
-            // (el usuario puede cambiar en el dropdown)
-            setPreFilterMovil(movilIds[0]);
-            setPreFilterZona(undefined);
-            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
-            setIsPedidosTableOpen(true);
-          }
+          openZonaView(zonaId);
         }}
       />
 
