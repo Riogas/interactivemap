@@ -13,7 +13,7 @@
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.84.0",
-    "axios": "^1.13.5",
+    "axios": "^1.15.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "driver.js": "^1.4.0",
@@ -22,7 +22,7 @@
     "leaflet.markercluster": "^1.5.3",
     "marked": "^17.0.1",
     "nanoid": "^5.1.6",
-    "next": "16.1.7",
+    "next": "^16.2.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hot-toast": "^2.6.0",
@@ -35,7 +35,12 @@
     "overrides": {
       "minimatch@<3.1.4": "3.1.4",
       "minimatch@>=9.0.0 <9.0.7": "9.0.7",
-      "ajv@<6.14.0": "6.14.0"
+      "ajv@<6.14.0": "6.14.0",
+      "flatted": "^3.4.2",
+      "picomatch@<2.3.2": "^2.3.2",
+      "picomatch@>=4.0.0 <4.0.4": "^4.0.4",
+      "brace-expansion@<1.1.13": "^1.1.13",
+      "brace-expansion@>=4.0.0 <5.0.5": "5.0.5"
     }
   },
   "devDependencies": {
