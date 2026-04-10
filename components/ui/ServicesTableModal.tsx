@@ -121,9 +121,9 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
-        result = result.filter(s => [3, 16].includes(Number(s.sub_estado_desc)));
+        result = result.filter(s => [3, 16].includes(Number(s.sub_estado_nro)));
       } else if (filters.entrega === 'no_entregados') {
-        result = result.filter(s => ![3, 16].includes(Number(s.sub_estado_desc)));
+        result = result.filter(s => ![3, 16].includes(Number(s.sub_estado_nro)));
       }
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
