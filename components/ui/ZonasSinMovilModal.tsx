@@ -11,16 +11,30 @@ interface ZonaItem {
   escenario_id: number;
 }
 
+const SERVICE_OPTIONS = [
+  { value: 'URGENTE', label: 'Urgente' },
+  { value: 'SERVICE', label: 'Service' },
+  { value: 'NOCTURNO', label: 'Nocturno' },
+];
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   escenarioIds: number[];
   allMovilEstados?: Map<string, number>;
+  /** Tipo de servicio inicial (URGENTE/SERVICE/NOCTURNO). Default: 'URGENTE' */
+  initialServiceFilter?: string;
 }
 
-export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allMovilEstados }: Props) {
+export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allMovilEstados, initialServiceFilter = 'URGENTE' }: Props) {
   const [loading, setLoading] = useState(false);
   const [zonas, setZonas] = useState<ZonaItem[]>([]);
+  const [serviceFilter, setServiceFilter] = useState(initialServiceFilter.toUpperCase());
+
+  // Sincronizar si cambia el filtro externo mientras el modal está cerrado
+  useEffect(() => {
+    if (!isOpen) setServiceFilter(initialServiceFilter.toUpperCase());
+  }, [initialServiceFilter, isOpen]);
 
   useEffect(() => {
     if (!isOpen || escenarioIds.length === 0) return;
@@ -44,7 +58,7 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
         );
 
         let movilesZonas = (mzResult.data || []).filter(
-          (mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === 'URGENTE'
+          (mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter
         );
 
         // Excluir móviles con estados inactivos
@@ -81,7 +95,7 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
 
     fetchData();
     return () => { cancelled = true; };
-  }, [isOpen, escenarioIds, allMovilEstados]);
+  }, [isOpen, escenarioIds, allMovilEstados, serviceFilter]);
 
   if (!isOpen) return null;
 
@@ -115,14 +129,25 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
                 </p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/25 text-white transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2">
+              <select
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value)}
+                className="text-xs bg-white/15 text-white border border-white/20 rounded-lg px-2 py-1 cursor-pointer hover:bg-white/25 transition-colors outline-none"
+              >
+                {SERVICE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value} className="bg-gray-900 text-white">{o.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={onClose}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/25 text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Body */}

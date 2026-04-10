@@ -15,6 +15,8 @@ interface DashboardIndicatorsProps {
   escenarioIds?: number[];
   maxCoordinateDelayMinutes?: number;
   allMovilEstados?: Map<string, number>;
+  /** Tipo de servicio activo en la capa Móviles-Zonas del mapa (URGENTE/SERVICE/NOCTURNO) */
+  zonasSinMovilServiceFilter?: string;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
@@ -23,7 +25,7 @@ interface DashboardIndicatorsProps {
   onZonasNoActivasClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, zonasSinMovilServiceFilter = 'URGENTE', onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -113,11 +115,11 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     return () => clearInterval(interval);
   }, [escenarioIds]);
 
-  // Zonas sin móviles: Match MovilesZonasLayer — filtrar por URGENTE + excluir estados 3/5/15
+  // Zonas sin móviles: Match MovilesZonasLayer — filtrar por tipo de servicio activo + excluir estados 3/5/15
   const zonasSinMoviles = useMemo(() => {
     if (zonasAllData.length === 0) return 0;
-    // Filtrar por tipo de servicio URGENTE (default del mapa)
-    let filtered = movilesZonasRecords.filter((mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === 'URGENTE');
+    const svcUpper = (zonasSinMovilServiceFilter || 'URGENTE').toUpperCase();
+    let filtered = movilesZonasRecords.filter((mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === svcUpper);
     // Excluir móviles con estados inactivos (3, 5, 15) — mismo filtro que MovilesZonasLayer
     if (allMovilEstados && allMovilEstados.size > 0) {
       filtered = filtered.filter((mz: any) => {
@@ -141,7 +143,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       const counts = zonaCounts.get(z.zona_id);
       return !counts || (counts.prioridad === 0 && counts.transito === 0);
     }).length;
-  }, [zonasAllData, movilesZonasRecords, allMovilEstados]);
+  }, [zonasAllData, movilesZonasRecords, allMovilEstados, zonasSinMovilServiceFilter]);
 
   // Zonas no activas: Match ZonasActivasLayer — iterar zonas visibles y buscar en demoras
   const zonasNoActivas = useMemo(() => {
@@ -322,23 +324,23 @@ function Indicator({ icon, label, value, subtitle, color = 'blue', pulse = false
       animate={{ opacity: 1, scale: 1 }}
       onClick={onClick}
       className={`
-        backdrop-blur-sm rounded-md px-1.5 py-0.5 lg:px-2 lg:py-1 border
+        backdrop-blur-sm rounded-md px-2 py-1 lg:px-2.5 lg:py-1.5 border
         ${colorClasses[color]}
         ${pulse ? 'animate-pulse' : ''}
         hover:scale-105 transition-transform ${onClick ? 'cursor-pointer' : 'cursor-default'}
         whitespace-nowrap
-        h-[32px] lg:h-[38px] flex items-center
+        h-[36px] lg:h-[44px] flex items-center
       `}
     >
       <div className="flex items-center gap-1 lg:gap-1.5">
-        <span className="text-[10px] lg:text-xs">{icon}</span>
+        <span className="text-xs lg:text-sm">{icon}</span>
         <div className="flex flex-col leading-none justify-center">
           <div className="flex items-baseline gap-1">
-            <span className="text-[8px] lg:text-[9px] font-medium opacity-75 hidden sm:inline">{label}</span>
-            <span className="text-[10px] lg:text-xs font-bold">{value}</span>
+            <span className="text-[10px] lg:text-xs font-medium opacity-75 hidden sm:inline">{label}</span>
+            <span className="text-xs lg:text-sm font-bold">{value}</span>
           </div>
           {subtitle && (
-            <span className="text-[8px] opacity-60 mt-0.5">{subtitle}</span>
+            <span className="text-[9px] opacity-60 mt-0.5">{subtitle}</span>
           )}
         </div>
       </div>

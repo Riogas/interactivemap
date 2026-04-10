@@ -585,11 +585,8 @@ export default function MovilSelector({
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 h-full flex flex-col">
-      <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center justify-between">
-        <span>Capas del Mapa</span>
-        <span className="text-sm font-normal text-gray-500">
-          {selectedMoviles.length} seleccionado{selectedMoviles.length !== 1 ? 's' : ''}
-        </span>
+      <h2 className="text-xl font-bold text-gray-800 mb-4">
+        Capas del Mapa
       </h2>
 
       {/* Badges de filtros activos - siempre visibles */}

@@ -1379,6 +1379,7 @@ function DashboardContent() {
               setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
               setIsPedidosTableOpen(true);
             }}
+            zonasSinMovilServiceFilter={movilesZonasServiceFilter}
             onZonasSinMovilClick={() => setIsZonasSinMovilOpen(true)}
             onMovilesSinReportarClick={() => setIsMovilesSinReportarOpen(true)}
             onZonasNoActivasClick={() => setIsZonasNoActivasOpen(true)}
@@ -1562,6 +1563,7 @@ function DashboardContent() {
         onClose={() => setIsZonasSinMovilOpen(false)}
         escenarioIds={selectedEscenarioIds}
         allMovilEstados={allMovilEstados}
+        initialServiceFilter={movilesZonasServiceFilter}
       />
 
       <MovilesSinReportarModal
@@ -1645,6 +1647,7 @@ function DashboardContent() {
           }
         }}
         onMovsPrioClick={(_zonaId, movilIds, _svcFilter) => {
+          setIsZonaEstadisticasOpen(false);
           if (movilIds.length === 1) {
             // Un solo móvil: abrir su popup en mapa
             setPopupMovil(movilIds[0]);
