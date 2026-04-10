@@ -15,10 +15,7 @@ export async function GET(request: NextRequest) {
 
     let query = (supabase as any)
       .from('fleteras_zonas')
-      .select(`
-        *,
-        empresa:empresas_fleteras ( empresa_fletera_id, nombre, estado )
-      `)
+      .select('*')
       .order('empresa_fletera_id', { ascending: true })
       .order('tipo_de_zona', { ascending: true })
       .order('tipo_de_servicio', { ascending: true });

@@ -385,7 +385,7 @@ export default function FleterasZonasModal({ isOpen, onClose }: Props) {
                   {filtered.map(r => {
                     const key = recordKey(r);
                     const isDeleting = deletingKey === key;
-                    const empresaNombre = r.empresa?.nombre ?? `Empresa ${r.empresa_fletera_id}`;
+                    const empresaNombre = empresas.find(e => e.empresa_fletera_id === r.empresa_fletera_id)?.nombre ?? `Empresa ${r.empresa_fletera_id}`;
                     const zonasList = Array.isArray(r.zonas) ? r.zonas : [];
 
                     return (
