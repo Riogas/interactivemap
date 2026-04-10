@@ -54,6 +54,7 @@ interface PedidosTableModalProps {
   preFilterMovil?: number;
   preFilterZona?: number;
   onClearPreFilter?: () => void;
+  initialAsignacion?: 'todos' | 'con_movil' | 'sin_movil';
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -77,7 +78,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos' }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -121,6 +122,14 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
       setPage(0);
     }
   }, [preFilterZona, isOpen]);
+
+  // Aplicar filtro inicial de asignación al abrir
+  useEffect(() => {
+    if (isOpen) {
+      setFilters(f => ({ ...f, asignacion: initialAsignacion }));
+      setPage(0);
+    }
+  }, [isOpen, initialAsignacion]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {

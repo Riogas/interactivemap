@@ -200,6 +200,7 @@ function DashboardContent() {
 
   // Estado para filtros de pedidos y services (lifted desde MovilSelector para compartir con MapView)
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
+  const [pedidosInitialAsignacion, setPedidosInitialAsignacion] = useState<'todos' | 'con_movil' | 'sin_movil'>('todos');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
@@ -1369,14 +1370,17 @@ function DashboardContent() {
             allMovilEstados={allMovilEstados}
             onSinAsignarClick={() => {
               setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
+              setPedidosInitialAsignacion('sin_movil');
               setIsPedidosTableOpen(true);
             }}
             onEntregadosClick={() => {
               setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
+              setPedidosInitialAsignacion('todos');
               setIsPedidosTableOpen(true);
             }}
             onPorcentajeClick={() => {
               setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
+              setPedidosInitialAsignacion('todos');
               setIsPedidosTableOpen(true);
             }}
             zonasSinMovilServiceFilter={movilesZonasServiceFilter}
@@ -1523,6 +1527,7 @@ function DashboardContent() {
         preFilterMovil={preFilterMovil}
         preFilterZona={preFilterZona}
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
+        initialAsignacion={pedidosInitialAsignacion}
       />
 
       {/* Modal de Vista Extendida de Services */}
