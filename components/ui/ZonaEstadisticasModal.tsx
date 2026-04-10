@@ -210,9 +210,13 @@ export default function ZonaEstadisticasModal({
       const demora = demoraInfo ? demoraInfo.minutos : null;
 
       // Moviles activos con prioridad para este tipo de servicio (ya pre-filtrados)
-      const movsPrio = filteredMovilesZonas.filter(r =>
-        r.zona_id === zonaId && r.prioridad_o_transito === 1
-      ).length;
+      // Deduplicar por movil_id: 884 en URGENTE + 884 en NOCTURNO = 1 movil único
+      const movsPrioIds = new Set(
+        filteredMovilesZonas
+          .filter(r => r.zona_id === zonaId && r.prioridad_o_transito === 1)
+          .map(r => String(r.movil_id))
+      );
+      const movsPrio = movsPrioIds.size;
 
       result.push({
         zonaId,
@@ -424,9 +428,11 @@ export default function ZonaEstadisticasModal({
                           onClick={(e) => {
                             e.stopPropagation();
                             if (z.movsPrio > 0 && onMovsPrioClick) {
-                              const movilIds = filteredMovilesZonas
-                                .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito === 1)
-                                .map(r => Number(r.movil_id));
+                              const movilIds = [...new Set(
+                                filteredMovilesZonas
+                                  .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito === 1)
+                                  .map(r => Number(r.movil_id))
+                              )];
                               onMovsPrioClick(z.zonaId, movilIds, serviceFilter);
                             }
                           }}
