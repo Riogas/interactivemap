@@ -20,7 +20,11 @@ export default function MovilesSinReportarModal({ isOpen, onClose, moviles, onMo
         const estadoNro = m.estadoNro;
         return estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
       })
-      .sort((a, b) => a.id - b.id);
+      .sort((a, b) => {
+        const fa = a.currentPosition?.fechaInsLog ? new Date(a.currentPosition.fechaInsLog).getTime() : 0;
+        const fb = b.currentPosition?.fechaInsLog ? new Date(b.currentPosition.fechaInsLog).getTime() : 0;
+        return fb - fa; // descendente: más antiguo primero (mayor atraso arriba)
+      });
   }, [moviles]);
 
   const formatFecha = (fechaStr?: string) => {
