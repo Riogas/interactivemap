@@ -1507,7 +1507,7 @@ export default function MovilSelector({
                                       </span>
                                     )}
                                   </button>
-                                  {/* Lista de POIs de esta categoría */
+                                  {/* Lista de POIs de esta categoría */}
                                   <AnimatePresence>
                                     {isCatExpanded && (
                                       <motion.div
