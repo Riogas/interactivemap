@@ -109,14 +109,16 @@ export default function MovilSelector({
   // Estado para sub-categorías expandidas dentro de POIs
   const [expandedPoiCategories, setExpandedPoiCategories] = useState<Set<string>>(new Set());
 
-  // Agrupar POIs por categoría extraída del prefijo [Label] en observacion
+  // Agrupar POIs por campo categoria (con fallback a prefijo [Label] en observacion)
   const poiByCategory = useMemo(() => {
     const groups: Record<string, { label: string; icono: string; items: CustomMarker[] }> = {};
     const uncategorized: CustomMarker[] = [];
     for (const poi of puntosInteres) {
-      const match = poi.observacion?.match(/^\[([^\]]+)\]/);
-      if (match) {
-        const cat = match[1];
+      // Primero intentar campo categoria, luego prefijo [Cat] en observacion
+      const cat = poi.categoria?.trim()
+        || poi.observacion?.match(/^\[([^\]]+)\]/)?.[1]
+        || null;
+      if (cat) {
         if (!groups[cat]) groups[cat] = { label: cat, icono: poi.icono, items: [] };
         groups[cat].items.push(poi);
       } else {
@@ -126,7 +128,7 @@ export default function MovilSelector({
     // Ordenar categorías alfabéticamente
     const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
     if (uncategorized.length > 0) {
-      sorted.push(['_privados', { label: 'Mis Puntos', icono: '📌', items: uncategorized }]);
+      sorted.push(['_sin_categoria', { label: 'Mis Puntos', icono: '📌', items: uncategorized }]);
     }
     return sorted;
   }, [puntosInteres]);
