@@ -204,6 +204,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // No fallar el login si Supabase falla - permitir continuar
         }
         
+        // Guardar en localStorage el newUser completo (incluye loginTime para validar expiración en F5)
+        localStorage.setItem('trackmovil_user', JSON.stringify(newUser));
+        localStorage.setItem('trackmovil_token', newUser.token);
+
         setUser(newUser);
         return { success: true };
       } else if (response.success && !response.user) {
