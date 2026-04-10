@@ -136,6 +136,21 @@ function DashboardContent() {
   
   // Estado para puntos de interés
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
+  const [selectedPois, setSelectedPois] = useState<Set<string>>(new Set());
+
+  // Inicializar selección cuando se cargan POIs
+  useEffect(() => {
+    if (puntosInteres.length > 0) {
+      setSelectedPois(new Set(puntosInteres.map(p => p.id)));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [puntosInteres.length]);
+
+  // IDs de POIs ocultos (no seleccionados por el usuario)
+  const hiddenPoiIds = useMemo(
+    () => new Set(puntosInteres.filter(p => !selectedPois.has(p.id)).map(p => p.id)),
+    [puntosInteres, selectedPois]
+  );
 
   // 📊 Vista de datos del mapa — dataViewMode persistido en preferencias
   const dataViewMode = preferences.dataViewMode;
@@ -1092,15 +1107,24 @@ function DashboardContent() {
 
   // Handler para click en punto de interés
   const handlePuntoInteresClick = useCallback((puntoId: string) => {
-    console.log('📍 Click en punto de interés:', puntoId);
-    // Encontrar el punto en la lista
-    const punto = puntosInteres.find(p => p.id === puntoId);
-    if (punto) {
-      // Centrar mapa en el punto (esto lo manejará MapView automáticamente)
-      // Por ahora solo logueamos
-      console.log('📍 Punto encontrado:', punto);
-    }
-  }, [puntosInteres]);
+    setFocusedPuntoId(puntoId);
+  }, []);
+
+  const handleTogglePoi = useCallback((id: string) => {
+    setSelectedPois(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleSelectCategoryPois = useCallback((ids: string[]) => {
+    setSelectedPois(prev => { const next = new Set(prev); ids.forEach(id => next.add(id)); return next; });
+  }, []);
+
+  const handleClearCategoryPois = useCallback((ids: string[]) => {
+    setSelectedPois(prev => { const next = new Set(prev); ids.forEach(id => next.delete(id)); return next; });
+  }, []);
 
   // Combinar pedidos iniciales con updates de realtime
   // Fecha seleccionada en formato YYYYMMDD para filtrar por fch_para
@@ -1749,6 +1773,10 @@ function DashboardContent() {
                   onTogglePoisHidden={() => setPoisHidden(!poisHidden)}
                   hiddenPoiCategories={hiddenPoiCategories}
                   onTogglePoiCategory={togglePoiCategory}
+                  selectedPois={selectedPois}
+                  onTogglePoi={handleTogglePoi}
+                  onSelectCategoryPois={handleSelectCategoryPois}
+                  onClearCategoryPois={handleClearCategoryPois}
                   empresas={empresas}
                   selectedEmpresas={selectedEmpresas}
                   onEmpresasChange={setSelectedEmpresas}
@@ -1879,6 +1907,7 @@ function DashboardContent() {
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
                 hiddenPoiCategories={hiddenPoiCategories}
+                hiddenPoiIds={hiddenPoiIds}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
                 onZonaClick={dataViewMode === 'moviles-zonas' ? openZonaView : undefined}

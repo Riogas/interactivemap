@@ -35,6 +35,10 @@ interface MovilSelectorProps {
   onTogglePoisHidden?: () => void; // Toggle visibilidad global de POIs
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
   onTogglePoiCategory?: (category: string) => void; // Toggle visibilidad de una categoría de POI
+  selectedPois?: Set<string>; // IDs de POIs seleccionados (visibles en mapa)
+  onTogglePoi?: (id: string) => void; // Toggle individual de un POI
+  onSelectCategoryPois?: (ids: string[]) => void; // Seleccionar todos los POIs de una categoría
+  onClearCategoryPois?: (ids: string[]) => void; // Deseleccionar todos los POIs de una categoría
   pedidosFilters?: PedidoFilters; // Filtros de pedidos (lifted)
   onPedidosFiltersChange?: (filters: PedidoFilters) => void; // Callback para cambios en filtros de pedidos
   servicesFilters?: ServiceFilters; // Filtros de services (lifted)
@@ -83,6 +87,10 @@ export default function MovilSelector({
   onTogglePoisHidden,
   hiddenPoiCategories = new Set(),
   onTogglePoiCategory,
+  selectedPois,
+  onTogglePoi,
+  onSelectCategoryPois,
+  onClearCategoryPois,
   pedidosFilters: pedidosFiltersProp,
   onPedidosFiltersChange,
   servicesFilters: servicesFiltersProp,
@@ -1479,8 +1487,27 @@ export default function MovilSelector({
                                         )}
                                       </span>
                                     )}
+                                    {/* Seleccionar todos/ninguno por categoría */}
+                                    {(onSelectCategoryPois || onClearCategoryPois) && (
+                                      <span
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const ids = group.items.map(p => p.id);
+                                          const allSel = ids.every(id => selectedPois?.has(id));
+                                          if (allSel) onClearCategoryPois?.(ids);
+                                          else onSelectCategoryPois?.(ids);
+                                        }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}
+                                        className="px-1 py-0.5 text-[9px] font-semibold rounded transition-colors flex-shrink-0 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-800 cursor-pointer"
+                                        title={group.items.every(p => selectedPois?.has(p.id)) ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                                      >
+                                        {group.items.every(p => selectedPois?.has(p.id)) ? 'Ninguno' : 'Todos'}
+                                      </span>
+                                    )}
                                   </button>
-                                  {/* Lista de POIs de esta categoría */}
+                                  {/* Lista de POIs de esta categoría */
                                   <AnimatePresence>
                                     {isCatExpanded && (
                                       <motion.div
@@ -1494,6 +1521,7 @@ export default function MovilSelector({
                                           {group.items.map((punto) => {
                                             // Quitar prefijo [Category] de observacion para mostrar limpio
                                             const cleanObs = punto.observacion?.replace(/^\[[^\]]+\]\s*/, '') || '';
+                                            const isPoiSelected = !selectedPois || selectedPois.has(punto.id);
                                             return (
                                               <motion.button
                                                 key={punto.id}
@@ -1502,13 +1530,24 @@ export default function MovilSelector({
                                                   'w-full text-left px-2 py-1.5 rounded-md transition-all duration-150 text-xs',
                                                   isCatHidden
                                                     ? 'bg-gray-100 dark:bg-gray-700 opacity-50'
-                                                    : 'bg-white dark:bg-gray-700 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 border border-transparent hover:border-cyan-200 dark:hover:border-cyan-700'
+                                                    : !isPoiSelected
+                                                      ? 'bg-gray-50 dark:bg-gray-700/50 opacity-50 border border-dashed border-gray-300 dark:border-gray-600'
+                                                      : 'bg-white dark:bg-gray-700 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 border border-transparent hover:border-cyan-200 dark:hover:border-cyan-700'
                                                 )}
                                                 whileHover={{ x: 2 }}
                                                 whileTap={{ scale: 0.98 }}
                                               >
                                                 <div className="flex items-center gap-1.5">
-                                                  <span className="text-sm flex-shrink-0">{punto.icono}</span>
+                                                  <span
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={(e) => { e.stopPropagation(); onTogglePoi?.(punto.id); }}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onTogglePoi?.(punto.id); } }}
+                                                    className="text-sm flex-shrink-0 cursor-pointer"
+                                                    title={isPoiSelected ? 'Ocultar en mapa' : 'Mostrar en mapa'}
+                                                  >
+                                                    {isPoiSelected ? punto.icono : '👁️'}
+                                                  </span>
                                                   <div className="flex-1 min-w-0">
                                                     <span className="font-medium text-gray-800 dark:text-gray-200 truncate block">
                                                       {punto.nombre}

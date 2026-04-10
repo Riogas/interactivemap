@@ -100,6 +100,7 @@ interface MapViewProps {
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
+  hiddenPoiIds?: Set<string>; // IDs individuales de POI ocultos
   pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
@@ -504,6 +505,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
     prev.poisHidden === next.poisHidden &&
     prev.hiddenPoiCategories?.size === next.hiddenPoiCategories?.size &&
+    prev.hiddenPoiIds?.size === next.hiddenPoiIds?.size &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -566,6 +568,7 @@ const MapView = memo(function MapView({
   reloadMarkersTrigger = 0,
   poisHidden = false,
   hiddenPoiCategories = new Set(),
+  hiddenPoiIds = new Set<string>(),
   pedidosVista = 'pendientes',
   servicesVista = 'pendientes',
   onZonaClick,
@@ -2827,10 +2830,11 @@ const MapView = memo(function MapView({
         {/* Renderizar marcadores personalizados (POIs) */}
         {!poisHidden && customMarkers.filter(m => {
           if (!m.visible) return false;
-          // Extraer categoría del prefijo [Label] en observacion
+          // Filtro individual por ID (selección de usuario)
+          if (hiddenPoiIds.size > 0 && hiddenPoiIds.has(m.id)) return false;
+          // Filtro por categoría
           if (hiddenPoiCategories.size > 0) {
-            const catMatch = m.observacion?.match(/^\[([^\]]+)\]/);
-            const cat = catMatch ? catMatch[1] : '';
+            const cat = m.categoria || m.observacion?.match(/^\[([^\]]+)\]/)?.[1] || '';
             if (cat && hiddenPoiCategories.has(cat)) return false;
           }
           return true;
