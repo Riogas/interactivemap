@@ -153,7 +153,11 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     } else if (preFilterMovil || preFilterZona) {
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
-      result = result.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
+      result = result.filter(p =>
+        // Con asignacion='todos' también incluir los sin móvil
+        (filters.asignacion === 'todos' && (!p.movil || Number(p.movil) === 0)) ||
+        (p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
+      );
     }
     
     // Aplicar filtro externo de tipo de servicio (solo para pendientes)

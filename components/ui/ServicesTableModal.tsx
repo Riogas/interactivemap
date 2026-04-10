@@ -7,7 +7,7 @@ import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDela
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
-type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'defecto' | 'importe' | 'direccion' | 'servicio' | 'hora_max' | 'obs_service' | 'obs_cliente';
+type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'defecto' | 'direccion' | 'hora_max' | 'obs_service' | 'obs_cliente';
 type SortDir = 'asc' | 'desc';
 
 interface Filters {
@@ -143,7 +143,11 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     } else if (preFilterMovil || preFilterZona) {
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
-      result = result.filter(s => s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)));
+      result = result.filter(s =>
+        // Con asignacion='todos' también incluir los sin móvil
+        (filters.asignacion === 'todos' && (!s.movil || Number(s.movil) === 0)) ||
+        (s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)))
+      );
     }
     
     // Aplicar filtro externo de tipo de servicio (solo para pendientes)
@@ -237,9 +241,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
         case 'zona': return ((a.service.zona_nro || 0) - (b.service.zona_nro || 0)) * dir;
         case 'cliente': return (a.service.cliente_nombre || '').localeCompare(b.service.cliente_nombre || '') * dir;
         case 'defecto': return (a.service.defecto || '').localeCompare(b.service.defecto || '') * dir;
-        case 'importe': return ((a.service.imp_bruto || 0) - (b.service.imp_bruto || 0)) * dir;
         case 'direccion': return (a.service.cliente_direccion || '').localeCompare(b.service.cliente_direccion || '') * dir;
-        case 'servicio': return (a.service.servicio_nombre || '').localeCompare(b.service.servicio_nombre || '') * dir;
         case 'hora_max': return (a.service.fch_hora_max_ent_comp || '').localeCompare(b.service.fch_hora_max_ent_comp || '') * dir;
         case 'obs_service': return (a.service.pedido_obs || '').localeCompare(b.service.pedido_obs || '') * dir;
         case 'obs_cliente': return (a.service.cliente_obs || '').localeCompare(b.service.cliente_obs || '') * dir;
@@ -587,12 +589,6 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200" onClick={() => handleSort('defecto')}>
                       Defecto <SortArrow col="defecto" />
                     </th>
-                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('servicio')}>
-                      Servicio <SortArrow col="servicio" />
-                    </th>
-                    <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('importe')}>
-                      Importe <SortArrow col="importe" />
-                    </th>
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('hora_max')}>
                       H. Máx <SortArrow col="hora_max" />
                     </th>
@@ -607,7 +603,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                 <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="text-center py-12 text-gray-500">
+                      <td colSpan={10} className="text-center py-12 text-gray-500">
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0" />
                         </svg>
@@ -615,15 +611,17 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                       </td>
                     </tr>
                   ) : (
-                    paginated.map(({ service: s, delayInfo }) => (
+                    paginated.map(({ service: s, delayInfo }) => {
+                      const esEntregado = isFinalizados && [3,16].includes(Number(s.sub_estado_nro));
+                      return (
                       <tr
                         key={s.id}
-                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : (!s.movil || Number(s.movil) === 0) ? 'bg-gray-400/10 hover:bg-gray-400/20 border-l-gray-400' : getRowBg(delayInfo)}`}
+                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? (esEntregado ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : 'bg-red-500/10 hover:bg-red-500/20 border-l-red-500') : (!s.movil || Number(s.movil) === 0) ? 'bg-gray-400/10 hover:bg-gray-400/20 border-l-gray-400' : getRowBg(delayInfo)}`}
                       >
                         <td className="px-4 py-2.5" onClick={() => onServiceClick?.(s.id)}>
                           {isFinalizados ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap bg-green-500/25 text-green-300">
-                              ✔ Finalizado
+                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${esEntregado ? 'bg-green-500/25 text-green-300' : 'bg-red-500/25 text-red-300'}`}>
+                              {esEntregado ? '✔ Entregado' : '✗ No Entregado'}
                             </span>
                           ) : (
                             <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${getDelayBadgeStyle(delayInfo)}`}>
@@ -652,10 +650,6 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                         <td className="px-4 py-2.5" onClick={() => onServiceClick?.(s.id)}>
                           <div className="text-gray-300 text-xs truncate max-w-[140px]" title={s.defecto || undefined}>{s.defecto || '—'}</div>
                         </td>
-                        <td className="px-4 py-2.5" onClick={() => onServiceClick?.(s.id)}>
-                          <div className="text-gray-300 text-xs truncate max-w-[120px]" title={s.servicio_nombre || undefined}>{s.servicio_nombre || '—'}</div>
-                        </td>
-                        <td className="px-4 py-2.5 text-gray-300 text-xs whitespace-nowrap" onClick={() => onServiceClick?.(s.id)}>{formatCurrency(s.imp_bruto)}</td>
                         <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap font-mono" onClick={() => onServiceClick?.(s.id)}>{formatTime(s.fch_hora_max_ent_comp)}</td>
                         <td className="px-4 py-2.5" onClick={() => onServiceClick?.(s.id)}>
                           {s.pedido_obs ? (
@@ -673,7 +667,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                         </td>
 
                       </tr>
-                    ))
+                    );})
                   )}
                 </tbody>
               </table>
