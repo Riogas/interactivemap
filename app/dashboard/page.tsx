@@ -220,24 +220,32 @@ function DashboardContent() {
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
   
+  // Refs para callbacks de fetch — permiten pasarlos a hooks antes de que estén definidos
+  const fetchPedidosRef = useRef<(() => void) | null>(null);
+  const fetchServicesRef = useRef<(() => void) | null>(null);
+
   // 🔥 NUEVO: Hook para escuchar cambios en pedidos en tiempo real
-  const { 
-    pedidos: pedidosRealtime, 
+  const {
+    pedidos: pedidosRealtime,
     isConnected: pedidosConnected,
-    error: pedidosError 
+    error: pedidosError
   } = usePedidosRealtime(
     1000, // escenarioId (ajustar según tu base de datos)
-    undefined // Cargar TODOS los pedidos (sin filtrar por móvil)
+    undefined, // Cargar TODOS los pedidos (sin filtrar por móvil)
+    undefined,
+    useCallback(() => { fetchPedidosRef.current?.(); }, [])
   );
 
   // 🔧 Hook para escuchar cambios en services en tiempo real
-  const { 
-    services: servicesRealtime, 
+  const {
+    services: servicesRealtime,
     isConnected: servicesConnected,
-    error: servicesError 
+    error: servicesError
   } = useServicesRealtime(
     1000,
-    undefined
+    undefined,
+    undefined,
+    useCallback(() => { fetchServicesRef.current?.(); }, [])
   );
   
   // Estado para pedidos cargados inicialmente
@@ -534,6 +542,24 @@ function DashboardContent() {
       setIsLoadingServices(false);
     }
   }, [selectedDate]);
+
+  // Mantener refs actualizadas para que los callbacks de reconexión siempre usen la versión más reciente
+  useEffect(() => { fetchPedidosRef.current = fetchPedidos; }, [fetchPedidos]);
+  useEffect(() => { fetchServicesRef.current = fetchServices; }, [fetchServices]);
+
+  // 🔄 Safety-net: refetch periódico cada 90 segundos para compensar eventos perdidos en el realtime
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    if (selectedDate !== today) return; // Solo en modo live, no para fechas históricas
+
+    const interval = setInterval(() => {
+      console.log('🔄 Safety-net refetch — sincronizando datos con la API');
+      fetchPedidos();
+      fetchServices();
+    }, 90_000);
+
+    return () => clearInterval(interval);
+  }, [selectedDate, fetchPedidos, fetchServices]);
 
   // 🔥 NUEVO: Seleccionar todos los móviles automáticamente en la carga inicial
   useEffect(() => {

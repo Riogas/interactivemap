@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { 
   GPSTrackingSupabase, 
@@ -359,19 +359,31 @@ export function useEmpresasFleteras(
 export function usePedidosRealtime(
   escenarioId: number = 1,
   movilIds?: number[],
-  onUpdate?: (pedido: PedidoSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void
+  onUpdate?: (pedido: PedidoSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
+  onReconnect?: () => void
 ) {
   const [pedidos, setPedidos] = useState<Map<number, PedidoSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wasConnectedRef = useRef(false);
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
 
   useEffect(() => {
     console.log('🔄 Suscripción pedidos realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let isComponentMounted = true;
+    const RETRY_DELAY = 5000;
 
     const setupChannel = () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+        channel = null;
+      }
+
       const channelName = `pedidos-realtime-${escenarioId}-${Date.now()}`;
-      
+
       channel = supabase
         .channel(channelName, {
           config: {
@@ -388,20 +400,16 @@ export function usePedidosRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
+            if (!isComponentMounted) return;
             const newPedido = payload.new as PedidoSupabase;
-            
-            // Filtrar por móvil si se especifica (o mostrar todos si no hay filtro)
+
             if (!movilIds || movilIds.length === 0 || (newPedido.movil && movilIds.includes(newPedido.movil))) {
-              // Agregar todos los pedidos (con o sin coordenadas)
               setPedidos(prev => {
                 const updated = new Map(prev);
                 updated.set(newPedido.id, newPedido);
                 return updated;
               });
-              
-              if (onUpdate) {
-                onUpdate(newPedido, 'INSERT');
-              }
+              if (onUpdate) onUpdate(newPedido, 'INSERT');
             }
           }
         )
@@ -414,19 +422,16 @@ export function usePedidosRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
+            if (!isComponentMounted) return;
             const updatedPedido = payload.new as PedidoSupabase;
-            
-            // Filtrar por móvil si se especifica (o mostrar todos si no hay filtro)
+
             if (!movilIds || movilIds.length === 0 || (updatedPedido.movil && movilIds.includes(updatedPedido.movil))) {
               setPedidos(prev => {
                 const updated = new Map(prev);
                 updated.set(updatedPedido.id, updatedPedido);
                 return updated;
               });
-              
-              if (onUpdate) {
-                onUpdate(updatedPedido, 'UPDATE');
-              }
+              if (onUpdate) onUpdate(updatedPedido, 'UPDATE');
             }
           }
         )
@@ -439,30 +444,46 @@ export function usePedidosRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
+            if (!isComponentMounted) return;
             const deletedPedido = payload.old as PedidoSupabase;
-            
+
             setPedidos(prev => {
               const updated = new Map(prev);
               updated.delete(deletedPedido.id);
               return updated;
             });
-            
-            if (onUpdate) {
-              onUpdate(deletedPedido, 'DELETE');
-            }
+            if (onUpdate) onUpdate(deletedPedido, 'DELETE');
           }
         )
         .subscribe((status) => {
+          if (!isComponentMounted) return;
+
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
             setError(null);
             console.log('✅ Conectado a Realtime Pedidos');
+            // Si era una reconexión (no la primera vez), avisar para refetch
+            if (wasConnectedRef.current && onReconnectRef.current) {
+              console.log('🔄 Realtime Pedidos reconectado — solicitando refetch completo');
+              onReconnectRef.current();
+            }
+            wasConnectedRef.current = true;
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
             setError(`Error de conexión con Realtime Pedidos: ${status}`);
-            console.warn('⚠️ Error en suscripción de pedidos:', status);
+            console.warn(`⚠️ Error en suscripción de pedidos: ${status}. Reconectando en ${RETRY_DELAY / 1000}s...`);
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) {
+                console.log('🔄 Reconectando pedidos realtime...');
+                setupChannel();
+              }
+            }, RETRY_DELAY);
           } else if (status === 'CLOSED') {
             setIsConnected(false);
+            console.log('🔌 Suscripción pedidos cerrada. Reconectando...');
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) setupChannel();
+            }, RETRY_DELAY);
           }
         });
     };
@@ -470,16 +491,16 @@ export function usePedidosRealtime(
     setupChannel();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      isComponentMounted = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [escenarioId, movilIds?.join(',')]); // Recrear si cambian los móviles
 
-  return { 
-    pedidos: Array.from(pedidos.values()), 
-    isConnected, 
-    error 
+  return {
+    pedidos: Array.from(pedidos.values()),
+    isConnected,
+    error
   };
 }
 
@@ -489,17 +510,28 @@ export function usePedidosRealtime(
 export function useServicesRealtime(
   escenarioId: number = 1,
   movilIds?: number[],
-  onUpdate?: (service: ServiceSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void
+  onUpdate?: (service: ServiceSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
+  onReconnect?: () => void
 ) {
   const [services, setServices] = useState<Map<number, ServiceSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wasConnectedRef = useRef(false);
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
 
   useEffect(() => {
     console.log('🔄 Suscripción services realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let isComponentMounted = true;
+    const RETRY_DELAY = 5000;
 
     const setupChannel = () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+        channel = null;
+      }
       const channelName = `services-realtime-${escenarioId}-${Date.now()}`;
       
       channel = supabase
@@ -518,6 +550,7 @@ export function useServicesRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
+            if (!isComponentMounted) return;
             const newService = payload.new as ServiceSupabase;
             if (!movilIds || movilIds.length === 0 || (newService.movil && movilIds.includes(newService.movil))) {
               setServices(prev => {
@@ -538,6 +571,7 @@ export function useServicesRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
+            if (!isComponentMounted) return;
             const updatedService = payload.new as ServiceSupabase;
             if (!movilIds || movilIds.length === 0 || (updatedService.movil && movilIds.includes(updatedService.movil))) {
               setServices(prev => {
@@ -558,6 +592,7 @@ export function useServicesRealtime(
             filter: `escenario=eq.${escenarioId}`,
           },
           (payload) => {
+            if (!isComponentMounted) return;
             const deletedService = payload.old as ServiceSupabase;
             setServices(prev => {
               const updated = new Map(prev);
@@ -568,16 +603,30 @@ export function useServicesRealtime(
           }
         )
         .subscribe((status) => {
+          if (!isComponentMounted) return;
+
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
             setError(null);
             console.log('✅ Conectado a Realtime Services');
+            if (wasConnectedRef.current && onReconnectRef.current) {
+              console.log('🔄 Realtime Services reconectado — solicitando refetch completo');
+              onReconnectRef.current();
+            }
+            wasConnectedRef.current = true;
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
             setError(`Error de conexión con Realtime Services: ${status}`);
-            console.warn('⚠️ Error en suscripción de services:', status);
+            console.warn(`⚠️ Error en suscripción de services: ${status}. Reconectando en ${RETRY_DELAY / 1000}s...`);
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) setupChannel();
+            }, RETRY_DELAY);
           } else if (status === 'CLOSED') {
             setIsConnected(false);
+            console.log('🔌 Suscripción services cerrada. Reconectando...');
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) setupChannel();
+            }, RETRY_DELAY);
           }
         });
     };
@@ -585,15 +634,15 @@ export function useServicesRealtime(
     setupChannel();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      isComponentMounted = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [escenarioId, movilIds?.join(',')]);
 
-  return { 
-    services: Array.from(services.values()), 
-    isConnected, 
-    error 
+  return {
+    services: Array.from(services.values()),
+    isConnected,
+    error
   };
 }
