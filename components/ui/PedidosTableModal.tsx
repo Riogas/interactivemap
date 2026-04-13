@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion } from '@/utils/estadoPedido';
+import { fixEncoding } from '@/utils/fixEncoding';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -723,14 +724,14 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                             {p.cliente_tel || '—'}
                           </div>
                           {p.cliente_nombre && (
-                            <div className="text-[10px] text-gray-500 truncate max-w-[180px]" title={p.cliente_nombre}>{p.cliente_nombre}</div>
+                            <div className="text-[10px] text-gray-500 truncate max-w-[180px]" title={fixEncoding(p.cliente_nombre)}>{fixEncoding(p.cliente_nombre)}</div>
                           )}
                         </td>
 
                         {/* Dirección - más ancha */}
                         <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
-                          <div className="text-gray-300 text-xs truncate max-w-[280px]" title={p.cliente_direccion || undefined}>
-                            {p.cliente_direccion || '—'}
+                          <div className="text-gray-300 text-xs truncate max-w-[280px]" title={fixEncoding(p.cliente_direccion) || undefined}>
+                            {fixEncoding(p.cliente_direccion) || '—'}
                           </div>
                           {p.cliente_ciudad && (
                             <div className="text-[10px] text-gray-500">{p.cliente_ciudad}</div>

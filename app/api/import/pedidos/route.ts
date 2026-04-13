@@ -10,7 +10,8 @@ import { requireApiKey } from '@/lib/auth-middleware';
 async function readRequestBody(request: NextRequest): Promise<string> {
   const contentType = request.headers.get('content-type') || '';
   const charsetMatch = contentType.match(/charset=([\w-]+)/i);
-  const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'utf-8';
+  // GeneXus/AS400 raramente especifica charset — asumir iso-8859-1 por defecto
+  const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'iso-8859-1';
   
   if (charset === 'utf-8' || charset === 'utf8') {
     return await request.text();

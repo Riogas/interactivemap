@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion } from '@/utils/estadoPedido';
+import { fixEncoding } from '@/utils/fixEncoding';
 
 /**
  * La DB almacena horas locales (Uruguay) con offset +00 incorrecto.
@@ -183,9 +184,9 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                   </a>
                 )}
                 <div className="text-[10px] text-blue-700 mt-1 leading-relaxed">
-                  {pedido.cliente_nombre && <span className="font-semibold">{pedido.cliente_nombre}</span>}
+                  {pedido.cliente_nombre && <span className="font-semibold">{fixEncoding(pedido.cliente_nombre)}</span>}
                   {pedido.cliente_nombre && pedido.cliente_direccion && ' – '}
-                  {pedido.cliente_direccion && <span className="text-blue-600">{pedido.cliente_direccion}</span>}
+                  {pedido.cliente_direccion && <span className="text-blue-600">{fixEncoding(pedido.cliente_direccion)}</span>}
                   {!pedido.cliente_nombre && !pedido.cliente_direccion && <span className="text-blue-400">Sin datos</span>}
                 </div>
               </div>

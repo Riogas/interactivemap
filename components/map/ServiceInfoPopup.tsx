@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion } from '@/utils/estadoPedido';
+import { fixEncoding } from '@/utils/fixEncoding';
 
 /**
  * La DB almacena horas locales (Uruguay) con offset +00 incorrecto.
@@ -177,9 +178,9 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
                   </a>
                 )}
                 <div className="text-[10px] text-blue-700 mt-1 leading-relaxed">
-                  {service.cliente_nombre && <span className="font-semibold">{service.cliente_nombre}</span>}
+                  {service.cliente_nombre && <span className="font-semibold">{fixEncoding(service.cliente_nombre)}</span>}
                   {service.cliente_nombre && service.cliente_direccion && ' – '}
-                  {service.cliente_direccion && <span className="text-blue-600">{service.cliente_direccion}</span>}
+                  {service.cliente_direccion && <span className="text-blue-600">{fixEncoding(service.cliente_direccion)}</span>}
                   {!service.cliente_nombre && !service.cliente_direccion && <span className="text-blue-400">Sin datos</span>}
                 </div>
               </div>
