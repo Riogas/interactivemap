@@ -289,9 +289,24 @@ function StatsContent() {
           mzRes.json(),
         ]);
 
-        // ── Zonas No Activas ──
+        // ── Mapa de demoras: zona_id → registro con mayor minutos (igual que DashboardIndicators) ──
+        const dMap = new Map<number, { minutos: number; activa: boolean }>();
         if (demorasData.success && Array.isArray(demorasData.data)) {
-          const noActivas = demorasData.data.filter((d: { activa: boolean }) => d.activa === false).length;
+          for (const d of demorasData.data) {
+            const existing = dMap.get(d.zona_id);
+            if (!existing || d.minutos > existing.minutos) {
+              dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
+            }
+          }
+        }
+
+        // ── Zonas No Activas: solo zonas reales (con geojson) donde activa===false ──
+        if (zonasData.success && Array.isArray(zonasData.data)) {
+          const allZonasReal: { zona_id: number }[] = (zonasData.data || []).filter((z: any) => z.geojson);
+          const noActivas = allZonasReal.filter(z => {
+            const info = dMap.get(z.zona_id);
+            return info !== undefined && info.activa === false;
+          }).length;
           setZonasNoActivasCount(noActivas);
         }
 
@@ -311,15 +326,6 @@ function StatsContent() {
             if (mz.prioridad_o_transito === 1) existing.prioridad++;
             else existing.transito++;
             zonaCounts.set(mz.zona_id, existing);
-          }
-
-          // Mapa de zonas no activas (mayor minutos gana)
-          const dMap = new Map<number, { minutos: number; activa: boolean }>();
-          for (const d of (demorasData.data || [])) {
-            const existing = dMap.get(d.zona_id);
-            if (!existing || d.minutos > existing.minutos) {
-              dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
-            }
           }
 
           // Zonas sin móvil excluyendo zonas no activas
