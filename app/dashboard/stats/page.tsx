@@ -20,6 +20,7 @@ interface Pedido {
   fch_hora_mov?: string | null;
   fch_hora_finalizacion?: string | null;
   pedido_hijo?: number | null;
+  producto_cod?: string | null;
 }
 interface Service {
   service_id: number;
@@ -225,6 +226,7 @@ function StatsContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEmpresa, setSelectedEmpresa] = useState<string>('Todas');
+  const [selectedProducto, setSelectedProducto] = useState<string>('Todos');
   const [refreshSeconds, setRefreshSeconds] = useState<number>(60);
   const [refreshTick, setRefreshTick] = useState<number>(0);
   const [zonasNoActivasCount, setZonasNoActivasCount] = useState<number | null>(null);
@@ -350,11 +352,15 @@ function StatsContent() {
     return Array.from(empresas.values()).sort();
   }, [empresas]);
 
-  // ─── Pedidos filtrados por empresa ─────────────────────────────────────────
+  // ─── Pedidos filtrados por empresa y producto ─────────────────────────────
   const filteredPedidos = useMemo(() => {
-    if (selectedEmpresa === 'Todas') return pedidos;
-    return pedidos.filter(p => getEmpresaNombre(p, movilEmpresa, empresas) === selectedEmpresa);
-  }, [pedidos, selectedEmpresa, movilEmpresa, empresas]);
+    let result = pedidos;
+    if (selectedEmpresa !== 'Todas')
+      result = result.filter(p => getEmpresaNombre(p, movilEmpresa, empresas) === selectedEmpresa);
+    if (selectedProducto !== 'Todos')
+      result = result.filter(p => String(p.producto_cod ?? '') === selectedProducto);
+    return result;
+  }, [pedidos, selectedEmpresa, selectedProducto, movilEmpresa, empresas]);
 
   // ─── KPIs Pedidos ──────────────────────────────────────────────────────────
   const pedidosStats = useMemo(() => {
@@ -661,6 +667,18 @@ function StatsContent() {
               {empresaOptions.map(emp => (
                 <option key={emp} value={emp} className="bg-gray-900">{emp}</option>
               ))}
+            </select>
+          </div>
+          {/* Filtro producto */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-400 whitespace-nowrap">Producto:</label>
+            <select
+              value={selectedProducto}
+              onChange={e => setSelectedProducto(e.target.value)}
+              className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+            >
+              <option value="Todos" className="bg-gray-900">Todos</option>
+              <option value="1002013" className="bg-gray-900">GLP Envasado 13 Kg</option>
             </select>
           </div>
           {/* Auto-refresh */}
