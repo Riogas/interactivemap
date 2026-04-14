@@ -18,6 +18,7 @@ interface Pedido {
   zona_nro?: number | string | null;
   fch_hora_max_ent_comp?: string | null;
   fch_hora_mov?: string | null;
+  fch_hora_finalizacion?: string | null;
 }
 interface Service {
   service_id: number;
@@ -450,10 +451,11 @@ function StatsContent() {
       Number(p.estado_nro) === 2 && [3, 17, 19].includes(Number(p.sub_estado_nro))
     );
     if (entregados.length === 0) return null;
-    const conAmbas = entregados.filter(p => p.fch_hora_max_ent_comp && p.fch_hora_mov);
+    const conAmbas = entregados.filter(p => p.fch_hora_max_ent_comp && (p.fch_hora_finalizacion || p.fch_hora_mov));
     if (conAmbas.length < 3) return null; // no hay suficientes datos
     const enHora = conAmbas.filter(p => {
-      const mov = new Date(p.fch_hora_mov!.replace(/\+00$/, '+00:00'));
+      const entrega = p.fch_hora_finalizacion ?? p.fch_hora_mov;
+      const mov = new Date(entrega!.replace(/\+00$/, '+00:00'));
       const comp = new Date(p.fch_hora_max_ent_comp!.replace(/\+00$/, '+00:00'));
       return mov <= comp;
     });
