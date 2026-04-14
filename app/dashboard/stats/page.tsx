@@ -509,7 +509,7 @@ function StatsContent() {
             </label>
             <input
               type="range"
-              min={0} max={300} step={15}
+              min={0} max={100} step={5}
               value={refreshSeconds}
               onChange={e => setRefreshSeconds(Number(e.target.value))}
               className="w-24 accent-blue-400 cursor-pointer"
