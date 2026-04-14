@@ -152,6 +152,7 @@ export interface Database {
           updated_at: string | null
           latitud: number | null
           longitud: number | null
+          pedido_hijo: number | null
         }
         Insert: {
           id: number
@@ -204,6 +205,7 @@ export interface Database {
           updated_at?: string | null
           latitud?: number | null
           longitud?: number | null
+          pedido_hijo?: number | null
         }
         Update: {
           id?: number
@@ -256,6 +258,7 @@ export interface Database {
           updated_at?: string | null
           latitud?: number | null
           longitud?: number | null
+          pedido_hijo?: number | null
         }
       }
       services: {

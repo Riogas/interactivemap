@@ -205,6 +205,7 @@ function transformPedidoToSupabase(pedido: any) {
     // Sub estado
     sub_estado_desc: pedido.SubEstadoDesc?.trim() || pedido.sub_estado_desc,
     sub_estado_nro: pedido.SubEstadoNro ?? pedido.sub_estado_nro,
+    pedido_hijo: pedido.PedidoHijo ?? pedido.pedido_hijo ?? null,
     
     // Otros
     tipo: pedido.Tipo || pedido.tipo || '',

@@ -19,6 +19,7 @@ interface Pedido {
   fch_hora_max_ent_comp?: string | null;
   fch_hora_mov?: string | null;
   fch_hora_finalizacion?: string | null;
+  pedido_hijo?: number | null;
 }
 interface Service {
   service_id: number;
@@ -335,11 +336,13 @@ function StatsContent() {
   const pedidosStats = useMemo(() => {
     const total = filteredPedidos.length;
     const finalizados = filteredPedidos.filter(p => Number(p.estado_nro) === 2);
-    const entregados = finalizados.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro)));
-    const noEntregados = finalizados.filter(p => ![3, 17, 19].includes(Number(p.sub_estado_nro)));
+    // Excluir pedidos hijo (re-entregas) del % entregados
+    const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
+    const entregados = finalizadosSinHijo.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro)));
+    const noEntregados = finalizadosSinHijo.filter(p => ![3, 17, 19].includes(Number(p.sub_estado_nro)));
     const sinAsignar = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0);
-    const pct = finalizados.length > 0 ? Math.round((entregados.length / finalizados.length) * 100) : 0;
+    const pct = finalizadosSinHijo.length > 0 ? Math.round((entregados.length / finalizadosSinHijo.length) * 100) : 0;
     return { total, finalizados: finalizados.length, entregados: entregados.length, noEntregados: noEntregados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, pct };
   }, [filteredPedidos]);
 
@@ -431,7 +434,8 @@ function StatsContent() {
       const key = `Zona ${p.zona_nro}`;
       if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
       const estado = Number(p.estado_nro);
-      if (estado === 2) {
+      if (estado === 2 && !p.pedido_hijo) {
+        // Excluir pedidos hijo del conteo de entregados/no entregados
         if ([3, 17, 19].includes(Number(p.sub_estado_nro))) map[key].entregados++;
         else map[key].noEntregados++;
       } else if (estado === 1) {
@@ -496,7 +500,7 @@ function StatsContent() {
   // ─── % Entregados en hora ───────────────────────────────────────────────────
   const pctEntregadosEnHora = useMemo(() => {
     const entregados = filteredPedidos.filter(p =>
-      Number(p.estado_nro) === 2 && [3, 17, 19].includes(Number(p.sub_estado_nro))
+      Number(p.estado_nro) === 2 && [3, 17, 19].includes(Number(p.sub_estado_nro)) && !p.pedido_hijo
     );
     if (entregados.length === 0) return null;
     const conAmbas = entregados.filter(p => p.fch_hora_max_ent_comp && p.fch_hora_finalizacion);

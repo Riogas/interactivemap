@@ -42,11 +42,13 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       finalizados = finalizados.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
     }
     
+    // Excluir pedidos hijo (re-entregas) del % entregados
+    const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
     // Entregados: finalizados con sub_estado_nro = 3, 17 o 19
-    const entregados = finalizados.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro))).length;
-    const totalFinalizados = finalizados.length;
-    const porcentajeEntregados = totalFinalizados > 0
-      ? Math.round(entregados / totalFinalizados * 100)
+    const entregados = finalizadosSinHijo.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro))).length;
+    const totalFinalizadosSinHijo = finalizadosSinHijo.length;
+    const porcentajeEntregados = totalFinalizadosSinHijo > 0
+      ? Math.round(entregados / totalFinalizadosSinHijo * 100)
       : 0;
     
     return {
