@@ -47,10 +47,20 @@ export async function POST(request: NextRequest) {
 
     console.log(`📍 Importando ${rows.length} punto(s) de interés...`);
 
+    // Deduplicar por id (queda la última aparición) — evita "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    const deduped = Object.values(
+      rows.reduce((acc: Record<number, any>, row: any) => {
+        acc[row.id] = row;
+        return acc;
+      }, {})
+    );
+
+    console.log(`📍 Después de deduplicar: ${deduped.length} registro(s) únicos`);
+
     const supabase = getServerSupabaseClient();
     const { data, error } = await (supabase as any)
       .from('puntos_interes')
-      .upsert(rows, {
+      .upsert(deduped, {
         onConflict: 'id',
         ignoreDuplicates: false,
       })
