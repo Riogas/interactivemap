@@ -33,12 +33,23 @@ async function readRequestBody(request: NextRequest): Promise<string> {
  * interna que rompió el parseo, la escapa, y reintenta.
  */
 function safeParseJSON(rawBody: string): any {
+  // Paso 0: reemplazar caracteres de control ASCII (<0x20) que sean ilegales
+  // en strings JSON pero que AS400/GeneXus puede enviar sin escapar.
+  // Tabs (\t=0x09), newlines (\n=0x0A) y CR (\r=0x0D) se escapan;
+  // el resto (backspace, etc.) se eliminan.
+  const sanitized = rawBody.replace(/[\x00-\x1F]/g, (ch) => {
+    if (ch === '\t') return '\\t';
+    if (ch === '\n') return '\\n';
+    if (ch === '\r') return '\\r';
+    return ''; // eliminar otros control chars
+  });
+
   try {
-    return JSON.parse(rawBody);
+    return JSON.parse(sanitized);
   } catch (firstError) {
     console.warn('⚠️  JSON.parse falló, intentando sanitizar comillas internas...');
-    
-    let text = rawBody;
+
+    let text = sanitized;
     const maxAttempts = 50;
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
