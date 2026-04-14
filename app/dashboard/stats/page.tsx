@@ -62,6 +62,48 @@ function BarChart({ data, colorClass = 'bg-blue-500' }: { data: { label: string;
   );
 }
 
+// ─── Stacked bar (Entregados / No Entregados / Pendientes) ──────────────────
+interface StackRow { label: string; entregados: number; noEntregados: number; pendientes: number; }
+function StackedBarChart({ data }: { data: StackRow[] }) {
+  const maxTotal = Math.max(...data.map(r => r.entregados + r.noEntregados + r.pendientes), 1);
+  return (
+    <div className="space-y-2.5">
+      {/* Leyenda */}
+      <div className="flex gap-3 text-[10px] text-gray-400 mb-1">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Entregados</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />No entregados</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Pendientes</span>
+      </div>
+      {data.map(row => {
+        const total = row.entregados + row.noEntregados + row.pendientes;
+        const barWidth = Math.round((total / maxTotal) * 100);
+        const pEnt = total > 0 ? (row.entregados / total) * 100 : 0;
+        const pNoEnt = total > 0 ? (row.noEntregados / total) * 100 : 0;
+        const pPend = total > 0 ? (row.pendientes / total) * 100 : 0;
+        return (
+          <div key={row.label}>
+            <div className="flex justify-between text-xs text-gray-400 mb-0.5">
+              <span className="truncate max-w-[60%]">{row.label}</span>
+              <span className="flex gap-1.5 text-[10px]">
+                {row.entregados > 0 && <span className="text-green-400 font-semibold">{row.entregados}✓</span>}
+                {row.noEntregados > 0 && <span className="text-orange-400 font-semibold">{row.noEntregados}✗</span>}
+                {row.pendientes > 0 && <span className="text-blue-400 font-semibold">{row.pendientes}⏳</span>}
+              </span>
+            </div>
+            <div className="h-2.5 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${Math.max(barWidth, total > 0 ? 2 : 0)}%` }}>
+                {row.entregados > 0 && <div className="h-full bg-green-500" style={{ width: `${pEnt}%` }} />}
+                {row.noEntregados > 0 && <div className="h-full bg-orange-400" style={{ width: `${pNoEnt}%` }} />}
+                {row.pendientes > 0 && <div className="h-full bg-blue-400" style={{ width: `${pPend}%` }} />}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function KpiCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
   const bg: Record<string, string> = {
     green: 'bg-green-500/20 border-green-400/30',
@@ -166,27 +208,30 @@ function StatsContent() {
     return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
   }, [pedidos]);
 
-  // ─── Pedidos por empresa ───────────────────────────────────────────────────
-  // Se determina la empresa a partir del móvil asignado al pedido (join movil → empresa_fletera)
+  // ─── Pedidos por empresa (multi-serie) ────────────────────────────────────
   const pedidosPorEmpresa = useMemo(() => {
-    const map: Record<string, number> = {};
-    pedidos.filter(p => Number(p.estado_nro) === 2 && [3,16].includes(Number(p.sub_estado_nro))).forEach(p => {
+    const map: Record<string, { entregados: number; noEntregados: number; pendientes: number }> = {};
+    const getKey = (p: Pedido): string => {
       const movilNro = p.movil != null ? Number(p.movil) : null;
-      let key: string;
-      if (movilNro != null && movilNro !== 0 && movilEmpresa.has(movilNro)) {
-        key = movilEmpresa.get(movilNro)!;
-      } else {
-        // Fallback: usar empresa_fletera_id del pedido si no hay movil mapeado
-        const empId = p.empresa_fletera_id != null ? Number(p.empresa_fletera_id) : null;
-        key = empId != null && empresas.has(empId)
-          ? empresas.get(empId)!
-          : empId != null ? `Empresa ${empId}` : 'Sin empresa';
+      if (movilNro && movilNro !== 0 && movilEmpresa.has(movilNro)) return movilEmpresa.get(movilNro)!;
+      const empId = p.empresa_fletera_id != null ? Number(p.empresa_fletera_id) : null;
+      return empId != null && empresas.has(empId) ? empresas.get(empId)! : empId != null ? `Empresa ${empId}` : 'Sin empresa';
+    };
+    pedidos.forEach(p => {
+      const key = getKey(p);
+      if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
+      const estado = Number(p.estado_nro);
+      if (estado === 2) {
+        if ([3, 16].includes(Number(p.sub_estado_nro))) map[key].entregados++;
+        else map[key].noEntregados++;
+      } else if (estado === 1) {
+        map[key].pendientes++;
       }
-      map[key] = (map[key] ?? 0) + 1;
     });
-    const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    const max = Math.max(...sorted.map(e => e[1]), 1);
-    return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
+    return Object.entries(map)
+      .map(([label, v]) => ({ label, ...v }))
+      .sort((a, b) => (b.entregados + b.noEntregados + b.pendientes) - (a.entregados + a.noEntregados + a.pendientes))
+      .slice(0, 10);
   }, [pedidos, empresas, movilEmpresa]);
 
   // ─── Estados de pedidos ────────────────────────────────────────────────────
@@ -202,17 +247,24 @@ function StatsContent() {
     return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
   }, [pedidos]);
 
-  // ─── Pedidos por zona (top 12 por entregados) ───────────────────────────────
+  // ─── Pedidos por zona (top 12 por total) ────────────────────────────────────
   const pedidosPorZona = useMemo(() => {
-    const map: Record<string, number> = {};
-    pedidos.filter(p => Number(p.estado_nro) === 2 && [3, 16].includes(Number(p.sub_estado_nro)) && p.zona_nro)
-      .forEach(p => {
-        const key = `Zona ${p.zona_nro}`;
-        map[key] = (map[key] ?? 0) + 1;
-      });
-    const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 12);
-    const max = Math.max(...sorted.map(e => e[1]), 1);
-    return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
+    const map: Record<string, { entregados: number; noEntregados: number; pendientes: number }> = {};
+    pedidos.filter(p => p.zona_nro).forEach(p => {
+      const key = `Zona ${p.zona_nro}`;
+      if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
+      const estado = Number(p.estado_nro);
+      if (estado === 2) {
+        if ([3, 16].includes(Number(p.sub_estado_nro))) map[key].entregados++;
+        else map[key].noEntregados++;
+      } else if (estado === 1) {
+        map[key].pendientes++;
+      }
+    });
+    return Object.entries(map)
+      .map(([label, v]) => ({ label, ...v }))
+      .sort((a, b) => (b.entregados + b.noEntregados + b.pendientes) - (a.entregados + a.noEntregados + a.pendientes))
+      .slice(0, 12);
   }, [pedidos]);
 
   // ─── Atrasos de pedidos pendientes ─────────────────────────────────────────
@@ -329,11 +381,11 @@ function StatsContent() {
               </div>
             )}
 
-            {/* Entregas por empresa */}
+            {/* Pedidos por empresa */}
             {pedidosPorEmpresa.length > 0 && (
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <h3 className="text-sm font-semibold text-gray-300 mb-4">Entregas por empresa</h3>
-                <BarChart data={pedidosPorEmpresa} colorClass="bg-green-500" />
+                <h3 className="text-sm font-semibold text-gray-300 mb-4">Pedidos por empresa</h3>
+                <StackedBarChart data={pedidosPorEmpresa} />
               </div>
             )}
 
@@ -348,8 +400,8 @@ function StatsContent() {
             {/* Pedidos por zona */}
             {pedidosPorZona.length > 0 && (
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <h3 className="text-sm font-semibold text-gray-300 mb-4">Pedidos entregados por zona</h3>
-                <BarChart data={pedidosPorZona} colorClass="bg-cyan-500" />
+                <h3 className="text-sm font-semibold text-gray-300 mb-4">Pedidos por zona</h3>
+                <StackedBarChart data={pedidosPorZona} />
               </div>
             )}
 
