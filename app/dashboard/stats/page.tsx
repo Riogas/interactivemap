@@ -206,6 +206,7 @@ function StatsContent() {
   const [refreshSeconds, setRefreshSeconds] = useState<number>(60);
   const [refreshTick, setRefreshTick] = useState<number>(0);
   const [zonasNoActivasCount, setZonasNoActivasCount] = useState<number | null>(null);
+  const [zonasSinMovilCount, setZonasSinMovilCount] = useState<number | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -254,11 +255,58 @@ function StatsContent() {
   useEffect(() => {
     const loadZoneData = async () => {
       try {
-        const res = await fetch('/api/demoras');
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
-          const noActivas = data.data.filter((d: { activa: boolean }) => d.activa === false).length;
+        const [demorasRes, zonasRes, mzRes] = await Promise.all([
+          fetch('/api/demoras'),
+          fetch('/api/zonas'),
+          fetch('/api/moviles-zonas'),
+        ]);
+        const [demorasData, zonasData, mzData] = await Promise.all([
+          demorasRes.json(),
+          zonasRes.json(),
+          mzRes.json(),
+        ]);
+
+        // ── Zonas No Activas ──
+        if (demorasData.success && Array.isArray(demorasData.data)) {
+          const noActivas = demorasData.data.filter((d: { activa: boolean }) => d.activa === false).length;
           setZonasNoActivasCount(noActivas);
+        }
+
+        // ── Zonas Sin Móvil (tipo URGENTE, excluyendo zonas no activas) ──
+        if (zonasData.success && mzData.success) {
+          const allZonas: { zona_id: number }[] = (zonasData.data || []).filter((z: any) => z.geojson);
+
+          // Filtrar moviles-zonas por tipo URGENTE
+          const movilesZonas = (mzData.data || []).filter(
+            (mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === 'URGENTE'
+          );
+
+          // Conteos por zona
+          const zonaCounts = new Map<number, { prioridad: number; transito: number }>();
+          for (const mz of movilesZonas) {
+            const existing = zonaCounts.get(mz.zona_id) || { prioridad: 0, transito: 0 };
+            if (mz.prioridad_o_transito === 1) existing.prioridad++;
+            else existing.transito++;
+            zonaCounts.set(mz.zona_id, existing);
+          }
+
+          // Mapa de zonas no activas (mayor minutos gana)
+          const dMap = new Map<number, { minutos: number; activa: boolean }>();
+          for (const d of (demorasData.data || [])) {
+            const existing = dMap.get(d.zona_id);
+            if (!existing || d.minutos > existing.minutos) {
+              dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
+            }
+          }
+
+          // Zonas sin móvil excluyendo zonas no activas
+          const sinMovil = allZonas.filter((z) => {
+            const dInfo = dMap.get(z.zona_id);
+            if (dInfo && dInfo.activa === false) return false;
+            const counts = zonaCounts.get(z.zona_id);
+            return !counts || (counts.prioridad === 0 && counts.transito === 0);
+          }).length;
+          setZonasSinMovilCount(sinMovil);
         }
       } catch {
         // si falla, simplemente no mostramos el dato
@@ -610,9 +658,9 @@ function StatsContent() {
               />
               <KpiCard
                 label="Zonas Sin Móvil"
-                value="—"
-                sub="ver mapa"
-                color="gray"
+                value={zonasSinMovilCount !== null ? zonasSinMovilCount : '—'}
+                sub="tipo urgente"
+                color={zonasSinMovilCount !== null && zonasSinMovilCount > 0 ? 'orange' : 'gray'}
               />
               <KpiCard
                 label="% No entregados"

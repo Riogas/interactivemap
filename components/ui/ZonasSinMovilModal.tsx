@@ -43,13 +43,15 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [zonasRes, mzRes] = await Promise.all([
+        const [zonasRes, mzRes, demorasRes] = await Promise.all([
           fetch('/api/zonas'),
           fetch('/api/moviles-zonas'),
+          fetch('/api/demoras'),
         ]);
-        const [zonasResult, mzResult] = await Promise.all([
+        const [zonasResult, mzResult, demorasResult] = await Promise.all([
           zonasRes.json(),
           mzRes.json(),
+          demorasRes.json(),
         ]);
         if (cancelled) return;
 
@@ -78,8 +80,21 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
           zonaCounts.set(mz.zona_id, existing);
         }
 
-        // Zonas sin móvil
+        // Construir mapa de zonas no activas — mismo criterio que DashboardIndicators
+        // (el registro con mayor minutos por zona es el que define si está activa o no)
+        const dMap = new Map<number, { minutos: number; activa: boolean }>();
+        for (const d of (demorasResult.data || []).filter((d: any) => escenarioIds.includes(d.escenario_id))) {
+          const existing = dMap.get(d.zona_id);
+          if (!existing || d.minutos > existing.minutos) {
+            dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
+          }
+        }
+
+        // Zonas sin móvil, excluyendo zonas no activas
         const sinMovil = allZonas.filter((z) => {
+          // Excluir zonas marcadas como no activas (ya contadas en "Zonas No Activas")
+          const dInfo = dMap.get(z.zona_id);
+          if (dInfo && dInfo.activa === false) return false;
           const counts = zonaCounts.get(z.zona_id);
           return !counts || (counts.prioridad === 0 && counts.transito === 0);
         });
