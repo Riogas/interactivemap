@@ -67,8 +67,7 @@ export async function GET(
           `)
           .eq('movil', movilId)
           .eq('escenario', escenarioId)
-          .in('estado_nro', [1, 2, 3, 4, 5, 6, 7]) // Estados que representan pendientes
-          .eq('sub_estado_desc', '5') // Solo pedidos asignados (sub_estado_desc=5)
+          .in('estado_nro', [1]) // Solo estado pendiente/asignado
           .not('latitud', 'is', null) // Solo pedidos con coordenadas
           .not('longitud', 'is', null);
 

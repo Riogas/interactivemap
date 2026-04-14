@@ -17,6 +17,8 @@ interface DashboardIndicatorsProps {
   allMovilEstados?: Map<string, number>;
   /** Tipo de servicio activo en la capa Móviles-Zonas del mapa (URGENTE/SERVICE/NOCTURNO) */
   zonasSinMovilServiceFilter?: string;
+  /** Intervalo de refresco de zonas/demoras en segundos (default 60). Usar el mismo que el polling configurado en preferencias */
+  zonasRefreshSeconds?: number;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
@@ -25,7 +27,7 @@ interface DashboardIndicatorsProps {
   onZonasNoActivasClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, zonasSinMovilServiceFilter = 'URGENTE', onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -110,10 +112,11 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     };
 
     loadZonasData();
-    // Refrescar cada 60 segundos
-    const interval = setInterval(loadZonasData, 60000);
+    // Refrescar según el intervalo configurado en preferencias (mínimo 10s)
+    const refreshMs = Math.max(10, zonasRefreshSeconds) * 1000;
+    const interval = setInterval(loadZonasData, refreshMs);
     return () => clearInterval(interval);
-  }, [escenarioIds]);
+  }, [escenarioIds, zonasRefreshSeconds]);
 
   // Zonas sin móviles: Match MovilesZonasLayer — filtrar por tipo de servicio activo + excluir estados 3/5/15
   const zonasSinMoviles = useMemo(() => {

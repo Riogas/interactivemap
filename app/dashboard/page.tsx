@@ -1227,7 +1227,7 @@ function DashboardContent() {
     
     pedidosCompletos.forEach(pedido => {
       const estadoNum = Number(pedido.estado_nro);
-      if (pedido.movil && estadoNum && ESTADOS_ACTIVOS.includes(estadoNum) && Number(pedido.sub_estado_nro) === 5) {
+      if (pedido.movil && estadoNum && ESTADOS_ACTIVOS.includes(estadoNum)) {
         const movilNum = Number(pedido.movil);
         const count = pedidosPorMovil.get(movilNum) || 0;
         pedidosPorMovil.set(movilNum, count + 1);
@@ -1434,6 +1434,7 @@ function DashboardContent() {
               setIsPedidosTableOpen(true);
             }}
             zonasSinMovilServiceFilter={movilesZonasServiceFilter}
+            zonasRefreshSeconds={Math.min(preferences.demorasPollingSeconds ?? 30, preferences.movilesZonasPollingSeconds ?? 30)}
             onZonasSinMovilClick={() => setIsZonasSinMovilOpen(true)}
             onMovilesSinReportarClick={() => setIsMovilesSinReportarOpen(true)}
             onZonasNoActivasClick={() => setIsZonasNoActivasOpen(true)}

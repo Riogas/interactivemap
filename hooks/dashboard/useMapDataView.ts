@@ -92,6 +92,9 @@ export function useMapDataView({
     loadZonas();
   }, [showZonas, uniqueEscenarios]);
 
+  // Clave estable basada en el contenido de escenarios (evita resets del intervalo por nueva referencia de array)
+  const uniqueEscenariosKey = uniqueEscenarios.join(',');
+
   // Cargar datos de vista (demoras / móviles en zonas) con polling automático
   useEffect(() => {
     if (dataViewMode === 'normal') {
@@ -155,7 +158,7 @@ export function useMapDataView({
 
     // Polling: intervalo según vista activa
     let intervalMs = 0;
-    if (dataViewMode === 'demoras') {
+    if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
       intervalMs = demorasPollingSeconds * 1000;
     } else if (dataViewMode === 'moviles-zonas') {
       intervalMs = movilesZonasPollingSeconds * 1000;
@@ -173,7 +176,8 @@ export function useMapDataView({
         clearInterval(intervalId);
       }
     };
-  }, [dataViewMode, uniqueEscenarios, demorasPollingSeconds, movilesZonasPollingSeconds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataViewMode, uniqueEscenariosKey, demorasPollingSeconds, movilesZonasPollingSeconds]);
 
   return {
     showZonas,
