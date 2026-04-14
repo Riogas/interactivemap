@@ -339,14 +339,10 @@ function StatsContent() {
   }, [refreshTick]);
 
   // ─── Opciones de empresa (para el filtro) ──────────────────────────────────
+  // Opciones del combo Empresa → vienen de empresas_fleteras (estado=1), no de pedidos del día
   const empresaOptions = useMemo(() => {
-    const set = new Set<string>();
-    pedidos.forEach(p => {
-      const name = getEmpresaNombre(p, movilEmpresa, empresas);
-      if (name !== 'Sin empresa') set.add(name);
-    });
-    return Array.from(set).sort();
-  }, [pedidos, movilEmpresa, empresas]);
+    return Array.from(empresas.values()).sort();
+  }, [empresas]);
 
   // ─── Pedidos filtrados por empresa ─────────────────────────────────────────
   const filteredPedidos = useMemo(() => {
