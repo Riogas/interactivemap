@@ -13,6 +13,8 @@ interface Pedido {
   empresa_fletera_id?: number | string;
   fch_hora_para?: string;
   fch_para?: string;
+  zona_nro?: number | string | null;
+  fch_hora_max_ent_comp?: string | null;
 }
 interface Service {
   service_id: number;
@@ -199,6 +201,41 @@ function StatsContent() {
     return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
   }, [pedidos]);
 
+  // ─── Pedidos por zona (top 12 por entregados) ───────────────────────────────
+  const pedidosPorZona = useMemo(() => {
+    const map: Record<string, number> = {};
+    pedidos.filter(p => Number(p.estado_nro) === 2 && [3, 16].includes(Number(p.sub_estado_nro)) && p.zona_nro)
+      .forEach(p => {
+        const key = `Zona ${p.zona_nro}`;
+        map[key] = (map[key] ?? 0) + 1;
+      });
+    const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    const max = Math.max(...sorted.map(e => e[1]), 1);
+    return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
+  }, [pedidos]);
+
+  // ─── Atrasos de pedidos pendientes ─────────────────────────────────────────
+  const atrasosStats = useMemo(() => {
+    const pendientes = pedidos.filter(p => Number(p.estado_nro) === 1);
+    let muyAtrasado = 0, atrasado = 0, limiteCercana = 0, enHora = 0, sinHora = 0;
+    pendientes.forEach(p => {
+      const fch = p.fch_hora_max_ent_comp;
+      if (!fch) { sinHora++; return; }
+      const now = new Date();
+      const target = new Date(fch);
+      if (isNaN(target.getTime())) { sinHora++; return; }
+      const diffMin = (target.getTime() - now.getTime()) / 60000;
+      if (diffMin >= 10) enHora++;
+      else if (diffMin >= 0) limiteCercana++;
+      else if (diffMin >= -10) atrasado++;
+      else muyAtrasado++;
+    });
+    const total = pendientes.length;
+    const conAtraso = muyAtrasado + atrasado;
+    const pctAtraso = total > 0 ? Math.round((conAtraso / total) * 100) : 0;
+    return { total, muyAtrasado, atrasado, limiteCercana, enHora, sinHora, pctAtraso };
+  }, [pedidos]);
+
   // ─── Móviles con más entregas ──────────────────────────────────────────────
   const movilesTop = useMemo(() => {
     const map: Record<string, number> = {};
@@ -311,47 +348,65 @@ function StatsContent() {
               </div>
             )}
 
-            {/* Tasa de entrega visual */}
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col items-center justify-center">
-              <h3 className="text-sm font-semibold text-gray-300 mb-4">Tasa de entrega</h3>
-              <div className="relative w-32 h-32">
-                <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
-                  <circle
-                    cx="18" cy="18" r="15.9" fill="none"
-                    stroke={pedidosStats.pct >= 80 ? '#22c55e' : pedidosStats.pct >= 50 ? '#f97316' : '#ef4444'}
-                    strokeWidth="3"
-                    strokeDasharray={`${pedidosStats.pct} ${100 - pedidosStats.pct}`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold text-white">{pedidosStats.pct}%</span>
-                  <span className="text-[10px] text-gray-400">entregados</span>
+            {/* Pedidos por zona */}
+            {pedidosPorZona.length > 0 && (
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-gray-300 mb-4">Pedidos entregados por zona</h3>
+                <BarChart data={pedidosPorZona} colorClass="bg-cyan-500" />
+              </div>
+            )}
+
+            {/* Atrasos de pedidos */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-gray-300 mb-1">Atrasos de pedidos pendientes</h3>
+              <p className="text-xs text-gray-500 mb-4">{atrasosStats.total} pendientes en total</p>
+
+              {/* % general con atraso */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-gray-400">Con atraso</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold" style={{ color: atrasosStats.pctAtraso >= 50 ? '#ef4444' : atrasosStats.pctAtraso >= 20 ? '#f97316' : '#22c55e' }}>
+                    {atrasosStats.pctAtraso}%
+                  </span>
+                  <span className="text-xs text-gray-500">({atrasosStats.muyAtrasado + atrasosStats.atrasado})</span>
                 </div>
               </div>
-              <p className="text-xs text-gray-400 mt-3 text-center">
-                {pedidosStats.entregados} de {pedidosStats.finalizados} finalizados
-              </p>
-            </div>
+              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-4">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${atrasosStats.pctAtraso}%`,
+                    background: atrasosStats.pctAtraso >= 50 ? '#ef4444' : atrasosStats.pctAtraso >= 20 ? '#f97316' : '#22c55e',
+                  }}
+                />
+              </div>
 
-            {/* Resumen del día */}
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-gray-300 mb-4">Resumen del día</h3>
-              <div className="space-y-3 text-sm">
+              {/* Categorías */}
+              <div className="space-y-2.5 text-xs">
                 {[
-                  { label: 'Total de operaciones', value: pedidosStats.total + servicesStats.total, icon: '📋' },
-                  { label: 'Pedidos entregados', value: pedidosStats.entregados, icon: '✅' },
-                  { label: 'Services completados', value: servicesStats.finalizados, icon: '🔧' },
-                  { label: 'Sin resolver', value: pedidosStats.sinAsignar + servicesStats.pendientes, icon: '⏳' },
-                  { label: 'Móviles activos', value: movilesTop.length, icon: '🚛' },
-                ].map(item => (
-                  <div key={item.label} className="flex items-center justify-between">
-                    <span className="text-gray-400 flex items-center gap-1.5">
-                      <span>{item.icon}</span>
-                      {item.label}
-                    </span>
-                    <span className="font-semibold text-white">{item.value}</span>
+                  { label: 'Muy Atrasado', value: atrasosStats.muyAtrasado, color: '#ef4444', dot: 'bg-red-500' },
+                  { label: 'Atrasado', value: atrasosStats.atrasado, color: '#f472b6', dot: 'bg-pink-400' },
+                  { label: 'Límite Cercana', value: atrasosStats.limiteCercana, color: '#facc15', dot: 'bg-yellow-400' },
+                  { label: 'En Hora', value: atrasosStats.enHora, color: '#22c55e', dot: 'bg-green-500' },
+                  { label: 'Sin Hora', value: atrasosStats.sinHora, color: '#6b7280', dot: 'bg-gray-500' },
+                ].map(cat => (
+                  <div key={cat.label} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cat.dot}`} />
+                      <span className="text-gray-300">{cat.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: atrasosStats.total > 0 ? `${Math.round((cat.value / atrasosStats.total) * 100)}%` : '0%',
+                            background: cat.color,
+                          }}
+                        />
+                      </div>
+                      <span className="font-semibold text-white w-6 text-right">{cat.value}</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -360,7 +415,7 @@ function StatsContent() {
 
           {/* Footer */}
           <p className="text-center text-xs text-gray-600 pb-4">
-            Datos del {formatDate(date)} · TrackMóvil
+            Datos del {formatDate(date)} · RiogasTracking
           </p>
         </div>
       )}

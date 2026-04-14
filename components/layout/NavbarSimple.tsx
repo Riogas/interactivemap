@@ -31,7 +31,7 @@ export default function Navbar({ children, empresas, selectedEmpresas, onEmpresa
                 </svg>
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-white leading-tight">TrackMovil</h1>
+                <h1 className="text-lg font-bold text-white leading-tight">RiogasTracking</h1>
                 <p className="text-[9px] text-blue-200 leading-tight">Rastreo en tiempo real</p>
               </div>
             </div>
