@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PedidoSupabase } from '@/types';
+import { PedidoSupabase, ServiceSupabase } from '@/types';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
 
@@ -17,6 +17,8 @@ interface ZonaEstadisticasModalProps {
   isOpen: boolean;
   onClose: () => void;
   pedidos: PedidoSupabase[];
+  /** Services (tabla separada) — necesarios para modo SERVICE */
+  services?: ServiceSupabase[];
   /** escenario_ids para filtrar zonas */
   escenarioIds: number[];
   /** Map<string(movilNro), estadoNro> – siempre disponible desde allMovilEstados */
@@ -40,6 +42,7 @@ export default function ZonaEstadisticasModal({
   isOpen,
   onClose,
   pedidos,
+  services = [],
   escenarioIds,
   movilEstados = new Map(),
   onZonaClick,
@@ -117,14 +120,19 @@ export default function ZonaEstadisticasModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, escenarioKey]);
 
-  // Filter pedidos by service type
+  // Filter pedidos/services by service type
+  // SERVICE mode usa la tabla 'services' (array separado); PEDIDOS usa 'pedidos' filtrado por URGENTE/NOCTURNO
   const filteredPedidos = useMemo(() => {
     const upper = serviceFilter.toUpperCase();
+    if (upper === 'SERVICE') {
+      // Los services están en su propio array — castear a la misma forma para reutilizar la lógica
+      return (services as unknown as PedidoSupabase[]);
+    }
     if (upper === 'PEDIDOS') {
       return pedidos.filter(p => p.servicio_nombre && PEDIDOS_SERVICES.has(p.servicio_nombre.toUpperCase()));
     }
     return pedidos.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === upper);
-  }, [pedidos, serviceFilter]);
+  }, [pedidos, services, serviceFilter]);
 
   // Filter movilesZonasData by service type + active + not excluded estado
   const filteredMovilesZonas = useMemo(() => {
@@ -169,16 +177,14 @@ export default function ZonaEstadisticasModal({
     for (const zonaId of zonaIds) {
       const pedidosZona = filteredPedidos.filter(p => p.zona_nro === zonaId);
 
-      // Sin asignar: estado 1, sin movil — usa TODOS los pedidos (sin filtrar por servicio)
-      // porque los pedidos sin asignar no están categorizados por servicio aún
-      const sinAsignar = pedidos.filter(p =>
-        p.zona_nro === zonaId &&
+      // Sin asignar: estado 1, sin movil — filtrado por tipo de servicio activo
+      const sinAsignar = pedidosZona.filter(p =>
         Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0)
       ).length;
 
-      // Pendientes: estado 1, con movil asignado (sub_estado 5)
+      // Pendientes: estado 1, con movil asignado
       const pendientesList = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 1 && Number(p.sub_estado_nro) === 5 && p.movil && Number(p.movil) > 0
+        Number(p.estado_nro) === 1 && p.movil && Number(p.movil) > 0
       );
       const pendientes = pendientesList.length;
 
@@ -234,7 +240,7 @@ export default function ZonaEstadisticasModal({
     }
 
     return result;
-  }, [filteredPedidos, pedidos, zonas, filteredMovilesZonas, demorasData]);
+  }, [filteredPedidos, zonas, filteredMovilesZonas, demorasData]);
 
   // Sort
   const sorted = useMemo(() => {

@@ -1687,6 +1687,7 @@ function DashboardContent() {
         isOpen={isZonaEstadisticasOpen}
         onClose={() => setIsZonaEstadisticasOpen(false)}
         pedidos={pedidosCompletos}
+        services={servicesCompletos}
         escenarioIds={selectedEscenarioIds}
         movilEstados={allMovilEstados}
         onZonaClick={(zonaId, svcFilter) => {
