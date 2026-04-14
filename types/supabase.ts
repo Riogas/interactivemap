@@ -279,6 +279,7 @@ export interface Database {
           fpago_obs1: string | null
           fch_hora_max_ent_comp: string | null
           fch_hora_mov: string | null
+          fch_hora_finalizacion: string | null
           fch_hora_para: string | null
           fch_hora_upd_firestore: string | null
           fch_para: string | null
@@ -328,6 +329,7 @@ export interface Database {
           fpago_obs1?: string | null
           fch_hora_max_ent_comp?: string | null
           fch_hora_mov?: string | null
+          fch_hora_finalizacion?: string | null
           fch_hora_para?: string | null
           fch_hora_upd_firestore?: string | null
           fch_para?: string | null
@@ -377,6 +379,7 @@ export interface Database {
           fpago_obs1?: string | null
           fch_hora_max_ent_comp?: string | null
           fch_hora_mov?: string | null
+          fch_hora_finalizacion?: string | null
           fch_hora_para?: string | null
           fch_hora_upd_firestore?: string | null
           fch_para?: string | null

@@ -106,6 +106,7 @@ function transformServiceToSupabase(service: any) {
     // Fechas
     fch_hora_max_ent_comp: parseDate(service.FchHoraMaxEntComp || service.fch_hora_max_ent_comp),
     fch_hora_mov: parseDate(service.FchHoraMov || service.fch_hora_mov),
+    fch_hora_finalizacion: parseDate(service.FchHoraCump || service.fch_hora_finalizacion),
     fch_hora_para: parseDate(service.FchHoraPara || service.fch_hora_para),
     fch_hora_upd_firestore: parseDate(service.FchHoraUPDFireStore || service.fch_hora_upd_firestore),
     fch_para: parseDateYYYYMMDD(service.FchPara || service.fch_para),

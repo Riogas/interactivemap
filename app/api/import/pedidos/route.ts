@@ -178,7 +178,7 @@ function transformPedidoToSupabase(pedido: any) {
     // Fechas
     fch_hora_max_ent_comp: parseDate(pedido.FchHoraMaxEntComp || pedido.fch_hora_max_ent_comp),
     fch_hora_mov: parseDate(pedido.FchHoraMov || pedido.fch_hora_mov),
-    fch_hora_finalizacion: parseDate(pedido.FchHoraFinalizacion || pedido.fch_hora_finalizacion),
+    fch_hora_finalizacion: parseDate(pedido.FchHoraCump || pedido.fch_hora_finalizacion),
     fch_hora_para: parseDate(pedido.FchHoraPara || pedido.fch_hora_para),
     fch_hora_upd_firestore: parseDate(pedido.FchHoraUPDFireStore || pedido.fch_hora_upd_firestore),
     fch_para: parseDateYYYYMMDD(pedido.FchPara || pedido.fch_para), // 🔧 Formato especial YYYYMMDD
