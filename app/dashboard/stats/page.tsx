@@ -692,7 +692,7 @@ function StatsContent() {
               </ExpandableCard>
             )}
 
-            {/* Pedidos por empresa */
+            {/* Pedidos por empresa */}
             {pedidosPorEmpresa.length > 0 && (
               <ExpandableCard title="Pedidos por empresa">
                 <StackedBarChart data={pedidosPorEmpresa} />
@@ -769,7 +769,7 @@ function StatsContent() {
             </ExpandableCard>
           </div>
 
-          {/* Footer */
+          {/* Footer */}
           <p className="text-center text-xs text-gray-600 pb-4">
             Datos del {formatDate(date)} · RiogasTracking
           </p>
