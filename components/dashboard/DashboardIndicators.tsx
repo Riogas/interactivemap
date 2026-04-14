@@ -336,6 +336,18 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
         </svg>
       </button>
+
+      {/* Botón Centro Estadístico - visible siempre */}
+      <button
+        onClick={openStatsPage}
+        title={`Ver estadísticas del ${selectedDate}`}
+        className="flex-shrink-0 flex items-center gap-1 backdrop-blur-sm rounded-md px-2 py-1 lg:px-2.5 lg:py-1.5 border border-blue-400/40 bg-blue-500/25 text-white hover:bg-blue-500/40 hover:scale-105 transition-all h-[36px] lg:h-[44px] whitespace-nowrap ml-1"
+      >
+        <svg className="w-3.5 h-3.5 lg:w-4 lg:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        <span className="text-[10px] lg:text-xs font-medium hidden sm:inline">Estadísticas</span>
+      </button>
     </div>
   );
 }

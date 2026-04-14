@@ -25,6 +25,11 @@ interface Empresa {
   empresa_fletera_id: number;
   nombre: string;
 }
+interface Movil {
+  nro: number;
+  empresa_fletera_id: number;
+  empresa_fletera_nom: string | null;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(dateStr: string) {
@@ -80,6 +85,8 @@ function StatsContent() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [empresas, setEmpresas] = useState<Map<number, string>>(new Map());
+  // Mapa movilNro → nombre de empresa (obtenido del join moviles → empresa_fletera)
+  const [movilEmpresa, setMovilEmpresa] = useState<Map<number, string>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,18 +95,28 @@ function StatsContent() {
       setIsLoading(true);
       setError(null);
       try {
-        const [pRes, sRes, eRes] = await Promise.all([
+        const [pRes, sRes, eRes, mRes] = await Promise.all([
           fetch(`/api/pedidos?fecha=${date}`),
           fetch(`/api/services?fecha=${date}`),
           fetch(`/api/empresas`),
+          fetch(`/api/moviles-extended`),
         ]);
-        const [pData, sData, eData] = await Promise.all([pRes.json(), sRes.json(), eRes.json()]);
+        const [pData, sData, eData, mData] = await Promise.all([pRes.json(), sRes.json(), eRes.json(), mRes.json()]);
         setPedidos(pData.data ?? pData ?? []);
         setServices(sData.data ?? sData ?? []);
-        // Construir mapa empresa_fletera_id → nombre
+        // Mapa empresa_fletera_id → nombre
         const eMap = new Map<number, string>();
         (eData.data ?? []).forEach((e: Empresa) => eMap.set(e.empresa_fletera_id, e.nombre));
         setEmpresas(eMap);
+        // Mapa movilNro → nombre empresa (via join movil → empresa_fletera)
+        const mMap = new Map<number, string>();
+        (mData.data ?? []).forEach((m: Movil) => {
+          if (m.nro != null) {
+            const nombre = m.empresa_fletera_nom ?? eMap.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`;
+            mMap.set(m.nro, nombre);
+          }
+        });
+        setMovilEmpresa(mMap);
       } catch (e) {
         setError('Error al cargar los datos');
       } finally {
@@ -147,19 +164,27 @@ function StatsContent() {
   }, [pedidos]);
 
   // ─── Pedidos por empresa ───────────────────────────────────────────────────
+  // Se determina la empresa a partir del móvil asignado al pedido (join movil → empresa_fletera)
   const pedidosPorEmpresa = useMemo(() => {
     const map: Record<string, number> = {};
     pedidos.filter(p => Number(p.estado_nro) === 2 && [3,16].includes(Number(p.sub_estado_nro))).forEach(p => {
-      const empId = p.empresa_fletera_id != null ? Number(p.empresa_fletera_id) : null;
-      const key = empId != null && empresas.has(empId)
-        ? empresas.get(empId)!
-        : empId != null ? `Empresa ${empId}` : 'Sin empresa';
+      const movilNro = p.movil != null ? Number(p.movil) : null;
+      let key: string;
+      if (movilNro != null && movilNro !== 0 && movilEmpresa.has(movilNro)) {
+        key = movilEmpresa.get(movilNro)!;
+      } else {
+        // Fallback: usar empresa_fletera_id del pedido si no hay movil mapeado
+        const empId = p.empresa_fletera_id != null ? Number(p.empresa_fletera_id) : null;
+        key = empId != null && empresas.has(empId)
+          ? empresas.get(empId)!
+          : empId != null ? `Empresa ${empId}` : 'Sin empresa';
+      }
       map[key] = (map[key] ?? 0) + 1;
     });
     const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10);
     const max = Math.max(...sorted.map(e => e[1]), 1);
     return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
-  }, [pedidos, empresas]);
+  }, [pedidos, empresas, movilEmpresa]);
 
   // ─── Estados de pedidos ────────────────────────────────────────────────────
   const estadosPedidos = useMemo(() => {
