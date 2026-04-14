@@ -159,24 +159,29 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     return result;
   }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega]);
 
-  // ========== Valores únicos para filtros ==========
+  // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
+  const servicesParaOpciones = useMemo(() => {
+    if (isFinalizados) return services.filter(s => Number(s.estado_nro) === 2);
+    return services.filter(s => Number(s.estado_nro) === 1);
+  }, [services, isFinalizados]);
+
   const uniqueZonas = useMemo(() => {
     const set = new Set<number>();
-    servicesBase.forEach(s => { if (s.zona_nro) set.add(s.zona_nro); });
+    servicesParaOpciones.forEach(s => { if (s.zona_nro) set.add(s.zona_nro); });
     return Array.from(set).sort((a, b) => a - b);
-  }, [servicesBase]);
+  }, [servicesParaOpciones]);
 
   const uniqueMoviles = useMemo(() => {
     const set = new Set<number>();
-    servicesBase.forEach(s => { if (s.movil) set.add(Number(s.movil)); });
+    servicesParaOpciones.forEach(s => { if (s.movil && Number(s.movil) !== 0) set.add(Number(s.movil)); });
     return Array.from(set).sort((a, b) => a - b);
-  }, [servicesBase]);
+  }, [servicesParaOpciones]);
 
   const uniqueDefectos = useMemo(() => {
     const set = new Set<string>();
-    servicesBase.forEach(s => { if (s.defecto) set.add(s.defecto); });
+    servicesParaOpciones.forEach(s => { if (s.defecto) set.add(s.defecto); });
     return Array.from(set).sort();
-  }, [servicesBase]);
+  }, [servicesParaOpciones]);
 
   // ========== Compute delay for all services ==========
   const servicesWithDelay = useMemo(() => {
