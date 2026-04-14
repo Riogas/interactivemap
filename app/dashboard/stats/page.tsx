@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
@@ -219,12 +220,8 @@ function StatsContent() {
     const pendientes = pedidos.filter(p => Number(p.estado_nro) === 1);
     let muyAtrasado = 0, atrasado = 0, limiteCercana = 0, enHora = 0, sinHora = 0;
     pendientes.forEach(p => {
-      const fch = p.fch_hora_max_ent_comp;
-      if (!fch) { sinHora++; return; }
-      const now = new Date();
-      const target = new Date(fch);
-      if (isNaN(target.getTime())) { sinHora++; return; }
-      const diffMin = (target.getTime() - now.getTime()) / 60000;
+      const diffMin = computeDelayMinutes(p.fch_hora_max_ent_comp ?? null);
+      if (diffMin === null) { sinHora++; return; }
       if (diffMin >= 10) enHora++;
       else if (diffMin >= 0) limiteCercana++;
       else if (diffMin >= -10) atrasado++;
