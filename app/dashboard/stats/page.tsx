@@ -9,7 +9,8 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 interface Pedido {
   pedido_id: number;
   estado_nro: number | string;
-  sub_estado_nro?: number | string;
+  sub_estado_nro?: number | string | null;
+  sub_estado_desc?: string | null;
   movil?: number | string;
   empresa_fletera_id?: number | string;
   fch_hora_para?: string;
@@ -42,22 +43,29 @@ function formatDate(dateStr: string) {
 }
 
 function BarChart({ data, colorClass = 'bg-blue-500' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <div className="space-y-2">
-      {data.map((item) => (
-        <div key={item.label}>
-          <div className="flex justify-between text-xs text-gray-400 mb-0.5">
-            <span className="truncate max-w-[70%]">{item.label}</span>
-            <span className="font-semibold text-white">{item.value}</span>
+      {data.map((item) => {
+        const pctOfTotal = total > 0 ? Math.round((item.value / total) * 100) : 0;
+        return (
+          <div key={item.label}>
+            <div className="flex justify-between text-xs text-gray-400 mb-0.5">
+              <span className="truncate max-w-[60%]">{item.label}</span>
+              <span className="font-semibold text-white">
+                {item.value}
+                <span className="text-gray-500 font-normal ml-1">· {pctOfTotal}%</span>
+              </span>
+            </div>
+            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${colorClass} rounded-full transition-all duration-700`}
+                style={{ width: `${Math.max(item.pct, item.value > 0 ? 2 : 0)}%` }}
+              />
+            </div>
           </div>
-          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className={`h-full ${colorClass} rounded-full transition-all duration-700`}
-              style={{ width: `${Math.max(item.pct, item.value > 0 ? 2 : 0)}%` }}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -269,17 +277,40 @@ function StatsContent() {
       .slice(0, 10);
   }, [filteredPedidos, empresas, movilEmpresa]);
 
-  // ─── Estados de pedidos ────────────────────────────────────────────────────
+  // ─── Estados de pedidos (con sub-estado desglosado) ──────────────────────
   const estadosPedidos = useMemo(() => {
-    const estados: Record<number, string> = { 1: 'Pendiente', 2: 'Finalizado', 4: 'Cancelado' };
-    const map: Record<string, number> = {};
+    const estadoNombres: Record<number, string> = { 1: 'Pendiente', 2: 'Finalizado', 4: 'Cancelado' };
+    const total = filteredPedidos.length;
+    const map: Record<string, { count: number; subs: Record<string, { count: number; nro: number | null }> }> = {};
     filteredPedidos.forEach(p => {
-      const key = estados[Number(p.estado_nro)] ?? `Estado ${p.estado_nro}`;
-      map[key] = (map[key] ?? 0) + 1;
+      const estado = estadoNombres[Number(p.estado_nro)] ?? `Estado ${p.estado_nro}`;
+      if (!map[estado]) map[estado] = { count: 0, subs: {} };
+      map[estado].count++;
+      const subNro = p.sub_estado_nro != null ? Number(p.sub_estado_nro) : null;
+      const subDesc = p.sub_estado_desc?.trim() || null;
+      const subKey = subDesc
+        ? subNro != null ? `${subDesc} (${subNro})` : subDesc
+        : subNro != null ? `Sub-estado ${subNro}` : 'Sin sub-estado';
+      if (!map[estado].subs[subKey]) map[estado].subs[subKey] = { count: 0, nro: subNro };
+      map[estado].subs[subKey].count++;
     });
-    const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]);
-    const max = Math.max(...sorted.map(e => e[1]), 1);
-    return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
+    const maxCount = Math.max(...Object.values(map).map(v => v.count), 1);
+    return Object.entries(map)
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([label, { count, subs }]) => ({
+        label,
+        value: count,
+        pct: Math.round((count / Math.max(total, 1)) * 100),
+        barPct: Math.round((count / maxCount) * 100),
+        subEstados: Object.entries(subs)
+          .sort((a, b) => b[1].count - a[1].count)
+          .map(([subLabel, { count: sc, nro }]) => ({
+            label: subLabel,
+            value: sc,
+            pct: Math.round((sc / Math.max(count, 1)) * 100),
+            isEntregado: nro != null && [3, 17, 19].includes(nro),
+          })),
+      }));
   }, [filteredPedidos]);
 
   // ─── Pedidos por zona (top 12 por total) ────────────────────────────────────
@@ -445,14 +476,47 @@ function StatsContent() {
             {estadosPedidos.length > 0 && (
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
                 <h3 className="text-sm font-semibold text-gray-300 mb-4">Pedidos por estado</h3>
-                <BarChart data={estadosPedidos} colorClass="bg-purple-500" />
-
-                {/* Donut visual simple */}
-                <div className="mt-4 flex gap-2 flex-wrap">
-                  {estadosPedidos.map(e => (
-                    <span key={e.label} className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-300">
-                      {e.label}: <strong className="text-white">{e.value}</strong>
-                    </span>
+                <div className="space-y-4">
+                  {estadosPedidos.map(estado => (
+                    <div key={estado.label}>
+                      {/* Barra principal de estado */}
+                      <div className="flex justify-between text-xs mb-0.5">
+                        <span className="font-semibold text-gray-200">{estado.label}</span>
+                        <span className="font-bold text-white">
+                          {estado.value}
+                          <span className="text-gray-500 font-normal ml-1">· {estado.pct}%</span>
+                        </span>
+                      </div>
+                      <div className="h-3 bg-white/10 rounded-full overflow-hidden mb-2">
+                        <div
+                          className="h-full bg-purple-500 rounded-full transition-all duration-700"
+                          style={{ width: `${Math.max(estado.barPct, estado.value > 0 ? 2 : 0)}%` }}
+                        />
+                      </div>
+                      {/* Sub-estados desglosados */}
+                      <div className="pl-3 border-l border-white/10 space-y-1.5">
+                        {estado.subEstados.map(sub => (
+                          <div key={sub.label}>
+                            <div className="flex justify-between text-[10px] mb-0.5">
+                              <span className="text-gray-400 truncate max-w-[65%]">{sub.label}</span>
+                              <span className="text-gray-300 font-semibold">
+                                {sub.value}
+                                <span className="text-gray-600 font-normal ml-1">· {sub.pct}%</span>
+                              </span>
+                            </div>
+                            <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  sub.isEntregado ? 'bg-green-400' :
+                                  estado.label === 'Pendiente' ? 'bg-blue-400' : 'bg-orange-400'
+                                }`}
+                                style={{ width: `${Math.max(sub.pct, sub.value > 0 ? 2 : 0)}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
