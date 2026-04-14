@@ -179,24 +179,31 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     return result;
   }, [pedidos, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega]);
 
-  // ========== Valores únicos para filtros ==========
+  // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
+  // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
+  // TODOS los móviles/zonas/productos del día, independientemente de cuáles estén seleccionados en el mapa.
+  const pedidosParaOpciones = useMemo(() => {
+    if (isFinalizados) return pedidos.filter(p => Number(p.estado_nro) === 2);
+    return pedidos.filter(p => Number(p.estado_nro) === 1);
+  }, [pedidos, isFinalizados]);
+
   const uniqueZonas = useMemo(() => {
     const set = new Set<number>();
-    pedidosBase.forEach(p => { if (p.zona_nro) set.add(p.zona_nro); });
+    pedidosParaOpciones.forEach(p => { if (p.zona_nro) set.add(p.zona_nro); });
     return Array.from(set).sort((a, b) => a - b);
-  }, [pedidosBase]);
+  }, [pedidosParaOpciones]);
 
   const uniqueMoviles = useMemo(() => {
     const set = new Set<number>();
-    pedidosBase.forEach(p => { if (p.movil) set.add(Number(p.movil)); });
+    pedidosParaOpciones.forEach(p => { if (p.movil && Number(p.movil) !== 0) set.add(Number(p.movil)); });
     return Array.from(set).sort((a, b) => a - b);
-  }, [pedidosBase]);
+  }, [pedidosParaOpciones]);
 
   const uniqueProductos = useMemo(() => {
     const set = new Set<string>();
-    pedidosBase.forEach(p => { if (p.producto_nom) set.add(p.producto_nom); });
+    pedidosParaOpciones.forEach(p => { if (p.producto_nom) set.add(p.producto_nom); });
     return Array.from(set).sort();
-  }, [pedidosBase]);
+  }, [pedidosParaOpciones]);
 
   // ========== Compute delay for all pedidos (cached) ==========
   const pedidosWithDelay = useMemo(() => {
