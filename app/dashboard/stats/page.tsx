@@ -24,9 +24,12 @@ interface Pedido {
 interface Service {
   service_id: number;
   estado_nro?: number | string;
+  sub_estado_nro?: number | string | null;
   movil?: number | string;
   empresa_fletera_id?: number | string;
   fch_hora_para?: string;
+  fch_hora_max_ent_comp?: string | null;
+  fch_hora_finalizacion?: string | null;
 }
 interface Empresa {
   empresa_fletera_id: number;
@@ -343,16 +346,42 @@ function StatsContent() {
     const sinAsignar = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0);
     const pct = finalizadosSinHijo.length > 0 ? Math.round((entregados.length / finalizadosSinHijo.length) * 100) : 0;
-    return { total, finalizados: finalizados.length, entregados: entregados.length, noEntregados: noEntregados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, pct };
+    return { total, finalizados: finalizados.length, finalizadosSinHijo: finalizadosSinHijo.length, entregados: entregados.length, noEntregados: noEntregados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, pct };
   }, [filteredPedidos]);
 
   // ─── KPIs Services ─────────────────────────────────────────────────────────
   const servicesStats = useMemo(() => {
     const total = services.length;
-    const finalizados = services.filter(s => Number(s.estado_nro) === 2).length;
-    const pendientes = total - finalizados;
-    const pct = total > 0 ? Math.round((finalizados / total) * 100) : 0;
-    return { total, finalizados, pendientes, pct };
+    const finalizados = services.filter(s => Number(s.estado_nro) === 2);
+    const realizados = finalizados.filter(s => [3, 17, 19].includes(Number(s.sub_estado_nro)));
+    const noRealizados = finalizados.filter(s => ![3, 17, 19].includes(Number(s.sub_estado_nro)));
+    const sinAsignar = services.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0));
+    const pendientes = services.filter(s => Number(s.estado_nro) === 1 && s.movil && Number(s.movil) !== 0);
+    // % Con atraso (pendientes con delay < 0)
+    const pendientesList = services.filter(s => Number(s.estado_nro) === 1);
+    const conAtraso = pendientesList.filter(s => {
+      const d = computeDelayMinutes(s.fch_hora_max_ent_comp ?? null);
+      return d !== null && d < 0;
+    }).length;
+    const pctAtraso = pendientesList.length > 0 ? Math.round((conAtraso / pendientesList.length) * 100) : 0;
+    const pctNoRealizados = finalizados.length > 0 ? Math.round((noRealizados.length / finalizados.length) * 100) : 0;
+    return { total, finalizados: finalizados.length, realizados: realizados.length, noRealizados: noRealizados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, conAtraso, pctAtraso, pctNoRealizados };
+  }, [services]);
+
+  // ─── % Realizados en hora (services) ────────────────────────────────────────
+  const pctRealizadosEnHora = useMemo(() => {
+    const realizados = services.filter(s =>
+      Number(s.estado_nro) === 2 && [3, 17, 19].includes(Number(s.sub_estado_nro))
+    );
+    if (realizados.length === 0) return null;
+    const conAmbas = realizados.filter(s => s.fch_hora_max_ent_comp && s.fch_hora_finalizacion);
+    if (conAmbas.length < 3) return null;
+    const enHora = conAmbas.filter(s => {
+      const fin = new Date(s.fch_hora_finalizacion!.replace(/\+00$/, '+00:00'));
+      const lim = new Date(s.fch_hora_max_ent_comp!.replace(/\+00$/, '+00:00'));
+      return fin <= lim;
+    });
+    return Math.round((enHora.length / conAmbas.length) * 100);
   }, [services]);
 
   // ─── Pedidos por hora ──────────────────────────────────────────────────────
@@ -523,10 +552,17 @@ function StatsContent() {
             <h1 className="text-lg font-bold text-white">Centro Estadístico</h1>
             <p className="text-sm text-gray-400">{formatDate(date)}</p>
           </div>
-          {/* Total pedidos centrado absolutamente */}
-          <div className="absolute left-1/2 -translate-x-1/2 text-center">
-            <p className="text-xs text-gray-400 leading-none mb-0.5">Total pedidos</p>
-            <p className="text-3xl font-bold text-white leading-none">{pedidosStats.total}</p>
+          {/* Total pedidos + Total services centrado absolutamente */}
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-6">
+            <div className="text-center">
+              <p className="text-xs text-gray-400 leading-none mb-0.5">Total pedidos</p>
+              <p className="text-3xl font-bold text-white leading-none">{pedidosStats.total}</p>
+            </div>
+            <div className="w-px h-8 bg-white/20" />
+            <div className="text-center">
+              <p className="text-xs text-gray-400 leading-none mb-0.5">Total services</p>
+              <p className="text-3xl font-bold text-white leading-none">{servicesStats.total}</p>
+            </div>
           </div>
           <button
             onClick={() => window.close()}
@@ -601,9 +637,9 @@ function StatsContent() {
           {/* ── KPIs: Pendientes y Finalizados ── */}
           <section>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              {/* Columna Pendientes */}
+              {/* Columna Pedidos Pendientes */}
               <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
-                <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Pendientes</h2>
+                <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Pedidos Pendientes</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <KpiCard
                     label="Sin asignar"
@@ -623,20 +659,21 @@ function StatsContent() {
                   />
                 </div>
               </div>
-              {/* Columna Finalizados */}
+              {/* Columna Pedidos Finalizados */}
               <div className="rounded-xl border border-green-400/20 bg-green-500/5 p-4">
-                <h2 className="text-xs font-semibold text-green-300 uppercase tracking-wider mb-3">Finalizados</h2>
+                <h2 className="text-xs font-semibold text-green-300 uppercase tracking-wider mb-3">Pedidos Finalizados</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <KpiCard
                     label="Entregados"
                     value={pedidosStats.entregados}
-                    sub={`de ${pedidosStats.finalizados}`}
+                    sub={`de ${pedidosStats.finalizadosSinHijo}`}
                     color="green"
                   />
                   <KpiCard
-                    label="% Entregados"
-                    value={`${pedidosStats.pct}%`}
-                    color={pedidosStats.pct >= 80 ? 'green' : pedidosStats.pct >= 50 ? 'orange' : 'red'}
+                    label="% No entregados"
+                    value={pedidosStats.finalizadosSinHijo > 0 ? `${Math.round((pedidosStats.noEntregados / pedidosStats.finalizadosSinHijo) * 100)}%` : '—'}
+                    sub={`${pedidosStats.noEntregados} pedidos`}
+                    color={pedidosStats.noEntregados > 0 ? 'orange' : 'green'}
                   />
                   <KpiCard
                     label="% Entregados en hora"
@@ -647,8 +684,8 @@ function StatsContent() {
               </div>
             </div>
 
-            {/* ── 4 indicadores extra ── */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* ── 3 indicadores extra ── */}
+            <div className="grid grid-cols-3 gap-3">
               <KpiCard
                 label="Móviles Activos"
                 value={movilesActivos}
@@ -666,23 +703,57 @@ function StatsContent() {
                 sub="tipo urgente"
                 color={zonasSinMovilCount !== null && zonasSinMovilCount > 0 ? 'orange' : 'gray'}
               />
-              <KpiCard
-                label="% No entregados"
-                value={pedidosStats.finalizados > 0 ? `${Math.round((pedidosStats.noEntregados / pedidosStats.finalizados) * 100)}%` : '—'}
-                sub={`${pedidosStats.noEntregados} pedidos`}
-                color={pedidosStats.noEntregados > 0 ? 'orange' : 'gray'}
-              />
             </div>
           </section>
 
           {/* ── KPIs Services ── */}
           <section>
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Services</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <KpiCard label="Total services" value={servicesStats.total} color="blue" />
-              <KpiCard label="Finalizados" value={servicesStats.finalizados} color="green" />
-              <KpiCard label="% Completados" value={`${servicesStats.pct}%`} color={servicesStats.pct >= 80 ? 'green' : servicesStats.pct >= 50 ? 'orange' : 'red'} />
-              <KpiCard label="Pendientes" value={servicesStats.pendientes} color={servicesStats.pendientes > 0 ? 'orange' : 'gray'} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Columna Services Pendientes */}
+              <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
+                <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Services Pendientes</h2>
+                <div className="grid grid-cols-3 gap-2">
+                  <KpiCard
+                    label="Sin asignar"
+                    value={servicesStats.sinAsignar}
+                    color={servicesStats.sinAsignar > 0 ? 'orange' : 'gray'}
+                  />
+                  <KpiCard
+                    label="Total pendientes"
+                    value={servicesStats.pendientes}
+                    color="blue"
+                  />
+                  <KpiCard
+                    label="% Con atraso"
+                    value={`${servicesStats.pctAtraso}%`}
+                    sub={`${servicesStats.conAtraso} services`}
+                    color={servicesStats.pctAtraso >= 50 ? 'red' : servicesStats.pctAtraso >= 20 ? 'orange' : 'green'}
+                  />
+                </div>
+              </div>
+              {/* Columna Services Finalizados */}
+              <div className="rounded-xl border border-green-400/20 bg-green-500/5 p-4">
+                <h2 className="text-xs font-semibold text-green-300 uppercase tracking-wider mb-3">Services Finalizados</h2>
+                <div className="grid grid-cols-3 gap-2">
+                  <KpiCard
+                    label="Realizados"
+                    value={servicesStats.realizados}
+                    sub={`de ${servicesStats.finalizados}`}
+                    color="green"
+                  />
+                  <KpiCard
+                    label="% No realizados"
+                    value={servicesStats.finalizados > 0 ? `${servicesStats.pctNoRealizados}%` : '—'}
+                    sub={`${servicesStats.noRealizados} services`}
+                    color={servicesStats.noRealizados > 0 ? 'orange' : 'green'}
+                  />
+                  <KpiCard
+                    label="% Realizados en hora"
+                    value={pctRealizadosEnHora !== null ? `${pctRealizadosEnHora}%` : '—'}
+                    color={pctRealizadosEnHora === null ? 'gray' : pctRealizadosEnHora >= 80 ? 'green' : pctRealizadosEnHora >= 50 ? 'orange' : 'red'}
+                  />
+                </div>
+              </div>
             </div>
           </section>
 
