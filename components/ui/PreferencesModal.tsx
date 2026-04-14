@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import * as XLSX from 'xlsx';
 
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'star';
 
@@ -81,7 +82,90 @@ interface PreferencesModalProps {
 }
 
 export default function PreferencesModal({ isOpen, onClose, onSave }: PreferencesModalProps) {
+  const { user } = useAuth();
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+
+  // ===== Estado para importar Puntos de Interés =====
+  const poiFileInputRef = useRef<HTMLInputElement>(null);
+  const [importingPOI, setImportingPOI] = useState(false);
+  const [importResultPOI, setImportResultPOI] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleImportPOI = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (poiFileInputRef.current) poiFileInputRef.current.value = '';
+
+    setImportingPOI(true);
+    setImportResultPOI(null);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const ws = workbook.Sheets[workbook.SheetNames[0]];
+      const raw: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+      if (raw.length < 2) {
+        setImportResultPOI({ ok: false, msg: 'El archivo no tiene filas de datos.' });
+        setImportingPOI(false);
+        return;
+      }
+
+      // Columnas esperadas: Categoria* | ID* | Visibilidad | Nombre Corto | Nombre Largo | CoordX | CoordY | Telefono | Direccion | Observaciones
+      const headers: string[] = (raw[0] as string[]).map(h => String(h ?? '').trim());
+      const idx = (name: string) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
+
+      const iCategoria = idx('Categoria');
+      const iId        = idx('ID');
+      const iVisib     = idx('Visibilidad');
+      const iNombre    = idx('Nombre Corto');
+      const iCoordX    = idx('CoordX');
+      const iCoordY    = idx('CoordY');
+      const iTelefono  = idx('Telefono');
+      const iDireccion = idx('Direccion');
+
+      const email = user?.email || user?.username || 'admin@trackmovil';
+
+      const rows = raw.slice(1).filter(r => r[iId] != null).map(r => {
+        const visib = String(r[iVisib] ?? '').toLowerCase();
+        return {
+          id:            Number(r[iId]),
+          nombre:        String(r[iNombre] ?? '').trim(),
+          categoria:     iCategoria >= 0 ? String(r[iCategoria] ?? '').trim() || null : null,
+          latitud:       Number(r[iCoordX]),
+          longitud:      Number(r[iCoordY]),
+          telefono:      r[iTelefono] ? Number(r[iTelefono]) : null,
+          descripcion:   iDireccion >= 0 ? String(r[iDireccion] ?? '').trim() || null : null,
+          visible:       visib === 'publico' || visib === 'true' || visib === '1',
+          tipo:          visib === 'publico' ? 'publico' : 'privado',
+          icono:         '📍',
+          usuario_email: email,
+        };
+      });
+
+      if (rows.length === 0) {
+        setImportResultPOI({ ok: false, msg: 'No se encontraron filas válidas (falta columna ID*).' });
+        setImportingPOI(false);
+        return;
+      }
+
+      const res = await fetch('/api/import/puntos-interes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      });
+      const json = await res.json();
+
+      if (res.ok && json.success) {
+        setImportResultPOI({ ok: true, msg: `✅ ${json.count} punto(s) de venta actualizados correctamente.` });
+      } else {
+        setImportResultPOI({ ok: false, msg: `❌ Error: ${json.error || 'Error desconocido'}` });
+      }
+    } catch (err: any) {
+      setImportResultPOI({ ok: false, msg: `❌ Error al leer el archivo: ${err.message}` });
+    } finally {
+      setImportingPOI(false);
+    }
+  }, [user]);
 
   // Cargar preferencias desde localStorage al montar (cache local de lo que ya se cargó de DB)
   useEffect(() => {
@@ -708,6 +792,58 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 <p className="text-xs text-gray-500">
                   Controla la intensidad de los colores de las zonas en las vistas de datos (Distribución, Demoras, Móviles por Zona)
                 </p>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Importar Puntos de Venta */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">📍</span>
+                  Actualizar Puntos de Venta
+                </label>
+                <p className="text-xs text-gray-500">
+                  Importa o actualiza los puntos de venta desde un archivo Excel (.xlsx).
+                  Las filas se identifican por la columna <strong>ID*</strong>: si el ID existe se actualiza, si no existe se inserta.
+                </p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <input
+                    ref={poiFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={handleImportPOI}
+                  />
+                  <button
+                    type="button"
+                    disabled={importingPOI}
+                    onClick={() => { setImportResultPOI(null); poiFileInputRef.current?.click(); }}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg shadow transition-all"
+                  >
+                    {importingPOI ? (
+                      <>
+                        <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                        Importando...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Seleccionar archivo Excel
+                      </>
+                    )}
+                  </button>
+                  {importResultPOI && (
+                    <span className={`text-xs font-medium px-3 py-1.5 rounded-lg ${
+                      importResultPOI.ok
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                      {importResultPOI.msg}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

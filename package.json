@@ -29,6 +29,7 @@
     "react-leaflet": "^5.0.0",
     "react-leaflet-markercluster": "5.0.0-rc.0",
     "react-window": "^2.2.6",
+    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "pnpm": {
