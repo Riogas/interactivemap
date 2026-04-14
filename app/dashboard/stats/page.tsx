@@ -451,13 +451,12 @@ function StatsContent() {
       Number(p.estado_nro) === 2 && [3, 17, 19].includes(Number(p.sub_estado_nro))
     );
     if (entregados.length === 0) return null;
-    const conAmbas = entregados.filter(p => p.fch_hora_max_ent_comp && (p.fch_hora_finalizacion || p.fch_hora_mov));
+    const conAmbas = entregados.filter(p => p.fch_hora_max_ent_comp && p.fch_hora_finalizacion);
     if (conAmbas.length < 3) return null; // no hay suficientes datos
     const enHora = conAmbas.filter(p => {
-      const entrega = p.fch_hora_finalizacion ?? p.fch_hora_mov;
-      const mov = new Date(entrega!.replace(/\+00$/, '+00:00'));
-      const comp = new Date(p.fch_hora_max_ent_comp!.replace(/\+00$/, '+00:00'));
-      return mov <= comp;
+      const finalizacion = new Date(p.fch_hora_finalizacion!.replace(/\+00$/, '+00:00'));
+      const limite = new Date(p.fch_hora_max_ent_comp!.replace(/\+00$/, '+00:00'));
+      return finalizacion <= limite;
     });
     return Math.round((enHora.length / conAmbas.length) * 100);
   }, [filteredPedidos]);
