@@ -39,7 +39,11 @@ interface Movil {
   nro: number;
   empresa_fletera_id: number;
   empresa_fletera_nom: string | null;
+  tamanoLote: number;
+  estadoNro: number | null;
+  pedidosAsignados: number;
 }
+const EXCLUDED_ESTADOS_MOVIL = new Set([3, 5, 15]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(dateStr: string) {
@@ -217,6 +221,7 @@ function StatsContent() {
   const [empresas, setEmpresas] = useState<Map<number, string>>(new Map());
   // Mapa movilNro → nombre de empresa (obtenido del join moviles → empresa_fletera)
   const [movilEmpresa, setMovilEmpresa] = useState<Map<number, string>>(new Map());
+  const [movilesRaw, setMovilesRaw] = useState<Movil[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEmpresa, setSelectedEmpresa] = useState<string>('Todas');
@@ -252,6 +257,7 @@ function StatsContent() {
           }
         });
         setMovilEmpresa(mMap);
+        setMovilesRaw(mData.data ?? []);
       } catch (e) {
         setError('Error al cargar los datos');
       } finally {
@@ -571,16 +577,28 @@ function StatsContent() {
       .sort((a, b) => b.entregados - a.entregados);
   }, [filteredPedidos]);
 
-  // ─── Móviles activos (con pendientes asignados) ────────────────────────────
-  const movilesActivos = useMemo(() => {
-    const set = new Set<number>();
-    filteredPedidos.forEach(p => {
-      if (Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0) {
-        set.add(Number(p.movil));
-      }
-    });
-    return set.size;
-  }, [filteredPedidos]);
+  // ─── Móviles stats (respeta filtro de empresa) ─────────────────────────────
+  const movilesStats = useMemo(() => {
+    // Filtrar por empresa si corresponde
+    const list = selectedEmpresa === 'Todas'
+      ? movilesRaw
+      : movilesRaw.filter(m => {
+          const nombre = m.empresa_fletera_nom ?? empresas.get(m.empresa_fletera_id) ?? '';
+          return nombre === selectedEmpresa;
+        });
+    // Activos: no excluidos por estado
+    const activos = list.filter(m => !EXCLUDED_ESTADOS_MOVIL.has(m.estadoNro ?? -1));
+    const totalActivos = activos.length;
+    const conPedidos = activos.filter(m => m.pedidosAsignados > 0).length;
+    const sinPedidos = totalActivos - conPedidos;
+    const pctConPedidos = totalActivos > 0 ? Math.round((conPedidos / totalActivos) * 100) : 0;
+    const pctSinPedidos = totalActivos > 0 ? Math.round((sinPedidos / totalActivos) * 100) : 0;
+    // Disponibilidad de lote
+    const totalLote = activos.reduce((s, m) => s + (m.tamanoLote ?? 0), 0);
+    const disponible = activos.reduce((s, m) => s + Math.max(0, (m.tamanoLote ?? 0) - m.pedidosAsignados), 0);
+    const pctDisponibilidad = totalLote > 0 ? Math.round((disponible / totalLote) * 100) : null;
+    return { totalActivos, conPedidos, sinPedidos, pctConPedidos, pctSinPedidos, totalLote, disponible, pctDisponibilidad };
+  }, [movilesRaw, selectedEmpresa, empresas]);
 
   // ─── % Entregados en hora ───────────────────────────────────────────────────
   const pctEntregadosEnHora = useMemo(() => {
@@ -690,7 +708,49 @@ function StatsContent() {
       {!isLoading && !error && (
         <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
 
-          {/* ── KPIs: Pendientes y Finalizados ── */}
+          {/* ── KPIs Móviles ── */}
+          <section>
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Móviles</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+              <KpiCard
+                label="Móviles Activos"
+                value={movilesStats.totalActivos}
+                sub="total activos"
+                color="blue"
+              />
+              <KpiCard
+                label="Con Pedidos Pend."
+                value={`${movilesStats.pctConPedidos}%`}
+                sub={`${movilesStats.conPedidos} móviles`}
+                color={movilesStats.pctConPedidos >= 80 ? 'green' : movilesStats.pctConPedidos >= 40 ? 'orange' : 'red'}
+              />
+              <KpiCard
+                label="Sin Pedidos"
+                value={`${movilesStats.pctSinPedidos}%`}
+                sub={`${movilesStats.sinPedidos} móviles`}
+                color={movilesStats.sinPedidos > 0 ? 'purple' : 'gray'}
+              />
+              <KpiCard
+                label="Zonas No Activas"
+                value={zonasNoActivasCount !== null ? zonasNoActivasCount : '—'}
+                color={zonasNoActivasCount !== null && zonasNoActivasCount > 0 ? 'red' : 'gray'}
+              />
+              <KpiCard
+                label="Zonas Sin Móvil"
+                value={zonasSinMovilCount !== null ? zonasSinMovilCount : '—'}
+                sub="tipo urgente"
+                color={zonasSinMovilCount !== null && zonasSinMovilCount > 0 ? 'orange' : 'gray'}
+              />
+              <KpiCard
+                label="% Disponibilidad"
+                value={movilesStats.pctDisponibilidad !== null ? `${movilesStats.pctDisponibilidad}%` : '—'}
+                sub={movilesStats.totalLote > 0 ? `${movilesStats.disponible}/${movilesStats.totalLote} lote` : undefined}
+                color={movilesStats.pctDisponibilidad === null ? 'gray' : movilesStats.pctDisponibilidad >= 60 ? 'green' : movilesStats.pctDisponibilidad >= 30 ? 'orange' : 'red'}
+              />
+            </div>
+          </section>
+
+          {/* ── KPIs: Pedidos Pendientes / Finalizados ── */}
           <section>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {/* Columna Pedidos Pendientes */}
@@ -740,26 +800,6 @@ function StatsContent() {
               </div>
             </div>
 
-            {/* ── 3 indicadores extra ── */}
-            <div className="grid grid-cols-3 gap-3">
-              <KpiCard
-                label="Móviles Activos"
-                value={movilesActivos}
-                sub="con pedidos pendientes"
-                color="blue"
-              />
-              <KpiCard
-                label="Zonas No Activas"
-                value={zonasNoActivasCount !== null ? zonasNoActivasCount : '—'}
-                color={zonasNoActivasCount !== null && zonasNoActivasCount > 0 ? 'red' : 'gray'}
-              />
-              <KpiCard
-                label="Zonas Sin Móvil"
-                value={zonasSinMovilCount !== null ? zonasSinMovilCount : '—'}
-                sub="tipo urgente"
-                color={zonasSinMovilCount !== null && zonasSinMovilCount > 0 ? 'orange' : 'gray'}
-              />
-            </div>
           </section>
 
           {/* ── KPIs Services ── */}
