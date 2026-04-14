@@ -141,12 +141,23 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       }
       zonaCounts.set(mz.zona_id, existing);
     }
-    // Zonas donde prioridad + tránsito = 0 después de filtrar ("0/0" en el mapa)
+    // Construir mapa de zonas no activas a partir de demorasRecords (igual que zonasNoActivas)
+    const dMap = new Map<number, { minutos: number; activa: boolean }>();
+    for (const d of demorasRecords) {
+      const existing = dMap.get(d.zona_id);
+      if (!existing || d.minutos > existing.minutos) {
+        dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
+      }
+    }
+    // Zonas donde prioridad + tránsito = 0, excluyendo zonas no activas
     return zonasAllData.filter((z: any) => {
+      // Excluir zonas no activas (ya contadas en "Zonas No Activas")
+      const dInfo = dMap.get(z.zona_id);
+      if (dInfo && dInfo.activa === false) return false;
       const counts = zonaCounts.get(z.zona_id);
       return !counts || (counts.prioridad === 0 && counts.transito === 0);
     }).length;
-  }, [zonasAllData, movilesZonasRecords, allMovilEstados, zonasSinMovilServiceFilter]);
+  }, [zonasAllData, movilesZonasRecords, allMovilEstados, zonasSinMovilServiceFilter, demorasRecords]);
 
   // Zonas no activas: Match ZonasActivasLayer — iterar zonas visibles y buscar en demoras
   const zonasNoActivas = useMemo(() => {
