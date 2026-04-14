@@ -703,6 +703,7 @@ const MapView = memo(function MapView({
             visible: punto.visible,
             tipo: punto.tipo || 'privado',
             categoria: punto.categoria || null,
+            telefono: punto.telefono ?? null,
           }));
           setCustomMarkers(markers);
           // Guardar backup en localStorage
@@ -2863,15 +2864,57 @@ const MapView = memo(function MapView({
               position={[marker.latitud, marker.longitud]}
               icon={customIcon}
             >
-              <Popup>
-                <div className="p-2 min-w-[160px]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">🔥</span>
-                    <span className="font-bold text-base leading-tight">{marker.nombre}</span>
+              <Popup minWidth={240} className="poi-popup">
+                <div style={{ margin: '-10px -14px', borderRadius: '8px', overflow: 'hidden', minWidth: '240px', fontFamily: 'inherit' }}>
+                  {/* Header */}
+                  <div style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '26px', lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
+                        {marker.icono || '📍'}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: 'white', fontWeight: 700, fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>
+                          {marker.nombre}
+                        </div>
+                        {marker.categoria && (
+                          <span style={{ display: 'inline-block', marginTop: '3px', background: 'rgba(255,255,255,0.22)', color: 'white', fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                            {marker.categoria}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {marker.latitud.toFixed(6)}, {marker.longitud.toFixed(6)}
-                  </p>
+
+                  {/* Body */}
+                  <div style={{ background: '#18181b', padding: '8px 12px 10px' }}>
+                    {/* Teléfono */}
+                    {marker.telefono && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                        <span style={{ fontSize: '13px' }}>📞</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#d1fae5', letterSpacing: '0.04em' }}>
+                          {String(marker.telefono)}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Descripción / Dirección */}
+                    {marker.observacion && (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                        <span style={{ fontSize: '13px', marginTop: '1px' }}>🏠</span>
+                        <span style={{ fontSize: '12px', color: '#d1d5db', lineHeight: '1.4' }}>
+                          {marker.observacion}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Coordenadas */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', paddingTop: '6px' }}>
+                      <span style={{ fontSize: '12px' }}>📌</span>
+                      <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', letterSpacing: '0.03em' }}>
+                        {Number(marker.latitud).toFixed(6)}, {Number(marker.longitud).toFixed(6)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </Popup>
             </OptimizedMarker>

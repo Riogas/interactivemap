@@ -231,6 +231,7 @@ export interface CustomMarker {
   visible: boolean;  // Si está visible en el mapa
   tipo?: 'publico' | 'privado' | 'osm'; // Tipo de punto de interés
   categoria?: string; // Categoría OSM (riogas, gobierno, hospitales, etc.)
+  telefono?: number | string | null; // Teléfono del punto de interés
 }
 
 // Punto de Interés (Supabase - Persistente)
