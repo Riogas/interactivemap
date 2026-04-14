@@ -175,8 +175,8 @@ function StatsContent() {
   const pedidosStats = useMemo(() => {
     const total = pedidos.length;
     const finalizados = pedidos.filter(p => Number(p.estado_nro) === 2);
-    const entregados = finalizados.filter(p => [3, 16].includes(Number(p.sub_estado_nro)));
-    const noEntregados = finalizados.filter(p => ![3, 16].includes(Number(p.sub_estado_nro)));
+    const entregados = finalizados.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro)));
+    const noEntregados = finalizados.filter(p => ![3, 17, 19].includes(Number(p.sub_estado_nro)));
     const sinAsignar = pedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
     const pendientes = pedidos.filter(p => Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0);
     const pct = finalizados.length > 0 ? Math.round((entregados.length / finalizados.length) * 100) : 0;
@@ -222,7 +222,7 @@ function StatsContent() {
       if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
       const estado = Number(p.estado_nro);
       if (estado === 2) {
-        if ([3, 16].includes(Number(p.sub_estado_nro))) map[key].entregados++;
+        if ([3, 17, 19].includes(Number(p.sub_estado_nro))) map[key].entregados++;
         else map[key].noEntregados++;
       } else if (estado === 1) {
         map[key].pendientes++;
@@ -255,7 +255,7 @@ function StatsContent() {
       if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
       const estado = Number(p.estado_nro);
       if (estado === 2) {
-        if ([3, 16].includes(Number(p.sub_estado_nro))) map[key].entregados++;
+        if ([3, 17, 19].includes(Number(p.sub_estado_nro))) map[key].entregados++;
         else map[key].noEntregados++;
       } else if (estado === 1) {
         map[key].pendientes++;
@@ -288,7 +288,7 @@ function StatsContent() {
   // ─── Móviles con más entregas ──────────────────────────────────────────────
   const movilesTop = useMemo(() => {
     const map: Record<string, number> = {};
-    pedidos.filter(p => Number(p.estado_nro) === 2 && [3,16].includes(Number(p.sub_estado_nro)) && p.movil && Number(p.movil) !== 0)
+    pedidos.filter(p => Number(p.estado_nro) === 2 && [3, 17, 19].includes(Number(p.sub_estado_nro)) && p.movil && Number(p.movil) !== 0)
       .forEach(p => {
         const key = `Móvil ${p.movil}`;
         map[key] = (map[key] ?? 0) + 1;

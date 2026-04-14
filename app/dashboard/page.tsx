@@ -1661,7 +1661,7 @@ function DashboardContent() {
           setPreFilterMovil(movilId);
           
           if (stat === 'noEntregados') {
-            // No entregados = finalizados con sub_estado != 3
+            // No entregados = finalizados con sub_estado != 3, 17 ni 19
             if (viewMode === 'pedidos') {
               setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
               setIsPedidosTableOpen(true);

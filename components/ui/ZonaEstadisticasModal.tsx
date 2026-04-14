@@ -197,14 +197,14 @@ export default function ZonaEstadisticasModal({
       // % Atrasos
       const pctAtrasos = pendientes > 0 ? Math.round((atrasados / pendientes) * 100) : 0;
 
-      // Entregados: estado 2, sub_estado_nro 3 (ENTREGADO) o 16 (ZONA CORTADA/entregado especial)
+      // Entregados: estado 2, sub_estado_nro 3, 17 o 19
       const entregados = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 2 && [3,16].includes(Number(p.sub_estado_nro))
+        Number(p.estado_nro) === 2 && [3, 17, 19].includes(Number(p.sub_estado_nro))
       ).length;
 
-      // No Entregados: estado 2, sub_estado_nro != 3 ni 16
+      // No Entregados: estado 2, sub_estado_nro != 3, 17 ni 19
       const noEntregados = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 2 && ![3,16].includes(Number(p.sub_estado_nro))
+        Number(p.estado_nro) === 2 && ![3, 17, 19].includes(Number(p.sub_estado_nro))
       ).length;
 
       // % Cumplimiento

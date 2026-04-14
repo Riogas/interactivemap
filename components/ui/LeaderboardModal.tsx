@@ -47,14 +47,14 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
           return delay !== null && delay < 0;
         }).length;
 
-        // No Entregados: estado_nro = 2 && sub_estado_desc != 3 ni 16
+        // No Entregados: estado_nro = 2 && sub_estado_desc != 3, 17 ni 19
         const noEntregadosCount = items.filter(i =>
-          Number(i.estado_nro) === 2 && ![3,16].includes(Number(i.sub_estado_desc))
+          Number(i.estado_nro) === 2 && ![3, 17, 19].includes(Number(i.sub_estado_desc))
         ).length;
 
-        // Entregados: estado_nro = 2 && sub_estado_desc = 3 o 16
+        // Entregados: estado_nro = 2 && sub_estado_desc = 3, 17 o 19
         const entregadosCount = items.filter(i =>
-          Number(i.estado_nro) === 2 && [3,16].includes(Number(i.sub_estado_desc))
+          Number(i.estado_nro) === 2 && [3, 17, 19].includes(Number(i.sub_estado_desc))
         ).length;
 
         // % Cumplimiento
@@ -63,7 +63,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
 
         // % Cumplimiento en hora
         const entregadosEnHora = items.filter(i => {
-          if (Number(i.estado_nro) !== 2 || ![3,16].includes(Number(i.sub_estado_desc))) return false;
+          if (Number(i.estado_nro) !== 2 || ![3, 17, 19].includes(Number(i.sub_estado_desc))) return false;
           if (!i.fch_hora_mov || !i.fch_hora_max_ent_comp) return false;
           return new Date(i.fch_hora_mov) <= new Date(i.fch_hora_max_ent_comp);
         }).length;
