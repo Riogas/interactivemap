@@ -152,3 +152,37 @@ body {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;  /* Chrome, Safari, Opera */
 }
+
+/* ── Stats modal: expand animation ───────────────────────────── */
+@keyframes stats-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes stats-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.88) translateY(28px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
+  }
+}
+
+.stats-modal-backdrop {
+  background: rgba(6, 8, 18, 0.88);
+  backdrop-filter: blur(10px);
+  animation: stats-backdrop-in 0.22s ease-out both;
+}
+
+.stats-modal-content {
+  background: linear-gradient(140deg, rgba(28,32,52,0.98) 0%, rgba(18,22,42,0.98) 100%);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 20px;
+  box-shadow: 0 30px 90px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.08);
+  padding: 28px;
+  animation: stats-card-in 0.38s cubic-bezier(0.34, 1.40, 0.64, 1) both;
+}

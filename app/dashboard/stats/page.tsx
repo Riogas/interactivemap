@@ -78,10 +78,12 @@ function BarChart({ data, colorClass = 'bg-blue-500' }: { data: { label: string;
 
 // ─── Stacked bar (Entregados / No Entregados / Pendientes) ──────────────────
 interface StackRow { label: string; entregados: number; noEntregados: number; pendientes: number; }
-function StackedBarChart({ data }: { data: StackRow[] }) {
+function StackedBarChart({ data, expanded = false }: { data: StackRow[]; expanded?: boolean }) {
   const maxTotal = Math.max(...data.map(r => r.entregados + r.noEntregados + r.pendientes), 1);
+  const barH = expanded ? 'h-7' : 'h-5';
+  const spacing = expanded ? 'space-y-5' : 'space-y-2.5';
   return (
-    <div className="space-y-2.5">
+    <div className={spacing}>
       {/* Leyenda */}
       <div className="flex gap-3 text-[10px] text-gray-400 mb-1">
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Entregados</span>
@@ -96,29 +98,37 @@ function StackedBarChart({ data }: { data: StackRow[] }) {
         const pPend = total > 0 ? 100 - pEnt - pNoEnt : 0;
         return (
           <div key={row.label}>
-            <div className="flex justify-between text-xs text-gray-400 mb-0.5">
-              <span className="truncate max-w-[70%]">{row.label}</span>
-              <span className="font-semibold text-white">{total}</span>
+            <div className={`flex justify-between ${expanded ? 'text-sm' : 'text-xs'} text-gray-300 mb-0.5`}>
+              <span className="truncate max-w-[70%] font-medium">{row.label}</span>
+              <span className="font-bold text-white">{total}</span>
             </div>
-            <div className="h-5 bg-white/10 rounded-full overflow-hidden">
+            <div className={`${barH} bg-white/10 rounded-full overflow-hidden`}>
               <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${Math.max(barWidth, total > 0 ? 2 : 0)}%` }}>
                 {row.entregados > 0 && (
                   <div className="h-full bg-green-500 flex items-center justify-center overflow-hidden" style={{ width: `${pEnt}%` }}>
-                    {pEnt >= 12 && <span className="text-[9px] font-bold text-white/90 leading-none">{pEnt}%</span>}
+                    {(expanded || pEnt >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pEnt}%</span>}
                   </div>
                 )}
                 {row.noEntregados > 0 && (
                   <div className="h-full bg-orange-400 flex items-center justify-center overflow-hidden" style={{ width: `${pNoEnt}%` }}>
-                    {pNoEnt >= 12 && <span className="text-[9px] font-bold text-white/90 leading-none">{pNoEnt}%</span>}
+                    {(expanded || pNoEnt >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pNoEnt}%</span>}
                   </div>
                 )}
                 {row.pendientes > 0 && (
                   <div className="h-full bg-blue-400 flex items-center justify-center overflow-hidden" style={{ width: `${pPend}%` }}>
-                    {pPend >= 12 && <span className="text-[9px] font-bold text-white/90 leading-none">{pPend}%</span>}
+                    {(expanded || pPend >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pPend}%</span>}
                   </div>
                 )}
               </div>
             </div>
+            {/* Siempre visible en modo expandido: etiquetas de % debajo de la barra */}
+            {expanded && total > 0 && (
+              <div className="flex gap-4 mt-1.5">
+                {pEnt > 0 && <span className="text-[10px] text-green-400 font-semibold">{pEnt}% ent.</span>}
+                {pNoEnt > 0 && <span className="text-[10px] text-orange-400 font-semibold">{pNoEnt}% no ent.</span>}
+                {pPend > 0 && <span className="text-[10px] text-blue-400 font-semibold">{pPend}% pend.</span>}
+              </div>
+            )}
           </div>
         );
       })}
@@ -152,26 +162,29 @@ function KpiCard({ label, value, sub, color }: { label: string; value: string | 
 }
 
 // ─── Tarjeta expandible ───────────────────────────────────────────────────────
-function ExpandableCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ExpandableCard({ title, children, expandedChildren }: { title: string; children: React.ReactNode; expandedChildren?: React.ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <>
       {expanded && (
-        <div className="fixed inset-0 z-[9999] bg-gray-900 overflow-y-auto">
-          <div className="max-w-4xl mx-auto p-6">
+        <div
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop"
+          onClick={(e) => { if (e.target === e.currentTarget) setExpanded(false); }}
+        >
+          <div className="w-full max-w-5xl stats-modal-content">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-white">{title}</h3>
+              <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
               <button
                 onClick={() => setExpanded(false)}
-                className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/10"
+                className="text-gray-400 hover:text-white transition-all duration-200 p-2 rounded-xl hover:bg-white/10 group"
                 title="Cerrar"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
               </button>
             </div>
-            <div className="text-sm">{children}</div>
+            <div className="text-sm">{expandedChildren ?? children}</div>
           </div>
         </div>
       )}
@@ -180,7 +193,7 @@ function ExpandableCard({ title, children }: { title: string; children: React.Re
           <h3 className="text-sm font-semibold text-gray-300">{title}</h3>
           <button
             onClick={() => setExpanded(true)}
-            className="text-gray-500 hover:text-white transition-colors p-1 rounded hover:bg-white/10"
+            className="text-gray-500 hover:text-white transition-all duration-200 p-1 rounded-lg hover:bg-white/10 hover:scale-110 active:scale-95"
             title="Expandir"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -416,44 +429,89 @@ function StatsContent() {
     });
     return Object.entries(map)
       .map(([label, v]) => ({ label, ...v }))
-      .sort((a, b) => (b.entregados + b.noEntregados + b.pendientes) - (a.entregados + a.noEntregados + a.pendientes))
-      .slice(0, 10);
+      .sort((a, b) => (b.entregados + b.noEntregados + b.pendientes) - (a.entregados + a.noEntregados + a.pendientes));
   }, [filteredPedidos, empresas, movilEmpresa]);
 
-  // ─── Estados de pedidos (con sub-estado desglosado) ──────────────────────
+  // ─── Estados de pedidos (agrupados) ──────────────────────────────────────
+  // Finalizado → Entregados (3/17/19) y No entregados, excluyendo pedido_hijo
+  // Pendiente  → Móvil Asignado (5) y Sin Móvil Asignado (6+7 fusionados)
   const estadosPedidos = useMemo(() => {
-    const estadoNombres: Record<number, string> = { 1: 'Pendiente', 2: 'Finalizado', 4: 'Cancelado' };
     const total = filteredPedidos.length;
-    const map: Record<string, { count: number; subs: Record<string, { count: number; nro: number | null }> }> = {};
+    const byEstado: Record<number, typeof filteredPedidos> = {};
     filteredPedidos.forEach(p => {
-      const estado = estadoNombres[Number(p.estado_nro)] ?? `Estado ${p.estado_nro}`;
-      if (!map[estado]) map[estado] = { count: 0, subs: {} };
-      map[estado].count++;
-      const subNro = p.sub_estado_nro != null ? Number(p.sub_estado_nro) : null;
-      const subDesc = p.sub_estado_desc?.trim() || null;
-      const subKey = subDesc
-        ? subNro != null ? `${subDesc} (${subNro})` : subDesc
-        : subNro != null ? `Sub-estado ${subNro}` : 'Sin sub-estado';
-      if (!map[estado].subs[subKey]) map[estado].subs[subKey] = { count: 0, nro: subNro };
-      map[estado].subs[subKey].count++;
+      const n = Number(p.estado_nro);
+      if (!byEstado[n]) byEstado[n] = [];
+      byEstado[n].push(p);
     });
-    const maxCount = Math.max(...Object.values(map).map(v => v.count), 1);
-    return Object.entries(map)
-      .sort((a, b) => b[1].count - a[1].count)
-      .map(([label, { count, subs }]) => ({
-        label,
-        value: count,
-        pct: Math.round((count / Math.max(total, 1)) * 100),
-        barPct: Math.round((count / maxCount) * 100),
-        subEstados: Object.entries(subs)
-          .sort((a, b) => b[1].count - a[1].count)
-          .map(([subLabel, { count: sc, nro }]) => ({
-            label: subLabel,
-            value: sc,
-            pct: Math.round((sc / Math.max(count, 1)) * 100),
-            isEntregado: nro != null && [3, 17, 19].includes(nro),
-          })),
-      }));
+    const maxCount = Math.max(...Object.values(byEstado).map(a => a.length), 1);
+    const estadoNombres: Record<number, string> = { 1: 'Pendiente', 2: 'Finalizado', 4: 'Cancelado' };
+    return (Object.entries(byEstado) as [string, typeof filteredPedidos][])
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([nroStr, list]) => {
+        const nro = Number(nroStr);
+        const label = estadoNombres[nro] ?? `Estado ${nro}`;
+        const count = list.length;
+        type SubRow = { label: string; value: number; pct: number; isEntregado: boolean };
+        let subEstados: SubRow[];
+        if (nro === 2) {
+          // Finalizado: agrupar excluyendo pedido_hijo
+          const sinHijo = list.filter(p => !p.pedido_hijo);
+          const entregCnt = sinHijo.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro))).length;
+          const noEntCnt = sinHijo.length - entregCnt;
+          const den = Math.max(sinHijo.length, 1);
+          subEstados = [
+            { label: 'Entregados', value: entregCnt, pct: Math.round((entregCnt / den) * 100), isEntregado: true },
+            { label: 'No entregados', value: noEntCnt, pct: Math.round((noEntCnt / den) * 100), isEntregado: false },
+          ].filter(s => s.value > 0);
+        } else if (nro === 1) {
+          // Pendiente: fusionar sub-estados 6 (Ruteo Man) + 7 (Pend Asig Móvil)
+          const subMap: Record<string, number> = {};
+          list.forEach(p => {
+            const sub = Number(p.sub_estado_nro);
+            let key: string;
+            if (sub === 6 || sub === 7) {
+              key = 'Sin Móvil Asignado';
+            } else {
+              const desc = (p.sub_estado_desc ?? '').trim();
+              key = desc ? `${desc} (${sub})` : `Sub-estado ${sub}`;
+            }
+            subMap[key] = (subMap[key] ?? 0) + 1;
+          });
+          subEstados = Object.entries(subMap)
+            .sort((a, b) => b[1] - a[1])
+            .map(([subLabel, sc]) => ({
+              label: subLabel,
+              value: sc,
+              pct: Math.round((sc / count) * 100),
+              isEntregado: false,
+            }));
+        } else {
+          // Otros estados: mostrar sub-estados individuales
+          const subMap: Record<string, { count: number; nro: number | null }> = {};
+          list.forEach(p => {
+            const subNro = p.sub_estado_nro != null ? Number(p.sub_estado_nro) : null;
+            const desc = (p.sub_estado_desc ?? '').trim();
+            const key = desc ? `${desc} (${subNro ?? ''})` : subNro != null ? `Sub-estado ${subNro}` : 'Sin sub-estado';
+            if (!subMap[key]) subMap[key] = { count: 0, nro: subNro };
+            subMap[key].count++;
+          });
+          subEstados = Object.entries(subMap)
+            .sort((a, b) => b[1].count - a[1].count)
+            .map(([subLabel, { count: sc, nro }]) => ({
+              label: subLabel,
+              value: sc,
+              pct: Math.round((sc / count) * 100),
+              isEntregado: nro != null && [3, 17, 19].includes(nro),
+            }));
+        }
+        return {
+          label,
+          value: count,
+          pct: Math.round((count / Math.max(total, 1)) * 100),
+          barPct: Math.round((count / maxCount) * 100),
+          subEstados,
+        };
+      });
   }, [filteredPedidos]);
 
   // ─── Pedidos por zona (top 12 por total) ────────────────────────────────────
@@ -473,8 +531,7 @@ function StatsContent() {
     });
     return Object.entries(map)
       .map(([label, v]) => ({ label, ...v }))
-      .sort((a, b) => (b.entregados + b.noEntregados + b.pendientes) - (a.entregados + a.noEntregados + a.pendientes))
-      .slice(0, 12);
+      .sort((a, b) => (b.entregados + b.noEntregados + b.pendientes) - (a.entregados + a.noEntregados + a.pendientes));
   }, [filteredPedidos]);
 
   // ─── Atrasos de pedidos pendientes ─────────────────────────────────────────
@@ -511,8 +568,7 @@ function StatsContent() {
     });
     return Object.entries(map)
       .map(([label, v]) => ({ label, ...v }))
-      .sort((a, b) => b.entregados - a.entregados)
-      .slice(0, 10);
+      .sort((a, b) => b.entregados - a.entregados);
   }, [filteredPedidos]);
 
   // ─── Móviles activos (con pendientes asignados) ────────────────────────────
@@ -798,7 +854,7 @@ function StatsContent() {
                                 <span className="text-gray-600 font-normal ml-1">· {sub.pct}%</span>
                               </span>
                             </div>
-                            <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                            <div className="h-3 bg-white/5 rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full transition-all duration-500 ${
                                   sub.isEntregado ? 'bg-green-400' :
@@ -818,22 +874,31 @@ function StatsContent() {
 
             {/* Pedidos por empresa */}
             {pedidosPorEmpresa.length > 0 && (
-              <ExpandableCard title="Pedidos por empresa">
-                <StackedBarChart data={pedidosPorEmpresa} />
+              <ExpandableCard
+                title="Pedidos por empresa"
+                expandedChildren={<StackedBarChart data={pedidosPorEmpresa} expanded />}
+              >
+                <StackedBarChart data={pedidosPorEmpresa.slice(0, 10)} />
               </ExpandableCard>
             )}
 
             {/* Top móviles */}
             {movilesTop.length > 0 && (
-              <ExpandableCard title="Top móviles por entregas">
-                <StackedBarChart data={movilesTop} />
+              <ExpandableCard
+                title="Top móviles por entregas"
+                expandedChildren={<StackedBarChart data={movilesTop} expanded />}
+              >
+                <StackedBarChart data={movilesTop.slice(0, 10)} />
               </ExpandableCard>
             )}
 
             {/* Pedidos por zona */}
             {pedidosPorZona.length > 0 && (
-              <ExpandableCard title="Pedidos por zona">
-                <StackedBarChart data={pedidosPorZona} />
+              <ExpandableCard
+                title="Pedidos por zona"
+                expandedChildren={<StackedBarChart data={pedidosPorZona} expanded />}
+              >
+                <StackedBarChart data={pedidosPorZona.slice(0, 12)} />
               </ExpandableCard>
             )}
 
