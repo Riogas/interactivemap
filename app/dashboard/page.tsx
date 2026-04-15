@@ -216,7 +216,7 @@ function DashboardContent() {
   // Estado para filtros de pedidos y services (lifted desde MovilSelector para compartir con MapView)
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
   const [pedidosInitialAsignacion, setPedidosInitialAsignacion] = useState<'todos' | 'con_movil' | 'sin_movil'>('todos');
-  const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'finalizados'>('pendientes');
+  const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'atrasados'>('pendientes');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
@@ -1210,15 +1210,22 @@ function DashboardContent() {
   }, [pedidosCompletos, servicesCompletos]);
 
   // 📦 Conteo de pedidos por zona (para la vista "Pedidos/Zona")
-  // Tiene su propio filtro independiente: pendientes / sin asignar / finalizados
+  // Tiene su propio filtro independiente: pendientes (todos) / sin asignar / atrasados
   const pedidosZonaData = useMemo(() => {
     const map = new Map<number, number>();
     pedidosCompletos.forEach(p => {
       const estado = Number(p.estado_nro);
       const tieneMovil = p.movil != null && Number(p.movil) !== 0;
-      if (pedidosZonaFilter === 'pendientes'  && !(estado === 1 && tieneMovil)) return;
+      // pendientes totales = todos los estado 1 (con o sin movil)
+      if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
+      // sin asignar = estado 1 sin movil asignado
       if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
-      if (pedidosZonaFilter === 'finalizados' && estado !== 2) return;
+      // atrasados = estado 1 con atraso confirmado (muy atrasado + atrasado)
+      if (pedidosZonaFilter === 'atrasados') {
+        if (estado !== 1) return;
+        const diff = computeDelayMinutes(p.fch_hora_max_ent_comp ?? null);
+        if (diff === null || diff >= 0) return;
+      }
       const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
       if (zona && zona !== 0) map.set(zona, (map.get(zona) ?? 0) + 1);
     });

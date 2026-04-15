@@ -92,7 +92,7 @@ interface MapViewProps {
   onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
-  pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/finalizados)
+  pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
   onPedidosZonaFilterChange?: (f: PedidosZonaFilter) => void;
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre

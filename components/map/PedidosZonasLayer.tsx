@@ -5,7 +5,7 @@ import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
-export type PedidosZonaFilter = 'pendientes' | 'sin_asignar' | 'finalizados';
+export type PedidosZonaFilter = 'pendientes' | 'sin_asignar' | 'atrasados';
 
 export interface PedidoZonaData {
   zona_id: number;
@@ -20,7 +20,7 @@ interface PedidosZonasLayerProps {
   zonas: PedidoZonaData[];
   /** Map from zona_id → cantidad de pedidos */
   pedidosCount: Map<number, number>;
-  /** Filtro activo (pendientes / sin asignar / finalizados) */
+  /** Filtro activo (pendientes totales / sin asignar / atrasados) */
   filter: PedidosZonaFilter;
   /** Callback para cambiar el filtro desde el mapa */
   onFilterChange: (f: PedidosZonaFilter) => void;
@@ -86,7 +86,7 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-/** Control Leaflet con combo de filtro (pendientes / sin asignar / finalizados) */
+/** Control Leaflet con combo de filtro (pendientes / sin asignar / atrasados) */
 function PedidosZonaFilterControl({ filter, onFilterChange }: { filter: PedidosZonaFilter; onFilterChange: (f: PedidosZonaFilter) => void }) {
   const map = useMap();
   useEffect(() => {
@@ -102,7 +102,7 @@ function PedidosZonaFilterControl({ filter, onFilterChange }: { filter: PedidosZ
             <select class="mz-filter-select">
               <option value="pendientes">Pendientes</option>
               <option value="sin_asignar">Sin asignar</option>
-              <option value="finalizados">Finalizados</option>
+              <option value="atrasados">Atrasados</option>
             </select>
           </div>
         `;
@@ -122,7 +122,7 @@ function PedidosZonaFilterControl({ filter, onFilterChange }: { filter: PedidosZ
 /** Leyenda de pedidos por zona como control Leaflet (esquina inferior izquierda) */
 function PedidosZonasLegend({ filter }: { filter: PedidosZonaFilter }) {
   const map = useMap();
-  const label = filter === 'sin_asignar' ? 'Sin asignar / zona' : filter === 'finalizados' ? 'Finalizados / zona' : 'Pendientes / zona';
+  const label = filter === 'sin_asignar' ? 'Sin asignar / zona' : filter === 'atrasados' ? 'Atrasados / zona' : 'Pendientes / zona';
   useEffect(() => {
     const LegendControl = L.Control.extend({
       onAdd() {
