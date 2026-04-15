@@ -378,8 +378,9 @@ function StatsContent() {
     const noEntregados = finalizadosSinHijo.filter(p => ![3, 17, 19].includes(Number(p.sub_estado_nro)));
     const sinAsignar = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0);
+    const totalPendientes = sinAsignar.length + pendientes.length; // todos los estado 1
     const pct = finalizadosSinHijo.length > 0 ? Math.round((entregados.length / finalizadosSinHijo.length) * 100) : 0;
-    return { total, finalizados: finalizados.length, finalizadosSinHijo: finalizadosSinHijo.length, entregados: entregados.length, noEntregados: noEntregados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, pct };
+    return { total, finalizados: finalizados.length, finalizadosSinHijo: finalizadosSinHijo.length, entregados: entregados.length, noEntregados: noEntregados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, totalPendientes, pct };
   }, [filteredPedidos]);
 
   // ─── KPIs Services ─────────────────────────────────────────────────────────
@@ -398,7 +399,8 @@ function StatsContent() {
     }).length;
     const pctAtraso = pendientesList.length > 0 ? Math.round((conAtraso / pendientesList.length) * 100) : 0;
     const pctNoRealizados = finalizados.length > 0 ? Math.round((noRealizados.length / finalizados.length) * 100) : 0;
-    return { total, finalizados: finalizados.length, realizados: realizados.length, noRealizados: noRealizados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, conAtraso, pctAtraso, pctNoRealizados };
+    const totalPendientes = sinAsignar.length + pendientes.length; // todos los estado 1
+    return { total, finalizados: finalizados.length, realizados: realizados.length, noRealizados: noRealizados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, totalPendientes, conAtraso, pctAtraso, pctNoRealizados };
   }, [services]);
 
   // ─── % Realizados en hora (services) ────────────────────────────────────────
@@ -797,7 +799,7 @@ function StatsContent() {
                   />
                   <KpiCard
                     label="Total pendientes"
-                    value={pedidosStats.pendientes}
+                    value={pedidosStats.totalPendientes}
                     color="blue"
                   />
                   <KpiCard
@@ -849,7 +851,7 @@ function StatsContent() {
                   />
                   <KpiCard
                     label="Total pendientes"
-                    value={servicesStats.pendientes}
+                    value={servicesStats.totalPendientes}
                     color="blue"
                   />
                   <KpiCard
