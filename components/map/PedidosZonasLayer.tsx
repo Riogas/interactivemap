@@ -26,6 +26,8 @@ interface PedidosZonasLayerProps {
   onFilterChange: (f: PedidosZonaFilter) => void;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
+  /** Callback al hacer click en una zona (abre modal de móviles en zona) */
+  onZonaClick?: (zonaId: number) => void;
 }
 
 /**
@@ -146,7 +148,7 @@ function PedidosZonasLegend({ filter }: { filter: PedidosZonaFilter }) {
   return null;
 }
 
-const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50 }: PedidosZonasLayerProps) {
+const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick }: PedidosZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -206,13 +208,14 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
               weight: 2,
               opacity: adjustOpacity(0.8, zonaOpacity),
             }}
+            eventHandlers={onZonaClick ? { click: () => onZonaClick(zona.zona_id) } : {}}
           />
           <Marker
             position={center}
             icon={L.divIcon({
               className: 'demora-label',
               html: `
-                <div class="demora-label-inner">
+                <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
                   <span class="demora-label-time">${count}</span>
                 </div>
@@ -220,7 +223,8 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
               iconSize: [60, 36],
               iconAnchor: [30, 18],
             })}
-            interactive={false}
+            interactive={!!onZonaClick}
+            eventHandlers={onZonaClick ? { click: () => onZonaClick(zona.zona_id) } : {}}
           />
         </React.Fragment>
       ))}

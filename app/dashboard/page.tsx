@@ -1965,7 +1965,7 @@ function DashboardContent() {
                 hiddenPoiIds={hiddenPoiIds}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
-                onZonaClick={dataViewMode === 'moviles-zonas' ? openZonaView : undefined}
+                onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : undefined}
               />
             </motion.div>
           </>

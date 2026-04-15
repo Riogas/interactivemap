@@ -107,6 +107,16 @@
   pointer-events: none;
 }
 
+.demora-label-inner.demora-label-clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.demora-label-inner.demora-label-clickable:hover .demora-label-zona {
+  color: rgba(6, 182, 212, 0.9);
+  text-shadow: -1px -1px 0 rgba(0,0,0,0.3), 1px -1px 0 rgba(0,0,0,0.3), -1px 1px 0 rgba(0,0,0,0.3), 1px 1px 0 rgba(0,0,0,0.3);
+}
+
 .demora-label-zona {
   background: none;
   color: rgba(30, 41, 59, 0.7);
