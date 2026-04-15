@@ -547,8 +547,7 @@ function StatsContent() {
       const key = `Zona ${p.zona_nro}`;
       if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
       const estado = Number(p.estado_nro);
-      if (estado === 2 && !p.pedido_hijo) {
-        // Excluir pedidos hijo del conteo de entregados/no entregados
+      if (estado === 2) {
         if ([3, 17, 19].includes(Number(p.sub_estado_nro))) map[key].entregados++;
         else map[key].noEntregados++;
       } else if (estado === 1) {
