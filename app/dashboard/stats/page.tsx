@@ -443,6 +443,7 @@ function StatsContent() {
     const map: Record<string, { entregados: number; noEntregados: number; pendientes: number }> = {};
     filteredPedidos.forEach(p => {
       const key = getEmpresaNombre(p, movilEmpresa, empresas);
+      if (key === 'Sin empresa') return; // excluir pedidos sin empresa fletera
       if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
       const estado = Number(p.estado_nro);
       if (estado === 2) {
