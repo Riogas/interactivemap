@@ -10,7 +10,7 @@ export interface PedidoZonaData {
   nombre: string | null;
   color: string | null;
   geojson: Array<{ lat: number; lng: number }> | null;
-  activa: boolean;
+  activa?: boolean;
   escenario_id: number;
 }
 
