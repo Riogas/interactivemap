@@ -5,6 +5,8 @@ import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
+export type PedidosZonaFilter = 'pendientes' | 'sin_asignar' | 'finalizados';
+
 export interface PedidoZonaData {
   zona_id: number;
   nombre: string | null;
@@ -18,6 +20,10 @@ interface PedidosZonasLayerProps {
   zonas: PedidoZonaData[];
   /** Map from zona_id → cantidad de pedidos */
   pedidosCount: Map<number, number>;
+  /** Filtro activo (pendientes / sin asignar / finalizados) */
+  filter: PedidosZonaFilter;
+  /** Callback para cambiar el filtro desde el mapa */
+  onFilterChange: (f: PedidosZonaFilter) => void;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
 }
@@ -80,15 +86,49 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-/** Leyenda de pedidos por zona como control Leaflet (esquina inferior izquierda) */
-function PedidosZonasLegend() {
+/** Control Leaflet con combo de filtro (pendientes / sin asignar / finalizados) */
+function PedidosZonaFilterControl({ filter, onFilterChange }: { filter: PedidosZonaFilter; onFilterChange: (f: PedidosZonaFilter) => void }) {
   const map = useMap();
+  useEffect(() => {
+    const FilterCtrl = L.Control.extend({
+      options: { position: 'bottomleft' as L.ControlPosition },
+      onAdd() {
+        const container = L.DomUtil.create('div', 'mz-filter-control');
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        container.innerHTML = `
+          <div class="mz-filter-inner">
+            <span class="mz-filter-label">Pedidos:</span>
+            <select class="mz-filter-select">
+              <option value="pendientes">Pendientes</option>
+              <option value="sin_asignar">Sin asignar</option>
+              <option value="finalizados">Finalizados</option>
+            </select>
+          </div>
+        `;
+        const select = container.querySelector('.mz-filter-select') as HTMLSelectElement;
+        select.value = filter;
+        select.addEventListener('change', () => onFilterChange(select.value as PedidosZonaFilter));
+        return container;
+      },
+    });
+    const ctrl = new FilterCtrl();
+    ctrl.addTo(map);
+    return () => { ctrl.remove(); };
+  }, [map, filter, onFilterChange]);
+  return null;
+}
+
+/** Leyenda de pedidos por zona como control Leaflet (esquina inferior izquierda) */
+function PedidosZonasLegend({ filter }: { filter: PedidosZonaFilter }) {
+  const map = useMap();
+  const label = filter === 'sin_asignar' ? 'Sin asignar / zona' : filter === 'finalizados' ? 'Finalizados / zona' : 'Pendientes / zona';
   useEffect(() => {
     const LegendControl = L.Control.extend({
       onAdd() {
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
-          <div class="demora-legend-title">Pedidos / zona</div>
+          <div class="demora-legend-title">${label}</div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#bbf7d0"></span><span class="demora-legend-label">0</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#16a34a"></span><span class="demora-legend-label">1 – 3</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">4 – 7</span></div>
@@ -102,11 +142,11 @@ function PedidosZonasLegend() {
     const legend = new LegendControl({ position: 'bottomleft' });
     legend.addTo(map);
     return () => { legend.remove(); };
-  }, [map]);
+  }, [map, label]);
   return null;
 }
 
-const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, zonaOpacity = 50 }: PedidosZonasLayerProps) {
+const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50 }: PedidosZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -153,7 +193,8 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
 
   return (
     <>
-      <PedidosZonasLegend />
+      <PedidosZonaFilterControl filter={filter} onFilterChange={onFilterChange} />
+      <PedidosZonasLegend filter={filter} />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => (
         <React.Fragment key={zona.zona_id}>
           <Polygon

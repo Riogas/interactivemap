@@ -216,6 +216,7 @@ function DashboardContent() {
   // Estado para filtros de pedidos y services (lifted desde MovilSelector para compartir con MapView)
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
   const [pedidosInitialAsignacion, setPedidosInitialAsignacion] = useState<'todos' | 'con_movil' | 'sin_movil'>('todos');
+  const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'finalizados'>('pendientes');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
@@ -1209,19 +1210,20 @@ function DashboardContent() {
   }, [pedidosCompletos, servicesCompletos]);
 
   // 📦 Conteo de pedidos por zona (para la vista "Pedidos/Zona")
-  // Respeta el filtro pendientes/finalizados del colapsable de pedidos
+  // Tiene su propio filtro independiente: pendientes / sin asignar / finalizados
   const pedidosZonaData = useMemo(() => {
-    const estadoFiltro = pedidosFilters.vista === 'finalizados' ? 2 : 1;
     const map = new Map<number, number>();
     pedidosCompletos.forEach(p => {
-      if (Number(p.estado_nro) !== estadoFiltro) return;
+      const estado = Number(p.estado_nro);
+      const tieneMovil = p.movil != null && Number(p.movil) !== 0;
+      if (pedidosZonaFilter === 'pendientes'  && !(estado === 1 && tieneMovil)) return;
+      if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
+      if (pedidosZonaFilter === 'finalizados' && estado !== 2) return;
       const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
-      if (zona && zona !== 0) {
-        map.set(zona, (map.get(zona) ?? 0) + 1);
-      }
+      if (zona && zona !== 0) map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosFilters.vista]);
+  }, [pedidosCompletos, pedidosZonaFilter]);
 
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
@@ -1940,6 +1942,8 @@ function DashboardContent() {
                 onOpenEstadisticas={() => setIsZonaEstadisticasOpen(true)}
                 demorasData={demorasData}
                 pedidosZonaData={pedidosZonaData}
+                pedidosZonaFilter={pedidosZonaFilter}
+                onPedidosZonaFilterChange={setPedidosZonaFilter}
                 allMovilEstados={allMovilEstados}
                 movilesZonasData={movilesZonasData}
                 movilesZonasServiceFilter={movilesZonasServiceFilter}

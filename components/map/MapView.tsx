@@ -18,7 +18,7 @@ import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
-import PedidosZonasLayer, { PedidoZonaData } from './PedidosZonasLayer';
+import PedidosZonasLayer, { PedidoZonaData, PedidosZonaFilter } from './PedidosZonasLayer';
 import DistanceMeasurement from './DistanceMeasurement';
 import DistribucionZonasLayer from './DistribucionZonasLayer';
 import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from './MovilesZonasLayer';
@@ -92,6 +92,8 @@ interface MapViewProps {
   onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
+  pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/finalizados)
+  onPedidosZonaFilterChange?: (f: PedidosZonaFilter) => void;
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
   onMovilesZonasServiceFilterChange?: (f: MovilesZonasServiceFilter) => void; // Callback cambio filtro
@@ -500,6 +502,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     (prev.allZonas?.length ?? 0) === (next.allZonas?.length ?? 0) &&
     prev.demorasData?.size === next.demorasData?.size &&
     prev.pedidosZonaData === next.pedidosZonaData &&
+    prev.pedidosZonaFilter === next.pedidosZonaFilter &&
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
     prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
@@ -562,6 +565,8 @@ const MapView = memo(function MapView({
   onDataViewChange,
   demorasData = new Map(),
   pedidosZonaData,
+  pedidosZonaFilter = 'pendientes',
+  onPedidosZonaFilterChange,
   movilesZonasData = [],
   movilesZonasServiceFilter = 'all',
   onMovilesZonasServiceFilterChange,
@@ -2050,7 +2055,7 @@ const MapView = memo(function MapView({
           <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} zonaOpacity={zonaOpacity} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} zonaOpacity={zonaOpacity} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} />
         )}
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
