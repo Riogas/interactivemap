@@ -1209,16 +1209,19 @@ function DashboardContent() {
   }, [pedidosCompletos, servicesCompletos]);
 
   // 📦 Conteo de pedidos por zona (para la vista "Pedidos/Zona")
+  // Respeta el filtro pendientes/finalizados del colapsable de pedidos
   const pedidosZonaData = useMemo(() => {
+    const estadoFiltro = pedidosFilters.vista === 'finalizados' ? 2 : 1;
     const map = new Map<number, number>();
     pedidosCompletos.forEach(p => {
+      if (Number(p.estado_nro) !== estadoFiltro) return;
       const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
       if (zona && zona !== 0) {
         map.set(zona, (map.get(zona) ?? 0) + 1);
       }
     });
     return map;
-  }, [pedidosCompletos]);
+  }, [pedidosCompletos, pedidosFilters.vista]);
 
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
   // Ref para rastrear el último key de pedidos y evitar loops infinitos

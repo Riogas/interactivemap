@@ -499,7 +499,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.dataViewMode === next.dataViewMode &&
     (prev.allZonas?.length ?? 0) === (next.allZonas?.length ?? 0) &&
     prev.demorasData?.size === next.demorasData?.size &&
-    prev.pedidosZonaData?.size === next.pedidosZonaData?.size &&
+    prev.pedidosZonaData === next.pedidosZonaData &&
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
     prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
