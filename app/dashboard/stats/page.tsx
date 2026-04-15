@@ -145,7 +145,8 @@ function getEmpresaNombre(p: { movil?: unknown; empresa_fletera_id?: unknown }, 
   const movilNro = p.movil != null ? Number(p.movil) : null;
   if (movilNro && movilNro !== 0 && movilEmpresa.has(movilNro)) return movilEmpresa.get(movilNro)!;
   const empId = p.empresa_fletera_id != null ? Number(p.empresa_fletera_id) : null;
-  return empId != null && empresas.has(empId) ? empresas.get(empId)! : empId != null ? `Empresa ${empId}` : 'Sin empresa';
+  if (!empId || empId === 0) return 'Sin empresa';
+  return empresas.has(empId) ? empresas.get(empId)! : `Empresa ${empId}`;
 }
 
 function KpiCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
