@@ -17,6 +17,7 @@ import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from 
 import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
+import CenterMapControl from './CenterMapControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
 import PedidosZonasLayer, { PedidoZonaData, PedidosZonaFilter } from './PedidosZonasLayer';
 import DistanceMeasurement from './DistanceMeasurement';
@@ -2037,7 +2038,10 @@ const MapView = memo(function MapView({
         {/* 🔄 Recalcular tamaño del mapa cuando el contenedor cambia (sidebar collapse) */}
         <MapResizer />
 
-        {/* � Control de vista de datos (Normal / Demoras / Móviles en Zonas) */}
+        {/* 🎯 Botón de centrado — vuelve a Montevideo */}
+        <CenterMapControl />
+
+        {/* 📊 Control de vista de datos (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
           <DataViewControl value={dataViewMode} onChange={onDataViewChange} onOpenEstadisticas={onOpenEstadisticas} />
         )}
