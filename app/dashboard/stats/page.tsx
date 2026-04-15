@@ -44,7 +44,7 @@ interface Movil {
   estadoNro: number | null;
   pedidosAsignados: number;
 }
-const EXCLUDED_ESTADOS_MOVIL = new Set([3, 5, 15]);
+const EXCLUDED_ESTADOS_MOVIL = new Set([3, 4, 5, 15]); // 4 = baja momentánea, mismo criterio que sidebar
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(dateStr: string) {
@@ -254,7 +254,7 @@ function StatsContent() {
         const mMap = new Map<number, string>();
         (mData.data ?? []).forEach((m: Movil) => {
           if (m.nro != null) {
-            const nombre = m.empresa_fletera_nom ?? eMap.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`;
+            const nombre = eMap.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`;
             mMap.set(m.nro, nombre);
           }
         });
@@ -582,7 +582,12 @@ function StatsContent() {
     });
     return Object.entries(map)
       .map(([label, v]) => ({ label, ...v }))
-      .sort((a, b) => b.entregados - a.entregados);
+      .sort((a, b) => {
+        const totalB = b.entregados + b.noEntregados + b.pendientes;
+        const totalA = a.entregados + a.noEntregados + a.pendientes;
+        if (totalB !== totalA) return totalB - totalA;
+        return b.entregados - a.entregados;
+      });
   }, [filteredPedidos]);
 
   // ─── Móviles stats (respeta filtro de empresa) ─────────────────────────────
