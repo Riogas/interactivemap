@@ -2015,6 +2015,24 @@ const MapView = memo(function MapView({
   const isHighDensity = totalMarkerCount > HIGH_DENSITY_THRESHOLD;
   const shouldDisableAnimations = totalMarkerCount > DISABLE_ANIMATIONS_THRESHOLD;
 
+  // 🎯 getBounds para el botón de centrado — todos los puntos visibles (móviles + pedidos + zonas)
+  const getMapBounds = useCallback((): [number, number][] | null => {
+    const pts: [number, number][] = [];
+    moviles.filter(m => m.currentPosition).forEach(m => {
+      pts.push([m.currentPosition!.coordX, m.currentPosition!.coordY]);
+    });
+    (pedidos ?? []).filter(p => p.latitud && p.longitud).forEach(p => {
+      pts.push([p.latitud!, p.longitud!]);
+    });
+    const zonasActivas = allZonas.length > 0 ? allZonas : zonas;
+    zonasActivas.forEach(z => {
+      if (Array.isArray(z.geojson)) {
+        z.geojson.forEach((pt: { lat: number; lng: number }) => pts.push([pt.lat, pt.lng]));
+      }
+    });
+    return pts.length > 0 ? pts : null;
+  }, [moviles, pedidos, allZonas, zonas]);
+
   return (
     <div className={`h-full w-full rounded-xl overflow-hidden shadow-2xl relative ${isHighDensity ? 'high-density-map' : ''}`}>
       <MapContainer
@@ -2038,8 +2056,8 @@ const MapView = memo(function MapView({
         {/* 🔄 Recalcular tamaño del mapa cuando el contenedor cambia (sidebar collapse) */}
         <MapResizer />
 
-        {/* 🎯 Botón de centrado — vuelve a Montevideo */}
-        <CenterMapControl />
+        {/* 🎯 Botón de centrado — fitBounds sobre todo el contenido visible */}
+        <CenterMapControl getBounds={getMapBounds} />
 
         {/* 📊 Control de vista de datos (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (

@@ -5,20 +5,28 @@ import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 interface CenterMapControlProps {
-  /** Centro al que volver. Por defecto Montevideo. */
-  center?: [number, number];
-  zoom?: number;
+  /**
+   * Callback que devuelve los puntos [lat, lng] de todo el contenido visible.
+   * Si no se provee o devuelve null, vuelve al centro fijo de Montevideo.
+   */
+  getBounds?: () => [number, number][] | null;
+  /** Centro de fallback cuando no hay getBounds o devuelve vacío. */
+  fallbackCenter?: [number, number];
+  fallbackZoom?: number;
 }
 
 /**
- * Botón Leaflet en bottomright que vuela de vuelta al centro por defecto.
+ * Botón Leaflet en bottomright que hace fitBounds sobre todo el contenido visible.
  */
 export default function CenterMapControl({
-  center = [-34.9011, -56.1645],
-  zoom = 13,
+  getBounds,
+  fallbackCenter = [-34.9011, -56.1645],
+  fallbackZoom = 13,
 }: CenterMapControlProps) {
   const map = useMap();
   const controlRef = useRef<L.Control | null>(null);
+  const getBoundsRef = useRef(getBounds);
+  getBoundsRef.current = getBounds;
 
   useEffect(() => {
     if (!map) return;
@@ -31,16 +39,15 @@ export default function CenterMapControl({
           'div',
           'leaflet-bar leaflet-control center-map-control',
         );
-        btn.title = 'Volver al centro';
+        btn.title = 'Centrar mapa en todo el contenido';
         btn.innerHTML = `
-          <a href="#" role="button" aria-label="Volver al centro"
+          <a href="#" role="button" aria-label="Centrar mapa"
              style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;cursor:pointer;color:#374151;text-decoration:none;">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
                  fill="none" stroke="currentColor" stroke-width="2.2"
                  stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
               <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
-              <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z" stroke-opacity="0"/>
             </svg>
           </a>
         `;
@@ -50,7 +57,12 @@ export default function CenterMapControl({
 
         btn.addEventListener('click', (e) => {
           e.preventDefault();
-          map.flyTo(center, zoom, { animate: true, duration: 0.8 });
+          const points = getBoundsRef.current?.();
+          if (points && points.length > 0) {
+            map.fitBounds(points, { padding: [60, 60], maxZoom: 15, animate: true });
+          } else {
+            map.flyTo(fallbackCenter, fallbackZoom, { animate: true, duration: 0.8 });
+          }
         });
 
         return btn;
