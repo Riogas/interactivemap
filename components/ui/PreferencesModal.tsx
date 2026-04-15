@@ -42,6 +42,8 @@ export interface UserPreferences {
   servicesVisible: boolean; // true = mostrar capa de services
   poisVisible: boolean; // true = mostrar capa de puntos de interés
   hiddenPoiCategories: string[]; // categorías de POI ocultas (ej: ['Hospital/Sanatorio', 'Banco'])
+  poiMarkerSize: number; // Tamaño de marcadores POI: 1=chico, 2=mediano, 3=grande
+  poiDefaultIcon: string; // Emoji por defecto para POIs (cuando el POI no tiene icono propio)
   dataViewMode: DataViewMode; // Vista activa del mapa
   demorasPollingSeconds: number; // Intervalo de refresco para vista Demoras (segundos)
   movilesZonasPollingSeconds: number; // Intervalo de refresco para vista Móviles en Zonas (segundos)
@@ -70,6 +72,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   servicesVisible: true,
   poisVisible: true,
   hiddenPoiCategories: [],
+  poiMarkerSize: 2,
+  poiDefaultIcon: '🏢',
   dataViewMode: 'normal',
   demorasPollingSeconds: 30,
   movilesZonasPollingSeconds: 30,
@@ -792,6 +796,81 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 <p className="text-xs text-gray-500">
                   Controla la intensidad de los colores de las zonas en las vistas de datos (Distribución, Demoras, Móviles por Zona)
                 </p>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Marcadores Puntos de Interés */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">🏢</span>
+                  Marcadores Puntos de Interés
+                </label>
+
+                {/* Selector de ícono por defecto */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-28 shrink-0">Ícono por defecto</span>
+                  <select
+                    value={preferences.poiDefaultIcon}
+                    onChange={(e) => setPreferences({ ...preferences, poiDefaultIcon: e.target.value })}
+                    className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    {[
+                      { emoji: '🏢', label: 'Edificio' },
+                      { emoji: '🏪', label: 'Tienda' },
+                      { emoji: '🏬', label: 'Comercio' },
+                      { emoji: '🏭', label: 'Fábrica' },
+                      { emoji: '🏠', label: 'Casa' },
+                      { emoji: '🏦', label: 'Banco' },
+                      { emoji: '⛽', label: 'Gas / Combustible' },
+                      { emoji: '📍', label: 'Pin rojo' },
+                      { emoji: '📌', label: 'Pin naranja' },
+                      { emoji: '⭐', label: 'Estrella' },
+                      { emoji: '🎯', label: 'Diana' },
+                      { emoji: '🚩', label: 'Bandera' },
+                      { emoji: '🔵', label: 'Círculo azul' },
+                      { emoji: '🟢', label: 'Círculo verde' },
+                      { emoji: '🔴', label: 'Círculo rojo' },
+                      { emoji: '🟡', label: 'Círculo amarillo' },
+                      { emoji: '🟣', label: 'Círculo violeta' },
+                    ].map(({ emoji, label }) => (
+                      <option key={emoji} value={emoji}>{emoji} {label}</option>
+                    ))}
+                  </select>
+                  <span
+                    className="text-2xl leading-none"
+                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}
+                  >
+                    {preferences.poiDefaultIcon}
+                  </span>
+                </div>
+
+                {/* Selector de tamaño */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-28 shrink-0">Tamaño en mapa</span>
+                  <div className="flex gap-2">
+                    {([1, 2, 3] as const).map((size) => {
+                      const labels = { 1: 'Chico', 2: 'Mediano', 3: 'Grande' };
+                      const px = { 1: '12px', 2: '18px', 3: '26px' };
+                      const active = preferences.poiMarkerSize === size;
+                      return (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => setPreferences({ ...preferences, poiMarkerSize: size })}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                            active
+                              ? 'bg-blue-600 text-white border-blue-600 shadow'
+                              : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                          }`}
+                        >
+                          <span style={{ fontSize: px[size], lineHeight: 1 }}>{preferences.poiDefaultIcon}</span>
+                          {labels[size]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <hr className="border-gray-200" />

@@ -106,6 +106,8 @@ interface MapViewProps {
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
   hiddenPoiIds?: Set<string>; // IDs individuales de POI ocultos
+  poiMarkerSize?: number; // Tamaño del marcador POI: 1=chico, 2=mediano, 3=grande
+  poiDefaultIcon?: string; // Emoji por defecto para POIs sin icono propio
   pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
@@ -513,6 +515,8 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.poisHidden === next.poisHidden &&
     prev.hiddenPoiCategories?.size === next.hiddenPoiCategories?.size &&
     prev.hiddenPoiIds?.size === next.hiddenPoiIds?.size &&
+    prev.poiMarkerSize === next.poiMarkerSize &&
+    prev.poiDefaultIcon === next.poiDefaultIcon &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -579,6 +583,8 @@ const MapView = memo(function MapView({
   poisHidden = false,
   hiddenPoiCategories = new Set(),
   hiddenPoiIds = new Set<string>(),
+  poiMarkerSize = 2,
+  poiDefaultIcon = '🏢',
   pedidosVista = 'pendientes',
   servicesVista = 'pendientes',
   onZonaClick,
@@ -2874,22 +2880,25 @@ const MapView = memo(function MapView({
           }
           return true;
         }).map((marker) => {
-          // Crear icono mini con emoji (16x16)
+          // Crear icono con emoji, tamaño según poiMarkerSize: 1=chico(16), 2=mediano(24), 3=grande(32)
+          const poiPx = poiMarkerSize === 1 ? 16 : poiMarkerSize === 3 ? 32 : 24;
+          const poiFontSize = poiMarkerSize === 1 ? 13 : poiMarkerSize === 3 ? 26 : 19;
+          const displayIcon = marker.icono || poiDefaultIcon;
           const customIcon = L.divIcon({
             html: `
               <div style="
-                font-size: 14px;
+                font-size: ${poiFontSize}px;
                 text-align: center;
                 line-height: 1;
                 filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
               ">
-                ${marker.icono}
+                ${displayIcon}
               </div>
             `,
             className: 'custom-marker-icon',
-            iconSize: [16, 16],
-            iconAnchor: [8, 16],
-            popupAnchor: [0, -16],
+            iconSize: [poiPx, poiPx],
+            iconAnchor: [poiPx / 2, poiPx],
+            popupAnchor: [0, -poiPx],
           });
 
           return (
@@ -2904,7 +2913,7 @@ const MapView = memo(function MapView({
                   <div style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', padding: '10px 12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '26px', lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
-                        {marker.icono || '📍'}
+                        {displayIcon}
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ color: 'white', fontWeight: 700, fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>

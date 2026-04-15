@@ -1964,6 +1964,8 @@ function DashboardContent() {
                 poisHidden={poisHidden}
                 hiddenPoiCategories={hiddenPoiCategories}
                 hiddenPoiIds={hiddenPoiIds}
+                poiMarkerSize={preferences.poiMarkerSize ?? 2}
+                poiDefaultIcon={preferences.poiDefaultIcon ?? '🏢'}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
                 onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : undefined}
