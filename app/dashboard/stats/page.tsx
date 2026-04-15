@@ -258,7 +258,9 @@ function StatsContent() {
         const mMap = new Map<number, string>();
         (mData.data ?? []).forEach((m: Movil) => {
           if (m.nro != null) {
-            const nombre = eMap.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`;
+            const nombre = (m.empresa_fletera_id && m.empresa_fletera_id !== 0)
+              ? (eMap.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`)
+              : 'Sin empresa';
             mMap.set(m.nro, nombre);
           }
         });
