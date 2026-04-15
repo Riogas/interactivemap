@@ -1723,8 +1723,9 @@ function DashboardContent() {
             setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
             setIsServicesTableOpen(true);
           } else {
-            // PEDIDOS agrupa URGENTE + NOCTURNO; pasar 'PEDIDOS' al filtro
-            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: upper === 'PEDIDOS' ? 'PEDIDOS' : svcFilter }));
+            // PEDIDOS = todos los pedidos (sin filtro por servicio_nombre → 'all')
+            // Un tipo específico (URGENTE/NOCTURNO) se pasa directamente
+            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: upper === 'PEDIDOS' ? 'all' : svcFilter }));
             setIsPedidosTableOpen(true);
           }
         }}
