@@ -1208,6 +1208,18 @@ function DashboardContent() {
     return [...nombres].filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [pedidosCompletos, servicesCompletos]);
 
+  // 📦 Conteo de pedidos por zona (para la vista "Pedidos/Zona")
+  const pedidosZonaData = useMemo(() => {
+    const map = new Map<number, number>();
+    pedidosCompletos.forEach(p => {
+      const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
+      if (zona && zona !== 0) {
+        map.set(zona, (map.get(zona) ?? 0) + 1);
+      }
+    });
+    return map;
+  }, [pedidosCompletos]);
+
   // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
   const prevPedidosKeyRef = useRef<string>('');
@@ -1924,6 +1936,7 @@ function DashboardContent() {
                 onDataViewChange={handleDataViewChange}
                 onOpenEstadisticas={() => setIsZonaEstadisticasOpen(true)}
                 demorasData={demorasData}
+                pedidosZonaData={pedidosZonaData}
                 allMovilEstados={allMovilEstados}
                 movilesZonasData={movilesZonasData}
                 movilesZonasServiceFilter={movilesZonasServiceFilter}

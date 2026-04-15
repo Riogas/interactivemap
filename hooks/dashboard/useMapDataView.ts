@@ -46,7 +46,7 @@ export function useMapDataView({
   }, [dataViewMode]);
 
   // Handler para cambios de vista de datos
-  const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas') => {
+  const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas' | 'pedidos-zona') => {
     updatePreference('dataViewMode', mode);
     if (mode !== 'normal') {
       setShowZonas(true);
@@ -122,6 +122,7 @@ export function useMapDataView({
         }
 
         // 2) Si es vista Demoras o Zonas Activas, cargar demoras
+        // pedidos-zona no requiere fetch adicional (usa pedidosCompletos del parent)
         if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
           const demorasRes = await fetch('/api/demoras');
           const demorasResult = await demorasRes.json();
@@ -160,6 +161,8 @@ export function useMapDataView({
     let intervalMs = 0;
     if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
       intervalMs = demorasPollingSeconds * 1000;
+    } else if (dataViewMode === 'pedidos-zona') {
+      intervalMs = 0; // sin polling propio — los pedidos del parent ya se actualizan en realtime
     } else if (dataViewMode === 'moviles-zonas') {
       intervalMs = movilesZonasPollingSeconds * 1000;
     }
