@@ -7,15 +7,15 @@ import type { LatLngExpression } from 'leaflet';
 
 /**
  * Color por cantidad de móviles EN PRIORIDAD en la zona.
- * 0 = rojo, 1 = rosa, 2 = amarillo, 3 = verde, 4+ = verde claro
+ * 0 = rojo, 1 = verde claro, 2 = verde fuerte, 3 = celeste, 4+ = violeta
  */
 function getColorByPrioridad(prioridadCount: number): string {
   switch (prioridadCount) {
     case 0: return '#ef4444'; // rojo
-    case 1: return '#ec4899'; // rosa
-    case 2: return '#eab308'; // amarillo
-    case 3: return '#22c55e'; // verde
-    default: return '#86efac'; // verde claro (4+)
+    case 1: return '#86efac'; // verde claro
+    case 2: return '#22c55e'; // verde fuerte
+    case 3: return '#06b6d4'; // celeste
+    default: return '#8b5cf6'; // violeta (4+)
   }
 }
 
@@ -151,10 +151,10 @@ function MovilesZonasLegend() {
         div.innerHTML = `
           <div class="demora-legend-title">Móviles prioridad</div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">0 móviles</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ec4899"></span><span class="demora-legend-label">1 móvil</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">2 móviles</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">3 móviles</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">4+ móviles</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">1 móvil</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">2 móviles</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#06b6d4"></span><span class="demora-legend-label">3 móviles</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#8b5cf6"></span><span class="demora-legend-label">4+ móviles</span></div>
         `;
         L.DomEvent.disableClickPropagation(div);
         return div;
