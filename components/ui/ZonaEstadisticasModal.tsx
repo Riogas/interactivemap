@@ -137,7 +137,9 @@ export default function ZonaEstadisticasModal({
       return (services as unknown as PedidoSupabase[]);
     }
     if (upper === 'PEDIDOS') {
-      return pedidos.filter(p => p.servicio_nombre && PEDIDOS_SERVICES.has(p.servicio_nombre.toUpperCase()));
+      // "PEDIDOS" = todos los pedidos (pedidos y services son arrays separados,
+      // no es necesario filtrar por servicio_nombre aquí)
+      return pedidos;
     }
     return pedidos.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === upper);
   }, [pedidos, services, serviceFilter]);
@@ -185,16 +187,14 @@ export default function ZonaEstadisticasModal({
     for (const zonaId of zonaIds) {
       const pedidosZona = filteredPedidos.filter(p => p.zona_nro === zonaId);
 
-      // Sin asignar: estado 1, sin movil — filtrado por tipo de servicio activo
-      const sinAsignar = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0)
-      ).length;
-
-      // Pendientes: estado 1, con movil asignado
-      const pendientesList = pedidosZona.filter(p =>
-        Number(p.estado_nro) === 1 && p.movil && Number(p.movil) > 0
-      );
+      // Pendientes: TODOS los estado 1 (con y sin movil, igual que la capa heatmap)
+      const pendientesList = pedidosZona.filter(p => Number(p.estado_nro) === 1);
       const pendientes = pendientesList.length;
+
+      // Sin asignar: subconjunto de pendientes sin movil asignado
+      const sinAsignar = pendientesList.filter(p =>
+        !p.movil || Number(p.movil) === 0
+      ).length;
 
       // Atrasados: pendientes con delay < 0
       const atrasados = pendientesList.filter(p => {
