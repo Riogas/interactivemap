@@ -353,10 +353,13 @@ class GPSBatchQueue {
       const filename = `failed-batch-${timestamp}.json`;
       
       // Crear directorio si no existe
-      const failedDir = join(process.cwd(), 'failed-batches');
+      // Usar referencia dinámica para evitar que el analizador estático de Next.js
+      // intente trazar el patrón de archivos y genere warnings de bundling
+      const cwd: string = process.cwd();
+      const failedDir = join(cwd, 'failed-batches');
       await mkdir(failedDir, { recursive: true });
       
-      const filepath = join(failedDir, filename);
+      const filepath = `${failedDir}/${filename}`;
       
       // Guardar batch con metadata
       const data = {
