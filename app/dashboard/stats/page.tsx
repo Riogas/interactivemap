@@ -223,6 +223,8 @@ function StatsContent() {
   // Mapa movilNro → nombre de empresa (obtenido del join moviles → empresa_fletera)
   const [movilEmpresa, setMovilEmpresa] = useState<Map<number, string>>(new Map());
   const [movilesRaw, setMovilesRaw] = useState<Movil[]>([]);
+  // Set de IDs de móviles con GPS vigente (INNER JOIN gps_latest_positions)
+  const [movilesConGps, setMovilesConGps] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEmpresa, setSelectedEmpresa] = useState<string>('Todas');
@@ -237,13 +239,14 @@ function StatsContent() {
       setIsLoading(true);
       setError(null);
       try {
-        const [pRes, sRes, eRes, mRes] = await Promise.all([
+        const [pRes, sRes, eRes, mRes, gRes] = await Promise.all([
           fetch(`/api/pedidos?fecha=${date}`),
           fetch(`/api/services?fecha=${date}`),
           fetch(`/api/empresas`),
           fetch(`/api/moviles-extended`),
+          fetch(`/api/all-positions`),
         ]);
-        const [pData, sData, eData, mData] = await Promise.all([pRes.json(), sRes.json(), eRes.json(), mRes.json()]);
+        const [pData, sData, eData, mData, gData] = await Promise.all([pRes.json(), sRes.json(), eRes.json(), mRes.json(), gRes.json()]);
         setPedidos(pData.data ?? pData ?? []);
         setServices(sData.data ?? sData ?? []);
         // Mapa empresa_fletera_id → nombre
@@ -260,6 +263,9 @@ function StatsContent() {
         });
         setMovilEmpresa(mMap);
         setMovilesRaw(mData.data ?? []);
+        // Set de IDs con GPS vigente (equivalente al INNER JOIN gps_latest_positions)
+        const gpsIds = new Set<string>((gData.data ?? []).map((g: { movilId: number }) => String(g.movilId)));
+        setMovilesConGps(gpsIds);
       } catch (e) {
         setError('Error al cargar los datos');
       } finally {
@@ -592,11 +598,13 @@ function StatsContent() {
 
   // ─── Móviles stats (respeta filtro de empresa) ─────────────────────────────
   const movilesStats = useMemo(() => {
+    // Solo móviles con GPS vigente (INNER JOIN gps_latest_positions)
+    const conGps = movilesRaw.filter(m => movilesConGps.has(String(m.nro)));
     // Filtrar por empresa si corresponde
     const list = selectedEmpresa === 'Todas'
-      ? movilesRaw
-      : movilesRaw.filter(m => {
-          const nombre = m.empresa_fletera_nom ?? empresas.get(m.empresa_fletera_id) ?? '';
+      ? conGps
+      : conGps.filter(m => {
+          const nombre = empresas.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`;
           return nombre === selectedEmpresa;
         });
     // Activos: mismo criterio que sidebar — solo estadoNro null/undefined/0/1/2
@@ -611,7 +619,7 @@ function StatsContent() {
     const disponible = activos.reduce((s, m) => s + Math.max(0, (m.tamanoLote ?? 0) - m.pedidosAsignados), 0);
     const pctDisponibilidad = totalLote > 0 ? Math.round((disponible / totalLote) * 100) : null;
     return { totalActivos, conPedidos, sinPedidos, pctConPedidos, pctSinPedidos, totalLote, disponible, pctDisponibilidad };
-  }, [movilesRaw, selectedEmpresa, empresas]);
+  }, [movilesRaw, movilesConGps, selectedEmpresa, empresas]);
 
   // ─── % Entregados en hora ───────────────────────────────────────────────────
   const pctEntregadosEnHora = useMemo(() => {
