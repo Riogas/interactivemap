@@ -52,6 +52,14 @@ export default function ZonaEstadisticasModal({
   const [sortAsc, setSortAsc] = useState(true);
   const [loading, setLoading] = useState(false);
   const [serviceFilter, setServiceFilter] = useState<string>('PEDIDOS');
+  const [filters, setFilters] = useState<Partial<Record<SortKey | 'zonaText', string>>>({});
+
+  const setFilter = useCallback((key: SortKey | 'zonaText', value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const clearFilters = useCallback(() => setFilters({}), []);
+  const hasFilters = Object.values(filters).some(v => v !== undefined && v !== '');
 
   // Data fetched internally
   const [zonas, setZonas] = useState<ZonaInfo[]>([]);
@@ -243,9 +251,40 @@ export default function ZonaEstadisticasModal({
     return result;
   }, [filteredPedidos, zonas, filteredMovilesZonas, demorasData]);
 
+  // Filter rows
+  const filteredStats = useMemo(() => {
+    return stats.filter(z => {
+      // Zona text search
+      if (filters.zonaText) {
+        const q = filters.zonaText.toLowerCase();
+        if (!z.zonaNombre.toLowerCase().includes(q) && !String(z.zonaId).includes(q)) return false;
+      }
+      // Numeric "≥ min" filters
+      const checks: Array<[number | null, SortKey]> = [
+        [z.sinAsignar, 'sinAsignar'],
+        [z.pendientes, 'pendientes'],
+        [z.atrasados, 'atrasados'],
+        [z.pctAtrasos, 'pctAtrasos'],
+        [z.entregados, 'entregados'],
+        [z.noEntregados, 'noEntregados'],
+        [z.pctCumplimiento, 'pctCumplimiento'],
+        [z.demora, 'demora'],
+        [z.movsPrio, 'movsPrio'],
+      ];
+      for (const [val, key] of checks) {
+        const raw = filters[key];
+        if (raw !== undefined && raw !== '') {
+          const min = Number(raw);
+          if (!isNaN(min) && (val === null || val < min)) return false;
+        }
+      }
+      return true;
+    });
+  }, [stats, filters]);
+
   // Sort
   const sorted = useMemo(() => {
-    const arr = [...stats];
+    const arr = [...filteredStats];
     const dir = sortAsc ? 1 : -1;
     arr.sort((a, b) => {
       switch (sortBy) {
@@ -263,18 +302,18 @@ export default function ZonaEstadisticasModal({
       }
     });
     return arr;
-  }, [stats, sortBy, sortAsc]);
+  }, [filteredStats, sortBy, sortAsc]);
 
-  // Summary
+  // Summary (reflects active filters)
   const summary = useMemo(() => {
-    const totalSinAsignar = stats.reduce((s, z) => s + z.sinAsignar, 0);
-    const totalPendientes = stats.reduce((s, z) => s + z.pendientes, 0);
-    const totalEntregados = stats.reduce((s, z) => s + z.entregados, 0);
-    const totalNoEntregados = stats.reduce((s, z) => s + z.noEntregados, 0);
+    const totalSinAsignar = filteredStats.reduce((s, z) => s + z.sinAsignar, 0);
+    const totalPendientes = filteredStats.reduce((s, z) => s + z.pendientes, 0);
+    const totalEntregados = filteredStats.reduce((s, z) => s + z.entregados, 0);
+    const totalNoEntregados = filteredStats.reduce((s, z) => s + z.noEntregados, 0);
     const totalFin = totalEntregados + totalNoEntregados;
     const avgCumplimiento = totalFin > 0 ? Math.round((totalEntregados / totalFin) * 100) : 0;
-    return { totalSinAsignar, totalPendientes, totalEntregados, totalNoEntregados, avgCumplimiento, zonasCount: stats.length };
-  }, [stats]);
+    return { totalSinAsignar, totalPendientes, totalEntregados, totalNoEntregados, avgCumplimiento, zonasCount: filteredStats.length };
+  }, [filteredStats]);
 
   const handleSort = (key: SortKey) => {
     if (sortBy === key) {
@@ -369,6 +408,33 @@ export default function ZonaEstadisticasModal({
                   <ThSort label="% Cump." sortKey="pctCumplimiento" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Cumplimiento = entregados / (entregados + no entregados)" />
                   <ThSort label="Min Dem." sortKey="demora" current={sortBy} asc={sortAsc} onClick={handleSort} title="Minutos de demora de la zona" />
                   <ThSort label="#Movs P." sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles activos en prioridad del tipo de servicio seleccionado (excl. est. 3/5/15)" />
+                </tr>
+                {/* Filter row */}
+                <tr className="bg-slate-900/95 border-b border-cyan-500/20">
+                  <th className="py-1 px-1 text-left">
+                    <input
+                      type="text"
+                      placeholder="Buscar..."
+                      value={filters.zonaText ?? ''}
+                      onChange={e => setFilter('zonaText', e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      className="w-full bg-slate-700/60 border border-slate-600/50 focus:border-cyan-500/70 rounded px-1.5 py-0.5 text-[10px] text-white placeholder-gray-500 outline-none"
+                    />
+                  </th>
+                  {(['sinAsignar', 'pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio'] as (SortKey)[]).map(key => (
+                    <th key={key} className="py-1 px-1">
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="≥"
+                        value={filters[key] ?? ''}
+                        onChange={e => setFilter(key, e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        className="w-full bg-slate-700/60 border border-slate-600/50 focus:border-cyan-500/70 rounded px-1 py-0.5 text-[10px] text-white placeholder-gray-500 outline-none text-center"
+                        style={{ MozAppearance: 'textfield' }}
+                      />
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -467,9 +533,21 @@ export default function ZonaEstadisticasModal({
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-2 border-t border-white/10 flex justify-between items-center">
-            <span className="text-[10px] text-gray-500">{sorted.length} zonas</span>
-            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en #Movs P. = Detalle móvil · Click en cabecera = Ordenar</span>
+          <div className="px-4 py-2 border-t border-white/10 flex justify-between items-center gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-500">
+                {sorted.length}{sorted.length !== stats.length ? `/${stats.length}` : ''} zonas
+              </span>
+              {hasFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="text-[10px] text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-400/60 rounded px-1.5 py-0.5 transition-colors"
+                >
+                  ✕ Limpiar filtros
+                </button>
+              )}
+            </div>
+            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en #Movs P. = Detalle móvil · Filtrar en fila 2 · Cabecera = Ordenar</span>
           </div>
         </motion.div>
       </motion.div>
