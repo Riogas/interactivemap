@@ -44,7 +44,7 @@ interface Movil {
   estadoNro: number | null;
   pedidosAsignados: number;
 }
-const EXCLUDED_ESTADOS_MOVIL = new Set([3, 4, 5, 15]); // 4 = baja momentánea, mismo criterio que sidebar
+// Mismo criterio que el sidebar: activo = estadoNro null/undefined/0/1/2
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(dateStr: string) {
@@ -599,8 +599,8 @@ function StatsContent() {
           const nombre = m.empresa_fletera_nom ?? empresas.get(m.empresa_fletera_id) ?? '';
           return nombre === selectedEmpresa;
         });
-    // Activos: no excluidos por estado
-    const activos = list.filter(m => !EXCLUDED_ESTADOS_MOVIL.has(m.estadoNro ?? -1));
+    // Activos: mismo criterio que sidebar — solo estadoNro null/undefined/0/1/2
+    const activos = list.filter(m => m.estadoNro === null || m.estadoNro === undefined || [0, 1, 2].includes(m.estadoNro));
     const totalActivos = activos.length;
     const conPedidos = activos.filter(m => m.pedidosAsignados > 0).length;
     const sinPedidos = totalActivos - conPedidos;
