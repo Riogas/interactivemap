@@ -77,6 +77,7 @@ interface SaturacionZonaModalProps {
 const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
 
 function pctColor(pct: number): string {
+  if (pct === 999 || pct === 998) return 'text-red-700';
   if (pct >= 100) return 'text-red-600';
   if (pct >= 75)  return 'text-red-500';
   if (pct >= 50)  return 'text-orange-500';
@@ -270,7 +271,12 @@ export default function SaturacionZonaModal({
   const isServiceMode = tipoServicio.toUpperCase() === 'SERVICE';
   const sinAsignarTitle = isServiceMode ? 'Services sin asignar' : `Pedidos sin asignar (${tipoServicio})`;
   const sinAsignar = pedidosSinAsignar.length;
-  const satPct = capLibre > 0 ? Math.round((sinAsignar / capLibre) * 100) : sinAsignar > 0 ? 999 : 0;
+  // 998 = Sin C.E. (móviles existen pero cap. disponible = 0), 999 = sin cobertura (sin móviles)
+  const satPct = capLibre > 0
+    ? Math.round((sinAsignar / capLibre) * 100)
+    : sinAsignar > 0
+      ? (capTotal > 0 ? 998 : 999)
+      : 0;
 
   return (
     <div
@@ -290,7 +296,7 @@ export default function SaturacionZonaModal({
             <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
               <span>Saturación:</span>
               <span className={`font-bold ${pctColor(satPct)}`}>
-                {satPct === 999 ? '∞% (sin cobertura)' : `${satPct}%`}
+                {satPct === 999 ? '∞% (sin cobertura)' : satPct === 998 ? 'Sin C.E.' : `${satPct}%`}
               </span>
               <span className="text-gray-400">·</span>
               <span>Cap. libre: <b>{capLibre.toFixed(1)}</b></span>

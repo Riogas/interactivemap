@@ -87,18 +87,22 @@ function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label:
     return { color: '#d1d5db', label: '—', pct: -1 }; // zona sin datos
   }
 
-  const pct = capacidadTotal === 0 ? (sinAsignar > 0 ? 999 : 0) : (sinAsignar / capacidadDisponible) * 100;
+  const rawPct = capacidadTotal === 0 ? (sinAsignar > 0 ? 999 : 0) : (sinAsignar / capacidadDisponible) * 100;
+  // capacidadDisponible <= 0 con pedidos pendientes → sin capacidad de entrega
+  const pct = !isFinite(rawPct) || rawPct < 0 ? 998 : rawPct;
 
   if (pct === 0 || sinAsignar === 0) return { color: '#22c55e', label: '0%', pct: 0 };   // verde sobrante
   if (pct <= 25)  return { color: '#86efac', label: `${Math.round(pct)}%`, pct };         // verde claro
   if (pct <= 50)  return { color: '#eab308', label: `${Math.round(pct)}%`, pct };         // amarillo
   if (pct <= 75)  return { color: '#f97316', label: `${Math.round(pct)}%`, pct };         // naranja
   if (pct <= 100) return { color: '#ef4444', label: `${Math.round(pct)}%`, pct };         // rojo
+  if (pct === 998) return { color: '#7c2d12', label: 'Sin C.E.', pct: 998 };              // sin capacidad de entrega
   return { color: '#dc2626', label: `${Math.round(pct)}%`, pct };                          // rojo fuerte >100%
 }
 
 function getSaturacionOpacity(pct: number): number {
   if (pct === 999) return 0.70;
+  if (pct === 998) return 0.70;
   if (pct > 100)   return 0.65;
   if (pct > 75)    return 0.60;
   if (pct > 50)    return 0.55;
@@ -124,6 +128,7 @@ function SaturacionLegend() {
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
           <div class="demora-legend-title">Saturación</div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7c2d12"></span><span class="demora-legend-label">Sin C.E. (cap. agotada)</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7f1d1d"></span><span class="demora-legend-label">Sin cobertura</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">75 – 100%</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">50 – 75%</span></div>
@@ -228,12 +233,13 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
         `Cap. total (prorat.): <b>${s.capacidadTotal.toFixed(1)}</b>`,
         `Espacios libres (prorat.): <b>${s.capacidadDisponible.toFixed(1)}</b>`,
         pct === 999 ? '⚠️ Sin cobertura (0 móviles)'
+          : pct === 998 ? '⚠️ Sin C.E. — móviles saturados (cap. disponible = 0)'
           : `Saturación: <b>${satPct}%</b>`,
         s.movilesCompartidos > 0 ? '<i style="color:#6b7280;font-size:10px">Capacidad con prorrateo por zonas compartidas</i>' : '',
       ].filter(Boolean);
 
       // Only show label for pct >= 50 (or critical 999 = sin cobertura)
-      const showLabel = pct === 999 || pct >= 50;
+      const showLabel = pct === 999 || pct === 998 || pct >= 50;
 
       return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity, tooltipHTML: tooltipLines.join('<br/>') };
     }).filter(Boolean) as Array<{
