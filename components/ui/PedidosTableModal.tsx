@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
@@ -57,6 +57,8 @@ interface PedidosTableModalProps {
   onClearPreFilter?: () => void;
   initialAsignacion?: 'todos' | 'con_movil' | 'sin_movil';
   hideUnassigned?: boolean;
+  onInnerFiltersChange?: (f: Filters) => void;
+  externalResetToken?: number;
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -80,7 +82,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, onInnerFiltersChange, externalResetToken }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -97,6 +99,20 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Report inner filter changes upward
+  const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
+  useEffect(() => { onInnerFiltersChangeRef.current = onInnerFiltersChange; });
+  useEffect(() => { onInnerFiltersChangeRef.current?.(filters); }, [filters]);
+
+  // Accept external reset
+  const prevResetToken = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (externalResetToken !== undefined && prevResetToken.current !== undefined && prevResetToken.current !== externalResetToken) {
+      setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos' });
+    }
+    prevResetToken.current = externalResetToken;
+  }, [externalResetToken]);
 
   // Aplicar pre-filtro de móvil inmediatamente
   useEffect(() => {

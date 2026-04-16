@@ -156,11 +156,18 @@ export default function MovilSelector({
     actividad: 'activo', // Por defecto mostrar solo activos
   });
   // Filtros de pedidos/services: usar props si vienen del padre, si no estado local (fallback)
-  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
+  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false });
   const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({ 
     atraso: [], 
     tipoServicio: 'all',
-    vista: 'pendientes'
+    vista: 'pendientes',
+    search: '',
+    zona: null,
+    movil: null,
+    producto: null,
+    asignacion: 'todos',
+    entrega: 'todos',
+    soloSinCoords: false,
   });
   const servicesFilters = servicesFiltersProp ?? localServicesFilters;
   const pedidosFilters = pedidosFiltersProp ?? localPedidosFilters;
@@ -322,6 +329,38 @@ export default function MovilSelector({
         return pedidosFilters.atraso.includes(category);
       });
     }
+
+    // Filtros del modal extendido
+    if (pedidosFilters.zona !== null) {
+      result = result.filter(pedido => pedido.zona_nro === pedidosFilters.zona);
+    }
+    if (pedidosFilters.movil !== null) {
+      result = result.filter(pedido => Number(pedido.movil) === pedidosFilters.movil);
+    }
+    if (pedidosFilters.producto !== null) {
+      result = result.filter(pedido => pedido.servicio_nombre === pedidosFilters.producto);
+    }
+    if (pedidosFilters.asignacion === 'con_movil') {
+      result = result.filter(pedido => pedido.movil && Number(pedido.movil) !== 0);
+    } else if (pedidosFilters.asignacion === 'sin_movil') {
+      result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
+    }
+    if (pedidosFilters.entrega === 'entregados') {
+      result = result.filter(pedido => isSubEstadoEntregado(pedido));
+    } else if (pedidosFilters.entrega === 'no_entregados') {
+      result = result.filter(pedido => !isSubEstadoEntregado(pedido));
+    }
+    if (pedidosFilters.soloSinCoords) {
+      result = result.filter(pedido => !pedido.latitud || !pedido.longitud);
+    }
+    if (pedidosFilters.search) {
+      const sq = pedidosFilters.search.toLowerCase();
+      result = result.filter(pedido =>
+        pedido.id.toString().includes(sq) ||
+        (pedido.servicio_nombre && pedido.servicio_nombre.toLowerCase().includes(sq)) ||
+        (pedido.cliente_tel && pedido.cliente_tel.includes(sq))
+      );
+    }
     
     // Ordenar: pendientes/sin_asignar por mayor atraso primero, finalizados por id desc
     if (pedidosFilters.vista !== 'finalizados') {
@@ -399,6 +438,39 @@ export default function MovilSelector({
         const category = categoryMap[info.label] || 'sin_hora';
         return servicesFilters.atraso.includes(category);
       });
+    }
+
+    // Filtros del modal extendido
+    if (servicesFilters.zona !== null) {
+      result = result.filter(service => service.zona_nro === servicesFilters.zona);
+    }
+    if (servicesFilters.movil !== null) {
+      result = result.filter(service => Number(service.movil) === servicesFilters.movil);
+    }
+    if (servicesFilters.defecto !== null) {
+      result = result.filter(service => service.defecto === servicesFilters.defecto);
+    }
+    if (servicesFilters.asignacion === 'con_movil') {
+      result = result.filter(service => service.movil && Number(service.movil) !== 0);
+    } else if (servicesFilters.asignacion === 'sin_movil') {
+      result = result.filter(service => !service.movil || Number(service.movil) === 0);
+    }
+    if (servicesFilters.entrega === 'entregados') {
+      result = result.filter(service => isSubEstadoEntregado(service));
+    } else if (servicesFilters.entrega === 'no_entregados') {
+      result = result.filter(service => !isSubEstadoEntregado(service));
+    }
+    if (servicesFilters.soloSinCoords) {
+      result = result.filter(service => !service.latitud || !service.longitud);
+    }
+    if (servicesFilters.search) {
+      const sq = servicesFilters.search.toLowerCase();
+      result = result.filter(service =>
+        service.id.toString().includes(sq) ||
+        (service.defecto && service.defecto.toLowerCase().includes(sq)) ||
+        (service.cliente_nombre && service.cliente_nombre.toLowerCase().includes(sq)) ||
+        (service.cliente_tel && service.cliente_tel.includes(sq))
+      );
     }
     
     // Ordenar: pendientes/sin_asignar por delay, finalizados por id desc
@@ -553,21 +625,39 @@ export default function MovilSelector({
         
         // Badge de filtros activos en PEDIDOS
         {
-          const pCount = (pedidosFilters.vista !== 'pendientes' ? 1 : 0) + (pedidosFilters.tipoServicio !== 'all' ? 1 : 0) + pedidosFilters.atraso.length;
+          const pCount = (pedidosFilters.vista !== 'pendientes' ? 1 : 0)
+            + (pedidosFilters.tipoServicio !== 'all' ? 1 : 0)
+            + pedidosFilters.atraso.length
+            + (pedidosFilters.search ? 1 : 0)
+            + (pedidosFilters.zona !== null ? 1 : 0)
+            + (pedidosFilters.movil !== null ? 1 : 0)
+            + (pedidosFilters.producto !== null ? 1 : 0)
+            + (pedidosFilters.asignacion !== 'todos' ? 1 : 0)
+            + (pedidosFilters.entrega !== 'todos' ? 1 : 0)
+            + (pedidosFilters.soloSinCoords ? 1 : 0);
           badges.push({
             label: pCount === 0 ? '📦 Pedidos: Todos' : `📦 Pedidos: ${pCount} Filtro${pCount !== 1 ? 's' : ''}`,
             color: pCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
-            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes' }) : undefined,
+            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
           });
         }
 
         // Badge de filtros activos en SERVICES
         {
-          const sCount = (servicesFilters.vista !== 'pendientes' ? 1 : 0) + (servicesFilters.tipoServicio !== 'all' ? 1 : 0) + servicesFilters.atraso.length;
+          const sCount = (servicesFilters.vista !== 'pendientes' ? 1 : 0)
+            + (servicesFilters.tipoServicio !== 'all' ? 1 : 0)
+            + servicesFilters.atraso.length
+            + (servicesFilters.search ? 1 : 0)
+            + (servicesFilters.zona !== null ? 1 : 0)
+            + (servicesFilters.movil !== null ? 1 : 0)
+            + (servicesFilters.defecto !== null ? 1 : 0)
+            + (servicesFilters.asignacion !== 'todos' ? 1 : 0)
+            + (servicesFilters.entrega !== 'todos' ? 1 : 0)
+            + (servicesFilters.soloSinCoords ? 1 : 0);
           badges.push({
             label: sCount === 0 ? '🔧 Services: Todos' : `🔧 Services: ${sCount} Filtro${sCount !== 1 ? 's' : ''}`,
             color: sCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
-            onClear: sCount > 0 ? () => setServicesFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes' }) : undefined,
+            onClear: sCount > 0 ? () => setServicesFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
           });
         }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ServiceSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
@@ -55,6 +55,8 @@ interface ServicesTableModalProps {
   preFilterZona?: number;
   hideUnassigned?: boolean;
   onClearPreFilter?: () => void;
+  onInnerFiltersChange?: (f: Filters) => void;
+  externalResetToken?: number;
 }
 
 // ========== Row bg colors ==========
@@ -78,7 +80,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, onInnerFiltersChange, externalResetToken }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -95,6 +97,20 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Report inner filter changes upward
+  const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
+  useEffect(() => { onInnerFiltersChangeRef.current = onInnerFiltersChange; });
+  useEffect(() => { onInnerFiltersChangeRef.current?.(filters); }, [filters]);
+
+  // Accept external reset
+  const prevResetToken = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (externalResetToken !== undefined && prevResetToken.current !== undefined && prevResetToken.current !== externalResetToken) {
+      setFilters({ search: '', atraso: [], zona: null, movil: null, defecto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos' });
+    }
+    prevResetToken.current = externalResetToken;
+  }, [externalResetToken]);
 
   // Aplicar pre-filtro de móvil con delay para que la tabla cargue primero
   useEffect(() => {

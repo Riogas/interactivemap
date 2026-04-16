@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
+import { isSubEstadoEntregado } from '@/utils/estadoPedido';
 import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
@@ -216,10 +217,14 @@ function DashboardContent() {
   });
 
   // Estado para filtros de pedidos y services (lifted desde MovilSelector para compartir con MapView)
-  const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
+  const defaultPedidosFilters: PedidoFilters = { atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
+  const defaultServicesFilters: ServiceFilters = { atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
+  const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>(defaultPedidosFilters);
+  const [pedidosResetToken, setPedidosResetToken] = useState(0);
   const [pedidosInitialAsignacion, setPedidosInitialAsignacion] = useState<'todos' | 'con_movil' | 'sin_movil'>('todos');
   const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'atrasados'>('pendientes');
-  const [servicesFilters, setServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes' });
+  const [servicesFilters, setServicesFilters] = useState<ServiceFilters>(defaultServicesFilters);
+  const [servicesResetToken, setServicesResetToken] = useState(0);
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
   
@@ -1700,6 +1705,8 @@ function DashboardContent() {
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         initialAsignacion={pedidosInitialAsignacion}
         hideUnassigned={selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length}
+        onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
+        externalResetToken={pedidosResetToken}
       />
 
       {/* Modal de Vista Extendida de Services */}
@@ -1720,6 +1727,8 @@ function DashboardContent() {
         preFilterZona={preFilterZona}
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         hideUnassigned={selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length}
+        onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, defecto: f.defecto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
+        externalResetToken={servicesResetToken}
       />
       <OsmImportModal
         isOpen={isOsmImportOpen}
@@ -1955,9 +1964,20 @@ function DashboardContent() {
                   onOpenPedidosTable={() => setIsPedidosTableOpen(true)}
                   onOpenServicesTable={() => setIsServicesTableOpen(true)}
                   pedidosFilters={pedidosFilters}
-                  onPedidosFiltersChange={setPedidosFilters}
+                  onPedidosFiltersChange={(f) => {
+                    setPedidosFilters(f);
+                    // If caller reset all inner fields to default (badge X), also reset modal visual state
+                    if (!f.search && f.zona === null && f.movil === null && f.producto === null && f.asignacion === 'todos' && f.entrega === 'todos' && !f.soloSinCoords && f.atraso.length === 0 && f.tipoServicio === 'all') {
+                      setPedidosResetToken(t => t + 1);
+                    }
+                  }}
                   servicesFilters={servicesFilters}
-                  onServicesFiltersChange={setServicesFilters}
+                  onServicesFiltersChange={(f) => {
+                    setServicesFilters(f);
+                    if (!f.search && f.zona === null && f.movil === null && f.defecto === null && f.asignacion === 'todos' && f.entrega === 'todos' && !f.soloSinCoords && f.atraso.length === 0 && f.tipoServicio === 'all') {
+                      setServicesResetToken(t => t + 1);
+                    }
+                  }}
                   tiposServicio={tiposServicio}
                   onOpenRanking={() => setIsLeaderboardOpen(true)}
                   movilesHidden={movilesHidden}
@@ -2036,32 +2056,52 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={pedidosHidden ? [] : filterByTipoServicio(filterByDelay(
-                  (pedidosFilters.vista === 'finalizados'
-                    ? (selectedMoviles.length > 0 ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) : pedidosCompletos.filter(p => Number(p.estado_nro) === 2))
+                pedidos={pedidosHidden ? [] : (() => {
+                  const isPendientes = pedidosFilters.vista !== 'finalizados';
+                  let base = isPendientes
+                    ? (selectedMoviles.length > 0
+                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && ((p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) || (!p.movil || Number(p.movil) === 0)))
+                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 1))
                     : (selectedMoviles.length > 0
-                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && (
-                            (p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) ||
-                            (!p.movil || Number(p.movil) === 0)
-                          ))
-                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 1)
-                      )
-                  ).filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud)),
-                  pedidosFilters.vista !== 'finalizados' ? pedidosFilters.atraso : []
-                ), pedidosFilters.vista !== 'finalizados' ? pedidosFilters.tipoServicio : 'all')}
+                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
+                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 2));
+                  base = base.filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud));
+                  base = filterByTipoServicio(filterByDelay(base, isPendientes ? pedidosFilters.atraso : []), isPendientes ? pedidosFilters.tipoServicio : 'all');
+                  if (pedidosFilters.zona !== null) base = base.filter(p => p.zona_nro === pedidosFilters.zona);
+                  if (pedidosFilters.movil !== null) base = base.filter(p => Number(p.movil) === pedidosFilters.movil);
+                  if (pedidosFilters.producto !== null) base = base.filter(p => p.servicio_nombre === pedidosFilters.producto);
+                  if (pedidosFilters.asignacion === 'con_movil') base = base.filter(p => p.movil && Number(p.movil) !== 0);
+                  else if (pedidosFilters.asignacion === 'sin_movil') base = base.filter(p => !p.movil || Number(p.movil) === 0);
+                  if (pedidosFilters.entrega === 'entregados') base = base.filter(p => isSubEstadoEntregado(p));
+                  else if (pedidosFilters.entrega === 'no_entregados') base = base.filter(p => !isSubEstadoEntregado(p));
+                  if (pedidosFilters.soloSinCoords) base = base.filter(p => !p.latitud || !p.longitud);
+                  if (pedidosFilters.search) { const sq = pedidosFilters.search.toLowerCase(); base = base.filter(p => p.id.toString().includes(sq) || (p.servicio_nombre && p.servicio_nombre.toLowerCase().includes(sq))); }
+                  return base;
+                })()}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
                 focusedPedidoId={focusedPedidoId}
                 focusedServiceId={focusedServiceId}
                 focusTrigger={focusTrigger}
-                services={servicesHidden ? [] : filterByTipoServicio(filterByDelay(
-                  (servicesFilters.vista === 'finalizados'
-                    ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 2 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 2))
-                    : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1))
-                  ).filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud)),
-                  servicesFilters.vista !== 'finalizados' ? servicesFilters.atraso : []
-                ), servicesFilters.vista !== 'finalizados' ? servicesFilters.tipoServicio : 'all')}
+                services={servicesHidden ? [] : (() => {
+                  const isPendientes = servicesFilters.vista !== 'finalizados';
+                  let base = isPendientes
+                    ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1))
+                    : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 2 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 2));
+                  base = base.filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud));
+                  base = filterByTipoServicio(filterByDelay(base, isPendientes ? servicesFilters.atraso : []), isPendientes ? servicesFilters.tipoServicio : 'all');
+                  if (servicesFilters.zona !== null) base = base.filter(s => s.zona_nro === servicesFilters.zona);
+                  if (servicesFilters.movil !== null) base = base.filter(s => Number(s.movil) === servicesFilters.movil);
+                  if (servicesFilters.defecto !== null) base = base.filter(s => s.defecto === servicesFilters.defecto);
+                  if (servicesFilters.asignacion === 'con_movil') base = base.filter(s => s.movil && Number(s.movil) !== 0);
+                  else if (servicesFilters.asignacion === 'sin_movil') base = base.filter(s => !s.movil || Number(s.movil) === 0);
+                  if (servicesFilters.entrega === 'entregados') base = base.filter(s => isSubEstadoEntregado(s));
+                  else if (servicesFilters.entrega === 'no_entregados') base = base.filter(s => !isSubEstadoEntregado(s));
+                  if (servicesFilters.soloSinCoords) base = base.filter(s => !s.latitud || !s.longitud);
+                  if (servicesFilters.search) { const sq = servicesFilters.search.toLowerCase(); base = base.filter(s => s.id.toString().includes(sq) || (s.defecto && s.defecto.toLowerCase().includes(sq))); }
+                  return base;
+                })()}
                 allServices={servicesCompletos}
                 onServiceClick={handleServiceClick}
                 popupService={popupService}

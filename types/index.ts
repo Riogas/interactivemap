@@ -273,13 +273,31 @@ export interface MovilFilters {
 }
 
 export interface ServiceFilters {
-  atraso: string[]; // Multi-selección: 'en_hora' | 'limite_cercana' | 'atrasado' | 'muy_atrasado' | 'sin_hora'
-  tipoServicio: string; // 'all' o valor dinámico de moviles_zonas.tipo_de_servicio
-  vista: 'pendientes' | 'finalizados'; // Filtro de vista
+  // Vista / base
+  atraso: string[];
+  tipoServicio: string;
+  vista: 'pendientes' | 'finalizados';
+  // Inner table filters (synced to map + collapsible)
+  search: string;
+  zona: number | null;
+  movil: number | null;
+  defecto: string | null;       // "producto" for services
+  asignacion: 'todos' | 'con_movil' | 'sin_movil';
+  entrega: 'todos' | 'entregados' | 'no_entregados';
+  soloSinCoords: boolean;
 }
 
 export interface PedidoFilters {
-  atraso: string[]; // Multi-selección: 'en_hora' | 'limite_cercana' | 'atrasado' | 'muy_atrasado' | 'sin_hora'
-  tipoServicio: string; // 'all' o valor dinámico de moviles_zonas.tipo_de_servicio
-  vista: 'pendientes' | 'finalizados'; // Filtro de vista
+  // Vista / base
+  atraso: string[];
+  tipoServicio: string;
+  vista: 'pendientes' | 'finalizados';
+  // Inner table filters (synced to map + collapsible)
+  search: string;
+  zona: number | null;
+  movil: number | null;
+  producto: string | null;
+  asignacion: 'todos' | 'con_movil' | 'sin_movil';
+  entrega: 'todos' | 'entregados' | 'no_entregados';
+  soloSinCoords: boolean;
 }
