@@ -65,6 +65,7 @@ interface SaturacionZonaModalProps {
   zonaId: number;
   zonas: ZonaInfo[];
   satStats: SaturacionZonaStats | undefined;
+  tipoServicio?: string;
   pedidosSinAsignar: PedidoResumen[];
   movilesZonasData: MovilZonaRecord[];
   moviles: MovilInfo[];
@@ -197,6 +198,7 @@ export default function SaturacionZonaModal({
   zonaId,
   zonas,
   satStats,
+  tipoServicio = 'URGENTE',
   pedidosSinAsignar,
   movilesZonasData,
   moviles,
@@ -208,29 +210,36 @@ export default function SaturacionZonaModal({
   // Construir mapa zona_id → zonaInfo para lookup
   const zonaMap = useMemo(() => new Map(zonas.map(z => [z.zona_id, z])), [zonas]);
 
-  // Móviles con prioridad en esta zona (prioridad_o_transito === 1)
+  // Móviles con prioridad en esta zona filtrados por tipo de servicio
   const movilIdsEnZona = useMemo(
     () =>
       new Set(
         movilesZonasData
-          .filter(r => r.zona_id === zonaId && r.prioridad_o_transito === 1)
+          .filter(r =>
+            r.zona_id === zonaId &&
+            r.prioridad_o_transito === 1 &&
+            (r.tipo_de_servicio || '').toUpperCase() === tipoServicio.toUpperCase(),
+          )
           .map(r => String(r.movil_id)),
       ),
-    [movilesZonasData, zonaId],
+    [movilesZonasData, zonaId, tipoServicio],
   );
 
-  // Para cada móvil en esta zona: cuántas zonas de prioridad cubre + cuáles son las otras
+  // Para cada móvil: cuántas zonas de prioridad del mismo tipo cubre
   const movilZoneMap = useMemo(() => {
     const map = new Map<string, number[]>(); // movil_id → [zona_ids]
     movilesZonasData
-      .filter(r => r.prioridad_o_transito === 1)
+      .filter(r =>
+        r.prioridad_o_transito === 1 &&
+        (r.tipo_de_servicio || '').toUpperCase() === tipoServicio.toUpperCase(),
+      )
       .forEach(r => {
         const arr = map.get(String(r.movil_id)) ?? [];
         arr.push(r.zona_id);
         map.set(String(r.movil_id), arr);
       });
     return map;
-  }, [movilesZonasData]);
+  }, [movilesZonasData, tipoServicio]);
 
   // Datos de cada móvil con prioridad en la zona
   const movilCards = useMemo(() => {
@@ -258,6 +267,8 @@ export default function SaturacionZonaModal({
   // Resumen de capacidad
   const capTotal = satStats?.capacidadTotal ?? 0;
   const capLibre = satStats?.capacidadDisponible ?? 0;
+  const isServiceMode = tipoServicio.toUpperCase() === 'SERVICE';
+  const sinAsignarTitle = isServiceMode ? 'Services sin asignar' : `Pedidos sin asignar (${tipoServicio})`;
   const sinAsignar = pedidosSinAsignar.length;
   const satPct = capLibre > 0 ? Math.round((sinAsignar / capLibre) * 100) : sinAsignar > 0 ? 999 : 0;
 
@@ -303,7 +314,7 @@ export default function SaturacionZonaModal({
             <div className="flex items-center gap-2 mb-2">
               <span className="text-orange-500"><IconPackage /></span>
               <h3 className="text-sm font-semibold text-gray-800">
-                Pedidos sin asignar
+                {sinAsignarTitle}
                 <span className="ml-2 bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">
                   {sinAsignar}
                 </span>

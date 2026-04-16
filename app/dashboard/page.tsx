@@ -1237,14 +1237,22 @@ function DashboardContent() {
   // � Cálculo de saturación por zona:
   //   Para cada móvil con prioridad activa en zonas, su capacidad disponible se proratea
   //   entre la cantidad de zonas en que tiene prioridad, evitando sobrecontar móviles compartidos.
+  // Cálculo de saturación por zona, filtrado por tipo de servicio:
+  //   - SERVICE  → usa servicesCompletos sin asignar + móviles con tipo SERVICE
+  //   - URGENTE/NOCTURNO → usa pedidosCompletos sin asignar + móviles con ese tipo
+  //   Los móviles inactivos (estado 3/5/15) se excluyen de la capacidad.
   const saturacionData = useMemo(() => {
     const EXCLUDED = new Set([3, 5, 15]);
+    const isService = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
     const stats = new Map<number, { sinAsignar: number; capacidadTotal: number; capacidadDisponible: number; movilesEnZona: number; movilesCompartidos: number }>();
 
-    // 1. Registros de prioridad activos
-    const priorityRecs = movilesZonasData.filter(r => r.prioridad_o_transito === 1 && r.activa);
+    // 1. Registros de prioridad activos filtrados por tipo de servicio
+    const priorityRecs = movilesZonasData.filter(
+      r => r.prioridad_o_transito === 1 && r.activa &&
+           (r.tipo_de_servicio || '').toUpperCase() === movilesZonasServiceFilter.toUpperCase()
+    );
 
-    // 2. Cuántas zonas de prioridad tiene cada móvil (para el prorrateo)
+    // 2. Cuántas zonas de prioridad (del mismo tipo) tiene cada móvil (para el prorrateo)
     const movilZoneCount = new Map<string, number>();
     priorityRecs.forEach(r => movilZoneCount.set(r.movil_id, (movilZoneCount.get(r.movil_id) ?? 0) + 1));
 
@@ -1256,7 +1264,7 @@ function DashboardContent() {
       estadoNro: (m as any).estadoNro ?? undefined,
     }));
 
-    // 4. Acumular capacidad prorat. por zona
+    // 4. Acumular capacidad prorat. por zona (excluye inactivos)
     priorityRecs.forEach(r => {
       const md = movilDataMap.get(r.movil_id);
       if (!md) return;
@@ -1273,18 +1281,29 @@ function DashboardContent() {
       });
     });
 
-    // 5. Contar pedidos sin asignar por zona
-    pedidosCompletos.forEach(p => {
-      if (Number(p.estado_nro) !== 1) return;
-      if (p.movil != null && Number(p.movil) !== 0) return;
-      const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
-      if (!zona || zona === 0) return;
-      const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
-      stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
-    });
+    // 5. Contar trabajos sin asignar por zona según tipo de servicio
+    if (isService) {
+      servicesCompletos.forEach(s => {
+        if (Number(s.estado_nro) !== 1) return;
+        if (s.movil != null && Number(s.movil) !== 0) return;
+        const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
+        if (!zona || zona === 0) return;
+        const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+        stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
+      });
+    } else {
+      pedidosCompletos.forEach(p => {
+        if (Number(p.estado_nro) !== 1) return;
+        if (p.movil != null && Number(p.movil) !== 0) return;
+        const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
+        if (!zona || zona === 0) return;
+        const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+        stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
+      });
+    }
 
     return stats;
-  }, [movilesZonasData, moviles, pedidosCompletos]);
+  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter]);
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
   const prevPedidosKeyRef = useRef<string>('');
   
@@ -1735,31 +1754,52 @@ function DashboardContent() {
       />
 
       {/* Modal de Saturación: click en zona del mapa */}
-      {saturacionModalZonaId !== null && (
-        <SaturacionZonaModal
-          zonaId={saturacionModalZonaId}
-          zonas={(allZonasData.length > 0 ? allZonasData : zonasData).map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre ?? null }))}
-          satStats={saturacionData.get(saturacionModalZonaId)}
-          pedidosSinAsignar={pedidosCompletos
-            .filter(p =>
-              Number(p.estado_nro) === 1 &&
-              (p.movil == null || Number(p.movil) === 0) &&
-              Number(p.zona_nro) === saturacionModalZonaId,
-            )
-            .map(p => ({
-              id: p.id,
-              cliente_nombre: p.cliente_nombre,
-              cliente_direccion: p.cliente_direccion,
-              servicio_nombre: p.servicio_nombre,
-              fch_hora_para: p.fch_hora_para,
-              demora_informada: p.demora_informada,
-              zona_nro: p.zona_nro,
-            }))}
-          movilesZonasData={movilesZonasData}
-          moviles={moviles}
-          onClose={() => setSaturacionModalZonaId(null)}
-        />
-      )}
+      {saturacionModalZonaId !== null && (() => {
+        const isServiceMode = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
+        const sinAsignarList = isServiceMode
+          ? servicesCompletos
+              .filter(s =>
+                Number(s.estado_nro) === 1 &&
+                (s.movil == null || Number(s.movil) === 0) &&
+                Number(s.zona_nro) === saturacionModalZonaId,
+              )
+              .map(s => ({
+                id: s.id,
+                cliente_nombre: s.cliente_nombre,
+                cliente_direccion: s.cliente_direccion,
+                servicio_nombre: s.servicio_nombre,
+                fch_hora_para: s.fch_hora_para,
+                demora_informada: s.demora_informada,
+                zona_nro: s.zona_nro,
+              }))
+          : pedidosCompletos
+              .filter(p =>
+                Number(p.estado_nro) === 1 &&
+                (p.movil == null || Number(p.movil) === 0) &&
+                Number(p.zona_nro) === saturacionModalZonaId,
+              )
+              .map(p => ({
+                id: p.id,
+                cliente_nombre: p.cliente_nombre,
+                cliente_direccion: p.cliente_direccion,
+                servicio_nombre: p.servicio_nombre,
+                fch_hora_para: p.fch_hora_para,
+                demora_informada: p.demora_informada,
+                zona_nro: p.zona_nro,
+              }));
+        return (
+          <SaturacionZonaModal
+            zonaId={saturacionModalZonaId}
+            zonas={(allZonasData.length > 0 ? allZonasData : zonasData).map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre ?? null }))}
+            satStats={saturacionData.get(saturacionModalZonaId)}
+            tipoServicio={movilesZonasServiceFilter}
+            pedidosSinAsignar={sinAsignarList}
+            movilesZonasData={movilesZonasData}
+            moviles={moviles}
+            onClose={() => setSaturacionModalZonaId(null)}
+          />
+        );
+      })()}
 
       {/* Modal de Vista Móviles por Zona (click en mapa o botón) */}
       <ZonaMovilesViewModal

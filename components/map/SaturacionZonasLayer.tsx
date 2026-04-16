@@ -32,6 +32,10 @@ interface SaturacionZonasLayerProps {
   zonas: SaturacionZonaData[];
   /** Map de zona_id → estadísticas de saturación */
   saturacionData: Map<number, SaturacionZonaStats>;
+  /** Filtro por tipo de servicio ('URGENTE' | 'SERVICE' | 'NOCTURNO') */
+  serviceFilter?: string;
+  /** Callback cambio de filtro */
+  onServiceFilterChange?: (f: string) => void;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
   /** Callback al hacer click en una zona */
@@ -123,9 +127,9 @@ function SaturacionLegend() {
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7f1d1d"></span><span class="demora-legend-label">Sin cobertura</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">75 – 100%</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">50 – 75%</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">25 – 50%</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">1 – 25%</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">Sobrante (0%)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">25 – 50% (sin etiqueta)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">1 – 25% (sin etiqueta)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">Sobrante (sin etiqueta)</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#d1d5db"></span><span class="demora-legend-label">Sin datos</span></div>
         `;
         L.DomEvent.disableClickPropagation(div);
@@ -139,11 +143,46 @@ function SaturacionLegend() {
   return null;
 }
 
+const TIPOS_SERVICIO_SAT = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;
+
+/** Control Leaflet para filtro por tipo de servicio en saturación */
+function SaturacionFilterControl({ serviceFilter, onServiceFilterChange }: { serviceFilter: string; onServiceFilterChange: (f: string) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    const FilterCtrl = L.Control.extend({
+      options: { position: 'bottomleft' as L.ControlPosition },
+      onAdd() {
+        const container = L.DomUtil.create('div', 'mz-filter-control');
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        container.innerHTML = `
+          <div class="mz-filter-inner">
+            <span class="mz-filter-label">Tipo Servicio:</span>
+            <select class="mz-filter-select">
+              ${TIPOS_SERVICIO_SAT.map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()}</option>`).join('')}
+            </select>
+          </div>
+        `;
+        const select = container.querySelector('.mz-filter-select') as HTMLSelectElement;
+        select.value = serviceFilter;
+        select.addEventListener('change', () => { onServiceFilterChange(select.value); });
+        return container;
+      },
+    });
+    const ctrl = new FilterCtrl();
+    ctrl.addTo(map);
+    return () => { ctrl.remove(); };
+  }, [map, serviceFilter, onServiceFilterChange]);
+  return null;
+}
+
 // ─────────────────────────────── layer ──────────────────────────────────
 
 const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   zonas,
   saturacionData,
+  serviceFilter = 'URGENTE',
+  onServiceFilterChange,
   zonaOpacity = 50,
   onZonaClick,
 }: SaturacionZonasLayerProps) {
@@ -193,7 +232,10 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
         s.movilesCompartidos > 0 ? '<i style="color:#6b7280;font-size:10px">Capacidad con prorrateo por zonas compartidas</i>' : '',
       ].filter(Boolean);
 
-      return { zona, positions, center, color, label, fillOpacity, tooltipHTML: tooltipLines.join('<br/>') };
+      // Only show label for pct >= 50 (or critical 999 = sin cobertura)
+      const showLabel = pct === 999 || pct >= 50;
+
+      return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity, tooltipHTML: tooltipLines.join('<br/>') };
     }).filter(Boolean) as Array<{
       zona: SaturacionZonaData;
       positions: LatLngExpression[];
@@ -210,6 +252,9 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   return (
     <>
       <SaturacionLegend />
+      {onServiceFilterChange && (
+        <SaturacionFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
+      )}
       {items.map(({ zona, positions, center, color, label, fillOpacity, tooltipHTML }) => (
         <React.Fragment key={zona.zona_id}>
           <Polygon
@@ -231,7 +276,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
               html: `
                 <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}" title="${tooltipHTML.replace(/<[^>]+>/g, '')}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
-                  <span class="demora-label-time" style="font-size:9px">${label}</span>
+                  ${label ? `<span class="demora-label-time" style="font-size:9px">${label}</span>` : ''}
                 </div>
               `,
               iconSize: [64, 36],
