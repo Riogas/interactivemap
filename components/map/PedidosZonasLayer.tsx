@@ -217,7 +217,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
               html: `
                 <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
-                  <span class="demora-label-time">${count}</span>
+                  ${count > 0 ? `<span class="demora-label-time">${count}</span>` : ''}
                 </div>
               `,
               iconSize: [60, 36],
