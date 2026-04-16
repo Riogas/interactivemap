@@ -1520,7 +1520,30 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* Botones POI y OSM Import removidos */}
+          {/* Botón Estadísticas por zonas */}
+          <button
+            id="tour-fab-estadisticas-zonas"
+            onClick={() => { setIsZonaEstadisticasOpen(true); setIsActionsExpanded(false); }}
+            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700"
+            title="Estadísticas por zonas"
+          >
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+            </svg>
+          </button>
+
+          {/* Botón Estadísticas */}
+          <button
+            id="tour-fab-estadisticas"
+            onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
+            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
+            title="Estadísticas"
+          >
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </button>
         </div>
 
         {/* Botón toggle FAB ⚡ */}
@@ -1947,7 +1970,6 @@ function DashboardContent() {
                 serviceShape={preferences.serviceShape || 'triangle'}
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
-                onOpenEstadisticas={() => setIsZonaEstadisticasOpen(true)}
                 demorasData={demorasData}
                 pedidosZonaData={pedidosZonaData}
                 pedidosZonaFilter={pedidosZonaFilter}
