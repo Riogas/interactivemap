@@ -217,7 +217,7 @@ function DashboardContent() {
   });
 
   // Estado para filtros de pedidos y services (lifted desde MovilSelector para compartir con MapView)
-  const defaultPedidosFilters: PedidoFilters = { atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
+  const defaultPedidosFilters: PedidoFilters = { atraso: [], tipoServicio: [], vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
   const defaultServicesFilters: ServiceFilters = { atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>(defaultPedidosFilters);
   const [pedidosResetToken, setPedidosResetToken] = useState(0);
@@ -1699,13 +1699,12 @@ function DashboardContent() {
         onVistaChange={(v) => setPedidosFilters(prev => ({ ...prev, vista: v }))}
         selectedMoviles={selectedMoviles}
         externalAtraso={pedidosFilters.atraso}
-        externalTipoServicio={pedidosFilters.tipoServicio}
         preFilterMovil={preFilterMovil}
         preFilterZona={preFilterZona}
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         initialAsignacion={pedidosInitialAsignacion}
         hideUnassigned={selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length}
-        onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
+        onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[], tipoServicio: f.tipoServicio }))}
         externalResetToken={pedidosResetToken}
       />
 
@@ -1878,7 +1877,7 @@ function DashboardContent() {
           } else {
             // PEDIDOS = todos los pedidos (sin filtro por servicio_nombre → 'all')
             // Un tipo específico (URGENTE/NOCTURNO) se pasa directamente
-            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: upper === 'PEDIDOS' ? 'all' : svcFilter }));
+            setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: upper === 'PEDIDOS' ? [] : (svcFilter ? [svcFilter] : []) }));
             setIsPedidosTableOpen(true);
           }
         }}
@@ -1967,7 +1966,7 @@ function DashboardContent() {
                   onPedidosFiltersChange={(f) => {
                     setPedidosFilters(f);
                     // If caller reset all inner fields to default (badge X), also reset modal visual state
-                    if (!f.search && f.zona === null && f.movil === null && f.producto === null && f.asignacion === 'todos' && f.entrega === 'todos' && !f.soloSinCoords && f.atraso.length === 0 && f.tipoServicio === 'all') {
+                    if (!f.search && f.zona === null && f.movil === null && f.producto === null && f.asignacion === 'todos' && f.entrega === 'todos' && !f.soloSinCoords && f.atraso.length === 0 && f.tipoServicio.length === 0) {
                       setPedidosResetToken(t => t + 1);
                     }
                   }}
@@ -2066,7 +2065,8 @@ function DashboardContent() {
                         ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
                         : pedidosCompletos.filter(p => Number(p.estado_nro) === 2));
                   base = base.filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud));
-                  base = filterByTipoServicio(filterByDelay(base, isPendientes ? pedidosFilters.atraso : []), isPendientes ? pedidosFilters.tipoServicio : 'all');
+                  base = filterByDelay(base, isPendientes ? pedidosFilters.atraso : []);
+                  if (isPendientes && pedidosFilters.tipoServicio.length > 0) base = base.filter(p => p.servicio_nombre && pedidosFilters.tipoServicio.includes(p.servicio_nombre));
                   if (pedidosFilters.zona !== null) base = base.filter(p => p.zona_nro === pedidosFilters.zona);
                   if (pedidosFilters.movil !== null) base = base.filter(p => Number(p.movil) === pedidosFilters.movil);
                   if (pedidosFilters.producto !== null) base = base.filter(p => p.producto_nom === pedidosFilters.producto);

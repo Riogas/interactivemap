@@ -290,7 +290,7 @@ export interface ServiceFilters {
 export interface PedidoFilters {
   // Vista / base
   atraso: string[];
-  tipoServicio: string;
+  tipoServicio: string[]; // multi-select de servicio_nombre
   vista: 'pendientes' | 'finalizados';
   // Inner table filters (synced to map + collapsible)
   search: string;

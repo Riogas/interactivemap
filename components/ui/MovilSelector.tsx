@@ -159,7 +159,7 @@ export default function MovilSelector({
   const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false });
   const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({ 
     atraso: [], 
-    tipoServicio: 'all',
+    tipoServicio: [],
     vista: 'pendientes',
     search: '',
     zona: null,
@@ -306,10 +306,9 @@ export default function MovilSelector({
     }
     
     // Filtrar por tipo de servicio (solo para pendientes y sin_asignar)
-    if (pedidosFilters.vista !== 'finalizados' && pedidosFilters.tipoServicio && pedidosFilters.tipoServicio !== 'all') {
-      const tipoUpper = pedidosFilters.tipoServicio.toUpperCase();
-      result = result.filter(pedido => 
-        pedido.servicio_nombre && pedido.servicio_nombre.toUpperCase() === tipoUpper
+    if (pedidosFilters.vista !== 'finalizados' && pedidosFilters.tipoServicio.length > 0) {
+      result = result.filter(pedido =>
+        pedido.servicio_nombre && pedidosFilters.tipoServicio.includes(pedido.servicio_nombre)
       );
     }
     
@@ -626,7 +625,7 @@ export default function MovilSelector({
         // Badge de filtros activos en PEDIDOS
         {
           const pCount = (pedidosFilters.vista !== 'pendientes' ? 1 : 0)
-            + (pedidosFilters.tipoServicio !== 'all' ? 1 : 0)
+            + pedidosFilters.tipoServicio.length
             + pedidosFilters.atraso.length
             + (pedidosFilters.search ? 1 : 0)
             + (pedidosFilters.zona !== null ? 1 : 0)
@@ -638,7 +637,7 @@ export default function MovilSelector({
           badges.push({
             label: pCount === 0 ? '📦 Pedidos: Todos' : `📦 Pedidos: ${pCount} Filtro${pCount !== 1 ? 's' : ''}`,
             color: pCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
-            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
+            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: [], vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
           });
         }
 

@@ -21,6 +21,7 @@ interface Filters {
   soloSinCoords: boolean;
   asignacion: 'todos' | 'con_movil' | 'sin_movil';
   entrega: 'todos' | 'entregados' | 'no_entregados';
+  tipoServicio: string[];
 }
 
 const ATRASO_OPTIONS: { key: AtrasoFilter; label: string; color: string; dotColor: string }[] = [
@@ -93,7 +94,10 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     soloSinCoords: false,
     asignacion: 'todos',
     entrega: 'todos',
+    tipoServicio: [],
   });
+  const [servicioDropdownOpen, setServicioDropdownOpen] = useState(false);
+  const servicioDropdownRef = useRef<HTMLDivElement>(null);
   const [sortKey, setSortKey] = useState<SortKey>('delay');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showFilters, setShowFilters] = useState(true);
@@ -109,10 +113,21 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const prevResetToken = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (externalResetToken !== undefined && prevResetToken.current !== undefined && prevResetToken.current !== externalResetToken) {
-      setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos' });
+      setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos', tipoServicio: [] });
     }
     prevResetToken.current = externalResetToken;
   }, [externalResetToken]);
+
+  // Click-outside para cerrar dropdown de tipo de servicio
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (servicioDropdownRef.current && !servicioDropdownRef.current.contains(e.target as Node)) {
+        setServicioDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Aplicar pre-filtro de móvil inmediatamente
   useEffect(() => {
@@ -190,14 +205,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
       result = result.filter(p => p.movil && Number(p.movil) !== 0);
     }
     
-    // Aplicar filtro externo de tipo de servicio (solo para pendientes)
-    if (!isFinalizados && externalTipoServicio && externalTipoServicio !== 'all') {
-      const tipoUpper = externalTipoServicio.toUpperCase();
-      result = result.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === tipoUpper);
+    // Aplicar filtro interno de tipo de servicio (solo para pendientes)
+    if (!isFinalizados && filters.tipoServicio.length > 0) {
+      result = result.filter(p => p.servicio_nombre && filters.tipoServicio.includes(p.servicio_nombre));
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned]);
+  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
@@ -222,6 +236,12 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   const uniqueProductos = useMemo(() => {
     const set = new Set<string>();
     pedidosParaOpciones.forEach(p => { if (p.producto_nom) set.add(p.producto_nom); });
+    return Array.from(set).sort();
+  }, [pedidosParaOpciones]);
+
+  const uniqueServicioNombres = useMemo(() => {
+    const set = new Set<string>();
+    pedidosParaOpciones.forEach(p => { if (p.servicio_nombre) set.add(p.servicio_nombre); });
     return Array.from(set).sort();
   }, [pedidosParaOpciones]);
 
@@ -352,7 +372,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   }, []);
 
   const clearFilters = useCallback(() => {
-    setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos' });
+    setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos', tipoServicio: [] });
     setPage(0);
   }, []);
 
@@ -368,7 +388,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     return m?.color || '#6B7280';
   }, [moviles]);
 
-  const hasActiveFilters = filters.search || filters.atraso.length > 0 || filters.zona !== null || filters.movil !== null || filters.producto !== null || filters.soloSinCoords;
+  const hasActiveFilters = filters.search || filters.atraso.length > 0 || filters.zona !== null || filters.movil !== null || filters.producto !== null || filters.soloSinCoords || filters.tipoServicio.length > 0;
 
   // ========== Sort Arrow Component ==========
   const SortArrow = ({ col }: { col: SortKey }) => {
@@ -550,6 +570,60 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                       Sin Móvil
                     </button>
                   </div>
+                </div>
+              )}
+              {/* Multi-select tipo de servicio */}
+              {uniqueServicioNombres.length > 0 && (
+                <div className="relative ml-2" ref={servicioDropdownRef}>
+                  <button
+                    onClick={() => setServicioDropdownOpen(o => !o)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-lg border transition-all ${
+                      filters.tipoServicio.length > 0
+                        ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
+                        : 'bg-gray-800/60 border-gray-600/40 text-gray-400 hover:text-gray-300'
+                    }`}
+                  >
+                    <span>
+                      {filters.tipoServicio.length === 0
+                        ? 'Tipo de servicio'
+                        : filters.tipoServicio.length === 1
+                        ? filters.tipoServicio[0]
+                        : `${filters.tipoServicio.length} tipos`}
+                    </span>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {servicioDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[160px] py-1">
+                      <button
+                        onClick={() => { setFilters(f => ({ ...f, tipoServicio: [] })); setServicioDropdownOpen(false); }}
+                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 ${
+                          filters.tipoServicio.length === 0 ? 'text-teal-300 font-medium' : 'text-gray-400'
+                        }`}
+                      >
+                        Todos
+                      </button>
+                      {uniqueServicioNombres.map(tipo => (
+                        <label key={tipo} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filters.tipoServicio.includes(tipo)}
+                            onChange={(e) => {
+                              setFilters(f => ({
+                                ...f,
+                                tipoServicio: e.target.checked
+                                  ? [...f.tipoServicio, tipo]
+                                  : f.tipoServicio.filter(t => t !== tipo),
+                              }));
+                            }}
+                            className="accent-teal-500"
+                          />
+                          {tipo}
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               <div className="ml-auto text-xs text-gray-500">
