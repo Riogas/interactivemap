@@ -1,7 +1,7 @@
 // Service Worker para cache de tiles de OpenStreetMap
 // Mejora dramática de performance y reduce uso de CPU/Network
 
-const CACHE_NAME = 'osm-tiles-v1';
+const CACHE_NAME = 'osm-tiles-v2'; // v2: fix blank-tile caching at high zoom
 const TILE_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 días en milisegundos
 
 self.addEventListener('install', (event) => {
@@ -59,11 +59,17 @@ self.addEventListener('fetch', (event) => {
           
           // Si no hay cache o expiró, descargar desde red
           return fetch(event.request).then((response) => {
-            // Solo cachear respuestas exitosas
+            // Solo cachear respuestas exitosas y con tamaño razonable
+            // (OSM puede devolver 200 + tile vacío/transparente ~35-200 bytes para zooms sin datos)
             if (response.status === 200) {
-              console.log('💾 [Tile Cache] Cacheando nuevo tile:', url.pathname);
-              // Clonar la respuesta antes de cachear (se consume al leer)
-              cache.put(event.request, response.clone());
+              const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+              // No cachear tiles muy pequeños (stub transparente = ~35 bytes, tile real > 1KB)
+              if (contentLength === 0 || contentLength > 500) {
+                console.log('💾 [Tile Cache] Cacheando tile:', url.pathname, `(${contentLength} bytes)`);
+                cache.put(event.request, response.clone());
+              } else {
+                console.warn('⚠️ [Tile Cache] Tile sospechosamente pequeño, no se cachea:', url.pathname, `(${contentLength} bytes)`);
+              }
             }
             return response;
           }).catch((error) => {

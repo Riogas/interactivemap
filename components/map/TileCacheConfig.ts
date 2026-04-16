@@ -8,7 +8,7 @@ export const configureTileCache = () => {
   return {
     // ✅ CACHE Y PERFORMANCE
     maxZoom: 19, // Zoom máximo permitido
-    maxNativeZoom: 18, // OSM solo provee tiles hasta zoom 18
+    maxNativeZoom: 19, // OSM provee tiles hasta zoom 19 en la mayoría de áreas
     minZoom: 3, // Zoom mínimo
     
     // ✅ BUFFER Y MEMORIA
