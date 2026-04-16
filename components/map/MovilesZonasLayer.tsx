@@ -282,7 +282,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
               html: `
                 <div class="mz-label-inner">
                   <span class="mz-label-zona">${zona.zona_id}</span>
-                  <span class="mz-label-counts ${total === 0 ? 'mz-counts-zero' : ''}">${counts.prioridad}/${counts.transito}</span>
+                  ${counts.prioridad !== counts.transito ? `<span class="mz-label-counts ${total === 0 ? 'mz-counts-zero' : ''}">${counts.prioridad}/${counts.transito}</span>` : ''}
                 </div>
               `,
               iconSize: [60, 40],

@@ -81,7 +81,7 @@ function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label:
   const { sinAsignar, capacidadDisponible, capacidadTotal, movilesEnZona } = stats;
 
   if (movilesEnZona === 0 && sinAsignar > 0) {
-    return { color: '#7f1d1d', label: 'Sin cob.', pct: 999 }; // crítico
+    return { color: '#7f1d1d', label: 'Sin C.', pct: 999 }; // crítico
   }
   if (movilesEnZona === 0 && sinAsignar === 0) {
     return { color: '#d1d5db', label: '—', pct: -1 }; // zona sin datos
@@ -96,7 +96,7 @@ function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label:
   if (pct <= 50)  return { color: '#eab308', label: `${Math.round(pct)}%`, pct };         // amarillo
   if (pct <= 75)  return { color: '#f97316', label: `${Math.round(pct)}%`, pct };         // naranja
   if (pct <= 100) return { color: '#ef4444', label: `${Math.round(pct)}%`, pct };         // rojo
-  if (pct === 998) return { color: '#7c2d12', label: 'Sin C.', pct: 998 };              // sin capacidad de entrega
+  if (pct === 998) return { color: '#7f1d1d', label: 'Sin C.', pct: 998 };              // sin capacidad de entrega
   return { color: '#dc2626', label: `${Math.round(pct)}%`, pct };                          // rojo fuerte >100%
 }
 
@@ -128,8 +128,7 @@ function SaturacionLegend() {
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
           <div class="demora-legend-title">Saturación</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7c2d12"></span><span class="demora-legend-label">Sin C. (cap. agotada)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7f1d1d"></span><span class="demora-legend-label">Sin cobertura</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7f1d1d"></span><span class="demora-legend-label">Sin C.</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">75 – 100%</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">50 – 75%</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">25 – 50% (sin etiqueta)</span></div>
