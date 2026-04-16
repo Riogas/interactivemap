@@ -24,6 +24,7 @@ import DistanceMeasurement from './DistanceMeasurement';
 import DistribucionZonasLayer from './DistribucionZonasLayer';
 import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from './MovilesZonasLayer';
 import ZonasActivasLayer from './ZonasActivasLayer';
+import SaturacionZonasLayer, { SaturacionZonaData, SaturacionZonaStats } from './SaturacionZonasLayer';
 import dynamic from 'next/dynamic';
 import './DataViewControl.css';
 import toast from 'react-hot-toast';
@@ -98,6 +99,7 @@ interface MapViewProps {
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
   onMovilesZonasServiceFilterChange?: (f: MovilesZonasServiceFilter) => void; // Callback cambio filtro
+  saturacionData?: Map<number, SaturacionZonaStats>; // Mapa zona_id → stats de saturación
   tiposServicioDisponibles?: string[]; // Valores distintos de servicio_nombre
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
@@ -508,6 +510,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
     prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
+    prev.saturacionData?.size === next.saturacionData?.size &&
     prev.showDemoraLabels === next.showDemoraLabels &&
     prev.zonaOpacity === next.zonaOpacity &&
     prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
@@ -575,6 +578,7 @@ const MapView = memo(function MapView({
   movilesZonasServiceFilter = 'all',
   onMovilesZonasServiceFilterChange,
   tiposServicioDisponibles = [],
+  saturacionData,
   allZonas = [],
   showDemoraLabels = false,
   zonaOpacity = 50,
@@ -2092,6 +2096,11 @@ const MapView = memo(function MapView({
         {/* ✅ Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}
         {dataViewMode === 'zonas-activas' && (allZonas.length > 0 || zonas.length > 0) && (
           <ZonasActivasLayer zonas={allZonas.length > 0 ? allZonas : zonas} demoras={demorasData} zonaOpacity={zonaOpacity} />
+        )}
+
+        {/* 🟥 Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
+        {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
+          <SaturacionZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (

@@ -46,7 +46,7 @@ export function useMapDataView({
   }, [dataViewMode]);
 
   // Handler para cambios de vista de datos
-  const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas' | 'pedidos-zona') => {
+  const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas' | 'pedidos-zona' | 'saturacion') => {
     updatePreference('dataViewMode', mode);
     if (mode !== 'normal') {
       setShowZonas(true);

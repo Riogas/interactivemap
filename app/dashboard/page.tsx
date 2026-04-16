@@ -1232,7 +1232,57 @@ function DashboardContent() {
     return map;
   }, [pedidosCompletos, pedidosZonaFilter]);
 
-  // 🚀 NUEVO: Actualizar lote de móviles en tiempo real basado en pedidos
+  // � Cálculo de saturación por zona:
+  //   Para cada móvil con prioridad activa en zonas, su capacidad disponible se proratea
+  //   entre la cantidad de zonas en que tiene prioridad, evitando sobrecontar móviles compartidos.
+  const saturacionData = useMemo(() => {
+    const EXCLUDED = new Set([3, 5, 15]);
+    const stats = new Map<number, { sinAsignar: number; capacidadTotal: number; capacidadDisponible: number; movilesEnZona: number; movilesCompartidos: number }>();
+
+    // 1. Registros de prioridad activos
+    const priorityRecs = movilesZonasData.filter(r => r.prioridad_o_transito === 1 && r.activa);
+
+    // 2. Cuántas zonas de prioridad tiene cada móvil (para el prorrateo)
+    const movilZoneCount = new Map<string, number>();
+    priorityRecs.forEach(r => movilZoneCount.set(r.movil_id, (movilZoneCount.get(r.movil_id) ?? 0) + 1));
+
+    // 3. Lookup de datos de móvil: id → { tamanoLote, pedidosAsignados, estadoNro }
+    const movilDataMap = new Map<string, { tamanoLote: number; pedidosAsignados: number; estadoNro?: number }>();
+    moviles.forEach(m => movilDataMap.set(String(m.id), {
+      tamanoLote: (m as any).tamanoLote ?? 0,
+      pedidosAsignados: (m as any).pedidosAsignados ?? 0,
+      estadoNro: (m as any).estadoNro ?? undefined,
+    }));
+
+    // 4. Acumular capacidad prorat. por zona
+    priorityRecs.forEach(r => {
+      const md = movilDataMap.get(r.movil_id);
+      if (!md) return;
+      if (md.estadoNro !== undefined && EXCLUDED.has(md.estadoNro)) return;
+      const nZones = movilZoneCount.get(r.movil_id) ?? 1;
+      const available = Math.max(0, md.tamanoLote - md.pedidosAsignados);
+      const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+      stats.set(r.zona_id, {
+        ...existing,
+        capacidadTotal: existing.capacidadTotal + md.tamanoLote / nZones,
+        capacidadDisponible: existing.capacidadDisponible + available / nZones,
+        movilesEnZona: existing.movilesEnZona + 1,
+        movilesCompartidos: existing.movilesCompartidos + (nZones > 1 ? 1 : 0),
+      });
+    });
+
+    // 5. Contar pedidos sin asignar por zona
+    pedidosCompletos.forEach(p => {
+      if (Number(p.estado_nro) !== 1) return;
+      if (p.movil != null && Number(p.movil) !== 0) return;
+      const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
+      if (!zona || zona === 0) return;
+      const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+      stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
+    });
+
+    return stats;
+  }, [movilesZonasData, moviles, pedidosCompletos]);
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
   const prevPedidosKeyRef = useRef<string>('');
   
@@ -1980,6 +2030,7 @@ function DashboardContent() {
                 onMovilesZonasServiceFilterChange={setMovilesZonasServiceFilter}
                 tiposServicioDisponibles={tiposServicio}
                 allZonas={allZonasData}
+                saturacionData={saturacionData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
                 zonaOpacity={preferences.zonaOpacity ?? 50}
                 reloadMarkersTrigger={reloadMarkersTrigger}

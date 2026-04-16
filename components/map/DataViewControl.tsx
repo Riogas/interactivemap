@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 
-export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas' | 'pedidos-zona';
+export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas' | 'pedidos-zona' | 'saturacion';
 
 interface DataViewControlProps {
   value: DataViewMode;
@@ -66,6 +66,10 @@ export default function DataViewControl({ value, onChange }: DataViewControlProp
             <label class="dv-option">
               <input type="radio" name="dv-mode" value="pedidos-zona" />
               <span class="dv-icon">📦</span> Pedidos/Zona
+            </label>
+            <label class="dv-option">
+              <input type="radio" name="dv-mode" value="saturacion" />
+              <span class="dv-icon">🟥</span> Saturación
             </label>
 
           </div>
