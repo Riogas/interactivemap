@@ -273,13 +273,19 @@ export default function MovilSelector({
       result = result.filter(pedido => Number(pedido.estado_nro) === 1);
     }
     
+    // Si el filtro de empresa es parcial (no todas y no ninguna), ocultar sin asignar
+    const isPartialEmpresa = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles + sin asignar
     if (selectedMoviles.length > 0) {
       result = result.filter(pedido => {
-        // Sin asignar siempre pasan (no filtran por móvil ni empresa)
-        if (!pedido.movil || Number(pedido.movil) === 0) return true;
+        // Sin asignar: solo pasan cuando NO hay filtro parcial de empresa
+        if (!pedido.movil || Number(pedido.movil) === 0) return !isPartialEmpresa;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
+    } else if (isPartialEmpresa) {
+      // Sin móviles seleccionados pero empresa parcial: igual ocultar sin asignar
+      result = result.filter(pedido => pedido.movil && Number(pedido.movil) !== 0);
     }
     
     // Filtrar por búsqueda
@@ -332,7 +338,7 @@ export default function MovilSelector({
     }
     
     return result;
-  }, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, selectedEmpresas, empresas]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -346,12 +352,17 @@ export default function MovilSelector({
       result = result.filter(service => Number(service.estado_nro) === 1);
     }
     
-    // Filtrar por móviles seleccionados (sin asignar siempre pasan)
+    // Si el filtro de empresa es parcial (no todas y no ninguna), ocultar sin asignar
+    const isPartialEmpresaSvc = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+
+    // Filtrar por móviles seleccionados (sin asignar solo pasan cuando no hay filtro parcial de empresa)
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
-        if (!service.movil || Number(service.movil) === 0) return true;
+        if (!service.movil || Number(service.movil) === 0) return !isPartialEmpresaSvc;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
+    } else if (isPartialEmpresaSvc) {
+      result = result.filter(service => service.movil && Number(service.movil) !== 0);
     }
     
     // Filtrar por búsqueda
@@ -405,7 +416,7 @@ export default function MovilSelector({
     }
     
     return result;
-  }, [services, servicesSearch, servicesFilters, selectedMoviles]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, selectedEmpresas, empresas]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
@@ -595,25 +606,23 @@ export default function MovilSelector({
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 h-full flex flex-col">
-      <h2 className="text-xl font-bold text-gray-800 mb-4">
-        Capas del Mapa
-      </h2>
 
       {/* Badges de filtros activos - siempre visibles */}
       {(() => {
         const badges: { label: string; color?: string; onClear?: () => void }[] = [];
-        
-        // Badge de estado de actividad (siempre visible)
-        const actividadLabels: Record<string, { label: string; icon: string; color: string }> = {
-          'activo': { label: 'Activos', icon: '🟢', color: 'bg-green-100 text-green-700' },
-          'no_activo': { label: 'No Activos', icon: '🔴', color: 'bg-red-100 text-red-700' },
-        };
-        const actInfo = actividadLabels[movilesFilters.actividad] || actividadLabels['activo'];
-        badges.push({
-          label: `${actInfo.icon} Estado: ${actInfo.label}`,
-          color: actInfo.color,
-          onClear: movilesFilters.actividad !== 'activo' ? () => setMovilesFilters(prev => ({ ...prev, actividad: 'activo' })) : undefined,
-        });
+
+        // Badge de estado de actividad (solo cuando NO es el default 'activo')
+        if (movilesFilters.actividad && movilesFilters.actividad !== 'activo') {
+          const actividadLabels: Record<string, { label: string; icon: string; color: string }> = {
+            'no_activo': { label: 'No Activos', icon: '🔴', color: 'bg-red-100 text-red-700' },
+          };
+          const actInfo = actividadLabels[movilesFilters.actividad];
+          if (actInfo) badges.push({
+            label: `${actInfo.icon} Estado: ${actInfo.label}`,
+            color: actInfo.color,
+            onClear: () => setMovilesFilters(prev => ({ ...prev, actividad: 'activo' })),
+          });
+        }
 
         // Badge de móviles seleccionados
         if (selectedMoviles.length > 0) {

@@ -56,6 +56,7 @@ interface PedidosTableModalProps {
   preFilterZona?: number;
   onClearPreFilter?: () => void;
   initialAsignacion?: 'todos' | 'con_movil' | 'sin_movil';
+  hideUnassigned?: boolean;
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -79,7 +80,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos' }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -164,10 +165,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
       // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
       result = result.filter(p =>
-        // Con asignacion='todos' también incluir los sin móvil
-        (filters.asignacion === 'todos' && (!p.movil || Number(p.movil) === 0)) ||
+        // Con asignacion='todos' incluir sin móvil solo si no hay filtro parcial de empresa
+        (filters.asignacion === 'todos' && !hideUnassigned && (!p.movil || Number(p.movil) === 0)) ||
         (p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
       );
+    } else if (hideUnassigned && !preFilterMovil && !preFilterZona && filters.asignacion === 'todos') {
+      // Sin selectedMoviles pero con filtro parcial de empresa: ocultar sin asignar
+      result = result.filter(p => p.movil && Number(p.movil) !== 0);
     }
     
     // Aplicar filtro externo de tipo de servicio (solo para pendientes)
@@ -177,7 +181,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega]);
+  }, [pedidos, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre

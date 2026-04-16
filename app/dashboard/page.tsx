@@ -1699,6 +1699,7 @@ function DashboardContent() {
         preFilterZona={preFilterZona}
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         initialAsignacion={pedidosInitialAsignacion}
+        hideUnassigned={selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length}
       />
 
       {/* Modal de Vista Extendida de Services */}
@@ -1718,9 +1719,8 @@ function DashboardContent() {
         preFilterMovil={preFilterMovil}
         preFilterZona={preFilterZona}
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
+        hideUnassigned={selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length}
       />
-
-      {/* Modal de importación de POIs desde OpenStreetMap */}
       <OsmImportModal
         isOpen={isOsmImportOpen}
         onClose={() => setIsOsmImportOpen(false)}
