@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, ServiceSupabase, CustomMarker, EmpresaFleteraSupabase } from '@/types';
@@ -338,7 +338,7 @@ export default function MovilSelector({
       result = result.filter(pedido => Number(pedido.movil) === pedidosFilters.movil);
     }
     if (pedidosFilters.producto !== null) {
-      result = result.filter(pedido => pedido.servicio_nombre === pedidosFilters.producto);
+      result = result.filter(pedido => pedido.producto_nom === pedidosFilters.producto);
     }
     if (pedidosFilters.asignacion === 'con_movil') {
       result = result.filter(pedido => pedido.movil && Number(pedido.movil) !== 0);

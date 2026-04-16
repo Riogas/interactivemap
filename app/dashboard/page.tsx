@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -2069,7 +2069,7 @@ function DashboardContent() {
                   base = filterByTipoServicio(filterByDelay(base, isPendientes ? pedidosFilters.atraso : []), isPendientes ? pedidosFilters.tipoServicio : 'all');
                   if (pedidosFilters.zona !== null) base = base.filter(p => p.zona_nro === pedidosFilters.zona);
                   if (pedidosFilters.movil !== null) base = base.filter(p => Number(p.movil) === pedidosFilters.movil);
-                  if (pedidosFilters.producto !== null) base = base.filter(p => p.servicio_nombre === pedidosFilters.producto);
+                  if (pedidosFilters.producto !== null) base = base.filter(p => p.producto_nom === pedidosFilters.producto);
                   if (pedidosFilters.asignacion === 'con_movil') base = base.filter(p => p.movil && Number(p.movil) !== 0);
                   else if (pedidosFilters.asignacion === 'sin_movil') base = base.filter(p => !p.movil || Number(p.movil) === 0);
                   if (pedidosFilters.entrega === 'entregados') base = base.filter(p => isSubEstadoEntregado(p));
