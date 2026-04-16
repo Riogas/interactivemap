@@ -16,7 +16,7 @@ export const SHAPE_OPTIONS: { value: MarkerShape; label: string; svg: string }[]
   { value: 'star', label: 'Estrella', svg: '<polygon points="12,2 14.9,8.6 22,9.3 16.8,14 18.2,21 12,17.3 5.8,21 7.2,14 2,9.3 9.1,8.6" fill="currentColor" stroke="white" stroke-width="1.5"/>' },
 ];
 
-export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'pedidos-zona';
+export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas' | 'pedidos-zona' | 'saturacion';
 
 export interface UserPreferences {
   defaultMapLayer: 'streets' | 'satellite' | 'terrain' | 'cartodb' | 'dark' | 'light';
