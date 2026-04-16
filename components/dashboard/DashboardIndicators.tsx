@@ -219,10 +219,6 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     return selectedDate !== today;
   }, [selectedDate]);
 
-  const openStatsPage = () => {
-    window.open(`/dashboard/stats?date=${selectedDate}`, '_blank');
-  };
-
   // Modo histórico: solo Entregados + % Entregados + botón de estadísticas
   if (isHistorical) {
     return (
