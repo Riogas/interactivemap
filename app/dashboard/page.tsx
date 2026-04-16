@@ -1536,7 +1536,7 @@ function DashboardContent() {
           {/* Botón Estadísticas */}
           <button
             id="tour-fab-estadisticas"
-            onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
+            onClick={() => { window.open(`/dashboard/stats?date=${selectedDate || new Date().toISOString().slice(0,10)}`, '_blank'); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
             title="Estadísticas"
           >
