@@ -30,6 +30,7 @@ import FleterasZonasModal from '@/components/ui/FleterasZonasModal';
 import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
+import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
 
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -105,6 +106,7 @@ function DashboardContent() {
   const [isZonasSinMovilOpen, setIsZonasSinMovilOpen] = useState(false);
   const [isMovilesSinReportarOpen, setIsMovilesSinReportarOpen] = useState(false);
   const [isZonasNoActivasOpen, setIsZonasNoActivasOpen] = useState(false);
+  const [saturacionModalZonaId, setSaturacionModalZonaId] = useState<number | null>(null);
 
   // Mapa completo movil_nro → estadoNro (para todos los moviles, no solo los con GPS)
   const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
@@ -1732,6 +1734,33 @@ function DashboardContent() {
         escenarioIds={selectedEscenarioIds}
       />
 
+      {/* Modal de Saturación: click en zona del mapa */}
+      {saturacionModalZonaId !== null && (
+        <SaturacionZonaModal
+          zonaId={saturacionModalZonaId}
+          zonas={(allZonasData.length > 0 ? allZonasData : zonasData).map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre ?? null }))}
+          satStats={saturacionData.get(saturacionModalZonaId)}
+          pedidosSinAsignar={pedidosCompletos
+            .filter(p =>
+              Number(p.estado_nro) === 1 &&
+              (p.movil == null || Number(p.movil) === 0) &&
+              Number(p.zona_nro) === saturacionModalZonaId,
+            )
+            .map(p => ({
+              id: p.id,
+              cliente_nombre: p.cliente_nombre,
+              cliente_direccion: p.cliente_direccion,
+              servicio_nombre: p.servicio_nombre,
+              fch_hora_para: p.fch_hora_para,
+              demora_informada: p.demora_informada,
+              zona_nro: p.zona_nro,
+            }))}
+          movilesZonasData={movilesZonasData}
+          moviles={moviles}
+          onClose={() => setSaturacionModalZonaId(null)}
+        />
+      )}
+
       {/* Modal de Vista Móviles por Zona (click en mapa o botón) */}
       <ZonaMovilesViewModal
         isOpen={zonaViewModalOpen}
@@ -2041,7 +2070,7 @@ function DashboardContent() {
                 poiDefaultIcon={preferences.poiDefaultIcon ?? '🏢'}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
-                onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : undefined}
+                onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : dataViewMode === 'saturacion' ? setSaturacionModalZonaId : undefined}
               />
             </motion.div>
           </>

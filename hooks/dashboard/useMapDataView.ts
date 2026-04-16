@@ -141,8 +141,8 @@ export function useMapDataView({
           }
         }
 
-        // 3) Si es vista Móviles en Zonas, cargar datos crudos
-        if (dataViewMode === 'moviles-zonas') {
+        // 3) Si es vista Móviles en Zonas o Saturación, cargar datos crudos de moviles_zonas
+        if (dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion') {
           const mzRes = await fetch('/api/moviles-zonas');
           const mzResult = await mzRes.json();
           if (mzResult.success && mzResult.data) {
@@ -163,7 +163,7 @@ export function useMapDataView({
       intervalMs = demorasPollingSeconds * 1000;
     } else if (dataViewMode === 'pedidos-zona') {
       intervalMs = 0; // sin polling propio — los pedidos del parent ya se actualizan en realtime
-    } else if (dataViewMode === 'moviles-zonas') {
+    } else if (dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion') {
       intervalMs = movilesZonasPollingSeconds * 1000;
     }
 
