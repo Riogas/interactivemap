@@ -464,59 +464,10 @@ export default function MovilSelector({
           searchValue: servicesSearch,
           onSearchChange: setServicesSearch,
           searchPlaceholder: 'Buscar service...',
-          filters: [
-            {
-              id: 'vista',
-              label: 'Vista',
-              options: [
-                { value: 'pendientes', label: '⏳ Pendientes' },
-                { value: 'finalizados', label: '✅ Finalizados' },
-              ],
-              value: servicesFilters.vista,
-            },
-            ...(servicesFilters.vista !== 'finalizados' ? [{
-              id: 'tipoServicio',
-              label: 'Tipo de Servicio',
-              options: [
-                { value: 'all', label: 'Todos' },
-                ...tiposServicio.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() })),
-              ],
-              value: servicesFilters.tipoServicio ?? 'all',
-            }] : []),
-          ],
-          multiSelectFilters: servicesFilters.vista !== 'finalizados' ? [
-            {
-              id: 'atraso',
-              label: 'Estado de Atraso',
-              options: [
-                { value: 'muy_atrasado', label: 'Muy Atrasado', color: '#EF4444' },
-                { value: 'atrasado', label: 'Atrasado', color: '#EC4899' },
-                { value: 'limite_cercana', label: 'Hora Límite Cercana', color: '#EAB308' },
-                { value: 'en_hora', label: 'En Hora', color: '#22C55E' },
-                { value: 'sin_hora', label: 'Sin hora', color: '#6B7280' },
-              ],
-              values: servicesFilters.atraso,
-            }
-          ] : [],
-          onFilterChange: (filterId: string, value: string) => {
-            if (filterId === 'tipoServicio') {
-              setServicesFilters(prev => ({ 
-                ...prev, 
-                tipoServicio: value
-              }));
-            }
-            if (filterId === 'vista') {
-              setServicesFilters(prev => ({ 
-                ...prev, 
-                vista: value as 'pendientes' | 'finalizados'
-              }));
-            }
-          },
-          onMultiSelectFilterChange: (filterId: string, values: string[]) => {
-            if (filterId === 'atraso') {
-              setServicesFilters(prev => ({ ...prev, atraso: values }));
-            }
-          }
+          filters: [],
+          multiSelectFilters: [],
+          onFilterChange: () => {},
+          onMultiSelectFilterChange: () => {},
         };
 
       case 'pedidos':
@@ -524,62 +475,10 @@ export default function MovilSelector({
           searchValue: pedidosSearch,
           onSearchChange: setPedidosSearch,
           searchPlaceholder: 'Buscar pedido...',
-          filters: [
-            {
-              id: 'vista',
-              label: 'Vista',
-              options: [
-                { value: 'pendientes', label: '⏳ Pendientes' },
-                { value: 'finalizados', label: '✅ Finalizados' },
-              ],
-              value: pedidosFilters.vista,
-            },
-            ...(pedidosFilters.vista !== 'finalizados' ? [{
-              id: 'tipoServicio',
-              label: 'Tipo de Servicio',
-              options: [
-                { value: 'all', label: 'Todos' },
-                ...tiposServicio.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() })),
-              ],
-              value: pedidosFilters.tipoServicio,
-            }] : []),
-          ],
-          multiSelectFilters: pedidosFilters.vista !== 'finalizados' ? [
-            {
-              id: 'atraso',
-              label: 'Estado de Atraso',
-              options: [
-                { value: 'muy_atrasado', label: 'Muy Atrasado', color: '#EF4444' },
-                { value: 'atrasado', label: 'Atrasado', color: '#EC4899' },
-                { value: 'limite_cercana', label: 'Hora Límite Cercana', color: '#EAB308' },
-                { value: 'en_hora', label: 'En Hora', color: '#22C55E' },
-                { value: 'sin_hora', label: 'Sin hora', color: '#6B7280' },
-              ],
-              values: pedidosFilters.atraso,
-            }
-          ] : [],
-          onFilterChange: (filterId: string, value: string) => {
-            if (filterId === 'tipoServicio') {
-              setPedidosFilters(prev => ({ 
-                ...prev, 
-                tipoServicio: value
-              }));
-            }
-            if (filterId === 'vista') {
-              setPedidosFilters(prev => ({ 
-                ...prev, 
-                vista: value as 'pendientes' | 'finalizados'
-              }));
-            }
-          },
-          onMultiSelectFilterChange: (filterId: string, values: string[]) => {
-            if (filterId === 'atraso') {
-              setPedidosFilters(prev => ({ 
-                ...prev, 
-                atraso: values 
-              }));
-            }
-          }
+          filters: [],
+          multiSelectFilters: [],
+          onFilterChange: () => {},
+          onMultiSelectFilterChange: () => {},
         };
 
       case 'pois':
@@ -652,37 +551,28 @@ export default function MovilSelector({
           });
         }
         
-        // Badge de filtros de atraso de pedidos
-        if (pedidosFilters.atraso.length > 0) {
-          const atrasosLabels: Record<string, string> = {
-            'muy_atrasado': 'Muy Atrasado',
-            'atrasado': 'Atrasado',
-            'limite_cercana': 'Hora Límite Cercana',
-            'en_hora': 'En Hora',
-            'sin_hora': 'Sin hora',
-          };
+        // Badge de filtros activos en PEDIDOS
+        {
+          const pCount = (pedidosFilters.vista !== 'pendientes' ? 1 : 0) + (pedidosFilters.tipoServicio !== 'all' ? 1 : 0) + pedidosFilters.atraso.length;
           badges.push({
-            label: `📦 Atraso: ${pedidosFilters.atraso.map(v => atrasosLabels[v] || v).join(', ')}`,
-            color: 'bg-green-100 text-green-700',
-            onClear: () => setPedidosFilters(prev => ({ ...prev, atraso: [] })),
+            label: pCount === 0 ? '📦 Pedidos: Todos' : `📦 Pedidos: ${pCount} Filtro${pCount !== 1 ? 's' : ''}`,
+            color: pCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
+            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes' }) : undefined,
           });
         }
-        
-        // Badge de filtros de atraso de services
-        if (servicesFilters.atraso.length > 0) {
-          const atrasosLabels: Record<string, string> = {
-            'muy_atrasado': 'Muy Atrasado',
-            'atrasado': 'Atrasado',
-            'limite_cercana': 'Hora Límite Cercana',
-            'en_hora': 'En Hora',
-            'sin_hora': 'Sin hora',
-          };
+
+        // Badge de filtros activos en SERVICES
+        {
+          const sCount = (servicesFilters.vista !== 'pendientes' ? 1 : 0) + (servicesFilters.tipoServicio !== 'all' ? 1 : 0) + servicesFilters.atraso.length;
           badges.push({
-            label: `🔧 Atraso: ${servicesFilters.atraso.map(v => atrasosLabels[v] || v).join(', ')}`,
-            color: 'bg-violet-100 text-violet-700',
-            onClear: () => setServicesFilters(prev => ({ ...prev, atraso: [] })),
+            label: sCount === 0 ? '🔧 Services: Todos' : `🔧 Services: ${sCount} Filtro${sCount !== 1 ? 's' : ''}`,
+            color: sCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
+            onClear: sCount > 0 ? () => setServicesFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes' }) : undefined,
           });
         }
+
+        // Badge de filtros de atraso de pedidos (ya incluido arriba en el count)
+        // Badge de filtros de atraso de services (ya incluido arriba en el count)
         
         if (badges.length === 0) return null;
         
