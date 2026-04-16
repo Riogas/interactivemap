@@ -271,7 +271,7 @@ export default function SaturacionZonaModal({
   const isServiceMode = tipoServicio.toUpperCase() === 'SERVICE';
   const sinAsignarTitle = isServiceMode ? 'Services sin asignar' : `Pedidos sin asignar (${tipoServicio})`;
   const sinAsignar = pedidosSinAsignar.length;
-  // 998 = Sin C.E. (móviles existen pero cap. disponible = 0), 999 = sin cobertura (sin móviles)
+  // 998 = Sin C. (móviles existen pero cap. disponible = 0), 999 = sin cobertura (sin móviles)
   const satPct = capLibre > 0
     ? Math.round((sinAsignar / capLibre) * 100)
     : sinAsignar > 0
@@ -296,7 +296,7 @@ export default function SaturacionZonaModal({
             <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
               <span>Saturación:</span>
               <span className={`font-bold ${pctColor(satPct)}`}>
-                {satPct === 999 ? '∞% (sin cobertura)' : satPct === 998 ? 'Sin C.E.' : `${satPct}%`}
+                {satPct === 999 ? '∞% (sin cobertura)' : satPct === 998 ? 'Sin C.' : `${satPct}%`}
               </span>
               <span className="text-gray-400">·</span>
               <span>Cap. libre: <b>{capLibre.toFixed(1)}</b></span>

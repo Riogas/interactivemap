@@ -91,12 +91,12 @@ function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label:
   // capacidadDisponible <= 0 con pedidos pendientes → sin capacidad de entrega
   const pct = !isFinite(rawPct) || rawPct < 0 ? 998 : rawPct;
 
-  if (pct === 0 || sinAsignar === 0) return { color: '#22c55e', label: '0%', pct: 0 };   // verde sobrante
-  if (pct <= 25)  return { color: '#86efac', label: `${Math.round(pct)}%`, pct };         // verde claro
+  if (pct === 0 || sinAsignar === 0) return { color: '#86efac', label: '0%', pct: 0 };   // verde claro sobrante
+  if (pct <= 25)  return { color: '#22c55e', label: `${Math.round(pct)}%`, pct };         // verde oscuro 1–25%
   if (pct <= 50)  return { color: '#eab308', label: `${Math.round(pct)}%`, pct };         // amarillo
   if (pct <= 75)  return { color: '#f97316', label: `${Math.round(pct)}%`, pct };         // naranja
   if (pct <= 100) return { color: '#ef4444', label: `${Math.round(pct)}%`, pct };         // rojo
-  if (pct === 998) return { color: '#7c2d12', label: 'Sin C.E.', pct: 998 };              // sin capacidad de entrega
+  if (pct === 998) return { color: '#7c2d12', label: 'Sin C.', pct: 998 };              // sin capacidad de entrega
   return { color: '#dc2626', label: `${Math.round(pct)}%`, pct };                          // rojo fuerte >100%
 }
 
@@ -128,13 +128,13 @@ function SaturacionLegend() {
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
           <div class="demora-legend-title">Saturación</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7c2d12"></span><span class="demora-legend-label">Sin C.E. (cap. agotada)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7c2d12"></span><span class="demora-legend-label">Sin C. (cap. agotada)</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7f1d1d"></span><span class="demora-legend-label">Sin cobertura</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">75 – 100%</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">50 – 75%</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">25 – 50% (sin etiqueta)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">1 – 25% (sin etiqueta)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">Sobrante (sin etiqueta)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">1 – 25% (sin etiqueta)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">Sobrante (sin etiqueta)</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#d1d5db"></span><span class="demora-legend-label">Sin datos</span></div>
         `;
         L.DomEvent.disableClickPropagation(div);
@@ -233,7 +233,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
         `Cap. total (prorat.): <b>${s.capacidadTotal.toFixed(1)}</b>`,
         `Espacios libres (prorat.): <b>${s.capacidadDisponible.toFixed(1)}</b>`,
         pct === 999 ? '⚠️ Sin cobertura (0 móviles)'
-          : pct === 998 ? '⚠️ Sin C.E. — móviles saturados (cap. disponible = 0)'
+          : pct === 998 ? '⚠️ Sin C. — móviles saturados (cap. disponible = 0)'
           : `Saturación: <b>${satPct}%</b>`,
         s.movilesCompartidos > 0 ? '<i style="color:#6b7280;font-size:10px">Capacidad con prorrateo por zonas compartidas</i>' : '',
       ].filter(Boolean);
