@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, ServiceSupabase } from '@/types';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
+import { isSubEstadoEntregado } from '@/utils/estadoPedido';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
 
 // ============= Types =============
@@ -208,12 +209,12 @@ export default function ZonaEstadisticasModal({
       // Entregados: estado 2, sub_estado_nro 3, 17 o 19 — excluir pedidos hijo (re-entregas)
       const pedidosZonaSinHijo = pedidosZona.filter(p => !p.pedido_hijo);
       const entregados = pedidosZonaSinHijo.filter(p =>
-        Number(p.estado_nro) === 2 && [3, 17, 19].includes(Number(p.sub_estado_nro))
+        Number(p.estado_nro) === 2 && isSubEstadoEntregado(p)
       ).length;
 
       // No Entregados: estado 2, sub_estado_nro != 3, 17 ni 19 — excluir pedidos hijo
       const noEntregados = pedidosZonaSinHijo.filter(p =>
-        Number(p.estado_nro) === 2 && ![3, 17, 19].includes(Number(p.sub_estado_nro))
+        Number(p.estado_nro) === 2 && !isSubEstadoEntregado(p)
       ).length;
 
       // % Cumplimiento

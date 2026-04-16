@@ -60,6 +60,25 @@ export function getEstadoDescripcion(
 }
 
 /**
+ * Devuelve true si el pedido/servicio tiene un sub-estado que corresponde a "Entregado".
+ * Sub-estados de entrega: 3 (ENTREGADO), 17 (REG. HISTORICO), 19 (ENTR. SIN 1710).
+ *
+ * Nota: algunos registros almacenan el código en sub_estado_nro (p.ej. 3, 17),
+ * mientras que otros (como el 19) lo almacenan en sub_estado_desc como texto.
+ * Por eso se chequean ambos campos.
+ */
+export function isSubEstadoEntregado(p: {
+  sub_estado_nro?: number | string | null;
+  sub_estado_desc?: string | null;
+}): boolean {
+  const ENTREGADOS = [3, 17, 19];
+  return (
+    ENTREGADOS.includes(Number(p.sub_estado_nro)) ||
+    ENTREGADOS.includes(Number(p.sub_estado_desc))
+  );
+}
+
+/**
  * Devuelve solo la descripción del estado principal (sin sub-estado).
  */
 export function getEstadoPrincipalLabel(subEstadoNro: number | null | undefined): string {

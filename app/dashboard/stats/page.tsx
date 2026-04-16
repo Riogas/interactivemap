@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
+import { isSubEstadoEntregado } from '@/utils/estadoPedido';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
@@ -377,8 +378,8 @@ function StatsContent() {
     const finalizados = filteredPedidos.filter(p => Number(p.estado_nro) === 2);
     // Excluir pedidos hijo (re-entregas) del % entregados
     const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
-    const entregados = finalizadosSinHijo.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro)));
-    const noEntregados = finalizadosSinHijo.filter(p => ![3, 17, 19].includes(Number(p.sub_estado_nro)));
+    const entregados = finalizadosSinHijo.filter(p => isSubEstadoEntregado(p));
+    const noEntregados = finalizadosSinHijo.filter(p => !isSubEstadoEntregado(p));
     const sinAsignar = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0);
     const totalPendientes = sinAsignar.length + pendientes.length; // todos los estado 1
@@ -390,8 +391,8 @@ function StatsContent() {
   const servicesStats = useMemo(() => {
     const total = services.length;
     const finalizados = services.filter(s => Number(s.estado_nro) === 2);
-    const realizados = finalizados.filter(s => [3, 17, 19].includes(Number(s.sub_estado_nro)));
-    const noRealizados = finalizados.filter(s => ![3, 17, 19].includes(Number(s.sub_estado_nro)));
+    const realizados = finalizados.filter(s => isSubEstadoEntregado(s));
+    const noRealizados = finalizados.filter(s => !isSubEstadoEntregado(s));
     const sinAsignar = services.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0));
     const pendientes = services.filter(s => Number(s.estado_nro) === 1 && s.movil && Number(s.movil) !== 0);
     // % Con atraso (pendientes con delay < 0)
@@ -409,7 +410,7 @@ function StatsContent() {
   // ─── % Realizados en hora (services) ────────────────────────────────────────
   const pctRealizadosEnHora = useMemo(() => {
     const realizados = services.filter(s =>
-      Number(s.estado_nro) === 2 && [3, 17, 19].includes(Number(s.sub_estado_nro))
+      Number(s.estado_nro) === 2 && isSubEstadoEntregado(s)
     );
     if (realizados.length === 0) return null;
     const conAmbas = realizados.filter(s => s.fch_hora_max_ent_comp && s.fch_hora_finalizacion);

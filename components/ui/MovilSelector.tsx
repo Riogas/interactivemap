@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, ServiceSupabase, CustomMarker, EmpresaFleteraSupabase } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { getEstadoDescripcion } from '@/utils/estadoPedido';
+import { getEstadoDescripcion, isSubEstadoEntregado } from '@/utils/estadoPedido';
 import clsx from 'clsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import FilterBar from './FilterBar';
@@ -1274,7 +1274,7 @@ export default function MovilSelector({
                                 const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
                                 const delayMins = !isFinalizados ? computeDelayMinutes(pedido.fch_hora_max_ent_comp) : null;
                                 const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
-                                const esEntregado = isFinalizados && [3, 17, 19].includes(Number(pedido.sub_estado_nro));
+                                const esEntregado = isFinalizados && isSubEstadoEntregado(pedido);
 
                                 return (
                                   <button

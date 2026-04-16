@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, PedidoSupabase, ServiceSupabase } from '@/types';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
+import { isSubEstadoEntregado } from '@/utils/estadoPedido';
 
 interface LeaderboardModalProps {
   isOpen: boolean;
@@ -49,12 +50,12 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
 
         // No Entregados: estado_nro = 2 && sub_estado_desc != 3, 17 ni 19
         const noEntregadosCount = items.filter(i =>
-          Number(i.estado_nro) === 2 && ![3, 17, 19].includes(Number(i.sub_estado_desc))
+          Number(i.estado_nro) === 2 && !isSubEstadoEntregado(i)
         ).length;
 
         // Entregados: estado_nro = 2 && sub_estado_desc = 3, 17 o 19
         const entregadosCount = items.filter(i =>
-          Number(i.estado_nro) === 2 && [3, 17, 19].includes(Number(i.sub_estado_desc))
+          Number(i.estado_nro) === 2 && isSubEstadoEntregado(i)
         ).length;
 
         // % Cumplimiento
@@ -63,7 +64,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
 
         // % Cumplimiento en hora
         const entregadosEnHora = items.filter(i => {
-          if (Number(i.estado_nro) !== 2 || ![3, 17, 19].includes(Number(i.sub_estado_desc))) return false;
+          if (Number(i.estado_nro) !== 2 || !isSubEstadoEntregado(i)) return false;
           if (!i.fch_hora_mov || !i.fch_hora_max_ent_comp) return false;
           return new Date(i.fch_hora_mov) <= new Date(i.fch_hora_max_ent_comp);
         }).length;

@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { PedidoSupabase } from '@/types';
 import { motion } from 'framer-motion';
+import { isSubEstadoEntregado } from '@/utils/estadoPedido';
 
 const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
 
@@ -44,8 +45,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     
     // Excluir pedidos hijo (re-entregas) del % entregados
     const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
-    // Entregados: finalizados con sub_estado_nro = 3, 17 o 19
-    const entregados = finalizadosSinHijo.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro))).length;
+    // Entregados: finalizados con sub_estado_nro o sub_estado_desc = 3, 17 o 19
+    const entregados = finalizadosSinHijo.filter(p => isSubEstadoEntregado(p)).length;
     const totalFinalizadosSinHijo = finalizadosSinHijo.length;
     const porcentajeEntregados = totalFinalizadosSinHijo > 0
       ? Math.round(entregados / totalFinalizadosSinHijo * 100)

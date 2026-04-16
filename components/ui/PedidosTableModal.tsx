@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
-import { getEstadoDescripcion } from '@/utils/estadoPedido';
+import { getEstadoDescripcion, isSubEstadoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
 
 // ========== Tipos internos ==========
@@ -140,9 +140,9 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
       
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
-        result = result.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro)));
+        result = result.filter(p => isSubEstadoEntregado(p));
       } else if (filters.entrega === 'no_entregados') {
-        result = result.filter(p => ![3, 17, 19].includes(Number(p.sub_estado_nro)));
+        result = result.filter(p => !isSubEstadoEntregado(p));
       }
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
@@ -688,7 +688,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                     </tr>
                   ) : (
                     paginated.map(({ pedido: p, delayMins, delayInfo }) => {
-                      const esEntregado = isFinalizados && [3, 17, 19].includes(Number(p.sub_estado_nro));
+                      const esEntregado = isFinalizados && isSubEstadoEntregado(p);
                       return (
                       <tr
                         key={p.id}
