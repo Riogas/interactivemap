@@ -596,7 +596,9 @@ const MapView = memo(function MapView({
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
 
-  // � Mapa de movil_id → estadoNro para que MovilesZonasLayer excluya estados 3/5/15
+  // Toggle etiquetas de conteo en móviles-zonas (por defecto ocultas)
+  const [showCountLabels, setShowCountLabels] = useState(false);
+
   const movilEstadosMap = useMemo(() => {
     const m = new Map<string, number>(allMovilEstados);
     for (const movil of moviles) {
@@ -2090,7 +2092,7 @@ const MapView = memo(function MapView({
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} onZonaClick={onZonaClick} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} onZonaClick={onZonaClick} />
         )}
 
         {/* ✅ Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}

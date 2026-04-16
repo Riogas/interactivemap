@@ -52,6 +52,10 @@ interface MovilesZonasLayerProps {
   serviceFilter: MovilesZonasServiceFilter;
   /** Callback para cambiar filtro */
   onServiceFilterChange: (f: MovilesZonasServiceFilter) => void;
+  /** Mostrar etiquetas de cantidad pr/tr en zonas con diferencia */
+  showCountLabels?: boolean;
+  /** Callback para cambiar showCountLabels */
+  onShowCountLabelsChange?: (v: boolean) => void;
   /** Valores distintos de servicio_nombre cargados dinámicamente */
   tiposServicioDisponibles?: string[];
   /** Opacidad global de zonas (0-100). Por defecto 50 */
@@ -103,7 +107,17 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
 const TIPOS_SERVICIO_FIJOS = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;
 
 /** Control Leaflet para filtro por tipo de servicio */
-function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange }: { serviceFilter: MovilesZonasServiceFilter; onServiceFilterChange: (f: MovilesZonasServiceFilter) => void }) {
+function MovilesZonasFilterControl({
+  serviceFilter,
+  onServiceFilterChange,
+  showCountLabels,
+  onShowCountLabelsChange,
+}: {
+  serviceFilter: MovilesZonasServiceFilter;
+  onServiceFilterChange: (f: MovilesZonasServiceFilter) => void;
+  showCountLabels: boolean;
+  onShowCountLabelsChange: (v: boolean) => void;
+}) {
   const map = useMap();
 
   useEffect(() => {
@@ -120,6 +134,11 @@ function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange }: { s
             <select class="mz-filter-select">
               ${TIPOS_SERVICIO_FIJOS.map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()}</option>`).join('')}
             </select>
+            <label class="mz-toggle-label" title="Mostrar/ocultar conteo de móviles">
+              <input type="checkbox" class="mz-toggle-check" ${showCountLabels ? 'checked' : ''} />
+              <span class="mz-toggle-track"><span class="mz-toggle-thumb"></span></span>
+              <span class="mz-filter-label" style="margin-left:4px">Cant.</span>
+            </label>
           </div>
         `;
 
@@ -129,6 +148,11 @@ function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange }: { s
           onServiceFilterChange(select.value);
         });
 
+        const checkbox = container.querySelector('.mz-toggle-check') as HTMLInputElement;
+        checkbox.addEventListener('change', () => {
+          onShowCountLabelsChange(checkbox.checked);
+        });
+
         return container;
       },
     });
@@ -136,7 +160,7 @@ function MovilesZonasFilterControl({ serviceFilter, onServiceFilterChange }: { s
     const ctrl = new FilterCtrl();
     ctrl.addTo(map);
     return () => { ctrl.remove(); };
-  }, [map, serviceFilter, onServiceFilterChange]);
+  }, [map, serviceFilter, onServiceFilterChange, showCountLabels, onShowCountLabelsChange]);
 
   return null;
 }
@@ -172,12 +196,13 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   movilesZonasData,
   serviceFilter,
   onServiceFilterChange,
+  showCountLabels = false,
+  onShowCountLabelsChange,
   tiposServicioDisponibles = [],
   zonaOpacity = 50,
   movilEstados,
   onZonaClick,
 }: MovilesZonasLayerProps) {
-
   // Filtrar registros de moviles_zonas según tipo de servicio seleccionado
   // y excluir móviles con estado_nro 3, 5 o 15
   const filteredData = useMemo(() => {
@@ -258,7 +283,12 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
 
   return (
     <>
-      <MovilesZonasFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
+      <MovilesZonasFilterControl
+        serviceFilter={serviceFilter}
+        onServiceFilterChange={onServiceFilterChange}
+        showCountLabels={showCountLabels}
+        onShowCountLabelsChange={onShowCountLabelsChange ?? (() => {})}
+      />
       <MovilesZonasLegend />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, counts, total }) => (
         <React.Fragment key={zona.zona_id}>
@@ -282,7 +312,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
               html: `
                 <div class="mz-label-inner">
                   <span class="mz-label-zona">${zona.zona_id}</span>
-                  ${counts.prioridad !== counts.transito ? `<span class="mz-label-counts ${total === 0 ? 'mz-counts-zero' : ''}">${counts.prioridad}/${counts.transito}</span>` : ''}
+                  ${showCountLabels && counts.prioridad !== counts.transito ? `<span class="mz-label-counts ${total === 0 ? 'mz-counts-zero' : ''}">${counts.prioridad}/${counts.transito}</span>` : ''}
                 </div>
               `,
               iconSize: [60, 40],

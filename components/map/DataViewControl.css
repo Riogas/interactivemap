@@ -266,6 +266,49 @@
   box-shadow: 0 0 0 2px rgba(59,130,246,0.25);
 }
 
+/* Toggle switch dentro del filtro */
+.mz-toggle-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 0;
+  user-select: none;
+  margin-left: 6px;
+}
+.mz-toggle-check {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.mz-toggle-track {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 16px;
+  background: #d1d5db;
+  border-radius: 8px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.mz-toggle-check:checked + .mz-toggle-track {
+  background: #3b82f6;
+}
+.mz-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  transition: left 0.2s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.mz-toggle-check:checked + .mz-toggle-track .mz-toggle-thumb {
+  left: 14px;
+}
+
 /* ============================================================
  * 🏘️ DistribucionZonasLayer — Etiquetas de zona (distribución)
  * ============================================================ */
