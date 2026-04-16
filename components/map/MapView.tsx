@@ -2887,21 +2887,16 @@ const MapView = memo(function MapView({
           }
           return true;
         }).map((marker) => {
-          // Crear icono con emoji, tamaño según poiMarkerSize: 1=chico(16), 2=mediano(24), 3=grande(32)
+          // Crear icono, tamaño según poiMarkerSize: 1=chico(16), 2=mediano(24), 3=grande(32)
           const poiPx = poiMarkerSize === 1 ? 16 : poiMarkerSize === 3 ? 32 : 24;
           const poiFontSize = poiMarkerSize === 1 ? 13 : poiMarkerSize === 3 ? 26 : 19;
+          const isPtoVenta = (marker.categoria || '').toLowerCase() === 'punto de venta';
           const displayIcon = marker.icono || poiDefaultIcon;
+          const iconHtml = isPtoVenta
+            ? `<img src="/images/iconoptoventa.png" style="width:${poiPx}px;height:${poiPx}px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" />`
+            : `<div style="font-size:${poiFontSize}px;text-align:center;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">${displayIcon}</div>`;
           const customIcon = L.divIcon({
-            html: `
-              <div style="
-                font-size: ${poiFontSize}px;
-                text-align: center;
-                line-height: 1;
-                filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
-              ">
-                ${displayIcon}
-              </div>
-            `,
+            html: iconHtml,
             className: 'custom-marker-icon',
             iconSize: [poiPx, poiPx],
             iconAnchor: [poiPx / 2, poiPx],
@@ -2920,7 +2915,10 @@ const MapView = memo(function MapView({
                   <div style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', padding: '10px 12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '26px', lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
-                        {displayIcon}
+                        {(marker.categoria || '').toLowerCase() === 'punto de venta'
+                          ? <img src="/images/iconoptoventa.png" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                          : displayIcon
+                        }
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ color: 'white', fontWeight: 700, fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>

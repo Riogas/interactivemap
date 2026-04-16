@@ -807,51 +807,13 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   Marcadores Puntos de Interés
                 </label>
 
-                {/* Selector de ícono por defecto */}
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 w-28 shrink-0">Ícono por defecto</span>
-                  <select
-                    value={preferences.poiDefaultIcon}
-                    onChange={(e) => setPreferences({ ...preferences, poiDefaultIcon: e.target.value })}
-                    className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    {[
-                      { emoji: '🏢', label: 'Edificio' },
-                      { emoji: '🏪', label: 'Tienda' },
-                      { emoji: '🏬', label: 'Comercio' },
-                      { emoji: '🏭', label: 'Fábrica' },
-                      { emoji: '🏠', label: 'Casa' },
-                      { emoji: '🏦', label: 'Banco' },
-                      { emoji: '⛽', label: 'Gas / Combustible' },
-                      { emoji: '📍', label: 'Pin rojo' },
-                      { emoji: '📌', label: 'Pin naranja' },
-                      { emoji: '⭐', label: 'Estrella' },
-                      { emoji: '🎯', label: 'Diana' },
-                      { emoji: '🚩', label: 'Bandera' },
-                      { emoji: '🔵', label: 'Círculo azul' },
-                      { emoji: '🟢', label: 'Círculo verde' },
-                      { emoji: '🔴', label: 'Círculo rojo' },
-                      { emoji: '🟡', label: 'Círculo amarillo' },
-                      { emoji: '🟣', label: 'Círculo violeta' },
-                    ].map(({ emoji, label }) => (
-                      <option key={emoji} value={emoji}>{emoji} {label}</option>
-                    ))}
-                  </select>
-                  <span
-                    className="text-2xl leading-none"
-                    style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}
-                  >
-                    {preferences.poiDefaultIcon}
-                  </span>
-                </div>
-
                 {/* Selector de tamaño */}
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-500 w-28 shrink-0">Tamaño en mapa</span>
                   <div className="flex gap-2">
                     {([1, 2, 3] as const).map((size) => {
                       const labels = { 1: 'Chico', 2: 'Mediano', 3: 'Grande' };
-                      const px = { 1: '12px', 2: '18px', 3: '26px' };
+                      const px = { 1: 12, 2: 18, 3: 26 };
                       const active = preferences.poiMarkerSize === size;
                       return (
                         <button
@@ -864,7 +826,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                               : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
                           }`}
                         >
-                          <span style={{ fontSize: px[size], lineHeight: 1 }}>{preferences.poiDefaultIcon}</span>
+                          <img src="/images/iconoptoventa.png" style={{ width: px[size], height: px[size], objectFit: 'contain' }} />
                           {labels[size]}
                         </button>
                       );
