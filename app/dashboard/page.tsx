@@ -1264,12 +1264,14 @@ function DashboardContent() {
       estadoNro: (m as any).estadoNro ?? undefined,
     }));
 
-    // 4. Acumular capacidad prorat. por zona (excluye inactivos)
+    // 4. Acumular capacidad por zona (excluye inactivos)
+    // Para SERVICE no se proratea: un móvil libre puede atender cualquiera de sus zonas
+    // Para URGENTE/NOCTURNO se divide entre la cantidad de zonas que cubre (prorrateo)
     priorityRecs.forEach(r => {
       const md = movilDataMap.get(r.movil_id);
       if (!md) return;
       if (md.estadoNro !== undefined && EXCLUDED.has(md.estadoNro)) return;
-      const nZones = movilZoneCount.get(r.movil_id) ?? 1;
+      const nZones = isService ? 1 : (movilZoneCount.get(r.movil_id) ?? 1);
       const available = Math.max(0, md.tamanoLote - md.pedidosAsignados);
       const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
       stats.set(r.zona_id, {

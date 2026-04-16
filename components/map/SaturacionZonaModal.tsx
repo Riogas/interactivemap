@@ -102,17 +102,19 @@ function MovilCard({
   movil,
   nZones,
   otherZones,
+  noProrate,
 }: {
   movil: MovilInfo;
   nZones: number;
   otherZones: ZonaInfo[];
+  noProrate?: boolean;
 }) {
   const [expanded, setExpanded] = useState<boolean>(false);
 
   const tamano = movil.tamanoLote ?? 0;
   const asignados = movil.pedidosAsignados ?? 0;
   const libres = Math.max(0, tamano - asignados);
-  const prorateado = nZones > 1;
+  const prorateado = !noProrate && nZones > 1;
   const pct = tamano > 0 ? Math.round((asignados / tamano) * 100) : 0;
 
   const badge = estadoBadge(movil.estadoNro);
@@ -384,6 +386,7 @@ export default function SaturacionZonaModal({
                     movil={movil}
                     nZones={nZones}
                     otherZones={otherZones}
+                    noProrate={isServiceMode}
                   />
                 ))}
               </div>
