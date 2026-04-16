@@ -12,7 +12,7 @@ interface DataViewControlProps {
 }
 
 /**
- * Control del mapa estilo Leaflet para seleccionar la vista de datos:
+ * Control del mapa estilo Leaflet para seleccionar la Capas de Información:
  * - Normal (vista actual)
  * - Demoras (zonas pintadas con demora en minutos)
  * - Cant Móviles en Zonas
@@ -38,11 +38,11 @@ export default function DataViewControl({ value, onChange }: DataViewControlProp
         L.DomEvent.disableScrollPropagation(container);
 
         container.innerHTML = `
-          <div class="dv-toggle" title="Vista de datos">
+          <div class="dv-toggle" title="Capas de Información">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
           </div>
           <div class="dv-panel" style="display:none;">
-            <div class="dv-title">Vista de datos</div>
+            <div class="dv-title">Capas de Información</div>
             <label class="dv-option">
               <input type="radio" name="dv-mode" value="normal" />
               <span class="dv-icon">🗺️</span> Sin Zona

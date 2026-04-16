@@ -36,7 +36,7 @@ export interface UserPreferences {
   zonaOpacity: number; // Opacidad de las capas de zonas (0-100)
   nightStartHour: number; // Hora de inicio del horario nocturno (0-23)
   dayStartHour: number; // Hora de inicio del horario diurno (0-23)
-  // Campos de visibilidad y vista de datos (persisten en DB)
+  // Campos de visibilidad y Capas de Información (persisten en DB)
   movilesVisible: boolean; // true = mostrar capa de móviles
   pedidosVisible: boolean; // true = mostrar capa de pedidos
   servicesVisible: boolean; // true = mostrar capa de services

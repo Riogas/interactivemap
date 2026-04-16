@@ -88,6 +88,15 @@ body {
   margin-top: 8px !important;
 }
 
+.leaflet-layers-title {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.07em !important;
+  color: #6b7280 !important;
+  padding: 2px 12px 6px !important;
+}
+
 .leaflet-control-layers-base label {
   display: flex !important;
   align-items: center !important;

@@ -87,7 +87,19 @@ export default function LayersControl({ defaultLayer = 'streets' }: LayersContro
 
         // Agregar control al mapa
         layersControl.addTo(map);
-        
+
+        // Agregar título "Tipo de mapa" al panel del control
+        const container = layersControl.getContainer();
+        if (container) {
+          const form = container.querySelector('.leaflet-control-layers-list');
+          if (form) {
+            const title = document.createElement('div');
+            title.className = 'leaflet-layers-title';
+            title.textContent = 'Tipo de mapa';
+            form.insertBefore(title, form.firstChild);
+          }
+        }
+
         // Guardar referencia para cleanup
         (map as any)._layersControl = layersControl;
       } catch (error) {

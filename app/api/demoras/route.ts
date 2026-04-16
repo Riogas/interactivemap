@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth-middleware';
 
 /**
  * GET /api/demoras
- * Obtener todas las demoras (para vista de datos en el mapa)
+ * Obtener todas las demoras (para Capas de Información en el mapa)
  * 
  * Query params:
  *   - escenarioId: filtrar por escenario

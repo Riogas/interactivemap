@@ -11,7 +11,7 @@ interface MapDataViewOptions {
 }
 
 /**
- * Hook que maneja la vista de datos del mapa (Normal / Demoras / Móviles en Zonas / Zonas Activas).
+ * Hook que maneja la Capas de Información del mapa (Normal / Demoras / Móviles en Zonas / Zonas Activas).
  * Incluye: estado de zonas, demoras, móviles-zonas, polling automático de datos.
  */
 export function useMapDataView({
@@ -45,7 +45,7 @@ export function useMapDataView({
     }
   }, [dataViewMode]);
 
-  // Handler para cambios de vista de datos
+  // Handler para cambios de Capas de Información
   const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas' | 'pedidos-zona' | 'saturacion') => {
     updatePreference('dataViewMode', mode);
     if (mode !== 'normal') {

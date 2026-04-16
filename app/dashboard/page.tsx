@@ -154,7 +154,7 @@ function DashboardContent() {
     [puntosInteres, selectedPois]
   );
 
-  // 📊 Vista de datos del mapa — dataViewMode persistido en preferencias
+  // 📊 Capas de Información del mapa — dataViewMode persistido en preferencias
   const dataViewMode = preferences.dataViewMode;
   
   // Estado para el panel colapsable

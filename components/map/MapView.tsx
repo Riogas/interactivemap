@@ -90,7 +90,7 @@ interface MapViewProps {
   movilShape?: MarkerShape; // Forma del marcador de móviles (compact/mini)
   pedidoShape?: MarkerShape; // Forma del marcador de pedidos (compact/mini)
   serviceShape?: MarkerShape; // Forma del marcador de services (compact/mini)
-  dataViewMode?: DataViewMode; // Vista de datos activa
+  dataViewMode?: DataViewMode; // Capas de Información activa
   onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
@@ -2067,7 +2067,7 @@ const MapView = memo(function MapView({
         {/* 🎯 Botón de centrado — fitBounds sobre todo el contenido visible */}
         <CenterMapControl getBounds={getMapBounds} />
 
-        {/* 📊 Control de vista de datos (Normal / Demoras / Móviles en Zonas) */}
+        {/* 📊 Control de Capas de Información (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
           <DataViewControl value={dataViewMode} onChange={onDataViewChange} />
         )}
