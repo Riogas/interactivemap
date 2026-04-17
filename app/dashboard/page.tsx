@@ -902,11 +902,10 @@ function DashboardContent() {
   // Handler para seleccionar todos los móviles
   const handleSelectAll = useCallback(() => {
     userExplicitlyCleared.current = false;
-    // Solo seleccionar móviles que pasan el filtro de actividad
-    const filteredIds = applyActivityFilter(movilesFiltered).map(m => m.id);
+    const filteredIds = movilesFiltered.map(m => m.id);
     setSelectedMoviles(filteredIds);
     setFocusedMovil(undefined);
-  }, [movilesFiltered, applyActivityFilter]);
+  }, [movilesFiltered]);
 
   // Handler para deseleccionar todos los móviles
   const handleClearAll = useCallback(() => {
