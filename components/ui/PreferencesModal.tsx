@@ -837,8 +837,8 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
 
               <hr className="border-gray-200" />
 
-              {/* Importar Puntos de Venta */}
-              <div className="space-y-3">
+              {/* TODO: REQUIERE_PERMISO - Sección "Actualizar Puntos de Venta" oculta hasta implementar sistema de permisos */}
+              {/* <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                   <span className="text-lg">📍</span>
                   Actualizar Puntos de Venta
@@ -885,10 +885,10 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                     </span>
                   )}
                 </div>
-              </div>
+              </div> */}
             </div>
 
-            {/* Footer */}
+            {/* Footer */
             <div className="sticky bottom-0 z-10 bg-gray-50 px-6 py-4 rounded-b-2xl border-t border-gray-200 flex items-center justify-between gap-4">
               <button
                 onClick={handleReset}

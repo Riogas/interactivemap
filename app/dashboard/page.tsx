@@ -1574,8 +1574,8 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* Botón de Zonas por Empresa Fletera */}
-          <button
+          {/* TODO: REQUIERE_PERMISO - Botón de Zonas por Empresa Fletera oculto hasta implementar sistema de permisos */}
+          {/* <button
             id="tour-fab-fleteras-zonas"
             onClick={() => { setIsFleterasZonasOpen(true); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
@@ -1584,10 +1584,10 @@ function DashboardContent() {
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
-          </button>
+          </button> */
 
-          {/* Botón de Ranking */}
-          <button
+          {/* TODO: REQUIERE_PERMISO - Botón de Ranking de Móviles oculto hasta implementar sistema de permisos */}
+          {/* <button
             id="tour-fab-ranking"
             onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700"
@@ -1596,7 +1596,7 @@ function DashboardContent() {
             <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>
             </svg>
-          </button>
+          </button> */
 
           {/* Botón Estadísticas por zonas */}
           <button
@@ -1611,8 +1611,8 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* Botón Estadísticas */}
-          <button
+          {/* TODO: REQUIERE_PERMISO - Botón Estadísticas oculto hasta implementar sistema de permisos */}
+          {/* <button
             id="tour-fab-estadisticas"
             onClick={() => { window.open(`/dashboard/stats?date=${selectedDate || new Date().toISOString().slice(0,10)}`, '_blank'); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
@@ -1621,7 +1621,7 @@ function DashboardContent() {
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
-          </button>
+          </button> */
         </div>
 
         {/* Botón toggle FAB ⚡ */}
