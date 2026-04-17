@@ -21,7 +21,8 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  escenarioId: number;
+  login: (username: string, password: string, escenarioId?: number) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -30,6 +31,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [escenarioId, setEscenarioId] = useState<number>(1000);
   const [isLoading, setIsLoading] = useState(true);
 
   // ⏰ Duración máxima de sesión: 8 horas (en milisegundos)
@@ -88,6 +90,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
         
+        // Cargar escenario persistido
+        const savedEscenario = localStorage.getItem('trackmovil_escenario_id');
+        if (savedEscenario) setEscenarioId(parseInt(savedEscenario, 10));
+
         setUser({
           ...parsedUser,
           token: savedToken,
@@ -118,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(intervalId);
   }, [user?.loginTime]);
 
-  const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string }> => {
     try {
       console.log('🔐 Iniciando login en GeneXus...');
       const response: ParsedLoginResponse = await authService.login(username, password);
@@ -207,8 +213,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Guardar en localStorage el newUser completo (incluye loginTime para validar expiración en F5)
         localStorage.setItem('trackmovil_user', JSON.stringify(newUser));
         localStorage.setItem('trackmovil_token', newUser.token);
+        localStorage.setItem('trackmovil_escenario_id', String(selectedEscenarioId));
 
         setUser(newUser);
+        setEscenarioId(selectedEscenarioId);
         return { success: true };
       } else if (response.success && !response.user) {
         // Si success=true pero no hay usuario, es credencial inválida
@@ -257,11 +265,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     authService.logout();
     localStorage.removeItem('trackmovil_allowed_empresas');
+    localStorage.removeItem('trackmovil_escenario_id');
+    setEscenarioId(1000);
     console.log('✅ Sesión cerrada completamente');
   };
 
   const value = {
     user,
+    escenarioId,
     login,
     logout,
     isAuthenticated: !!user,

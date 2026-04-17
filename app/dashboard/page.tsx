@@ -47,8 +47,8 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
 });
 
 function DashboardContent() {
-  // Hook de autenticación (para obtener empresas permitidas)
-  const { user } = useAuth();
+  // Hook de autenticación (para obtener empresas permitidas y escenario)
+  const { user, escenarioId } = useAuth();
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
   const { latestPosition, latestMovil, isConnected } = useRealtime();
@@ -238,8 +238,8 @@ function DashboardContent() {
     isConnected: pedidosConnected,
     error: pedidosError
   } = usePedidosRealtime(
-    1000, // escenarioId (ajustar según tu base de datos)
-    undefined, // Cargar TODOS los pedidos (sin filtrar por móvil)
+    escenarioId,
+    undefined,
     undefined,
     useCallback(() => { fetchPedidosRef.current?.(); }, [])
   );
@@ -250,7 +250,7 @@ function DashboardContent() {
     isConnected: servicesConnected,
     error: servicesError
   } = useServicesRealtime(
-    1000,
+    escenarioId,
     undefined,
     undefined,
     useCallback(() => { fetchServicesRef.current?.(); }, [])
@@ -493,11 +493,11 @@ function DashboardContent() {
       
       // Construir URL - traer TODOS los pedidos del día (sin filtrar por móvil)
       const params = new URLSearchParams();
-      params.append('escenario', '1000');
+      params.append('escenario', String(escenarioId));
       if (selectedDate) {
         params.append('fecha', selectedDate);
       }
-      
+
       const url = `/api/pedidos?${params.toString()}`;
       
       const response = await fetch(url);
@@ -529,11 +529,11 @@ function DashboardContent() {
       setIsLoadingServices(true);
       
       const params = new URLSearchParams();
-      params.append('escenario', '1000');
+      params.append('escenario', String(escenarioId));
       if (selectedDate) {
         params.append('fecha', selectedDate);
       }
-      
+
       const url = `/api/services?${params.toString()}`;
       const response = await fetch(url);
       const result = await response.json();
@@ -774,7 +774,7 @@ function DashboardContent() {
       if (movilesIds.length === 0) {
         console.log(`📦 Cargando TODOS los pedidos pendientes del día`);
         
-        const response = await fetch(`/api/pedidos-pendientes?escenarioId=1000&fecha=${fecha}`);
+        const response = await fetch(`/api/pedidos-pendientes?escenarioId=${escenarioId}&fecha=${fecha}`);
         const result = await response.json();
         
         if (result.pedidos && result.pedidos.length > 0) {
@@ -831,7 +831,7 @@ function DashboardContent() {
       
       // Cargar pedidos para cada móvil seleccionado (ahora con fecha)
       const pedidosPromises = movilesIds.map(async (movilId) => {
-        const response = await fetch(`/api/pedidos-pendientes/${movilId}?escenarioId=1000&fecha=${fecha}`);
+        const response = await fetch(`/api/pedidos-pendientes/${movilId}?escenarioId=${escenarioId}&fecha=${fecha}`);
         const result = await response.json();
         return { movilId, pedidos: result.pedidos || [] };
       });

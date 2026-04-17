@@ -11,9 +11,14 @@ export default function LoginPage() {
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [escenarioId, setEscenarioId] = useState(1000);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+
+  const ESCENARIOS = [
+    { label: 'Montevideo', value: 1000 },
+  ];
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -21,7 +26,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const result = await login(username, password);
+      const result = await login(username, password, escenarioId);
       
       if (result.success) {
         // Animación de éxito antes de redirigir
@@ -225,6 +230,43 @@ export default function LoginPage() {
                     </svg>
                   )}
                 </button>
+              </div>
+            </motion.div>
+
+            {/* Campo de escenario */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.45 }}
+            >
+              <label
+                htmlFor="escenario"
+                className="block text-sm font-semibold text-gray-700 mb-2"
+              >
+                Escenario
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <select
+                  id="escenario"
+                  value={escenarioId}
+                  onChange={(e) => setEscenarioId(Number(e.target.value))}
+                  className="w-full pl-12 pr-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:bg-white focus:outline-none transition-all duration-200 text-gray-800 appearance-none cursor-pointer"
+                >
+                  {ESCENARIOS.map(e => (
+                    <option key={e.value} value={e.value}>{e.label}</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
               </div>
             </motion.div>
 
