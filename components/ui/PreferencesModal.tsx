@@ -835,60 +835,10 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 </div>
               </div>
 
-              <hr className="border-gray-200" />
-
-              {/* TODO: REQUIERE_PERMISO - Sección "Actualizar Puntos de Venta" oculta hasta implementar sistema de permisos */}
-              {/* <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">📍</span>
-                  Actualizar Puntos de Venta
-                </label>
-                <p className="text-xs text-gray-500">
-                  Importa o actualiza los puntos de venta desde un archivo Excel (.xlsx).
-                  Las filas se identifican por la columna <strong>ID*</strong>: si el ID existe se actualiza, si no existe se inserta.
-                </p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <input
-                    ref={poiFileInputRef}
-                    type="file"
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    onChange={handleImportPOI}
-                  />
-                  <button
-                    type="button"
-                    disabled={importingPOI}
-                    onClick={() => { setImportResultPOI(null); poiFileInputRef.current?.click(); }}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg shadow transition-all"
-                  >
-                    {importingPOI ? (
-                      <>
-                        <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                        Importando...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                        </svg>
-                        Seleccionar archivo Excel
-                      </>
-                    )}
-                  </button>
-                  {importResultPOI && (
-                    <span className={`text-xs font-medium px-3 py-1.5 rounded-lg ${
-                      importResultPOI.ok
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-red-50 text-red-700 border border-red-200'
-                    }`}>
-                      {importResultPOI.msg}
-                    </span>
-                  )}
-                </div>
-              </div> */}
+              {/* TODO: REQUIERE_PERMISO - Actualizar Puntos de Venta (ver docs/PENDING_PERMISSIONS.md) */}
             </div>
 
-            {/* Footer */
+            {/* Footer */}
             <div className="sticky bottom-0 z-10 bg-gray-50 px-6 py-4 rounded-b-2xl border-t border-gray-200 flex items-center justify-between gap-4">
               <button
                 onClick={handleReset}
