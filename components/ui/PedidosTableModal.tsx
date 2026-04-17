@@ -98,6 +98,8 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
   });
   const [servicioDropdownOpen, setServicioDropdownOpen] = useState(false);
   const servicioDropdownRef = useRef<HTMLDivElement>(null);
+  const servicioButtonRef = useRef<HTMLButtonElement>(null);
+  const [servicioDropdownPos, setServicioDropdownPos] = useState({ top: 0, left: 0 });
   const [sortKey, setSortKey] = useState<SortKey>('delay');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showFilters, setShowFilters] = useState(true);
@@ -156,13 +158,11 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     }
   }, [preFilterZona, isOpen]);
 
-  // Aplicar filtro inicial de asignación al abrir
+  // Aplicar filtro inicial de asignación sólo cuando el prop cambia (no en cada reopen)
   useEffect(() => {
-    if (isOpen) {
-      setFilters(f => ({ ...f, asignacion: initialAsignacion }));
-      setPage(0);
-    }
-  }, [isOpen, initialAsignacion]);
+    setFilters(f => ({ ...f, asignacion: initialAsignacion }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAsignacion]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
@@ -608,7 +608,14 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                       {uniqueServicioNombres.length > 0 && (
                         <div className="relative" ref={servicioDropdownRef}>
                           <button
-                            onClick={() => setServicioDropdownOpen(o => !o)}
+                            ref={servicioButtonRef}
+                            onClick={() => {
+                              if (!servicioDropdownOpen && servicioButtonRef.current) {
+                                const r = servicioButtonRef.current.getBoundingClientRect();
+                                setServicioDropdownPos({ top: r.bottom + 4, left: r.left });
+                              }
+                              setServicioDropdownOpen(o => !o);
+                            }}
                             className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all ${
                               filters.tipoServicio.length > 0
                                 ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
@@ -617,7 +624,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                           >
                             <span>
                               {filters.tipoServicio.length === 0
-                                ? 'Todos los tipos'
+                                ? 'Todos los servicios'
                                 : filters.tipoServicio.length === 1
                                 ? filters.tipoServicio[0]
                                 : `${filters.tipoServicio.length} tipos`}
@@ -627,7 +634,10 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                             </svg>
                           </button>
                           {servicioDropdownOpen && (
-                            <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[160px] py-1">
+                            <div
+                              className="fixed z-[10050] bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[160px] py-1"
+                              style={{ top: servicioDropdownPos.top, left: servicioDropdownPos.left }}
+                            >
                               <button
                                 onClick={() => { setFilters(f => ({ ...f, tipoServicio: [] })); setServicioDropdownOpen(false); }}
                                 className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 ${
