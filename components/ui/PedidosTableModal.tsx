@@ -205,8 +205,8 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
       result = result.filter(p => p.movil && Number(p.movil) !== 0);
     }
     
-    // Aplicar filtro interno de tipo de servicio (solo para pendientes)
-    if (!isFinalizados && filters.tipoServicio.length > 0) {
+    // Aplicar filtro interno de tipo de servicio (pendientes y finalizados)
+    if (filters.tipoServicio.length > 0) {
       result = result.filter(p => p.servicio_nombre && filters.tipoServicio.includes(p.servicio_nombre));
     }
     
@@ -572,60 +572,6 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                   </div>
                 </div>
               )}
-              {/* Multi-select tipo de servicio */}
-              {uniqueServicioNombres.length > 0 && (
-                <div className="relative ml-2" ref={servicioDropdownRef}>
-                  <button
-                    onClick={() => setServicioDropdownOpen(o => !o)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-lg border transition-all ${
-                      filters.tipoServicio.length > 0
-                        ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
-                        : 'bg-gray-800/60 border-gray-600/40 text-gray-400 hover:text-gray-300'
-                    }`}
-                  >
-                    <span>
-                      {filters.tipoServicio.length === 0
-                        ? 'Tipo de servicio'
-                        : filters.tipoServicio.length === 1
-                        ? filters.tipoServicio[0]
-                        : `${filters.tipoServicio.length} tipos`}
-                    </span>
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {servicioDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[160px] py-1">
-                      <button
-                        onClick={() => { setFilters(f => ({ ...f, tipoServicio: [] })); setServicioDropdownOpen(false); }}
-                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 ${
-                          filters.tipoServicio.length === 0 ? 'text-teal-300 font-medium' : 'text-gray-400'
-                        }`}
-                      >
-                        Todos
-                      </button>
-                      {uniqueServicioNombres.map(tipo => (
-                        <label key={tipo} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={filters.tipoServicio.includes(tipo)}
-                            onChange={(e) => {
-                              setFilters(f => ({
-                                ...f,
-                                tipoServicio: e.target.checked
-                                  ? [...f.tipoServicio, tipo]
-                                  : f.tipoServicio.filter(t => t !== tipo),
-                              }));
-                            }}
-                            className="accent-teal-500"
-                          />
-                          {tipo}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
               <div className="ml-auto text-xs text-gray-500">
                 Total: <span className="font-bold text-gray-300">{pedidosBase.length}</span>
               </div>
@@ -657,6 +603,62 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                           className="w-full pl-9 pr-3 py-2 bg-gray-800 border border-gray-600/50 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/20"
                         />
                       </div>
+
+                      {/* Tipo de servicio multi-select */}
+                      {uniqueServicioNombres.length > 0 && (
+                        <div className="relative" ref={servicioDropdownRef}>
+                          <button
+                            onClick={() => setServicioDropdownOpen(o => !o)}
+                            className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all ${
+                              filters.tipoServicio.length > 0
+                                ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
+                                : 'bg-gray-800 border-gray-600/50 text-gray-200 hover:border-teal-500/50'
+                            }`}
+                          >
+                            <span>
+                              {filters.tipoServicio.length === 0
+                                ? 'Todos los tipos'
+                                : filters.tipoServicio.length === 1
+                                ? filters.tipoServicio[0]
+                                : `${filters.tipoServicio.length} tipos`}
+                            </span>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                          {servicioDropdownOpen && (
+                            <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[160px] py-1">
+                              <button
+                                onClick={() => { setFilters(f => ({ ...f, tipoServicio: [] })); setServicioDropdownOpen(false); }}
+                                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 ${
+                                  filters.tipoServicio.length === 0 ? 'text-teal-300 font-medium' : 'text-gray-400'
+                                }`}
+                              >
+                                Todos
+                              </button>
+                              {uniqueServicioNombres.map(tipo => (
+                                <label key={tipo} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={filters.tipoServicio.includes(tipo)}
+                                    onChange={(e) => {
+                                      setFilters(f => ({
+                                        ...f,
+                                        tipoServicio: e.target.checked
+                                          ? [...f.tipoServicio, tipo]
+                                          : f.tipoServicio.filter(t => t !== tipo),
+                                      }));
+                                      setPage(0);
+                                    }}
+                                    className="accent-teal-500"
+                                  />
+                                  {tipo}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Zona select */}
                       <select
@@ -753,6 +755,9 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200" onClick={() => handleSort('producto')}>
                       Producto <SortArrow col="producto" />
                     </th>
+                    <th className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                      Tipo Servicio
+                    </th>
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('importe')}>
                       Importe <SortArrow col="importe" />
                     </th>
@@ -773,7 +778,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                 <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="text-center py-12 text-gray-500">
+                      <td colSpan={13} className="text-center py-12 text-gray-500">
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
@@ -844,6 +849,17 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
                           <div className="text-gray-300 text-xs truncate max-w-[200px]" title={p.producto_nom || p.producto_cod || undefined}>
                             {(p.producto_nom || p.producto_cod) ? `${p.producto_nom || p.producto_cod}${p.producto_cant ? ` x${p.producto_cant}` : ''}` : '—'}
                           </div>
+                        </td>
+
+                        {/* Tipo Servicio */}
+                        <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
+                          {p.servicio_nombre ? (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                              {p.servicio_nombre}
+                            </span>
+                          ) : (
+                            <span className="text-gray-600 text-xs">—</span>
+                          )}
                         </td>
 
                         {/* Importe */}
