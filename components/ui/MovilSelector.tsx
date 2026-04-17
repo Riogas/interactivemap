@@ -597,14 +597,17 @@ export default function MovilSelector({
         }
 
         // Badge de móviles seleccionados
-        if (selectedMoviles.length > 0) {
+        {
           const allMovilesSelected = selectedMoviles.length === moviles.length;
+          const noneSelected = selectedMoviles.length === 0;
           badges.push({
             label: allMovilesSelected
               ? '🚗 Móviles: Todos'
+              : noneSelected
+              ? '🚗 Móviles: Ninguno'
               : `🚗 Móviles: ${selectedMoviles.length <= 5 ? selectedMoviles.join(', ') : `${selectedMoviles.slice(0, 5).join(', ')} +${selectedMoviles.length - 5}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: allMovilesSelected ? undefined : onClearAll,
+            onClear: allMovilesSelected ? undefined : onSelectAll,
           });
         }
 
