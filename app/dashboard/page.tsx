@@ -2025,10 +2025,11 @@ function DashboardContent() {
                 onShowCompletados={handleShowCompletados}
                 pedidos={pedidosHidden ? [] : (() => {
                   const isPendientes = pedidosFilters.vista !== 'finalizados';
+                  const isEmpresaPartial = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
                   let base = isPendientes
                     ? (selectedMoviles.length > 0
-                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && ((p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) || (!p.movil || Number(p.movil) === 0)))
-                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 1))
+                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && ((p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) || ((!p.movil || Number(p.movil) === 0) && !isEmpresaPartial)))
+                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && (!isEmpresaPartial || (p.movil && Number(p.movil) !== 0))))
                     : (selectedMoviles.length > 0
                         ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
                         : pedidosCompletos.filter(p => Number(p.estado_nro) === 2));
@@ -2054,8 +2055,9 @@ function DashboardContent() {
                 focusTrigger={focusTrigger}
                 services={servicesHidden ? [] : (() => {
                   const isPendientes = servicesFilters.vista !== 'finalizados';
+                  const isEmpresaPartial = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
                   let base = isPendientes
-                    ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1))
+                    ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1 && (!isEmpresaPartial || (s.movil && Number(s.movil) !== 0))))
                     : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 2 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 2));
                   base = base.filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud));
                   base = filterByTipoServicio(filterByDelay(base, isPendientes ? servicesFilters.atraso : []), isPendientes ? servicesFilters.tipoServicio : 'all');
