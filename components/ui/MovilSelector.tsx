@@ -598,12 +598,13 @@ export default function MovilSelector({
 
         // Badge de móviles seleccionados
         if (selectedMoviles.length > 0) {
+          const allMovilesSelected = selectedMoviles.length === moviles.length;
           badges.push({
-            label: selectedMoviles.length === moviles.length
+            label: allMovilesSelected
               ? '🚗 Móviles: Todos'
               : `🚗 Móviles: ${selectedMoviles.length <= 5 ? selectedMoviles.join(', ') : `${selectedMoviles.slice(0, 5).join(', ')} +${selectedMoviles.length - 5}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: onClearAll,
+            onClear: allMovilesSelected ? undefined : onClearAll,
           });
         }
 
