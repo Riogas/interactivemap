@@ -474,6 +474,43 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 )}
               </div>
 
+              <hr className="border-gray-200" />
+
+              {/* Marcadores Puntos de Interés */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">🏢</span>
+                  Marcadores Puntos de Interés
+                </label>
+
+                {/* Selector de tamaño */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-28 shrink-0">Tamaño en mapa</span>
+                  <div className="flex gap-2">
+                    {([1, 2, 3] as const).map((size) => {
+                      const labels = { 1: 'Chico', 2: 'Mediano', 3: 'Grande' };
+                      const px = { 1: 12, 2: 18, 3: 26 };
+                      const active = preferences.poiMarkerSize === size;
+                      return (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => setPreferences({ ...preferences, poiMarkerSize: size })}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                            active
+                              ? 'bg-blue-600 text-white border-blue-600 shadow'
+                              : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                          }`}
+                        >
+                          <img src="/images/iconoptoventa.png" style={{ width: px[size], height: px[size], objectFit: 'contain' }} />
+                          {labels[size]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               {/* ═══════════════════════════════════════════════════════════
                   SECCIÓN 2: Comportamiento
                   ═══════════════════════════════════════════════════════════ */}
@@ -483,138 +520,6 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 </h3>
                 <p className="text-xs text-gray-500">Opciones de visualización y comportamiento del mapa</p>
               </div>
-
-              {/* Toggle: Agrupar Pedidos en Clusters */}
-              <label className="flex items-center justify-between cursor-pointer group">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">📦</span>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                      Agrupar Pedidos en Clusters
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {preferences.pedidosCluster 
-                        ? 'Los pedidos cercanos se agrupan al alejar el zoom' 
-                        : 'Todos los pedidos se muestran individualmente'}
-                    </p>
-                  </div>
-                </div>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={preferences.pedidosCluster}
-                    onChange={(e) => setPreferences({ ...preferences, pedidosCluster: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                </div>
-              </label>
-
-              <hr className="border-gray-100" />
-
-              {/* Toggle: Solo Móviles Activos */}
-              <label className="flex items-center justify-between cursor-pointer group">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🚗</span>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                      Mostrar Solo Móviles Activos
-                    </div>
-                    <p className="text-xs text-gray-500">Oculta móviles sin actualizaciones recientes</p>
-                  </div>
-                </div>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={preferences.showActiveMovilesOnly}
-                    onChange={(e) => setPreferences({ ...preferences, showActiveMovilesOnly: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </div>
-              </label>
-
-              <hr className="border-gray-100" />
-
-              {/* Toggle: Modo Tiempo Real */}
-              <label className="flex items-center justify-between cursor-pointer group">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-green-400 to-emerald-600 rounded-lg shadow-md">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                      Modo Tiempo Real
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {preferences.realtimeEnabled 
-                        ? 'Actualizaciones automáticas activadas' 
-                        : 'Modo estático (sin actualizaciones automáticas)'}
-                    </p>
-                  </div>
-                </div>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={preferences.realtimeEnabled}
-                    onChange={(e) => setPreferences({ ...preferences, realtimeEnabled: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </div>
-              </label>
-
-              <hr className="border-gray-100" />
-
-              {/* Toggle: Animación de Rutas */}
-              <label className="flex items-center justify-between cursor-pointer group">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🎬</span>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                      Habilitar Animación de Rutas
-                    </div>
-                    <p className="text-xs text-gray-500">Mostrar control de animación en el mapa</p>
-                  </div>
-                </div>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={preferences.showRouteAnimation}
-                    onChange={(e) => setPreferences({ ...preferences, showRouteAnimation: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </div>
-              </label>
-
-              <hr className="border-gray-100" />
-
-              {/* Toggle: Mostrar Pedidos/Servicios Completados */}
-              <label className="flex items-center justify-between cursor-pointer group">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">✅</span>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
-                      Mostrar Pedidos/Servicios Completados
-                    </div>
-                    <p className="text-xs text-gray-500">Ver marcadores de entregas finalizadas</p>
-                  </div>
-                </div>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={preferences.showCompletedMarkers}
-                    onChange={(e) => setPreferences({ ...preferences, showCompletedMarkers: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </div>
-              </label>
-
-              <hr className="border-gray-100" />
 
               {/* Toggle: Etiquetas de Demoras */}
               <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
@@ -725,6 +630,9 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 <p className="text-xs text-gray-500">
                   Configura cada cuántos segundos se actualizan los datos de las vistas Demoras y Móviles en Zonas.
                 </p>
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  ⚠️ Aplica únicamente para móviles asociados a zonas y para la vista de Demoras. No afecta la actualización general del mapa.
+                </p>
 
                 {/* Demoras polling */}
                 <div className="p-3 bg-red-50/50 rounded-lg border border-red-100 space-y-2">
@@ -799,41 +707,6 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
               </div>
 
               <hr className="border-gray-200" />
-
-              {/* Marcadores Puntos de Interés */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">🏢</span>
-                  Marcadores Puntos de Interés
-                </label>
-
-                {/* Selector de tamaño */}
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 w-28 shrink-0">Tamaño en mapa</span>
-                  <div className="flex gap-2">
-                    {([1, 2, 3] as const).map((size) => {
-                      const labels = { 1: 'Chico', 2: 'Mediano', 3: 'Grande' };
-                      const px = { 1: 12, 2: 18, 3: 26 };
-                      const active = preferences.poiMarkerSize === size;
-                      return (
-                        <button
-                          key={size}
-                          type="button"
-                          onClick={() => setPreferences({ ...preferences, poiMarkerSize: size })}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                            active
-                              ? 'bg-blue-600 text-white border-blue-600 shadow'
-                              : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-                          }`}
-                        >
-                          <img src="/images/iconoptoventa.png" style={{ width: px[size], height: px[size], objectFit: 'contain' }} />
-                          {labels[size]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
 
               {/* TODO: REQUIERE_PERMISO - Actualizar Puntos de Venta (ver docs/PENDING_PERMISSIONS.md) */}
             </div>
