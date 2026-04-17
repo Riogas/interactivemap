@@ -19,6 +19,7 @@ import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
 import CenterMapControl from './CenterMapControl';
+import FullscreenControl from './FullscreenControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
 import PedidosZonasLayer, { PedidoZonaData, PedidosZonaFilter } from './PedidosZonasLayer';
 import DistanceMeasurement from './DistanceMeasurement';
@@ -2069,6 +2070,9 @@ const MapView = memo(function MapView({
 
         {/* 🎯 Botón de centrado — fitBounds sobre todo el contenido visible */}
         <CenterMapControl getBounds={getMapBounds} />
+
+        {/* ⛶ Botón de pantalla completa */}
+        <FullscreenControl />
 
         {/* 📊 Control de Capas de Información (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
