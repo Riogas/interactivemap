@@ -97,7 +97,7 @@ function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label:
   if (pct <= 75)  return { color: '#f97316', label: `${Math.round(pct)}%`, pct };         // naranja
   if (pct <= 100) return { color: '#ef4444', label: `${Math.round(pct)}%`, pct };         // rojo
   if (pct === 998) return { color: '#7f1d1d', label: 'Sin C.', pct: 998 };              // sin capacidad de entrega
-  return { color: '#dc2626', label: `${Math.round(pct)}%`, pct };                          // rojo fuerte >100%
+  return { color: '#7f1d1d', label: 'Sin C.', pct };                                      // >100% → sin capacidad
 }
 
 function getSaturacionOpacity(pct: number): number {
