@@ -114,22 +114,31 @@ export function useMapDataView({
 
     if (uniqueEscenarios.length === 0) return;
 
-    const loadDataView = async () => {
+    // Zonas GeoJSON se carga una sola vez al entrar a la vista (no en cada tick de polling)
+    // porque el GeoJSON de zonas casi nunca cambia en el día.
+    const loadZonasGeojson = async () => {
       try {
-        console.log(`📊 Cargando vista "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
-
-        // 1) Cargar todas las zonas con geojson
         const zonasRes = await fetch('/api/zonas');
         const zonasResult = await zonasRes.json();
         if (zonasResult.success && zonasResult.data) {
           const zonasFiltradas = zonasResult.data.filter(
             (z: any) => uniqueEscenarios.includes(z.escenario_id) && z.geojson
           );
-          console.log(`📊 ${zonasFiltradas.length} zonas con geojson (de ${zonasResult.data.length} total)`);
+          console.log(`📊 ${zonasFiltradas.length} zonas con geojson cargadas (una vez)`);
           setAllZonasData(zonasFiltradas);
         }
+      } catch (err) {
+        console.error('❌ Error loading zonas geojson:', err);
+      }
+    };
+    loadZonasGeojson();
 
-        // 2) Si es vista Demoras o Zonas Activas, cargar demoras
+    // Sólo los datos dinámicos (demoras / moviles-zonas) se recargan en cada tick
+    const loadDataView = async () => {
+      try {
+        console.log(`📊 Polling "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
+
+        // Demoras o Zonas Activas
         if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
           const demorasRes = await fetch('/api/demoras');
           const demorasResult = await demorasRes.json();
@@ -143,12 +152,12 @@ export function useMapDataView({
                 }
               }
             }
-            console.log(`📊 ${dMap.size} demoras cargadas`);
+            console.log(`📊 ${dMap.size} demoras actualizadas`);
             setDemorasData(dMap);
           }
         }
 
-        // 3) Si es vista Móviles en Zonas o Saturación, cargar datos crudos de moviles_zonas
+        // Móviles en Zonas o Saturación
         if (dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion') {
           const mzRes = await fetch('/api/moviles-zonas');
           const mzResult = await mzRes.json();
