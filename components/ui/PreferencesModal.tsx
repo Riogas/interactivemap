@@ -47,6 +47,7 @@ export interface UserPreferences {
   dataViewMode: DataViewMode; // Vista activa del mapa
   demorasPollingSeconds: number; // Intervalo de refresco para vista Demoras (segundos)
   movilesZonasPollingSeconds: number; // Intervalo de refresco para vista Móviles en Zonas (segundos)
+  lightMode: boolean; // Modo ligero: deshabilita animaciones (recomendado para escritorio remoto)
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -77,6 +78,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   dataViewMode: 'normal',
   demorasPollingSeconds: 30,
   movilesZonasPollingSeconds: 30,
+  lightMode: false,
 };
 
 interface PreferencesModalProps {
@@ -676,6 +678,29 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                       {preferences.movilesZonasPollingSeconds}s
                     </span>
                   </div>
+                </div>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Modo Ligero */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">⚡</span>
+                  Modo Ligero
+                </label>
+                <p className="text-xs text-gray-500">
+                  Desactiva todas las animaciones. Recomendado al usar la app en escritorio remoto (Syncline u otros).
+                </p>
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <span className="text-sm text-gray-700">Deshabilitar animaciones</span>
+                  <button
+                    type="button"
+                    onClick={() => setPreferences({ ...preferences, lightMode: !preferences.lightMode })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${preferences.lightMode ? 'bg-amber-500' : 'bg-gray-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${preferences.lightMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
                 </div>
               </div>
 

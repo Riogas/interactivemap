@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { motion } from 'framer-motion';
+import { motion, MotionConfig } from 'framer-motion';
 import { MovilData, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters, PedidoFilters, ServiceFilters } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import NavbarSimple from '@/components/layout/NavbarSimple';
@@ -1500,6 +1500,7 @@ function DashboardContent() {
   }, [pedidosRealtime, getMovilColorByOccupancy]);
 
   return (
+    <MotionConfig reducedMotion={preferences.lightMode ? 'always' : 'user'}>
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 relative">
       {/* Navbar Simple - Solo logo y espacio para indicadores */}
       <div className="flex-shrink-0">
@@ -2129,6 +2130,7 @@ function DashboardContent() {
         )}
       </main>
     </div>
+    </MotionConfig>
   );
 }
 
