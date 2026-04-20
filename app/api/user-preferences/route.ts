@@ -5,7 +5,8 @@ import { getServerSupabaseClient } from '@/lib/supabase';
  * Mapeo de campos: UserPreferences (camelCase) ↔ DB columns (snake_case)
  */
 function preferencesToDb(prefs: Record<string, any>) {
-  return {
+  // Campos mapeados a columnas individuales
+  const mapped = {
     moviles_visible: prefs.movilesVisible ?? true,
     pedidos_visible: prefs.pedidosVisible ?? true,
     services_visible: prefs.servicesVisible ?? true,
@@ -24,10 +25,24 @@ function preferencesToDb(prefs: Record<string, any>) {
     pedidos_cluster: prefs.pedidosCluster ?? true,
     show_demora_labels: prefs.showDemoraLabels ?? false,
   };
+
+  // Campos extra guardados como JSON en preferences_extra
+  const extra: Record<string, any> = {};
+  const extraKeys = [
+    'zonaOpacity', 'nightStartHour', 'dayStartHour',
+    'poisVisible', 'hiddenPoiCategories', 'poiMarkerSize', 'poiDefaultIcon',
+    'demorasPollingSeconds', 'movilesZonasPollingSeconds',
+    'lightMode', 'serviceMarkerStyle',
+  ];
+  for (const key of extraKeys) {
+    if (prefs[key] !== undefined) extra[key] = prefs[key];
+  }
+
+  return { ...mapped, preferences_extra: Object.keys(extra).length > 0 ? extra : null };
 }
 
 function dbToPreferences(row: Record<string, any>) {
-  return {
+  const base = {
     movilesVisible: row.moviles_visible,
     pedidosVisible: row.pedidos_visible,
     servicesVisible: row.services_visible,
@@ -46,6 +61,10 @@ function dbToPreferences(row: Record<string, any>) {
     pedidosCluster: row.pedidos_cluster,
     showDemoraLabels: row.show_demora_labels,
   };
+
+  // Merge campos extra (si existen)
+  const extra = row.preferences_extra ?? {};
+  return { ...base, ...extra };
 }
 
 /**
