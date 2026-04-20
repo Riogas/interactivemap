@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { EmpresaFleteraSupabase } from '@/types';
 
 interface MapDataViewOptions {
@@ -28,6 +28,12 @@ export function useMapDataView({
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
   const [movilesZonasData, setMovilesZonasData] = useState<any[]>([]);
   const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<string>('URGENTE');
+
+  // Refs para leer los valores de polling sin reiniciar el intervalo cuando cambian
+  const demorasPollingRef = useRef(demorasPollingSeconds);
+  const movilesZonasPollingRef = useRef(movilesZonasPollingSeconds);
+  useEffect(() => { demorasPollingRef.current = demorasPollingSeconds; }, [demorasPollingSeconds]);
+  useEffect(() => { movilesZonasPollingRef.current = movilesZonasPollingSeconds; }, [movilesZonasPollingSeconds]);
 
   // Escenarios únicos derivados de las empresas seleccionadas
   const uniqueEscenarios = useMemo(() => {
@@ -95,7 +101,9 @@ export function useMapDataView({
   // Clave estable basada en el contenido de escenarios (evita resets del intervalo por nueva referencia de array)
   const uniqueEscenariosKey = uniqueEscenarios.join(',');
 
-  // Cargar datos de vista (demoras / móviles en zonas) con polling automático
+  // Cargar datos de vista (demoras / móviles en zonas) con polling automático.
+  // Los valores de polling se leen via ref para no reiniciar el intervalo cuando el usuario
+  // ajusta los segundos en Preferencias.
   useEffect(() => {
     if (dataViewMode === 'normal') {
       setAllZonasData([]);
@@ -122,7 +130,6 @@ export function useMapDataView({
         }
 
         // 2) Si es vista Demoras o Zonas Activas, cargar demoras
-        // pedidos-zona no requiere fetch adicional (usa pedidosCompletos del parent)
         if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
           const demorasRes = await fetch('/api/demoras');
           const demorasResult = await demorasRes.json();
@@ -157,30 +164,46 @@ export function useMapDataView({
     // Carga inicial inmediata
     loadDataView();
 
-    // Polling: intervalo según vista activa
-    let intervalMs = 0;
-    if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
-      intervalMs = demorasPollingSeconds * 1000;
-    } else if (dataViewMode === 'pedidos-zona') {
-      intervalMs = 0; // sin polling propio — los pedidos del parent ya se actualizan en realtime
-    } else if (dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion') {
-      intervalMs = movilesZonasPollingSeconds * 1000;
-    }
+    // Polling: intervalo según vista activa, leído desde ref para no reiniciar si cambian las prefs
+    const getIntervalMs = () => {
+      if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
+        return demorasPollingRef.current * 1000;
+      }
+      if (dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion') {
+        return movilesZonasPollingRef.current * 1000;
+      }
+      return 0; // pedidos-zona: sin polling propio
+    };
 
+    const intervalMs = getIntervalMs();
     let intervalId: ReturnType<typeof setInterval> | null = null;
+
     if (intervalMs > 0) {
       console.log(`🔄 Polling activado para "${dataViewMode}" cada ${intervalMs / 1000}s`);
       intervalId = setInterval(loadDataView, intervalMs);
     }
+
+    // Reactivar polling al volver al foco (evita que RD/tab en segundo plano lo suspenda)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('👁️ Tab visible — refetch inmediato y reinicio de polling');
+        loadDataView();
+        if (intervalId) clearInterval(intervalId);
+        const ms = getIntervalMs();
+        if (ms > 0) intervalId = setInterval(loadDataView, ms);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       if (intervalId) {
         console.log(`🔄 Polling desactivado para "${dataViewMode}"`);
         clearInterval(intervalId);
       }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataViewMode, uniqueEscenariosKey, demorasPollingSeconds, movilesZonasPollingSeconds]);
+  }, [dataViewMode, uniqueEscenariosKey]);
 
   return {
     showZonas,
