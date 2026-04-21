@@ -1310,6 +1310,23 @@ function DashboardContent() {
 
     return stats;
   }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter]);
+  // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
+  // para el mapa. Sin esto, cada llamada inline crea un nuevo array → downstream re-renders.
+  const movilesFilteredMarked = useMemo(
+    () => markInactiveMoviles(movilesFiltered),
+    [movilesFiltered, markInactiveMoviles],
+  );
+
+  const movilesForMap = useMemo(
+    () => movilesHidden
+      ? []
+      : applyActivityFilter(applyAdvancedFilters(movilesFilteredMarked)).filter(
+          m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) &&
+               (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY))
+        ),
+    [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil2, applyActivityFilter, applyAdvancedFilters],
+  );
+
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
   const prevPedidosKeyRef = useRef<string>('');
   
@@ -1499,6 +1516,30 @@ function DashboardContent() {
     });
   }, [pedidosRealtime, getMovilColorByOccupancy]);
 
+  // Callbacks estables para DashboardIndicators — sin useCallback se crean inline
+  // y DashboardIndicators re-renderiza en cada tick de GPS aunque no haya cambiado nada.
+  const onSinAsignarClick = useCallback(() => {
+    setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
+    setPedidosInitialAsignacion('sin_movil');
+    setIsPedidosTableOpen(true);
+  }, []);
+
+  const onEntregadosClick = useCallback(() => {
+    setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
+    setPedidosInitialAsignacion('todos');
+    setIsPedidosTableOpen(true);
+  }, []);
+
+  const onPorcentajeClick = useCallback(() => {
+    setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
+    setPedidosInitialAsignacion('todos');
+    setIsPedidosTableOpen(true);
+  }, []);
+
+  const onZonasSinMovilClick = useCallback(() => setIsZonasSinMovilOpen(true), []);
+  const onMovilesSinReportarClick = useCallback(() => setIsMovilesSinReportarOpen(true), []);
+  const onZonasNoActivasClick = useCallback(() => setIsZonasNoActivasOpen(true), []);
+
   return (
     <MotionConfig reducedMotion={preferences.lightMode ? 'always' : 'user'}>
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 relative">
@@ -1512,7 +1553,7 @@ function DashboardContent() {
           showEmpresaSelector={false}
         >
           <DashboardIndicators
-            moviles={markInactiveMoviles(movilesFiltered)}
+            moviles={movilesFilteredMarked}
             pedidos={pedidosCompletos}
             services={servicesCompletos}
             selectedDate={selectedDate}
@@ -1520,26 +1561,14 @@ function DashboardContent() {
             escenarioIds={selectedEscenarioIds}
             maxCoordinateDelayMinutes={preferences.maxCoordinateDelayMinutes}
             allMovilEstados={allMovilEstados}
-            onSinAsignarClick={() => {
-              setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
-              setPedidosInitialAsignacion('sin_movil');
-              setIsPedidosTableOpen(true);
-            }}
-            onEntregadosClick={() => {
-              setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
-              setPedidosInitialAsignacion('todos');
-              setIsPedidosTableOpen(true);
-            }}
-            onPorcentajeClick={() => {
-              setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
-              setPedidosInitialAsignacion('todos');
-              setIsPedidosTableOpen(true);
-            }}
+            onSinAsignarClick={onSinAsignarClick}
+            onEntregadosClick={onEntregadosClick}
+            onPorcentajeClick={onPorcentajeClick}
             zonasSinMovilServiceFilter={movilesZonasServiceFilter}
             zonasRefreshSeconds={Math.min(preferences.demorasPollingSeconds ?? 30, preferences.movilesZonasPollingSeconds ?? 30)}
-            onZonasSinMovilClick={() => setIsZonasSinMovilOpen(true)}
-            onMovilesSinReportarClick={() => setIsMovilesSinReportarOpen(true)}
-            onZonasNoActivasClick={() => setIsZonasNoActivasOpen(true)}
+            onZonasSinMovilClick={onZonasSinMovilClick}
+            onMovilesSinReportarClick={onMovilesSinReportarClick}
+            onZonasNoActivasClick={onZonasNoActivasClick}
           />
         </NavbarSimple>
       </div>
@@ -1723,7 +1752,7 @@ function DashboardContent() {
         isOpen={isMovilesSinReportarOpen}
         onClose={() => setIsMovilesSinReportarOpen(false)}
         onMovilClick={(movilId) => { setIsMovilesSinReportarOpen(false); handleMovilClick(movilId); }}
-        moviles={markInactiveMoviles(movilesFiltered)}
+        moviles={movilesFilteredMarked}
       />
 
       <ZonasNoActivasModal
@@ -1917,7 +1946,7 @@ function DashboardContent() {
               {/* Selector de Móviles - Full height */}
               <div className="flex-1 overflow-hidden">
                 <MovilSelector
-                  moviles={markInactiveMoviles(movilesFiltered)}
+                  moviles={movilesFilteredMarked}
                   selectedMoviles={selectedMoviles}
                   onToggleMovil={handleToggleMovil}
                   onSelectAll={handleSelectAll}
@@ -2010,7 +2039,7 @@ function DashboardContent() {
               className="w-full h-full"
             >
               <MapView 
-                moviles={movilesHidden ? [] : applyActivityFilter(applyAdvancedFilters(markInactiveMoviles(movilesFiltered))).filter(m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) && (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY)))}
+                moviles={movilesForMap}
                 focusedMovil={focusedMovil}
                 selectedMovil={selectedMovil}
                 secondaryAnimMovil={selectedMovil2}
