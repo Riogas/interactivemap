@@ -12,7 +12,6 @@
  * - ✅ Evita sobrecarga de Supabase
  * - ✅ Logging detallado para debugging
  * - ✅ Timeout de 15 segundos en requests a Supabase
- * - ✅ Fallback a archivo si falla después de 3 reintentos
  * - ✅ Auto-creación de móviles si no existen (FK constraint)
  * 
  * Rendimiento estimado con 100 móviles:
@@ -21,7 +20,6 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { writeFile, mkdir } from 'fs/promises';
 import { gpsLog } from '@/lib/debug-config';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -208,9 +206,6 @@ class GPSBatchQueue {
           console.error(`💥 BATCH FALLIDO después de ${this.MAX_RETRIES} intentos`);
           console.error(`   - Registros perdidos: ${batch.length}`);
           console.error(`   - Error final:`, error.message);
-          
-          // Guardar en archivo para recuperación manual
-          await this.saveFailedBatch(batch);
         }
       }
     }
@@ -340,44 +335,6 @@ class GPSBatchQueue {
     } catch (error: any) {
       console.error(`   ❌ Error en createMissingMoviles:`, error.message);
       return [];
-    }
-  }
-
-  /**
-   * Guardar batch fallido en archivo.
-   *
-   * Requiere la env var FAILED_BATCHES_DIR con el path absoluto del
-   * directorio donde escribir. Si no está configurado, se loguea y se salta
-   * (el batch se pierde en memoria). Tener el path 100% dinámico evita que
-   * el analizador estático de Turbopack intente tracear archivos bajo cwd.
-   */
-  private async saveFailedBatch(batch: GPSRecord[]): Promise<void> {
-    const failedDir = process.env.FAILED_BATCHES_DIR;
-    if (!failedDir) {
-      console.warn('⚠️ FAILED_BATCHES_DIR no configurado — batch fallido descartado');
-      return;
-    }
-
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `failed-batch-${timestamp}.json`;
-
-      await mkdir(failedDir, { recursive: true });
-      const filepath = `${failedDir}/${filename}`;
-
-      const data = {
-        timestamp: new Date().toISOString(),
-        records: batch,
-        count: batch.length,
-        reason: 'Failed after 3 retry attempts',
-      };
-
-      await writeFile(filepath, JSON.stringify(data, null, 2));
-
-      gpsLog(`💾 Batch guardado en: ${filepath}`);
-      gpsLog(`   - Para recuperar: Importar manualmente a Supabase`);
-    } catch (error: any) {
-      console.error(`❌ Error al guardar batch fallido:`, error.message);
     }
   }
 }

@@ -20,12 +20,6 @@ const nextConfig = {
   // Configurar root de output para silenciar warning de múltiples lockfiles
   outputFileTracingRoot: process.cwd(),
 
-  // Excluir directorios de runtime que no deben ser traceados en el bundle
-  // (evita el warning "The file pattern '/ROOT/failed-batches' matches N files")
-  outputFileTracingExcludes: {
-    '*': ['failed-batches/**', 'logs/**', 'tmp/**'],
-  },
-
   // 🔒 SECURITY HEADERS
   async headers() {
     return [
