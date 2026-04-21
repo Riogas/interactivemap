@@ -33,6 +33,9 @@ import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
 
+const DEBUG = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1';
+const dbg = (...args: any[]) => { if (DEBUG) console.log(...args); };
+
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
   ssr: false,
@@ -607,7 +610,7 @@ function DashboardContent() {
     const movilId = parseInt(latestPosition.movil_id); // ✅ Usar 'movil_id'
     // La tabla gps_latest_positions se limpia cada madrugada por cron,
     // así que toda posición que llega por Realtime es vigente.
-    console.log(`🔔 Actualización Realtime para móvil ${movilId}`);
+    dbg(`🔔 Actualización Realtime para móvil ${movilId}`);
     
     setMoviles(prevMoviles => {
       // Buscar si el móvil ya existe en la lista
@@ -755,7 +758,7 @@ function DashboardContent() {
             }
             return movil;
           });
-          console.log(`🔧 Estado actualizado. Móvil ${movilId} ahora tiene history:`, updated.find(m => m.id === movilId)?.history?.length);
+          dbg(`🔧 Estado actualizado. Móvil ${movilId} ahora tiene history:`, updated.find(m => m.id === movilId)?.history?.length);
           return updated;
         });
       }
@@ -1183,8 +1186,8 @@ function DashboardContent() {
       return false;
     });
     
-    console.log('🔷 DASHBOARD: pedidosCompletos calculado');
-    console.log(`📊 Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
+    dbg('🔷 DASHBOARD: pedidosCompletos calculado');
+    dbg(`📊 Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
     
     return resultado;
   }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate]);
@@ -1203,7 +1206,7 @@ function DashboardContent() {
       return false;
     });
     
-    console.log(`🔧 DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
+    dbg(`🔧 DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
   }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate]);
 
@@ -1361,8 +1364,8 @@ function DashboardContent() {
     }
     prevPedidosKeyRef.current = pedidosKey;
     
-    console.log('📦 Actualizando lote de móviles en tiempo real');
-    console.log('📊 Pedidos activos por móvil:', Object.fromEntries(pedidosPorMovil));
+    dbg('📦 Actualizando lote de móviles en tiempo real');
+    dbg('📊 Pedidos activos por móvil:', Object.fromEntries(pedidosPorMovil));
     
     setMoviles(prevMoviles => {
       let cambios = false;
@@ -1371,7 +1374,7 @@ function DashboardContent() {
         const pedidosAsignados = pedidosPorMovil.get(movilId) || 0;
         
         if (movil.pedidosAsignados !== pedidosAsignados) {
-          console.log(`🔄 Móvil ${movilId}: ${pedidosAsignados}/${movil.tamanoLote || 6} pedidos`);
+          dbg(`🔄 Móvil ${movilId}: ${pedidosAsignados}/${movil.tamanoLote || 6} pedidos`);
           cambios = true;
           return {
             ...movil,
