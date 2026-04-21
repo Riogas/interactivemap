@@ -17,6 +17,31 @@ interface User {
   loginTime: string;
   token: string;
   allowedEmpresas: number[] | null; // null = root/sin restricción, array = IDs permitidos
+  allowedEscenarios: number[] | null; // null = root/sin restricción, array = IDs permitidos
+}
+
+type PreferenciaEntry = { nombre: string; valor: number };
+
+function parsePreferencia(
+  prefs: Array<{ atributo: string; valor: string }> | undefined,
+  atributo: string
+): PreferenciaEntry[] {
+  if (!Array.isArray(prefs)) return [];
+  const p = prefs.find((x) => x.atributo === atributo);
+  if (!p?.valor) return [];
+  try {
+    const parsed = JSON.parse(p.valor);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((x: { Nombre?: string; Valor?: number }) => ({
+        nombre: String(x.Nombre ?? ''),
+        valor: Number(x.Valor),
+      }))
+      .filter((x) => Number.isFinite(x.valor));
+  } catch (e) {
+    console.warn(`⚠️ Error parseando preferencia "${atributo}":`, e);
+    return [];
+  }
 }
 
 interface AuthContextType {
@@ -50,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('trackmovil_user');
     localStorage.removeItem('trackmovil_token');
     localStorage.removeItem('trackmovil_allowed_empresas');
+    localStorage.removeItem('trackmovil_allowed_escenarios');
     setUser(null);
   };
 
@@ -89,7 +115,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.warn('⚠️ Error parsing allowed empresas:', e);
           }
         }
-        
+
+        // Cargar escenarios permitidos desde localStorage
+        const savedEscenarios = localStorage.getItem('trackmovil_allowed_escenarios');
+        let allowedEscenarios: number[] | null = null;
+        if (savedEscenarios) {
+          try {
+            allowedEscenarios = JSON.parse(savedEscenarios);
+          } catch (e) {
+            console.warn('⚠️ Error parsing allowed escenarios:', e);
+          }
+        }
+
         // Cargar escenario persistido
         const savedEscenario = localStorage.getItem('trackmovil_escenario_id');
         if (savedEscenario) setEscenarioId(parseInt(savedEscenario, 10));
@@ -98,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...parsedUser,
           token: savedToken,
           allowedEmpresas,
+          allowedEscenarios,
         });
       } catch (e) {
         console.error('Error al cargar sesión, limpiando localStorage:', e);
@@ -132,56 +170,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // El login es exitoso SOLO si success=true Y viene el objeto user
       if (response.success && response.user && response.user.id && response.user.username) {
         console.log('✅ Login GeneXus exitoso');
-        
+
         const isRoot = response.user.isRoot === 'S';
-        
-        // 🔑 Si NO es root, obtener empresas permitidas de getAtributos
+
+        // 🔑 Parsear preferencias del response (nuevo formato SecuritySuite)
+        const empFleteras = parsePreferencia(response.preferencias, 'EmpFletera');
+        const escenarios = parsePreferencia(response.preferencias, 'Escenario');
+
         let allowedEmpresas: number[] | null = null;
-        if (!isRoot) {
-          try {
-            console.log('🔑 Usuario no es root, obteniendo atributos...');
-            const attrResponse = await fetch('/api/user-atributos', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${response.token}`,
-              },
-              body: JSON.stringify({ User: username }),
-            });
-            
-            if (attrResponse.ok) {
-              const attrData = await attrResponse.json();
-              if (attrData.success && attrData.allowedEmpresas) {
-                allowedEmpresas = attrData.allowedEmpresas.map((e: { id: number }) => e.id);
-                console.log(`✅ Empresas permitidas: ${allowedEmpresas?.join(', ')}`);
-                localStorage.setItem('trackmovil_allowed_empresas', JSON.stringify(allowedEmpresas));
-              } else {
-                console.warn('⚠️ No se obtuvieron empresas del atributo, cargando todas');
-                localStorage.removeItem('trackmovil_allowed_empresas');
-              }
-            } else {
-              console.warn('⚠️ Error obteniendo atributos, cargando todas las empresas');
-              localStorage.removeItem('trackmovil_allowed_empresas');
-            }
-          } catch (attrError) {
-            console.warn('⚠️ Error obteniendo atributos:', attrError);
-            localStorage.removeItem('trackmovil_allowed_empresas');
-          }
-        } else {
-          console.log('👑 Usuario root - acceso a todas las empresas');
+        let allowedEscenarios: number[] | null = null;
+
+        if (isRoot) {
+          console.log('👑 Usuario root - acceso a todas las empresas y escenarios');
           localStorage.removeItem('trackmovil_allowed_empresas');
+          localStorage.removeItem('trackmovil_allowed_escenarios');
+        } else {
+          // Validar escenarios: debe tener al menos uno y el del login debe matchear
+          if (escenarios.length === 0) {
+            console.log('❌ Login bloqueado: usuario no-root sin escenarios asignados');
+            return {
+              success: false,
+              error: 'El usuario no tiene escenarios asignados. Contacte al administrador.',
+            };
+          }
+
+          allowedEscenarios = escenarios.map((e) => e.valor);
+          if (!allowedEscenarios.includes(selectedEscenarioId)) {
+            console.log(`❌ Login bloqueado: escenario ${selectedEscenarioId} no está en los permitidos [${allowedEscenarios.join(', ')}]`);
+            return {
+              success: false,
+              error: 'No tiene acceso al escenario seleccionado.',
+            };
+          }
+
+          allowedEmpresas = empFleteras.map((e) => e.valor);
+          console.log(`✅ Empresas permitidas: ${allowedEmpresas.join(', ') || '(ninguna)'}`);
+          console.log(`✅ Escenarios permitidos: ${allowedEscenarios.join(', ')}`);
+          localStorage.setItem('trackmovil_allowed_empresas', JSON.stringify(allowedEmpresas));
+          localStorage.setItem('trackmovil_allowed_escenarios', JSON.stringify(allowedEscenarios));
         }
-        
+
+        // Mapear roles del shape nuevo (rolId, rolNombre, aplicacionId, funcionalidades)
+        // al shape viejo (RolId, RolNombre, RolTipo) que espera sync-session y Supabase.
+        const mappedRoles = (response.roles || []).map((r) => ({
+          RolId: String(r.rolId),
+          RolNombre: r.rolNombre,
+          RolTipo: '',
+        }));
+
         const newUser: User = {
           id: response.user.id,
           username: response.user.username,
           email: response.user.email || '',
           nombre: response.user.nombre || response.user.username,
           isRoot: response.user.isRoot || 'N',
-          roles: response.user.roles || [],
+          roles: mappedRoles,
           loginTime: new Date().toISOString(),
           token: response.token,
           allowedEmpresas,
+          allowedEscenarios,
         };
         
         // 🔄 SINCRONIZAR CON SUPABASE
@@ -265,6 +312,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     authService.logout();
     localStorage.removeItem('trackmovil_allowed_empresas');
+    localStorage.removeItem('trackmovil_allowed_escenarios');
     localStorage.removeItem('trackmovil_escenario_id');
     setEscenarioId(1000);
     console.log('✅ Sesión cerrada completamente');

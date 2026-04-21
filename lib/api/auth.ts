@@ -21,13 +21,19 @@ interface ParsedLoginResponse {
     id: string;
     isRoot: string;
     nombre: string;
-    roles: Array<{
-      RolId: string;
-      RolNombre: string;
-      RolTipo: string;
-    }>;
     username: string;
   };
+  roles?: Array<{
+    rolId: number;
+    rolNombre: string;
+    aplicacionId: number;
+    funcionalidades: unknown[];
+  }>;
+  preferencias?: Array<{
+    atributo: string;
+    valor: string;
+  }>;
+  accesos?: unknown[];
   verifiedBy: string;
 }
 
