@@ -330,29 +330,6 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
 
               <hr className="border-gray-200" />
 
-              {/* Agrupación de Pedidos en Clusters */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">📦</span>
-                  Agrupar Pedidos en el Mapa
-                </label>
-                <p className="text-xs text-gray-500">
-                  Agrupa pedidos y services cercanos en clusters. Mejora el rendimiento cuando hay muchos marcadores visibles.
-                </p>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <span className="text-sm text-gray-700">Agrupar en clusters</span>
-                  <button
-                    type="button"
-                    onClick={() => setPreferences({ ...preferences, pedidosCluster: !preferences.pedidosCluster })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${preferences.pedidosCluster ? 'bg-orange-500' : 'bg-gray-200'}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${preferences.pedidosCluster ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                </div>
-              </div>
-
-              <hr className="border-gray-200" />
-
               {/* Tamaño de Marcadores de Pedidos */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -545,6 +522,23 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 </h3>
                 <p className="text-xs text-gray-500">Opciones de visualización y comportamiento del mapa</p>
               </div>
+
+              {/* Toggle: Agrupar Pedidos en Clusters */}
+              <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 text-lg">📦</div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Agrupar pedidos en clusters</div>
+                    <p className="text-xs text-gray-500">Agrupa pedidos y services cercanos en el mapa</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => setPreferences({ ...preferences, pedidosCluster: !preferences.pedidosCluster })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${preferences.pedidosCluster ? 'bg-orange-500' : 'bg-gray-200'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${preferences.pedidosCluster ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+              </label>
 
               {/* Toggle: Etiquetas de Demoras */}
               <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
