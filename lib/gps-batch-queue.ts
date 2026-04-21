@@ -351,12 +351,11 @@ class GPSBatchQueue {
     try {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `failed-batch-${timestamp}.json`;
-      
-      // Crear directorio si no existe
-      // Usar referencia dinámica para evitar que el analizador estático de Next.js
-      // intente trazar el patrón de archivos y genere warnings de bundling
-      const cwd: string = process.cwd();
-      const failedDir = join(cwd, 'failed-batches');
+
+      // Nombre del directorio vía env var (dinámico) para que Turbopack no resuelva
+      // el literal 'failed-batches' al hacer file tracing.
+      const dirName = process.env.FAILED_BATCHES_DIR ?? ['failed', 'batches'].join('-');
+      const failedDir = join(process.cwd(), dirName);
       await mkdir(failedDir, { recursive: true });
       
       const filepath = `${failedDir}/${filename}`;
