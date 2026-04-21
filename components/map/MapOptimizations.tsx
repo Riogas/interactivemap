@@ -51,16 +51,11 @@ export const OptimizedPolyline = React.memo(({
     />
   );
 }, (prevProps, nextProps) => {
-  // Solo re-renderizar si cambió significativamente
-  if (prevProps.positions.length !== nextProps.positions.length) {
-    return false;
-  }
-  
-  // Comparar opciones de estilo
-  const prevStyle = JSON.stringify(prevProps.pathOptions);
-  const nextStyle = JSON.stringify(nextProps.pathOptions);
-  
-  return prevStyle === nextStyle;
+  if (prevProps.positions.length !== nextProps.positions.length) return false;
+  // Comparar solo las propiedades de pathOptions que cambian (sin JSON.stringify)
+  const p = prevProps.pathOptions ?? {};
+  const n = nextProps.pathOptions ?? {};
+  return p.color === n.color && p.weight === n.weight && p.opacity === n.opacity && p.dashArray === n.dashArray;
 });
 
 OptimizedPolyline.displayName = 'OptimizedPolyline';

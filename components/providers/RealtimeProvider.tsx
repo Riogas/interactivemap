@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
 import { useGPSTracking, useMoviles } from '@/lib/hooks/useRealtimeSubscriptions';
 import type { GPSTrackingSupabase, MovilSupabase } from '@/types';
 
@@ -19,31 +19,35 @@ interface RealtimeProviderProps {
   escenarioId?: number;
 }
 
-export function RealtimeProvider({ 
-  children, 
+export function RealtimeProvider({
+  children,
   escenarioId = 1000,
 }: RealtimeProviderProps) {
   const [latestPosition, setLatestPosition] = React.useState<GPSTrackingSupabase | null>(null);
   const [latestMovil, setLatestMovil] = React.useState<MovilSupabase | null>(null);
 
+  // Callbacks estables — sin useCallback aquí se recrean en cada render y hacen
+  // que useGPSTracking/useMoviles rehagan la suscripción a Supabase innecesariamente.
+  const onNewPosition = useCallback((newPosition: GPSTrackingSupabase) => {
+    setLatestPosition(newPosition);
+  }, []);
+
+  const onMovilChange = useCallback((movil: MovilSupabase) => {
+    setLatestMovil(movil);
+  }, []);
+
   // Hook de GPS Tracking en tiempo real
   const { positions, isConnected: gpsConnected, error: gpsError } = useGPSTracking(
     escenarioId,
-    undefined, // No filtrar por móvil específico
-    (newPosition) => {
-      console.log('🔔 Nueva posición GPS recibida en tiempo real:', newPosition);
-      setLatestPosition(newPosition);
-    }
+    undefined,
+    onNewPosition,
   );
 
   // Hook de Móviles en tiempo real (para detectar móviles nuevos)
   const { isConnected: movilesConnected } = useMoviles(
     escenarioId,
-    undefined, // No filtrar por empresa
-    (movil) => {
-      console.log('🚗 Cambio en móvil detectado:', movil);
-      setLatestMovil(movil);
-    }
+    undefined,
+    onMovilChange,
   );
 
   const isConnected = gpsConnected && movilesConnected;
@@ -63,8 +67,16 @@ export function RealtimeProvider({
     }
   }, [error]);
 
+  // Memoizar el valor del contexto: sin esto, cada render del provider crea un nuevo
+  // objeto y fuerza re-render de todos los consumidores de useRealtime(), aunque los
+  // valores no hayan cambiado.
+  const contextValue = useMemo<RealtimeContextType>(
+    () => ({ positions, isConnected, error, latestPosition, latestMovil }),
+    [positions, isConnected, error, latestPosition, latestMovil],
+  );
+
   return (
-    <RealtimeContext.Provider value={{ positions, isConnected, error, latestPosition, latestMovil }}>
+    <RealtimeContext.Provider value={contextValue}>
       {children}
     </RealtimeContext.Provider>
   );

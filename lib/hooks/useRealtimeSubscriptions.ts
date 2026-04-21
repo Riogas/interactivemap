@@ -2,14 +2,18 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { 
-  GPSTrackingSupabase, 
-  MovilSupabase, 
+import type {
+  GPSTrackingSupabase,
+  MovilSupabase,
   PedidoSupabase,
   ServiceSupabase,
-  EmpresaFleteraSupabase 
+  EmpresaFleteraSupabase
 } from '@/types';
 import { RealtimeChannel } from '@supabase/supabase-js';
+
+// Activar solo en desarrollo para no serializar objetos en cada update de GPS
+const DEBUG_REALTIME = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
+const dbg = (...args: any[]) => { if (DEBUG_REALTIME) console.log(...args); };
 
 /**
  * Hook para suscribirse a cambios en tiempo real de GPS tracking
@@ -67,7 +71,7 @@ export function useGPSTracking(
           (payload) => {
             if (!isComponentMounted) return;
             
-            console.log('📍 Nueva posición GPS recibida:', payload.new);
+            dbg('📍 GPS INSERT:', payload.new?.movil_id);
             const newPosition = payload.new as GPSTrackingSupabase;
             
             // Filtrar por móvil si se especifica
@@ -95,7 +99,7 @@ export function useGPSTracking(
           (payload) => {
             if (!isComponentMounted) return;
             
-            console.log('📍 Posición GPS actualizada:', payload.new);
+            dbg('📍 GPS UPDATE:', payload.new?.movil_id);
             const updatedPosition = payload.new as GPSTrackingSupabase;
             
             if (!movilIds || movilIds.includes(updatedPosition.movil_id)) {
@@ -114,7 +118,7 @@ export function useGPSTracking(
         .subscribe((status) => {
           if (!isComponentMounted) return;
           
-          console.log('📡 Estado de suscripción GPS:', status);
+          dbg('📡 GPS status:', status);
           
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -195,7 +199,7 @@ export function useMoviles(
           table: 'moviles',
         },
         (payload) => {
-          console.log('🚗 Cambio en móviles:', payload);
+          dbg('🚗 Movil change:', payload.new?.id);
           
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const movil = payload.new as MovilSupabase;
@@ -218,7 +222,7 @@ export function useMoviles(
         }
       )
       .subscribe((status) => {
-        console.log('📡 Estado de suscripción móviles:', status);
+        dbg('📡 Moviles status:', status);
         setIsConnected(status === 'SUBSCRIBED');
       });
 
@@ -260,7 +264,7 @@ export function usePedidos(
           filter: filterString,
         },
         (payload) => {
-          console.log('📦 Cambio en pedidos:', payload);
+          dbg('📦 Pedido change:', payload.new?.id);
           
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const pedido = payload.new as PedidoSupabase;
@@ -283,7 +287,7 @@ export function usePedidos(
         }
       )
       .subscribe((status) => {
-        console.log('📡 Estado de suscripción pedidos:', status);
+        dbg('📡 Pedidos status:', status);
         setIsConnected(status === 'SUBSCRIBED');
       });
 
