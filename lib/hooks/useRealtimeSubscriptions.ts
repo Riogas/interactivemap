@@ -199,7 +199,7 @@ export function useMoviles(
           table: 'moviles',
         },
         (payload) => {
-          dbg('🚗 Movil change:', payload.new?.id);
+          dbg('🚗 Movil change:', (payload.new as any)?.id);
           
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const movil = payload.new as MovilSupabase;
