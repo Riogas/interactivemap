@@ -330,6 +330,29 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
 
               <hr className="border-gray-200" />
 
+              {/* Agrupación de Pedidos en Clusters */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">📦</span>
+                  Agrupar Pedidos en el Mapa
+                </label>
+                <p className="text-xs text-gray-500">
+                  Agrupa pedidos y services cercanos en clusters. Mejora el rendimiento cuando hay muchos marcadores visibles.
+                </p>
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <span className="text-sm text-gray-700">Agrupar en clusters</span>
+                  <button
+                    type="button"
+                    onClick={() => setPreferences({ ...preferences, pedidosCluster: !preferences.pedidosCluster })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${preferences.pedidosCluster ? 'bg-orange-500' : 'bg-gray-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${preferences.pedidosCluster ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              </div>
+
+              <hr className="border-gray-200" />
+
               {/* Tamaño de Marcadores de Pedidos */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
