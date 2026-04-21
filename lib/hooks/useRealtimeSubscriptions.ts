@@ -71,7 +71,7 @@ export function useGPSTracking(
           (payload) => {
             if (!isComponentMounted) return;
             
-            dbg('📍 GPS INSERT:', payload.new?.movil_id);
+            dbg('📍 GPS INSERT:', (payload.new as any)?.movil_id);
             const newPosition = payload.new as GPSTrackingSupabase;
             
             // Filtrar por móvil si se especifica
@@ -99,7 +99,7 @@ export function useGPSTracking(
           (payload) => {
             if (!isComponentMounted) return;
             
-            dbg('📍 GPS UPDATE:', payload.new?.movil_id);
+            dbg('📍 GPS UPDATE:', (payload.new as any)?.movil_id);
             const updatedPosition = payload.new as GPSTrackingSupabase;
             
             if (!movilIds || movilIds.includes(updatedPosition.movil_id)) {
@@ -264,7 +264,7 @@ export function usePedidos(
           filter: filterString,
         },
         (payload) => {
-          dbg('📦 Pedido change:', payload.new?.id);
+          dbg('📦 Pedido change:', (payload.new as any)?.id);
           
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const pedido = payload.new as PedidoSupabase;
