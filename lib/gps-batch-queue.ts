@@ -22,7 +22,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
 import { gpsLog } from '@/lib/debug-config';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -345,31 +344,36 @@ class GPSBatchQueue {
   }
 
   /**
-   * Guardar batch fallido en archivo
+   * Guardar batch fallido en archivo.
+   *
+   * Requiere la env var FAILED_BATCHES_DIR con el path absoluto del
+   * directorio donde escribir. Si no está configurado, se loguea y se salta
+   * (el batch se pierde en memoria). Tener el path 100% dinámico evita que
+   * el analizador estático de Turbopack intente tracear archivos bajo cwd.
    */
   private async saveFailedBatch(batch: GPSRecord[]): Promise<void> {
+    const failedDir = process.env.FAILED_BATCHES_DIR;
+    if (!failedDir) {
+      console.warn('⚠️ FAILED_BATCHES_DIR no configurado — batch fallido descartado');
+      return;
+    }
+
     try {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `failed-batch-${timestamp}.json`;
 
-      // Nombre del directorio vía env var (dinámico) para que Turbopack no resuelva
-      // el literal 'failed-batches' al hacer file tracing.
-      const dirName = process.env.FAILED_BATCHES_DIR ?? ['failed', 'batches'].join('-');
-      const failedDir = join(process.cwd(), dirName);
       await mkdir(failedDir, { recursive: true });
-      
       const filepath = `${failedDir}/${filename}`;
-      
-      // Guardar batch con metadata
+
       const data = {
         timestamp: new Date().toISOString(),
         records: batch,
         count: batch.length,
         reason: 'Failed after 3 retry attempts',
       };
-      
+
       await writeFile(filepath, JSON.stringify(data, null, 2));
-      
+
       gpsLog(`💾 Batch guardado en: ${filepath}`);
       gpsLog(`   - Para recuperar: Importar manualmente a Supabase`);
     } catch (error: any) {
