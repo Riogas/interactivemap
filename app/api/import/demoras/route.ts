@@ -25,6 +25,7 @@ function transformAS400(body: any) {
     zona_id: parseInt(z.Zona, 10),
     activa: z.ZonaActiva === 'S',
     minutos: z.Demora ?? 0,
+    zona_nombre: z.ZonaNombre ?? null,
   }));
 }
 
