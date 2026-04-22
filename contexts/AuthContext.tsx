@@ -79,6 +79,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  // Limpieza proactiva de cookies legacy de Supabase (sb-*-auth-token).
+  // Antes usábamos sync-session con anonymous sign-ins; eso dejaba cookies
+  // que ahora pueden estar expiradas y hacer que Realtime quede colgado.
+  // Como ya no sincronizamos sesión con Supabase, estas cookies no sirven
+  // para nada y conviene borrarlas al arranque.
+  useEffect(() => {
+    try {
+      const cookies = document.cookie.split(';');
+      for (const c of cookies) {
+        const name = c.split('=')[0].trim();
+        if (name.startsWith('sb-') && name.endsWith('-auth-token')) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`;
+        }
+      }
+    } catch {
+      // no-op: cookies HttpOnly no se pueden limpiar client-side
+    }
+  }, []);
+
   // Cargar sesión desde localStorage al iniciar
   useEffect(() => {
     const savedUser = localStorage.getItem('trackmovil_user');
@@ -211,7 +231,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Mapear roles del shape nuevo (rolId, rolNombre, aplicacionId, funcionalidades)
-        // al shape viejo (RolId, RolNombre, RolTipo) que espera sync-session y Supabase.
+        // al shape viejo (RolId, RolNombre, RolTipo) que espera el consumo downstream
+        // (componentes/hooks que leen user.roles).
         const mappedRoles = (response.roles || []).map((r) => ({
           RolId: String(r.rolId),
           RolNombre: r.rolNombre,
@@ -230,33 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           allowedEmpresas,
           allowedEscenarios,
         };
-        
-        // 🔄 SINCRONIZAR CON SUPABASE
-        console.log('🔄 Sincronizando sesión con Supabase...');
-        try {
-          const syncResponse = await fetch('/api/auth/sync-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: response.token,
-              user: newUser,
-            }),
-          });
 
-          if (!syncResponse.ok) {
-            const errorData = await syncResponse.json();
-            console.warn('⚠️ No se pudo sincronizar sesión con Supabase:', errorData);
-            // No fallar el login si Supabase falla - permitir continuar
-          } else {
-            const syncData = await syncResponse.json();
-            console.log('✅ Sesión sincronizada con Supabase exitosamente');
-            console.log('   User ID:', syncData.supabase_session?.user_id);
-          }
-        } catch (syncError) {
-          console.warn('⚠️ Error sincronizando sesión con Supabase:', syncError);
-          // No fallar el login si Supabase falla - permitir continuar
-        }
-        
         // Guardar en localStorage el newUser completo (incluye loginTime para validar expiración en F5)
         localStorage.setItem('trackmovil_user', JSON.stringify(newUser));
         localStorage.setItem('trackmovil_token', newUser.token);
@@ -290,23 +285,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     console.log('🚪 Cerrando sesión...');
-    
-    // 1. Cerrar sesión de Supabase
+
+    // 1. Limpiar cookies residuales de Supabase (por si hay alguna HttpOnly).
+    //    El endpoint hace Set-Cookie con Max-Age=0 desde el server.
     try {
-      console.log('🔐 Cerrando sesión de Supabase...');
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
-      });
-      
-      if (response.ok) {
-        console.log('✅ Sesión de Supabase cerrada');
-      } else {
-        console.warn('⚠️ No se pudo cerrar sesión de Supabase');
-      }
-    } catch (error) {
-      console.warn('⚠️ Error cerrando sesión de Supabase:', error);
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // no-op: si falla, seguimos con el logout local
     }
-    
+
     // 2. Cerrar sesión local (GeneXus)
     console.log('🔐 Limpiando sesión local...');
     setUser(null);
