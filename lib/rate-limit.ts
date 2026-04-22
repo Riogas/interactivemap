@@ -185,15 +185,22 @@ export function checkRateLimit(
   request: NextRequest,
   type: keyof typeof RATE_LIMIT_CONFIGS = 'default'
 ): true | NextResponse {
+  // 🔓 KILL SWITCH: desactivar todo el rate limiting con env var.
+  // Útil para debugging o cuando te autobloqueás por login fails.
+  // Para prender/apagar en caliente: `pm2 restart track --update-env`.
+  if (process.env.DISABLE_RATE_LIMIT === 'true') {
+    return true;
+  }
+
   const ip = getClientIp(request);
   const config = RATE_LIMIT_CONFIGS[type];
   const now = Date.now();
-  
+
   rlog(`🚦 checkRateLimit:`);
   rlog(`   - IP: ${ip}`);
   rlog(`   - Type: ${type}`);
   rlog(`   - Config: ${config.maxRequests} req / ${config.windowMs}ms`);
-  
+
   // 🟢 BYPASS: IPs en whitelist no tienen rate limit
   if (isWhitelistedIp(ip)) {
     rlog(`   ✅ IP en whitelist - BYPASS rate limit`);
