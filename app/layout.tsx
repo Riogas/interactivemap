@@ -4,6 +4,8 @@ import "./globals.css";
 import { RealtimeProvider } from "@/components/providers/RealtimeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ToastProvider } from "@/components/providers/ToastProvider";
+import { AuditProvider } from "@/components/providers/AuditProvider";
+import { Suspense } from "react";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,9 +23,13 @@ export default function RootLayout({
     <html lang="es" className="h-full">
       <body className={`${inter.className} h-full m-0 p-0 overflow-hidden`}>
         <AuthProvider>
-          <RealtimeProvider escenarioId={1000}>
-            {children}
-          </RealtimeProvider>
+          <Suspense>
+            <AuditProvider>
+              <RealtimeProvider escenarioId={1000}>
+                {children}
+              </RealtimeProvider>
+            </AuditProvider>
+          </Suspense>
         </AuthProvider>
         <ToastProvider />
       </body>

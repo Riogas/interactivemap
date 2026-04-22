@@ -368,6 +368,13 @@ export function autoRateLimit(request: NextRequest): true | NextResponse {
     rlog(`   - 🚀 GPS Tracking endpoint - SIN RATE LIMIT`);
     return true;
   }
+
+  // 🚀 BYPASS para auditoría interna: el AuditProvider envía batches frecuentes
+  // y nunca debería bloquearse por rate limit (perderíamos trazabilidad).
+  if (pathname === '/api/audit') {
+    rlog(`   - 🚀 Audit endpoint - SIN RATE LIMIT`);
+    return true;
+  }
   
   // Determinar tipo basándose en la ruta
   let type: keyof typeof RATE_LIMIT_CONFIGS = 'default';
