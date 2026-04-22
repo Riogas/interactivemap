@@ -5,7 +5,7 @@ import { RealtimeProvider } from "@/components/providers/RealtimeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ToastProvider } from "@/components/providers/ToastProvider";
 import { AuditProvider } from "@/components/providers/AuditProvider";
-import { IncidentRecorder } from "@/components/IncidentRecorder";
+import { IncidentRecorderProvider } from "@/contexts/IncidentRecorderContext";
 import { Suspense } from "react";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -26,12 +26,13 @@ export default function RootLayout({
         <AuthProvider>
           <Suspense>
             <AuditProvider>
-              <RealtimeProvider escenarioId={1000}>
-                {children}
-              </RealtimeProvider>
+              <IncidentRecorderProvider>
+                <RealtimeProvider escenarioId={1000}>
+                  {children}
+                </RealtimeProvider>
+              </IncidentRecorderProvider>
             </AuditProvider>
           </Suspense>
-          <IncidentRecorder />
         </AuthProvider>
         <ToastProvider />
       </body>

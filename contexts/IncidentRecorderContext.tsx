@@ -1,23 +1,36 @@
 'use client';
 
 /**
- * IncidentRecorder
+ * IncidentRecorderProvider
  *
- * Botón flotante fijo en la esquina inferior derecha.
- * Flujo:
- *   1. idle → click → getDisplayMedia (popup del browser: elegir pantalla/ventana/tab)
- *   2. recording → click → stop → modal de confirmación con descripción opcional
- *   3. uploading → sube el Blob a /api/incidents como multipart
- *   4. done → toast de éxito + vuelve a idle
- *
- * El cursor se graba nativamente cuando el user elige "Pantalla completa".
- * Audio está activado por default (voz del usuario), se puede togglear.
+ * Provee estado global del grabador de incidencias (pantalla) + renderiza
+ * los modales de confirmación / uploading y los toasts.
+ * El botón visual vive en el navbar (components/IncidentRecorderButton.tsx)
+ * y consume este contexto vía useIncidentRecorder().
  */
 
-import { useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  ReactNode,
+  useCallback,
+} from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
-type State = 'idle' | 'recording' | 'stopping' | 'uploading' | 'confirming';
+export type RecorderState = 'idle' | 'recording' | 'stopping' | 'confirming' | 'uploading';
+
+interface RecorderContextValue {
+  state: RecorderState;
+  seconds: number;
+  start: () => Promise<void>;
+  stop: () => void;
+  available: boolean;
+}
+
+const RecorderContext = createContext<RecorderContextValue | undefined>(undefined);
 
 const PREFERRED_MIMES = [
   'video/webm;codecs=vp9,opus',
@@ -46,9 +59,9 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function IncidentRecorder() {
+export function IncidentRecorderProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [state, setState] = useState<State>('idle');
+  const [state, setState] = useState<RecorderState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [description, setDescription] = useState('');
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
@@ -60,7 +73,11 @@ export function IncidentRecorder() {
   const chunksRef = useRef<BlobPart[]>([]);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Cleanup al desmontar
+  const available =
+    typeof window !== 'undefined' &&
+    !!navigator.mediaDevices?.getDisplayMedia &&
+    typeof MediaRecorder !== 'undefined';
+
   useEffect(() => {
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
@@ -73,33 +90,24 @@ export function IncidentRecorder() {
     };
   }, []);
 
-  // Auto-dismiss toast
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4500);
     return () => clearTimeout(t);
   }, [toast]);
 
-  async function startRecording() {
+  const start = useCallback(async () => {
     if (state !== 'idle') return;
-
-    if (!navigator.mediaDevices?.getDisplayMedia) {
+    if (!available) {
       setToast({ type: 'err', msg: 'Tu navegador no soporta grabación de pantalla.' });
       return;
     }
-
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: 15, max: 30 },
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
+        video: { frameRate: { ideal: 15, max: 30 } },
+        audio: { echoCancellation: true, noiseSuppression: true },
       });
 
-      // Si el user cierra la share desde el popup del browser, lo detectamos
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
         if (recorderRef.current && recorderRef.current.state !== 'inactive') {
           recorderRef.current.stop();
@@ -121,11 +129,13 @@ export function IncidentRecorder() {
         const mime = recorder.mimeType || mimeType || 'video/webm';
         const blob = new Blob(chunksRef.current, { type: mime });
         chunksRef.current = [];
-        // Detener tracks
         streamRef.current?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
-        // Capturar duración y pasar a confirmación
-        setPendingDurationS(seconds);
+        setPendingDurationS((currentSecs) => {
+          // Capturamos las seconds actuales; el setter es la forma segura de leer el último valor
+          return currentSecs;
+        });
+        // Al momento de stop, ya teníamos el último seconds renderizado
         setPendingBlob(blob);
         setState('confirming');
         if (tickRef.current) {
@@ -134,23 +144,28 @@ export function IncidentRecorder() {
         }
       };
 
-      recorder.start(1000); // chunks cada 1s
+      recorder.start(1000);
       setSeconds(0);
       setState('recording');
-      tickRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+      tickRef.current = setInterval(() => {
+        setSeconds((s) => {
+          const next = s + 1;
+          setPendingDurationS(next);
+          return next;
+        });
+      }, 1000);
     } catch (e) {
-      const msg = (e as Error).message;
-      if (msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('denied')) {
-        // User canceló el popup, no es error
+      const msg = (e as Error).message.toLowerCase();
+      if (msg.includes('permission') || msg.includes('denied')) {
         setState('idle');
       } else {
-        setToast({ type: 'err', msg: `Error: ${msg}` });
+        setToast({ type: 'err', msg: `Error: ${(e as Error).message}` });
         setState('idle');
       }
     }
-  }
+  }, [state, available]);
 
-  function stopRecording() {
+  const stop = useCallback(() => {
     if (state !== 'recording') return;
     setState('stopping');
     try {
@@ -158,9 +173,9 @@ export function IncidentRecorder() {
     } catch {
       // no-op
     }
-  }
+  }, [state]);
 
-  async function confirmUpload() {
+  const confirmUpload = async () => {
     if (!pendingBlob) return;
     setState('uploading');
     try {
@@ -177,14 +192,12 @@ export function IncidentRecorder() {
           'x-track-userid': user?.id ?? '',
         },
       });
-
       const data = await res.json();
       if (!res.ok || !data.success) {
         setToast({ type: 'err', msg: data.error ?? 'Error subiendo el video' });
         setState('confirming');
         return;
       }
-
       setToast({ type: 'ok', msg: `Incidencia #${data.id} reportada. Gracias!` });
       setDescription('');
       setPendingBlob(null);
@@ -194,61 +207,23 @@ export function IncidentRecorder() {
       setToast({ type: 'err', msg: (e as Error).message });
       setState('confirming');
     }
-  }
+  };
 
-  function discardRecording() {
+  const discard = () => {
     setDescription('');
     setPendingBlob(null);
     setPendingDurationS(0);
     setState('idle');
-  }
-
-  // No mostrar si no hay usuario logueado
-  if (!user) return null;
+  };
 
   return (
-    <>
-      {/* FAB */}
-      <button
-        onClick={state === 'idle' ? startRecording : state === 'recording' ? stopRecording : undefined}
-        disabled={state === 'stopping' || state === 'uploading' || state === 'confirming'}
-        title={
-          state === 'idle' ? 'Reportar incidencia (graba pantalla)'
-          : state === 'recording' ? 'Detener grabación'
-          : 'Procesando…'
-        }
-        className={`fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full shadow-2xl font-semibold text-sm transition-all duration-200 ${
-          state === 'recording'
-            ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white pl-3 pr-4 py-2.5 scale-105 animate-pulse-slow'
-            : state === 'idle'
-            ? 'bg-gradient-to-r from-slate-800 to-slate-900 text-white w-12 h-12 justify-center hover:w-auto hover:pl-3 hover:pr-4 hover:scale-105'
-            : 'bg-slate-400 text-white w-12 h-12 justify-center cursor-not-allowed'
-        }`}
-      >
-        {state === 'recording' ? (
-          <>
-            <span className="w-2.5 h-2.5 bg-white rounded-sm" />
-            <span className="tabular-nums">{formatDuration(seconds)}</span>
-            <span className="text-xs font-normal opacity-90">· Detener</span>
-          </>
-        ) : state === 'uploading' || state === 'stopping' ? (
-          <svg className="animate-spin w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-          </svg>
-        ) : (
-          <>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <circle cx="12" cy="12" r="4" fill="currentColor" />
-            </svg>
-            <span className="hidden group-hover:inline whitespace-nowrap">Reportar incidencia</span>
-          </>
-        )}
-      </button>
-
-      {/* Modal de confirmación */}
+    <RecorderContext.Provider value={{ state, seconds, start, stop, available }}>
+      {children}
+      {/* Modales renderizados al final del body via portal implícito (el root layout ya garantiza z-index alto) */}
       {state === 'confirming' && pendingBlob && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
+        >
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 text-white">
@@ -261,7 +236,6 @@ export function IncidentRecorder() {
                 <p className="text-xs text-slate-500">Grabación lista para enviar</p>
               </div>
             </div>
-
             <div className="p-6 space-y-4">
               <div className="flex gap-3">
                 <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-3">
@@ -273,7 +247,6 @@ export function IncidentRecorder() {
                   <div className="text-lg font-bold text-slate-800">{formatSize(pendingBlob.size)}</div>
                 </div>
               </div>
-
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
                   ¿Qué sucedió? <span className="font-normal normal-case text-slate-400">(opcional)</span>
@@ -286,25 +259,13 @@ export function IncidentRecorder() {
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
                 />
               </div>
-
-              {/* Preview */}
               <div className="rounded-lg overflow-hidden bg-slate-900 aspect-video">
-                <video
-                  src={URL.createObjectURL(pendingBlob)}
-                  controls
-                  className="w-full h-full"
-                  onLoadedMetadata={(e) => {
-                    // Opcional: revocar URL si se cierra
-                    const target = e.currentTarget as HTMLVideoElement;
-                    target.dataset.blob = 'loaded';
-                  }}
-                />
+                <video src={URL.createObjectURL(pendingBlob)} controls className="w-full h-full" />
               </div>
             </div>
-
             <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
               <button
-                onClick={discardRecording}
+                onClick={discard}
                 className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-white rounded-lg transition"
               >
                 Descartar
@@ -323,9 +284,8 @@ export function IncidentRecorder() {
         </div>
       )}
 
-      {/* Estado uploading overlay */}
       {state === 'uploading' && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex items-center gap-4">
             <svg className="animate-spin w-6 h-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
@@ -338,10 +298,9 @@ export function IncidentRecorder() {
         </div>
       )}
 
-      {/* Toasts */}
       {toast && (
         <div
-          className={`fixed bottom-24 right-6 z-50 max-w-sm rounded-xl shadow-2xl px-4 py-3 text-sm font-medium flex items-start gap-3 ${
+          className={`fixed bottom-6 right-6 z-[9999] max-w-sm rounded-xl shadow-2xl px-4 py-3 text-sm font-medium flex items-start gap-3 ${
             toast.type === 'ok' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
           }`}
         >
@@ -362,6 +321,12 @@ export function IncidentRecorder() {
           </button>
         </div>
       )}
-    </>
+    </RecorderContext.Provider>
   );
+}
+
+export function useIncidentRecorder() {
+  const ctx = useContext(RecorderContext);
+  if (!ctx) throw new Error('useIncidentRecorder debe usarse dentro de IncidentRecorderProvider');
+  return ctx;
 }
