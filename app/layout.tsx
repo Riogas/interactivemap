@@ -5,6 +5,7 @@ import { RealtimeProvider } from "@/components/providers/RealtimeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ToastProvider } from "@/components/providers/ToastProvider";
 import { AuditProvider } from "@/components/providers/AuditProvider";
+import { IncidentRecorder } from "@/components/IncidentRecorder";
 import { Suspense } from "react";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -30,6 +31,7 @@ export default function RootLayout({
               </RealtimeProvider>
             </AuditProvider>
           </Suspense>
+          <IncidentRecorder />
         </AuthProvider>
         <ToastProvider />
       </body>
