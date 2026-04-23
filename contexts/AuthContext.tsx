@@ -31,13 +31,29 @@ function parsePreferencia(
   if (!p?.valor) return [];
   try {
     const parsed = JSON.parse(p.valor);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((x: { Nombre?: string; Valor?: number }) => ({
-        nombre: String(x.Nombre ?? ''),
-        valor: Number(x.Valor),
-      }))
-      .filter((x) => Number.isFinite(x.valor));
+
+    // Formato A (array): [{ Nombre: "...", Valor: 70 }, ...]
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((x: { Nombre?: string; Valor?: number | string }) => ({
+          nombre: String(x.Nombre ?? ''),
+          valor: Number(x.Valor),
+        }))
+        .filter((x) => Number.isFinite(x.valor));
+    }
+
+    // Formato B (objeto): { "Nombre1": "70", "Nombre2": "80" }
+    // El Security Suite devuelve este shape para algunos usuarios.
+    if (parsed && typeof parsed === 'object') {
+      return Object.entries(parsed as Record<string, unknown>)
+        .map(([nombre, valor]) => ({
+          nombre,
+          valor: Number(valor),
+        }))
+        .filter((x) => Number.isFinite(x.valor));
+    }
+
+    return [];
   } catch (e) {
     console.warn(`⚠️ Error parseando preferencia "${atributo}":`, e);
     return [];
