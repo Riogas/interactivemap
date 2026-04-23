@@ -402,8 +402,22 @@ function DashboardContent() {
 
   const fetchPositions = useCallback(async () => {
     try {
+      // 🔒 Guard: usuario no-root con restricción pero 0 empresas válidas.
+      // Pasa cuando el ID del SecuritySuite (ej. 70) no matchea con ningún
+      // empresa_fletera_id del Supabase, o cuando la empresa está inactiva.
+      // Root ve todo siempre; un user no-root sin empresas accesibles NO
+      // debería ver nada — mapa vacío.
+      const userHasRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
+      if (userHasRestriction && selectedEmpresas.length === 0) {
+        console.log('🔒 Usuario con restricción y sin empresas válidas → mapa vacío');
+        setMoviles([]);
+        setIsLoading(false);
+        setIsInitialLoad(false);
+        return;
+      }
+
       console.log('🔄 Fetching all positions from API...');
-      
+
       // Construir URL con filtro de empresas y fecha
       const params = new URLSearchParams();
       if (selectedDate) {
@@ -413,20 +427,8 @@ function DashboardContent() {
       //   a) el usuario tiene una lista de empresas permitidas (no-root con allowedEmpresas),
       //      o
       //   b) el usuario no tiene todas las empresas del selector marcadas (filtro manual).
-      const userHasRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
       const userDeselectedSome = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
-      const willFilter = selectedEmpresas.length > 0 && (userHasRestriction || userDeselectedSome);
-
-      console.log('[fetchPositions debug]', {
-        user_allowedEmpresas: user?.allowedEmpresas,
-        selectedEmpresas,
-        empresasLength: empresas.length,
-        userHasRestriction,
-        userDeselectedSome,
-        willFilter,
-      });
-
-      if (willFilter) {
+      if (selectedEmpresas.length > 0 && (userHasRestriction || userDeselectedSome)) {
         params.append('empresaIds', selectedEmpresas.join(','));
       }
       
