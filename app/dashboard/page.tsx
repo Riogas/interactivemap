@@ -2039,6 +2039,7 @@ function DashboardContent() {
                   selectedEmpresas={selectedEmpresas}
                   onEmpresasChange={setSelectedEmpresas}
                   showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
+                  hideUnassigned={hideUnassigned}
                 />
               </div>
             </motion.div>

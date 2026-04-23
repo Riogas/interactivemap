@@ -51,6 +51,10 @@ interface MovilSelectorProps {
   selectedEmpresas?: number[];
   onEmpresasChange?: (ids: number[]) => void;
   showEmpresaSelector?: boolean;
+  /** Si true, se ocultan los pedidos/services sin móvil asignado en el
+   *  colapsable de pedidos. Calculado por el parent en base al perfil del
+   *  usuario (no-root con restricción) + filtro manual de empresas. */
+  hideUnassigned?: boolean;
 }
 
 // Definir las categorías del árbol
@@ -103,6 +107,7 @@ export default function MovilSelector({
   selectedEmpresas = [],
   onEmpresasChange,
   showEmpresaSelector = false,
+  hideUnassigned = false,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -282,8 +287,9 @@ export default function MovilSelector({
       result = result.filter(pedido => Number(pedido.estado_nro) === 1);
     }
     
-    // Si el filtro de empresa es parcial (no todas y no ninguna), ocultar sin asignar
-    const isPartialEmpresa = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+    // Usar el flag que baja del parent. Incluye (a) user no-root con restricción
+    // de empresas y (b) filtro manual parcial de empresas.
+    const isPartialEmpresa = hideUnassigned;
 
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles + sin asignar
     if (selectedMoviles.length > 0) {
@@ -393,7 +399,8 @@ export default function MovilSelector({
     }
     
     // Si el filtro de empresa es parcial (no todas y no ninguna), ocultar sin asignar
-    const isPartialEmpresaSvc = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+    // Mismo criterio que para pedidos: el parent calcula y baja el flag.
+    const isPartialEmpresaSvc = hideUnassigned;
 
     // Filtrar por móviles seleccionados (sin asignar solo pasan cuando no hay filtro parcial de empresa)
     if (selectedMoviles.length > 0) {
