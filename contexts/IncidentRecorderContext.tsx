@@ -104,7 +104,13 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
     }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 15, max: 30 } },
+        video: {
+          frameRate: { ideal: 15, max: 30 },
+          // Cap a 720p: reduce tamaño ~4x vs 1080p con pérdida visual
+          // mínima para debug de UI.
+          width: { max: 1280 },
+          height: { max: 720 },
+        },
         audio: { echoCancellation: true, noiseSuppression: true },
       });
 
@@ -118,7 +124,14 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
       chunksRef.current = [];
 
       const mimeType = pickMimeType();
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      // Bitrate agresivo para minimizar el tamaño del video.
+      // 500 kbps de video + 64 kbps de audio ≈ 4 MB/min.
+      // A 10 min ≈ 40 MB, a 1 min ≈ 4 MB. Ajustable si se ve degradación.
+      const recorder = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 500_000,
+        audioBitsPerSecond: 64_000,
+      });
       recorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {
