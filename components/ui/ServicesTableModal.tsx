@@ -473,33 +473,36 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                       <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
                     </div>
                   ))}
-                  {/* Filtro Asignación: Todos / Con Móvil / Sin Móvil */}
-                  <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
-                    <button
-                      onClick={() => setFilters(f => ({ ...f, asignacion: 'todos' }))}
-                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
-                        filters.asignacion === 'todos' ? 'bg-gray-600/40 text-gray-200 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      Todos
-                    </button>
-                    <button
-                      onClick={() => setFilters(f => ({ ...f, asignacion: 'con_movil' }))}
-                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
-                        filters.asignacion === 'con_movil' ? 'bg-blue-500/30 text-blue-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      Con Móvil
-                    </button>
-                    <button
-                      onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
-                      className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
-                        filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      Sin Móvil
-                    </button>
-                  </div>
+                  {/* Filtro Asignación: Todos / Con Móvil / Sin Móvil.
+                      Solo visible para root/despacho (sin restricción). */}
+                  {!hideUnassigned && (
+                    <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
+                      <button
+                        onClick={() => setFilters(f => ({ ...f, asignacion: 'todos' }))}
+                        className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                          filters.asignacion === 'todos' ? 'bg-gray-600/40 text-gray-200 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                      >
+                        Todos
+                      </button>
+                      <button
+                        onClick={() => setFilters(f => ({ ...f, asignacion: 'con_movil' }))}
+                        className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                          filters.asignacion === 'con_movil' ? 'bg-blue-500/30 text-blue-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                      >
+                        Con Móvil
+                      </button>
+                      <button
+                        onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
+                        className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                          filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                      >
+                        Sin Móvil
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="ml-auto text-xs text-gray-500">
