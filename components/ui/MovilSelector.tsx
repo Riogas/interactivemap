@@ -299,8 +299,15 @@ export default function MovilSelector({
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
     } else if (isPartialEmpresa) {
-      // Sin móviles seleccionados pero empresa parcial: igual ocultar sin asignar
-      result = result.filter(pedido => pedido.movil && Number(pedido.movil) !== 0);
+      // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
+      // y también los pedidos (incl. entregados) que NO pertenezcan a los
+      // móviles de las empresas del usuario. `moviles` ya viene filtrado
+      // por empresa desde el dashboard.
+      const validMovilIds = new Set(moviles.map(m => Number(m.id)));
+      result = result.filter(pedido => {
+        if (!pedido.movil || Number(pedido.movil) === 0) return false;
+        return validMovilIds.has(Number(pedido.movil));
+      });
     }
     
     // Filtrar por búsqueda
@@ -409,7 +416,13 @@ export default function MovilSelector({
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
     } else if (isPartialEmpresaSvc) {
-      result = result.filter(service => service.movil && Number(service.movil) !== 0);
+      // Sin móviles seleccionados pero empresa parcial: restringir también a los
+      // services (incl. finalizados) cuyos móviles estén dentro del set del user.
+      const validMovilIds = new Set(moviles.map(m => Number(m.id)));
+      result = result.filter(service => {
+        if (!service.movil || Number(service.movil) === 0) return false;
+        return validMovilIds.has(Number(service.movil));
+      });
     }
     
     // Filtrar por búsqueda

@@ -2101,13 +2101,22 @@ function DashboardContent() {
                 pedidos={pedidosHidden ? [] : (() => {
                   const isPendientes = pedidosFilters.vista !== 'finalizados';
                   const isEmpresaPartial = hideUnassigned;
-                  let base = isPendientes
-                    ? (selectedMoviles.length > 0
-                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && ((p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) || ((!p.movil || Number(p.movil) === 0) && !isEmpresaPartial)))
-                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && (!isEmpresaPartial || (p.movil && Number(p.movil) !== 0))))
-                    : (selectedMoviles.length > 0
-                        ? pedidosCompletos.filter(p => Number(p.estado_nro) === 2 && p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
-                        : pedidosCompletos.filter(p => Number(p.estado_nro) === 2));
+                  const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
+                  const targetEstado = isPendientes ? 1 : 2;
+                  let base = pedidosCompletos.filter(p => {
+                    if (Number(p.estado_nro) !== targetEstado) return false;
+                    // Sin asignar: solo en pendientes, sin restricción y sin móviles seleccionados.
+                    if (!p.movil || Number(p.movil) === 0) {
+                      return isPendientes && !isEmpresaPartial && selectedMoviles.length === 0;
+                    }
+                    if (selectedMoviles.length > 0) {
+                      return selectedMoviles.some(id => Number(id) === Number(p.movil));
+                    }
+                    if (isEmpresaPartial) {
+                      return validMovilIds.has(Number(p.movil));
+                    }
+                    return true;
+                  });
                   base = base.filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud));
                   base = filterByDelay(base, isPendientes ? pedidosFilters.atraso : []);
                   if (isPendientes && pedidosFilters.tipoServicio.length > 0) base = base.filter(p => p.servicio_nombre && pedidosFilters.tipoServicio.includes(p.servicio_nombre));
@@ -2131,9 +2140,21 @@ function DashboardContent() {
                 services={servicesHidden ? [] : (() => {
                   const isPendientes = servicesFilters.vista !== 'finalizados';
                   const isEmpresaPartial = hideUnassigned;
-                  let base = isPendientes
-                    ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1 && (!isEmpresaPartial || (s.movil && Number(s.movil) !== 0))))
-                    : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 2 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 2));
+                  const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
+                  const targetEstado = isPendientes ? 1 : 2;
+                  let base = servicesCompletos.filter(s => {
+                    if (Number(s.estado_nro) !== targetEstado) return false;
+                    if (!s.movil || Number(s.movil) === 0) {
+                      return isPendientes && !isEmpresaPartial && selectedMoviles.length === 0;
+                    }
+                    if (selectedMoviles.length > 0) {
+                      return selectedMoviles.some(id => Number(id) === Number(s.movil));
+                    }
+                    if (isEmpresaPartial) {
+                      return validMovilIds.has(Number(s.movil));
+                    }
+                    return true;
+                  });
                   base = base.filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud));
                   base = filterByTipoServicio(filterByDelay(base, isPendientes ? servicesFilters.atraso : []), isPendientes ? servicesFilters.tipoServicio : 'all');
                   if (servicesFilters.zona !== null) base = base.filter(s => s.zona_nro === servicesFilters.zona);

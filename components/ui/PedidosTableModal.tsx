@@ -188,21 +188,28 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
       }
     }
     
-    // Cuando hay pre-filtro de móvil, NO filtrar por selectedMoviles
-    // Finalizados: no filtrar por selectedMoviles
-    if (isFinalizados) {
-      // No aplicar filtros de móviles ni tipo de servicio
-    } else if (preFilterMovil || preFilterZona) {
-      // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
+    // Filtro por móviles / empresa del usuario.
+    // Regla: los finalizados también respetan la restricción de empresas (antes
+    //        el bloque `if (isFinalizados)` lo salteaba y mostraba TODO).
+    if (preFilterMovil || preFilterZona) {
+      // Pre-filtro activo — el dropdown interno se encarga.
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
-      result = result.filter(p =>
-        // Con asignacion='todos' incluir sin móvil solo si no hay filtro parcial de empresa
-        (filters.asignacion === 'todos' && !hideUnassigned && (!p.movil || Number(p.movil) === 0)) ||
-        (p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)))
-      );
-    } else if (hideUnassigned && !preFilterMovil && !preFilterZona && filters.asignacion === 'todos') {
-      // Sin selectedMoviles pero con filtro parcial de empresa: ocultar sin asignar
-      result = result.filter(p => p.movil && Number(p.movil) !== 0);
+      result = result.filter(p => {
+        if (!p.movil || Number(p.movil) === 0) {
+          // Sin asignar: solo pasan en pendientes, asignacion='todos', sin restricción.
+          return !isFinalizados && filters.asignacion === 'todos' && !hideUnassigned;
+        }
+        return selectedMoviles.some(id => Number(id) === Number(p.movil));
+      });
+    } else if (hideUnassigned && filters.asignacion === 'todos') {
+      // Sin móviles seleccionados, con restricción: ocultar sin asignar
+      // y restringir a los móviles que el usuario puede ver (los que vienen
+      // en la prop `moviles`, ya filtrados por empresa desde el dashboard).
+      const validMovilIds = new Set(moviles.map(m => Number(m.id)));
+      result = result.filter(p => {
+        if (!p.movil || Number(p.movil) === 0) return false;
+        return validMovilIds.has(Number(p.movil));
+      });
     }
     
     // Aplicar filtro interno de tipo de servicio (pendientes y finalizados)
@@ -211,7 +218,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned]);
+  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre

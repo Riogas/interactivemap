@@ -155,19 +155,25 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       }
     }
     
-    // Cuando hay pre-filtro de móvil, NO filtrar por selectedMoviles
-    if (isFinalizados) {
-      // No aplicar filtros de móviles ni tipo de servicio
-    } else if (preFilterMovil || preFilterZona) {
-      // No aplicar filtro de selectedMoviles — el dropdown interno filtrará
+    // Filtro por móviles / empresa del usuario.
+    // Los finalizados también respetan la restricción de empresas.
+    if (preFilterMovil || preFilterZona) {
+      // Pre-filtro activo — el dropdown interno se encarga.
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
-      result = result.filter(s =>
-        // Con asignacion='todos' incluir sin móvil solo si no hay filtro parcial de empresa
-        (filters.asignacion === 'todos' && !hideUnassigned && (!s.movil || Number(s.movil) === 0)) ||
-        (s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil)))
-      );
-    } else if (hideUnassigned && !preFilterMovil && !preFilterZona && filters.asignacion === 'todos') {
-      result = result.filter(s => s.movil && Number(s.movil) !== 0);
+      result = result.filter(s => {
+        if (!s.movil || Number(s.movil) === 0) {
+          return !isFinalizados && filters.asignacion === 'todos' && !hideUnassigned;
+        }
+        return selectedMoviles.some(id => Number(id) === Number(s.movil));
+      });
+    } else if (hideUnassigned && filters.asignacion === 'todos') {
+      // Sin móviles seleccionados, con restricción: ocultar sin asignar
+      // y restringir a móviles del usuario.
+      const validMovilIds = new Set(moviles.map(m => Number(m.id)));
+      result = result.filter(s => {
+        if (!s.movil || Number(s.movil) === 0) return false;
+        return validMovilIds.has(Number(s.movil));
+      });
     }
     
     // Aplicar filtro externo de tipo de servicio (solo para pendientes)
@@ -177,7 +183,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned]);
+  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
   const servicesParaOpciones = useMemo(() => {
