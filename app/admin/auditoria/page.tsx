@@ -11,12 +11,16 @@ interface AuditRow {
   method: string | null;
   endpoint: string | null;
   request_query: Record<string, unknown> | null;
+  request_body: unknown;
   response_status: number | null;
+  response_size: number | null;
+  response_body: unknown;
   duration_ms: number | null;
   ip: string | null;
   user_agent: string | null;
   source: string;
   error: string | null;
+  extra: unknown;
 }
 
 interface ListResponse {
@@ -265,6 +269,7 @@ export default function AuditoriaPage() {
               <option value="">Todos los eventos</option>
               <option value="api_call">API call</option>
               <option value="navigation">Navegación</option>
+              <option value="realtime">Realtime</option>
               <option value="click">Click</option>
               <option value="custom">Custom</option>
             </select>
@@ -482,12 +487,55 @@ export default function AuditoriaPage() {
                     </div>
                   </div>
                 )}
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Payload completo</div>
-                  <pre className="text-xs bg-slate-50 border border-slate-200 p-3 rounded-lg overflow-auto whitespace-pre-wrap max-h-60">
+                {selected.request_query && Object.keys(selected.request_query).length > 0 && (
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Query params</div>
+                    <pre className="text-xs bg-slate-50 border border-slate-200 p-3 rounded-lg overflow-auto whitespace-pre-wrap max-h-40">
+                      {JSON.stringify(selected.request_query, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {selected.request_body !== null && selected.request_body !== undefined && (
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Request body</div>
+                    <pre className="text-xs bg-slate-50 border border-slate-200 p-3 rounded-lg overflow-auto whitespace-pre-wrap max-h-60">
+                      {JSON.stringify(selected.request_body, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {selected.response_body !== null && selected.response_body !== undefined && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
+                        Response body
+                      </div>
+                      {selected.response_size !== null && (
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {selected.response_size} bytes
+                        </div>
+                      )}
+                    </div>
+                    <pre className="text-xs bg-emerald-50/40 border border-emerald-100 text-slate-800 p-3 rounded-lg overflow-auto whitespace-pre-wrap max-h-80">
+                      {JSON.stringify(selected.response_body, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {selected.extra !== null && selected.extra !== undefined && (
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Extra</div>
+                    <pre className="text-xs bg-slate-50 border border-slate-200 p-3 rounded-lg overflow-auto whitespace-pre-wrap max-h-40">
+                      {JSON.stringify(selected.extra, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                <details>
+                  <summary className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold cursor-pointer select-none">
+                    Payload completo (raw)
+                  </summary>
+                  <pre className="mt-2 text-xs bg-slate-50 border border-slate-200 p-3 rounded-lg overflow-auto whitespace-pre-wrap max-h-60">
                     {JSON.stringify(selected, null, 2)}
                   </pre>
-                </div>
+                </details>
               </div>
             </div>
           </div>
@@ -540,6 +588,7 @@ function EventBadge({ type }: { type: string }) {
   const map: Record<string, { bg: string; dot: string; label: string }> = {
     api_call:   { bg: 'bg-blue-50 text-blue-700 border-blue-200',       dot: 'bg-blue-500',    label: 'API' },
     navigation: { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500', label: 'Nav' },
+    realtime:   { bg: 'bg-cyan-50 text-cyan-700 border-cyan-200',       dot: 'bg-cyan-500',    label: 'Realtime' },
     click:      { bg: 'bg-amber-50 text-amber-700 border-amber-200',    dot: 'bg-amber-500',   label: 'Click' },
     custom:     { bg: 'bg-purple-50 text-purple-700 border-purple-200', dot: 'bg-purple-500',  label: 'Custom' },
   };

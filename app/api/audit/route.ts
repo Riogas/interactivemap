@@ -24,13 +24,14 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 }
 
 interface ClientEvent {
-  event_type: 'api_call' | 'navigation' | 'click' | 'custom';
+  event_type: 'api_call' | 'navigation' | 'click' | 'custom' | 'realtime';
   method?: string;
   endpoint?: string;
   request_body?: unknown;
   request_query?: unknown;
   response_status?: number;
   response_size?: number;
+  response_body?: unknown;
   duration_ms?: number;
   error?: string;
   extra?: unknown;
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
         request_query: ev.request_query,
         response_status: ev.response_status,
         response_size: ev.response_size,
+        response_body: ev.response_body,
         duration_ms: ev.duration_ms,
         ip,
         user_agent: userAgent,

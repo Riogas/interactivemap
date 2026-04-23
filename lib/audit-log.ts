@@ -5,7 +5,7 @@
 import 'server-only';
 import { getServerSupabaseClient } from '@/lib/supabase';
 
-export type AuditEventType = 'api_call' | 'navigation' | 'click' | 'custom';
+export type AuditEventType = 'api_call' | 'navigation' | 'click' | 'custom' | 'realtime';
 export type AuditSource = 'client' | 'server';
 
 export interface AuditEvent {
@@ -18,6 +18,7 @@ export interface AuditEvent {
   request_query?: unknown;
   response_status?: number | null;
   response_size?: number | null;
+  response_body?: unknown;
   duration_ms?: number | null;
   ip?: string | null;
   user_agent?: string | null;
@@ -54,6 +55,7 @@ export function logAudit(event: AuditEvent): void {
     request_query: truncateJson(event.request_query),
     response_status: event.response_status ?? null,
     response_size: event.response_size ?? null,
+    response_body: truncateJson(event.response_body),
     duration_ms: event.duration_ms ?? null,
     ip: event.ip?.slice(0, 100) ?? null,
     user_agent: event.user_agent?.slice(0, 500) ?? null,

@@ -10,6 +10,44 @@ import type {
   EmpresaFleteraSupabase
 } from '@/types';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { sendAuditBatch } from '@/lib/audit-client';
+
+/**
+ * Registra un cambio de estado de un canal Realtime en el audit_log.
+ * Se llama desde el callback del .subscribe() de cada hook.
+ *
+ * Mapeo de status de Supabase → event_type semántico del audit:
+ *   SUBSCRIBED    → connected
+ *   CLOSED        → disconnected
+ *   CHANNEL_ERROR → error
+ *   TIMED_OUT     → timeout
+ */
+function logRealtimeStatus(
+  channelName: string,
+  tableName: string,
+  status: string,
+  extra?: Record<string, unknown>,
+) {
+  const semantic =
+    status === 'SUBSCRIBED' ? 'connected'
+    : status === 'CLOSED' ? 'disconnected'
+    : status === 'CHANNEL_ERROR' ? 'error'
+    : status === 'TIMED_OUT' ? 'timeout'
+    : status;
+
+  sendAuditBatch([{
+    event_type: 'realtime',
+    endpoint: `realtime://${tableName}`,
+    error: semantic === 'error' || semantic === 'timeout' ? status : undefined,
+    extra: {
+      channel: channelName,
+      table: tableName,
+      status,
+      semantic,
+      ...extra,
+    },
+  }]);
+}
 
 // Activar solo en desarrollo para no serializar objetos en cada update de GPS
 const DEBUG_REALTIME = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
@@ -117,9 +155,10 @@ export function useGPSTracking(
         )
         .subscribe((status) => {
           if (!isComponentMounted) return;
-          
+
           dbg('📡 GPS status:', status);
-          
+          logRealtimeStatus(channelName, 'gps_latest_positions', status, { escenarioId });
+
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
             setError(null);
@@ -223,6 +262,7 @@ export function useMoviles(
       )
       .subscribe((status) => {
         dbg('📡 Moviles status:', status);
+        logRealtimeStatus('moviles-changes', 'moviles', status, { escenarioId });
         setIsConnected(status === 'SUBSCRIBED');
       });
 
@@ -288,6 +328,7 @@ export function usePedidos(
       )
       .subscribe((status) => {
         dbg('📡 Pedidos status:', status);
+        logRealtimeStatus('pedidos-changes', 'pedidos', status, { escenarioId, movilId });
         setIsConnected(status === 'SUBSCRIBED');
       });
 
@@ -343,6 +384,7 @@ export function useEmpresasFleteras(
       )
       .subscribe((status) => {
         console.log('📡 Estado de suscripción empresas:', status);
+        logRealtimeStatus('empresas-changes', 'empresas_fleteras', status, { escenarioId });
         setIsConnected(status === 'SUBSCRIBED');
       });
 
@@ -461,6 +503,7 @@ export function usePedidosRealtime(
         )
         .subscribe((status) => {
           if (!isComponentMounted) return;
+          logRealtimeStatus(channelName, 'pedidos', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -608,6 +651,7 @@ export function useServicesRealtime(
         )
         .subscribe((status) => {
           if (!isComponentMounted) return;
+          logRealtimeStatus(channelName, 'services', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
