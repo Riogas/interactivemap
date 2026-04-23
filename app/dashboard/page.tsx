@@ -409,7 +409,15 @@ function DashboardContent() {
       if (selectedDate) {
         params.append('startDate', selectedDate);
       }
-      if (selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length) {
+      // Filtrar server-side por empresas si:
+      //   a) el usuario tiene una lista de empresas permitidas (no-root con allowedEmpresas),
+      //      o
+      //   b) el usuario no tiene todas las empresas del selector marcadas (filtro manual).
+      // Antes la condición solo cubría (b), y un user no-root con 1 sola empresa permitida
+      // veía TODOS los móviles porque "1 < 1" era false y no se mandaba el param.
+      const userHasRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
+      const userDeselectedSome = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+      if (selectedEmpresas.length > 0 && (userHasRestriction || userDeselectedSome)) {
         params.append('empresaIds', selectedEmpresas.join(','));
       }
       
