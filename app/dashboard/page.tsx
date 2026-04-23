@@ -204,6 +204,20 @@ function DashboardContent() {
         .filter((v): v is number => v != null)
     )];
   }, [selectedEmpresas, empresas]);
+
+  // Determina si hay que ocultar pedidos/services "sin asignar" (sin móvil).
+  // Motivo: un user no-root nunca tiene contexto para decidir sobre pedidos
+  // sin asignar — esos pedidos no pertenecen a ninguna empresa fletera todavía.
+  // Solo root/despacho (sin restricciones) ven los sin asignar.
+  //
+  // Se activa cuando:
+  //   a) el usuario tiene restricción de empresas (no-root con allowedEmpresas), o
+  //   b) el usuario deseleccionó manualmente alguna empresa del selector.
+  const hideUnassigned = useMemo(() => {
+    const userHasRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
+    const userDeselectedSome = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+    return userHasRestriction || userDeselectedSome;
+  }, [user?.allowedEmpresas, selectedEmpresas, empresas.length]);
   
   // � Móviles filtrados por empresas fleteras seleccionadas
   const movilesFiltered = useMemo(() => {
@@ -1727,7 +1741,7 @@ function DashboardContent() {
         preFilterZona={preFilterZona}
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         initialAsignacion={pedidosInitialAsignacion}
-        hideUnassigned={selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length}
+        hideUnassigned={hideUnassigned}
         onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[], tipoServicio: f.tipoServicio }))}
         externalResetToken={pedidosResetToken}
       />
@@ -1749,7 +1763,7 @@ function DashboardContent() {
         preFilterMovil={preFilterMovil}
         preFilterZona={preFilterZona}
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
-        hideUnassigned={selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length}
+        hideUnassigned={hideUnassigned}
         onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, defecto: f.defecto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
         externalResetToken={servicesResetToken}
       />
@@ -1790,7 +1804,11 @@ function DashboardContent() {
       {/* Modal de Saturación: click en zona del mapa */}
       {saturacionModalZonaId !== null && (() => {
         const isServiceMode = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
-        const sinAsignarList = isServiceMode
+        // Si el user tiene restricción de empresas o deseleccionó algunas,
+        // no mostramos los pedidos sin asignar en la lista de saturación.
+        const sinAsignarList = hideUnassigned
+          ? []
+          : isServiceMode
           ? servicesCompletos
               .filter(s =>
                 Number(s.estado_nro) === 1 &&
@@ -2081,7 +2099,7 @@ function DashboardContent() {
                 onShowCompletados={handleShowCompletados}
                 pedidos={pedidosHidden ? [] : (() => {
                   const isPendientes = pedidosFilters.vista !== 'finalizados';
-                  const isEmpresaPartial = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+                  const isEmpresaPartial = hideUnassigned;
                   let base = isPendientes
                     ? (selectedMoviles.length > 0
                         ? pedidosCompletos.filter(p => Number(p.estado_nro) === 1 && ((p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil))) || ((!p.movil || Number(p.movil) === 0) && !isEmpresaPartial)))
@@ -2111,7 +2129,7 @@ function DashboardContent() {
                 focusTrigger={focusTrigger}
                 services={servicesHidden ? [] : (() => {
                   const isPendientes = servicesFilters.vista !== 'finalizados';
-                  const isEmpresaPartial = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+                  const isEmpresaPartial = hideUnassigned;
                   let base = isPendientes
                     ? (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 1 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 1 && (!isEmpresaPartial || (s.movil && Number(s.movil) !== 0))))
                     : (selectedMoviles.length > 0 ? servicesCompletos.filter(s => Number(s.estado_nro) === 2 && s.movil && selectedMoviles.some(id => Number(id) === Number(s.movil))) : servicesCompletos.filter(s => Number(s.estado_nro) === 2));
