@@ -411,6 +411,9 @@ export function usePedidosRealtime(
   const [pedidos, setPedidos] = useState<Map<number, PedidoSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // lastEventAt: ms de epoch de la última novedad recibida por el WS.
+  // El dashboard lo usa para detectar "silencio" del canal (feature admin).
+  const [lastEventAt, setLastEventAt] = useState<number>(Date.now());
   const wasConnectedRef = useRef(false);
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
@@ -455,6 +458,7 @@ export function usePedidosRealtime(
                 updated.set(newPedido.id, newPedido);
                 return updated;
               });
+              setLastEventAt(Date.now());
               if (onUpdate) onUpdate(newPedido, 'INSERT');
             }
           }
@@ -477,6 +481,7 @@ export function usePedidosRealtime(
                 updated.set(updatedPedido.id, updatedPedido);
                 return updated;
               });
+              setLastEventAt(Date.now());
               if (onUpdate) onUpdate(updatedPedido, 'UPDATE');
             }
           }
@@ -498,6 +503,7 @@ export function usePedidosRealtime(
               updated.delete(deletedPedido.id);
               return updated;
             });
+            setLastEventAt(Date.now());
             if (onUpdate) onUpdate(deletedPedido, 'DELETE');
           }
         )
@@ -508,6 +514,7 @@ export function usePedidosRealtime(
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
             setError(null);
+            setLastEventAt(Date.now());
             console.log('✅ Conectado a Realtime Pedidos');
             // Si era una reconexión (no la primera vez), avisar para refetch
             if (wasConnectedRef.current && onReconnectRef.current) {
@@ -547,7 +554,8 @@ export function usePedidosRealtime(
   return {
     pedidos: Array.from(pedidos.values()),
     isConnected,
-    error
+    error,
+    lastEventAt,
   };
 }
 
@@ -563,6 +571,9 @@ export function useServicesRealtime(
   const [services, setServices] = useState<Map<number, ServiceSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // lastEventAt: ms de epoch de la última novedad recibida por el WS.
+  // El dashboard lo usa para detectar "silencio" del canal (feature admin).
+  const [lastEventAt, setLastEventAt] = useState<number>(Date.now());
   const wasConnectedRef = useRef(false);
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
@@ -605,6 +616,7 @@ export function useServicesRealtime(
                 updated.set(newService.id, newService);
                 return updated;
               });
+              setLastEventAt(Date.now());
               if (onUpdate) onUpdate(newService, 'INSERT');
             }
           }
@@ -626,6 +638,7 @@ export function useServicesRealtime(
                 updated.set(updatedService.id, updatedService);
                 return updated;
               });
+              setLastEventAt(Date.now());
               if (onUpdate) onUpdate(updatedService, 'UPDATE');
             }
           }
@@ -646,6 +659,7 @@ export function useServicesRealtime(
               updated.delete(deletedService.id);
               return updated;
             });
+            setLastEventAt(Date.now());
             if (onUpdate) onUpdate(deletedService, 'DELETE');
           }
         )
@@ -656,6 +670,7 @@ export function useServicesRealtime(
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
             setError(null);
+            setLastEventAt(Date.now());
             console.log('✅ Conectado a Realtime Services');
             if (wasConnectedRef.current && onReconnectRef.current) {
               console.log('🔄 Realtime Services reconectado — solicitando refetch completo');
@@ -691,6 +706,7 @@ export function useServicesRealtime(
   return {
     services: Array.from(services.values()),
     isConnected,
-    error
+    error,
+    lastEventAt,
   };
 }

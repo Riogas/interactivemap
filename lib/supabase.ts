@@ -6,14 +6,45 @@ import type { Database } from '@/types/supabase';
 // En el servidor (Node.js), conectar directo a Supabase (NODE_TLS_REJECT_UNAUTHORIZED=0)
 const supabaseDirectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseProxyUrl = process.env.NEXT_PUBLIC_SUPABASE_PROXY_URL;
-const supabaseUrl = typeof window !== 'undefined' && supabaseProxyUrl 
-  ? supabaseProxyUrl 
+const supabaseUrl = typeof window !== 'undefined' && supabaseProxyUrl
+  ? supabaseProxyUrl
   : supabaseDirectUrl;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Faltan las variables de entorno de Supabase. Verifica NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local');
 }
+
+/**
+ * Lee 2 settings de realtime avanzado de las preferencias persistidas en
+ * localStorage. Se hace al construir el cliente (singleton) porque Supabase
+ * no permite cambiar estos valores en caliente — cambios requieren reload.
+ * Defaults si falta algo: heartbeat 15s, eventsPerSecond 10.
+ */
+function readRealtimeSettingsFromLocalStorage(): { heartbeatMs: number; eventsPerSecond: number } {
+  const defaults = { heartbeatMs: 15000, eventsPerSecond: 10 };
+  if (typeof window === 'undefined') return defaults;
+  try {
+    const raw = localStorage.getItem('userPreferences');
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as {
+      realtimeHeartbeatSeconds?: number;
+      realtimeEventsPerSecond?: number;
+    };
+    return {
+      heartbeatMs: typeof parsed.realtimeHeartbeatSeconds === 'number' && parsed.realtimeHeartbeatSeconds > 0
+        ? parsed.realtimeHeartbeatSeconds * 1000
+        : defaults.heartbeatMs,
+      eventsPerSecond: typeof parsed.realtimeEventsPerSecond === 'number' && parsed.realtimeEventsPerSecond > 0
+        ? parsed.realtimeEventsPerSecond
+        : defaults.eventsPerSecond,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+const realtimeSettings = readRealtimeSettingsFromLocalStorage();
 
 // Cliente de Supabase para el lado del cliente (browser)
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
@@ -22,11 +53,10 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
   realtime: {
     params: {
-      eventsPerSecond: 10, // Limitar eventos para optimizar performance
+      eventsPerSecond: realtimeSettings.eventsPerSecond, // configurable en PreferencesModal (admin)
     },
-    // Configuración mejorada para conexiones más estables
     timeout: 20000, // 20 segundos de timeout (por defecto es 10s)
-    heartbeatIntervalMs: 15000, // Enviar heartbeat cada 15 segundos para mantener conexión viva
+    heartbeatIntervalMs: realtimeSettings.heartbeatMs, // configurable en PreferencesModal (admin)
   },
   global: {
     headers: {

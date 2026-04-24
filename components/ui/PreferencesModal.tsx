@@ -48,6 +48,17 @@ export interface UserPreferences {
   demorasPollingSeconds: number; // Intervalo de refresco para vista Demoras (segundos)
   movilesZonasPollingSeconds: number; // Intervalo de refresco para vista Móviles en Zonas (segundos)
   lightMode: boolean; // Modo ligero: deshabilita animaciones (recomendado para escritorio remoto)
+  // ===== Realtime avanzado (sección admin — solo user.isRoot === 'S') =====
+  realtimePollingReconcileSeconds: number; // Polling de reconciliación contra la DB (0 = off). Cubre eventos perdidos por desconexiones silenciosas.
+  realtimeSilenceTimeoutSeconds: number;   // Si no llega ningún evento del WS por más de N segundos, forzar reconexión + refetch (0 = off).
+  realtimeRefetchOnVisible: boolean;       // Al volver la pestaña a visible, hacer refetch completo de pedidos/services.
+  realtimeHeartbeatSeconds: number;        // Heartbeat del cliente Supabase. ⚠ requiere recarga para aplicar.
+  realtimeEventsPerSecond: number;         // Tope de eventos por segundo que el cliente acepta del WS. ⚠ requiere recarga para aplicar.
+  // TODO [realtime-ui-stale-indicator]: próxima mejora pendiente.
+  //   Cuando se implemente, agregar aquí:
+  //     realtimeStaleIndicatorEnabled: boolean;
+  //     realtimeStaleIndicatorThresholdSeconds: number; // cuánto tiempo sin eventos hasta marcar stale
+  //   Visual: badge "🟡 Datos desactualizados hace Xs" + botón refresh.
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -79,6 +90,12 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   demorasPollingSeconds: 30,
   movilesZonasPollingSeconds: 30,
   lightMode: false,
+  // Realtime avanzado — defaults conservadores.
+  realtimePollingReconcileSeconds: 60,
+  realtimeSilenceTimeoutSeconds: 45,
+  realtimeRefetchOnVisible: true,
+  realtimeHeartbeatSeconds: 15,
+  realtimeEventsPerSecond: 10,
 };
 
 interface PreferencesModalProps {
@@ -747,6 +764,133 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   Controla la intensidad de los colores de las zonas en las vistas de datos (Distribución, Demoras, Móviles por Zona)
                 </p>
               </div>
+
+              {user?.isRoot === 'S' && (
+                <>
+                  <hr className="border-gray-200" />
+
+                  {/* ===== Realtime avanzado — solo admin (isRoot='S') ===== */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">⚡</span>
+                      <span className="text-sm font-bold text-gray-800">Realtime (avanzado)</span>
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-700">ADMIN</span>
+                    </div>
+                    <p className="text-xs text-gray-500 -mt-2">
+                      Configuración global de la conexión Realtime. Afecta a todos los usuarios logueados. Cambios en Heartbeat y Eventos/seg requieren recargar la página.
+                    </p>
+
+                    {/* Polling reconciliación */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">Polling de reconciliación</label>
+                      <p className="text-xs text-gray-500">
+                        Cada cuántos segundos refrescar los datos completos aunque Realtime esté conectado. Cubre eventos perdidos por desconexiones silenciosas. 0 = desactivado.
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="range"
+                          min="0"
+                          max="600"
+                          step="5"
+                          value={preferences.realtimePollingReconcileSeconds}
+                          onChange={(e) => setPreferences({ ...preferences, realtimePollingReconcileSeconds: parseInt(e.target.value) })}
+                          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                        />
+                        <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
+                          {preferences.realtimePollingReconcileSeconds === 0 ? 'off' : `${preferences.realtimePollingReconcileSeconds}s`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Silence timeout */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">Timeout de silencio del WS</label>
+                      <p className="text-xs text-gray-500">
+                        Si no llega ningún evento Realtime en este lapso, forzar reconexión + refetch. Protege contra WS &quot;zombie&quot; (aparenta conectado pero no recibe nada). 0 = desactivado.
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="range"
+                          min="0"
+                          max="300"
+                          step="5"
+                          value={preferences.realtimeSilenceTimeoutSeconds}
+                          onChange={(e) => setPreferences({ ...preferences, realtimeSilenceTimeoutSeconds: parseInt(e.target.value) })}
+                          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                        />
+                        <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
+                          {preferences.realtimeSilenceTimeoutSeconds === 0 ? 'off' : `${preferences.realtimeSilenceTimeoutSeconds}s`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Refetch al volver visible */}
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex-1 pr-3">
+                        <div className="text-sm font-semibold text-gray-700">Refetch al volver al tab</div>
+                        <div className="text-xs text-gray-500">
+                          Cuando la pestaña sale de segundo plano, hacer refetch de pedidos y services. Cubre cuando Chrome baja la prioridad de los WS en tabs inactivos.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPreferences({ ...preferences, realtimeRefetchOnVisible: !preferences.realtimeRefetchOnVisible })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${preferences.realtimeRefetchOnVisible ? 'bg-purple-500' : 'bg-gray-200'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${preferences.realtimeRefetchOnVisible ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+
+                    {/* Heartbeat */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">
+                        Heartbeat del WS <span className="text-[10px] font-normal text-amber-600 ml-1">⚠ requiere recarga</span>
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        Cada cuánto el cliente Supabase manda un &quot;ping&quot; al server. Valores más bajos detectan caídas antes pero gastan más red.
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="range"
+                          min="5"
+                          max="60"
+                          step="1"
+                          value={preferences.realtimeHeartbeatSeconds}
+                          onChange={(e) => setPreferences({ ...preferences, realtimeHeartbeatSeconds: parseInt(e.target.value) })}
+                          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                        />
+                        <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
+                          {preferences.realtimeHeartbeatSeconds}s
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Events per second */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">
+                        Eventos/seg máx <span className="text-[10px] font-normal text-amber-600 ml-1">⚠ requiere recarga</span>
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        Tope de eventos por segundo que el cliente acepta del Realtime. Si hay bursts legítimos de muchos cambios simultáneos y estás perdiendo data, subir este valor.
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="range"
+                          min="5"
+                          max="100"
+                          step="5"
+                          value={preferences.realtimeEventsPerSecond}
+                          onChange={(e) => setPreferences({ ...preferences, realtimeEventsPerSecond: parseInt(e.target.value) })}
+                          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                        />
+                        <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
+                          {preferences.realtimeEventsPerSecond}/s
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <hr className="border-gray-200" />
 

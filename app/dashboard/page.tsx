@@ -254,7 +254,8 @@ function DashboardContent() {
   const {
     pedidos: pedidosRealtime,
     isConnected: pedidosConnected,
-    error: pedidosError
+    error: pedidosError,
+    lastEventAt: lastPedidoEventAt,
   } = usePedidosRealtime(
     escenarioId,
     undefined,
@@ -266,7 +267,8 @@ function DashboardContent() {
   const {
     services: servicesRealtime,
     isConnected: servicesConnected,
-    error: servicesError
+    error: servicesError,
+    lastEventAt: lastServiceEventAt,
   } = useServicesRealtime(
     escenarioId,
     undefined,
@@ -592,19 +594,70 @@ function DashboardContent() {
   useEffect(() => { fetchPedidosRef.current = fetchPedidos; }, [fetchPedidos]);
   useEffect(() => { fetchServicesRef.current = fetchServices; }, [fetchServices]);
 
-  // 🔄 Safety-net: refetch periódico cada 90 segundos para compensar eventos perdidos en el realtime
+  // 🔄 Mejora #1 — Polling de reconciliación configurable (admin / root).
+  // Cubre eventos del WS que se perdieron por desconexiones silenciosas: cada N segundos
+  // re-pedimos todo pedidos/services a la API. Solo en modo live (hoy). 0 = off.
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     if (selectedDate !== today) return; // Solo en modo live, no para fechas históricas
 
+    const seconds = preferences.realtimePollingReconcileSeconds;
+    if (!seconds || seconds <= 0) return; // Apagado por preferencia
+
     const interval = setInterval(() => {
-      console.log('🔄 Safety-net refetch — sincronizando datos con la API');
+      console.log(`🔄 Polling reconciliación (${seconds}s) — sincronizando datos con la API`);
       fetchPedidos();
       fetchServices();
-    }, 90_000);
+    }, seconds * 1000);
 
     return () => clearInterval(interval);
-  }, [selectedDate, fetchPedidos, fetchServices]);
+  }, [selectedDate, fetchPedidos, fetchServices, preferences.realtimePollingReconcileSeconds]);
+
+  // 🔇 Mejora #2 — Detección de silencio del WS (admin / root).
+  // Si durante N segundos no llegan eventos de pedidos NI de services, asumimos que el
+  // canal está mudo (caso clásico de Cloudflare/proxy que deja la TCP abierta pero no
+  // reenvía frames). Forzamos un refetch para recuperar cambios perdidos.
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    if (selectedDate !== today) return;
+
+    const seconds = preferences.realtimeSilenceTimeoutSeconds;
+    if (!seconds || seconds <= 0) return;
+
+    const checkMs = Math.max(5_000, Math.floor((seconds * 1000) / 3)); // chequeo ~cada 1/3 del umbral
+    const thresholdMs = seconds * 1000;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const silenceMs = now - Math.max(lastPedidoEventAt, lastServiceEventAt);
+      if (silenceMs > thresholdMs) {
+        console.warn(`🔇 Silencio de WS > ${seconds}s (${Math.round(silenceMs / 1000)}s). Forzando refetch.`);
+        fetchPedidos();
+        fetchServices();
+      }
+    }, checkMs);
+
+    return () => clearInterval(interval);
+  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, fetchPedidos, fetchServices, preferences.realtimeSilenceTimeoutSeconds]);
+
+  // 👀 Mejora #3 — Refetch al volver la pestaña a visible (admin / root).
+  // Cuando la tab estuvo en background mucho tiempo, el WS puede haberse cerrado sin aviso
+  // o haber perdido eventos. Al volver, pedimos todo de nuevo para consolidar.
+  useEffect(() => {
+    if (!preferences.realtimeRefetchOnVisible) return;
+    const today = new Date().toISOString().split('T')[0];
+    if (selectedDate !== today) return;
+
+    const handler = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('👀 Pestaña visible — refetch completo por preferencia');
+        fetchPedidos();
+        fetchServices();
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [selectedDate, fetchPedidos, fetchServices, preferences.realtimeRefetchOnVisible]);
 
   // 🔥 NUEVO: Seleccionar todos los móviles automáticamente en la carga inicial
   useEffect(() => {
