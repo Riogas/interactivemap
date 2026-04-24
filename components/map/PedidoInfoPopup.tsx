@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { getEstadoDescripcion, isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { getEstadoDescripcion, isPedidoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
 
 /**
@@ -147,7 +147,7 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
               </span>
             </div>
             ) : (() => {
-              const esEntregado = isSubEstadoEntregado(pedido);
+              const esEntregado = isPedidoEntregado(pedido);
               const bannerColor = esEntregado ? '#22c55e' : '#ef4444';
               const estadoDesc = getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc);
               return (

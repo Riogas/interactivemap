@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
-import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
@@ -379,8 +379,8 @@ function StatsContent() {
     const finalizados = filteredPedidos.filter(p => Number(p.estado_nro) === 2);
     // Excluir pedidos hijo (re-entregas) del % entregados
     const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
-    const entregados = finalizadosSinHijo.filter(p => isSubEstadoEntregado(p));
-    const noEntregados = finalizadosSinHijo.filter(p => !isSubEstadoEntregado(p));
+    const entregados = finalizadosSinHijo.filter(p => isPedidoEntregado(p));
+    const noEntregados = finalizadosSinHijo.filter(p => !isPedidoEntregado(p));
     const sinAsignar = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0);
     const totalPendientes = sinAsignar.length + pendientes.length; // todos los estado 1
@@ -392,8 +392,8 @@ function StatsContent() {
   const servicesStats = useMemo(() => {
     const total = services.length;
     const finalizados = services.filter(s => Number(s.estado_nro) === 2);
-    const realizados = finalizados.filter(s => isSubEstadoEntregado(s));
-    const noRealizados = finalizados.filter(s => !isSubEstadoEntregado(s));
+    const realizados = finalizados.filter(s => isServiceEntregado(s));
+    const noRealizados = finalizados.filter(s => !isServiceEntregado(s));
     const sinAsignar = services.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0));
     const pendientes = services.filter(s => Number(s.estado_nro) === 1 && s.movil && Number(s.movil) !== 0);
     // % Con atraso (pendientes con delay < 0)
@@ -410,9 +410,7 @@ function StatsContent() {
 
   // ─── % Realizados en hora (services) ────────────────────────────────────────
   const pctRealizadosEnHora = useMemo(() => {
-    const realizados = services.filter(s =>
-      Number(s.estado_nro) === 2 && isSubEstadoEntregado(s)
-    );
+    const realizados = services.filter(s => isServiceEntregado(s));
     if (realizados.length === 0) return null;
     const conAmbas = realizados.filter(s => s.fch_hora_max_ent_comp && s.fch_hora_finalizacion);
     if (conAmbas.length < 3) return null;
@@ -449,7 +447,7 @@ function StatsContent() {
       if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
       const estado = Number(p.estado_nro);
       if (estado === 2) {
-        if ([3, 17, 19].includes(Number(p.sub_estado_nro))) map[key].entregados++;
+        if (isPedidoEntregado(p)) map[key].entregados++;
         else map[key].noEntregados++;
       } else if (estado === 1) {
         map[key].pendientes++;
@@ -461,7 +459,7 @@ function StatsContent() {
   }, [filteredPedidos, empresas, movilEmpresa]);
 
   // ─── Estados de pedidos (agrupados) ──────────────────────────────────────
-  // Finalizado → Entregados (3/17/19) y No entregados, excluyendo pedido_hijo
+  // Finalizado → Entregados (3/19) y No entregados, excluyendo pedido_hijo
   // Pendiente  → Móvil Asignado (5) y Sin Móvil Asignado (6+7 fusionados)
   const estadosPedidos = useMemo(() => {
     const total = filteredPedidos.length;
@@ -484,7 +482,7 @@ function StatsContent() {
         if (nro === 2) {
           // Finalizado: agrupar excluyendo pedido_hijo
           const sinHijo = list.filter(p => !p.pedido_hijo);
-          const entregCnt = sinHijo.filter(p => [3, 17, 19].includes(Number(p.sub_estado_nro))).length;
+          const entregCnt = sinHijo.filter(p => isPedidoEntregado(p)).length;
           const noEntCnt = sinHijo.length - entregCnt;
           const den = Math.max(sinHijo.length, 1);
           subEstados = [
@@ -525,11 +523,11 @@ function StatsContent() {
           });
           subEstados = Object.entries(subMap)
             .sort((a, b) => b[1].count - a[1].count)
-            .map(([subLabel, { count: sc, nro }]) => ({
+            .map(([subLabel, { count: sc, nro: subNro }]) => ({
               label: subLabel,
               value: sc,
               pct: Math.round((sc / count) * 100),
-              isEntregado: nro != null && [3, 17, 19].includes(nro),
+              isEntregado: isPedidoEntregado({ estado_nro: nro, sub_estado_nro: subNro }),
             }));
         }
         return {
@@ -550,7 +548,7 @@ function StatsContent() {
       if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
       const estado = Number(p.estado_nro);
       if (estado === 2) {
-        if ([3, 17, 19].includes(Number(p.sub_estado_nro))) map[key].entregados++;
+        if (isPedidoEntregado(p)) map[key].entregados++;
         else map[key].noEntregados++;
       } else if (estado === 1) {
         map[key].pendientes++;
@@ -587,7 +585,7 @@ function StatsContent() {
       if (!map[key]) map[key] = { entregados: 0, noEntregados: 0, pendientes: 0 };
       const estado = Number(p.estado_nro);
       if (estado === 2) {
-        if ([3, 17, 19].includes(Number(p.sub_estado_nro))) map[key].entregados++;
+        if (isPedidoEntregado(p)) map[key].entregados++;
         else map[key].noEntregados++;
       } else if (estado === 1) {
         map[key].pendientes++;
@@ -641,9 +639,7 @@ function StatsContent() {
 
   // ─── % Entregados en hora ───────────────────────────────────────────────────
   const pctEntregadosEnHora = useMemo(() => {
-    const entregados = filteredPedidos.filter(p =>
-      Number(p.estado_nro) === 2 && [3, 17, 19].includes(Number(p.sub_estado_nro)) && !p.pedido_hijo
-    );
+    const entregados = filteredPedidos.filter(p => isPedidoEntregado(p) && !p.pedido_hijo);
     if (entregados.length === 0) return null;
     const conAmbas = entregados.filter(p => p.fch_hora_max_ent_comp && p.fch_hora_finalizacion);
     if (conAmbas.length < 3) return null; // no hay suficientes datos

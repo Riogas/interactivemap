@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, ServiceSupabase } from '@/types';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
-import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
 
@@ -213,15 +213,13 @@ export default function ZonaEstadisticasModal({
       // % Atrasos
       const pctAtrasos = pendientes > 0 ? Math.round((atrasados / pendientes) * 100) : 0;
 
-      // Entregados: estado 2, sub_estado_nro 3, 17 o 19 — excluir pedidos hijo (re-entregas)
+      // Entregados: estado 2, sub_estado_nro 3 o 19 — excluir pedidos hijo (re-entregas)
       const pedidosZonaSinHijo = pedidosZona.filter(p => !p.pedido_hijo);
-      const entregados = pedidosZonaSinHijo.filter(p =>
-        Number(p.estado_nro) === 2 && isSubEstadoEntregado(p)
-      ).length;
+      const entregados = pedidosZonaSinHijo.filter(p => isPedidoEntregado(p)).length;
 
-      // No Entregados: estado 2, sub_estado_nro != 3, 17 ni 19 — excluir pedidos hijo
+      // No Entregados: estado 2 pero no entregado — excluir pedidos hijo
       const noEntregados = pedidosZonaSinHijo.filter(p =>
-        Number(p.estado_nro) === 2 && !isSubEstadoEntregado(p)
+        Number(p.estado_nro) === 2 && !isPedidoEntregado(p)
       ).length;
 
       // % Cumplimiento

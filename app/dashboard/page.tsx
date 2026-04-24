@@ -16,7 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
@@ -1976,7 +1976,7 @@ function DashboardContent() {
           setPreFilterMovil(movilId);
           
           if (stat === 'noEntregados') {
-            // No entregados = finalizados con sub_estado != 3, 17 ni 19
+            // No entregados = finalizados que no cumplen isPedidoEntregado / isServiceEntregado
             if (viewMode === 'pedidos') {
               setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
               setIsPedidosTableOpen(true);
@@ -2227,8 +2227,8 @@ function DashboardContent() {
                   if (pedidosFilters.producto !== null) base = base.filter(p => p.producto_nom === pedidosFilters.producto);
                   if (pedidosFilters.asignacion === 'con_movil') base = base.filter(p => p.movil && Number(p.movil) !== 0);
                   else if (pedidosFilters.asignacion === 'sin_movil') base = base.filter(p => !p.movil || Number(p.movil) === 0);
-                  if (pedidosFilters.entrega === 'entregados') base = base.filter(p => isSubEstadoEntregado(p));
-                  else if (pedidosFilters.entrega === 'no_entregados') base = base.filter(p => !isSubEstadoEntregado(p));
+                  if (pedidosFilters.entrega === 'entregados') base = base.filter(p => isPedidoEntregado(p));
+                  else if (pedidosFilters.entrega === 'no_entregados') base = base.filter(p => !isPedidoEntregado(p));
                   if (pedidosFilters.soloSinCoords) base = base.filter(p => !p.latitud || !p.longitud);
                   if (pedidosFilters.search) { const sq = pedidosFilters.search.toLowerCase(); base = base.filter(p => p.id.toString().includes(sq) || (p.servicio_nombre && p.servicio_nombre.toLowerCase().includes(sq))); }
                   return base;
@@ -2267,8 +2267,8 @@ function DashboardContent() {
                   if (servicesFilters.defecto !== null) base = base.filter(s => s.defecto === servicesFilters.defecto);
                   if (servicesFilters.asignacion === 'con_movil') base = base.filter(s => s.movil && Number(s.movil) !== 0);
                   else if (servicesFilters.asignacion === 'sin_movil') base = base.filter(s => !s.movil || Number(s.movil) === 0);
-                  if (servicesFilters.entrega === 'entregados') base = base.filter(s => isSubEstadoEntregado(s));
-                  else if (servicesFilters.entrega === 'no_entregados') base = base.filter(s => !isSubEstadoEntregado(s));
+                  if (servicesFilters.entrega === 'entregados') base = base.filter(s => isServiceEntregado(s));
+                  else if (servicesFilters.entrega === 'no_entregados') base = base.filter(s => !isServiceEntregado(s));
                   if (servicesFilters.soloSinCoords) base = base.filter(s => !s.latitud || !s.longitud);
                   if (servicesFilters.search) { const sq = servicesFilters.search.toLowerCase(); base = base.filter(s => s.id.toString().includes(sq) || (s.defecto && s.defecto.toLowerCase().includes(sq))); }
                   return base;

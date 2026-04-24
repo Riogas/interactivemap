@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ServiceSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
-import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isServiceEntregado } from '@/utils/estadoPedido';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -141,9 +141,9 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
-        result = result.filter(s => isSubEstadoEntregado(s));
+        result = result.filter(s => isServiceEntregado(s));
       } else if (filters.entrega === 'no_entregados') {
-        result = result.filter(s => !isSubEstadoEntregado(s));
+        result = result.filter(s => !isServiceEntregado(s));
       }
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
@@ -654,7 +654,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                     </tr>
                   ) : (
                     paginated.map(({ service: s, delayInfo }) => {
-                      const esEntregado = isFinalizados && isSubEstadoEntregado(s);
+                      const esEntregado = isFinalizados && isServiceEntregado(s);
                       return (
                       <tr
                         key={s.id}

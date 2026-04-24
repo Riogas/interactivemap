@@ -5,7 +5,7 @@ import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leafle
 import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { MarkerShape } from '@/components/ui/PreferencesModal';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
@@ -2767,7 +2767,7 @@ const MapView = memo(function MapView({
             const delayInfo = getDelayInfo(delayMins);
             // Sin asignar: siempre gris (forzar null para obtener icono gris)
             const iconFchHora = isSinAsignar ? null : pedido.fch_hora_max_ent_comp;
-            const esEntregado = isSubEstadoEntregado(pedido);
+            const esEntregado = isPedidoEntregado(pedido);
             return (
               <OptimizedMarker
                 key={`pedido-tabla-${pedido.id}`}

@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, ServiceSupabase, CustomMarker, EmpresaFleteraSupabase } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { getEstadoDescripcion, isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { getEstadoDescripcion, isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import clsx from 'clsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -374,9 +374,9 @@ export default function MovilSelector({
       result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
     }
     if (pedidosFilters.entrega === 'entregados') {
-      result = result.filter(pedido => isSubEstadoEntregado(pedido));
+      result = result.filter(pedido => isPedidoEntregado(pedido));
     } else if (pedidosFilters.entrega === 'no_entregados') {
-      result = result.filter(pedido => !isSubEstadoEntregado(pedido));
+      result = result.filter(pedido => !isPedidoEntregado(pedido));
     }
     if (pedidosFilters.soloSinCoords) {
       result = result.filter(pedido => !pedido.latitud || !pedido.longitud);
@@ -495,9 +495,9 @@ export default function MovilSelector({
       result = result.filter(service => !service.movil || Number(service.movil) === 0);
     }
     if (servicesFilters.entrega === 'entregados') {
-      result = result.filter(service => isSubEstadoEntregado(service));
+      result = result.filter(service => isServiceEntregado(service));
     } else if (servicesFilters.entrega === 'no_entregados') {
-      result = result.filter(service => !isSubEstadoEntregado(service));
+      result = result.filter(service => !isServiceEntregado(service));
     }
     if (servicesFilters.soloSinCoords) {
       result = result.filter(service => !service.latitud || !service.longitud);
@@ -1306,7 +1306,7 @@ export default function MovilSelector({
                                 const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
                                 const delayMins = !isFinalizados ? computeDelayMinutes(pedido.fch_hora_max_ent_comp) : null;
                                 const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
-                                const esEntregado = isFinalizados && isSubEstadoEntregado(pedido);
+                                const esEntregado = isFinalizados && isPedidoEntregado(pedido);
 
                                 return (
                                   <button

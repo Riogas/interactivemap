@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { PedidoSupabase } from '@/types';
 import { motion } from 'framer-motion';
-import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 interface DashboardIndicatorsProps {
@@ -55,8 +55,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     
     // Excluir pedidos hijo (re-entregas) del % entregados
     const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
-    // Entregados: finalizados con sub_estado_nro o sub_estado_desc = 3, 17 o 19
-    const entregados = finalizadosSinHijo.filter(p => isSubEstadoEntregado(p)).length;
+    // Entregados: pedidos con estado_nro = 2 y sub_estado_nro = 3 o 19
+    const entregados = finalizadosSinHijo.filter(p => isPedidoEntregado(p)).length;
     const totalFinalizadosSinHijo = finalizadosSinHijo.length;
     const porcentajeEntregados = totalFinalizadosSinHijo > 0
       ? Math.round(entregados / totalFinalizadosSinHijo * 100)

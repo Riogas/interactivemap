@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, PedidoSupabase, ServiceSupabase } from '@/types';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
-import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 
 interface LeaderboardModalProps {
   isOpen: boolean;
@@ -29,6 +29,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, hiddenMovil
   const [viewMode, setViewMode] = useState<ViewMode>('pedidos');
 
   const leaderboard = useMemo(() => {
+    const esEntregado = viewMode === 'pedidos' ? isPedidoEntregado : isServiceEntregado;
     const movilStats = moviles
       .filter(m => {
         // Ocultos-pero-operativos se excluyen SIEMPRE (no forman parte del ranking)
@@ -52,15 +53,13 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, hiddenMovil
           return delay !== null && delay < 0;
         }).length;
 
-        // No Entregados: estado_nro = 2 && sub_estado_desc != 3, 17 ni 19
+        // No Entregados: estado_nro = 2 pero no entregado
         const noEntregadosCount = items.filter(i =>
-          Number(i.estado_nro) === 2 && !isSubEstadoEntregado(i)
+          Number(i.estado_nro) === 2 && !esEntregado(i)
         ).length;
 
-        // Entregados: estado_nro = 2 && sub_estado_desc = 3, 17 o 19
-        const entregadosCount = items.filter(i =>
-          Number(i.estado_nro) === 2 && isSubEstadoEntregado(i)
-        ).length;
+        // Entregados: según criterio por tipo (pedido vs service)
+        const entregadosCount = items.filter(i => esEntregado(i)).length;
 
         // % Cumplimiento
         const relevantes = entregadosCount + pendientesCount;
@@ -68,7 +67,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, hiddenMovil
 
         // % Cumplimiento en hora
         const entregadosEnHora = items.filter(i => {
-          if (Number(i.estado_nro) !== 2 || !isSubEstadoEntregado(i)) return false;
+          if (!esEntregado(i)) return false;
           if (!i.fch_hora_mov || !i.fch_hora_max_ent_comp) return false;
           return new Date(i.fch_hora_mov) <= new Date(i.fch_hora_max_ent_comp);
         }).length;

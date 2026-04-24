@@ -59,23 +59,25 @@ export function getEstadoDescripcion(
   return ESTADO_MAP[key] ?? (subEstadoDesc.trim() || `Estado ${subEstadoNro}`);
 }
 
-/**
- * Devuelve true si el pedido/servicio tiene un sub-estado que corresponde a "Entregado".
- * Sub-estados de entrega: 3 (ENTREGADO), 17 (REG. HISTORICO), 19 (ENTR. SIN 1710).
- *
- * Nota: algunos registros almacenan el código en sub_estado_nro (p.ej. 3, 17),
- * mientras que otros (como el 19) lo almacenan en sub_estado_desc como texto.
- * Por eso se chequean ambos campos.
- */
-export function isSubEstadoEntregado(p: {
+interface EntregadoCheckable {
+  estado_nro?: number | string | null;
   sub_estado_nro?: number | string | null;
-  sub_estado_desc?: string | null;
-}): boolean {
-  const ENTREGADOS = [3, 17, 19];
-  return (
-    ENTREGADOS.includes(Number(p.sub_estado_nro)) ||
-    ENTREGADOS.includes(Number(p.sub_estado_desc))
-  );
+}
+
+/**
+ * Devuelve true si el pedido corresponde a "Entregado".
+ * Criterio: estado_nro = 2 y sub_estado_nro = 3 (ENTREGADO) o 19 (ENTR. SIN 1710).
+ */
+export function isPedidoEntregado(p: EntregadoCheckable): boolean {
+  return Number(p.estado_nro) === 2 && (Number(p.sub_estado_nro) === 3 || Number(p.sub_estado_nro) === 19);
+}
+
+/**
+ * Devuelve true si el service corresponde a "Entregado".
+ * Criterio: estado_nro = 2 y sub_estado_nro = 3 (ENTREGADO).
+ */
+export function isServiceEntregado(s: EntregadoCheckable): boolean {
+  return Number(s.estado_nro) === 2 && Number(s.sub_estado_nro) === 3;
 }
 
 /**
