@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { MovilData, MovilFilters } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 /** Límites geográficos de Uruguay */
 const URUGUAY_BOUNDS = { latMin: -35.8, latMax: -30.0, lngMin: -58.5, lngMax: -53.0 };
@@ -87,7 +88,7 @@ export function useFilterHelpers(movilesFilters: MovilFilters, preferences: Filt
     if (movilesFilters.actividad === 'todos') return moviles;
     return moviles.filter(movil => {
       const estadoNro = movil.estadoNro;
-      const esActivo = estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
+      const esActivo = isMovilActiveForUI(estadoNro);
       switch (movilesFilters.actividad) {
         case 'activo': return esActivo;
         case 'no_activo': return estadoNro === 3;

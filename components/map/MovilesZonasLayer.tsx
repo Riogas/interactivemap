@@ -4,6 +4,7 @@ import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 /**
  * Color por cantidad de móviles EN PRIORIDAD en la zona.
@@ -41,9 +42,6 @@ export interface MovilZonaRecord {
 /** Filtro: 'all' = sin filtro, o un valor de servicio_nombre concreto */
 export type MovilesZonasServiceFilter = string; // 'all' | 'URGENTE' | 'SERVICE' | etc.
 
-/** Estados de móvil que se excluyen del conteo en zonas */
-const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
-
 interface MovilesZonasLayerProps {
   zonas: MovilesZonaData[];
   /** Registros crudos de moviles_zonas */
@@ -62,6 +60,8 @@ interface MovilesZonasLayerProps {
   zonaOpacity?: number;
   /** Mapa de movil_id → estadoNro para excluir móviles inactivos del conteo */
   movilEstados?: Map<string, number>;
+  /** IDs crudos de móviles "ocultos pero operativos" — se excluyen del conteo de zonas. */
+  hiddenMovilIds?: Set<string>;
   /** Callback al hacer click en una zona */
   onZonaClick?: (zonaId: number) => void;
 }
@@ -201,21 +201,26 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   tiposServicioDisponibles = [],
   zonaOpacity = 50,
   movilEstados,
+  hiddenMovilIds,
   onZonaClick,
 }: MovilesZonasLayerProps) {
-  // Filtrar registros de moviles_zonas según tipo de servicio seleccionado
-  // y excluir móviles con estado_nro 3, 5 o 15
+  // Filtrar registros de moviles_zonas según tipo de servicio seleccionado.
+  // Excluir móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos.
   const filteredData = useMemo(() => {
     let data = movilesZonasData.filter(mz => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter.toUpperCase());
-    // Excluir móviles con estados inactivos (3=no activo, 5, 15)
-    if (movilEstados && movilEstados.size > 0) {
+    if ((movilEstados && movilEstados.size > 0) || (hiddenMovilIds && hiddenMovilIds.size > 0)) {
       data = data.filter(mz => {
-        const estado = movilEstados.get(String(mz.movil_id));
-        return estado === undefined || !EXCLUDED_ESTADOS.has(estado);
+        const key = String(mz.movil_id);
+        if (hiddenMovilIds && hiddenMovilIds.has(key)) return false;
+        if (movilEstados) {
+          const estado = movilEstados.get(key);
+          if (estado !== undefined && !isMovilActiveForUI(estado)) return false;
+        }
+        return true;
       });
     }
     return data;
-  }, [movilesZonasData, serviceFilter, movilEstados]);
+  }, [movilesZonasData, serviceFilter, movilEstados, hiddenMovilIds]);
 
   // Computar conteos por zona: { prioridad, transito }
   const zonaCounts = useMemo(() => {

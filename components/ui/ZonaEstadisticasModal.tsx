@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, ServiceSupabase } from '@/types';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
 
 // ============= Types =============
@@ -24,6 +25,8 @@ interface ZonaEstadisticasModalProps {
   escenarioIds: number[];
   /** Map<string(movilNro), estadoNro> – siempre disponible desde allMovilEstados */
   movilEstados?: Map<string, number>;
+  /** IDs crudos de móviles "ocultos pero operativos" — se excluyen del conteo #Movs P. */
+  allHiddenMovilIds?: Set<string>;
   /** Callback al clickear una zona: abre vista extendida de pedidos/services */
   onZonaClick?: (zonaId: number, serviceFilter: string) => void;
   /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona */
@@ -32,7 +35,6 @@ interface ZonaEstadisticasModalProps {
 
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
 
-const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
 const TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE'] as const;
 /** servicio_nombre values que corresponden a "PEDIDOS" */
 const PEDIDOS_SERVICES = new Set(['URGENTE', 'NOCTURNO']);
@@ -46,6 +48,7 @@ export default function ZonaEstadisticasModal({
   services = [],
   escenarioIds,
   movilEstados = new Map(),
+  allHiddenMovilIds,
   onZonaClick,
   onMovsPrioClick,
 }: ZonaEstadisticasModalProps) {
@@ -145,16 +148,20 @@ export default function ZonaEstadisticasModal({
     return pedidos.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === upper);
   }, [pedidos, services, serviceFilter]);
 
-  // Filter movilesZonasData by service type + active + not excluded estado
+  // Filter movilesZonasData by service type + active + not hidden-operativo
   const filteredMovilesZonas = useMemo(() => {
     const upper = serviceFilter.toUpperCase();
     return movilesZonasData.filter(r => {
-      if (!r.activa || EXCLUDED_ESTADOS.has(movilEstados.get(r.movil_id) ?? -1)) return false;
+      if (!r.activa) return false;
+      const key = String(r.movil_id);
+      if (allHiddenMovilIds && allHiddenMovilIds.has(key)) return false;
+      const estado = movilEstados.get(r.movil_id);
+      if (estado !== undefined && !isMovilActiveForUI(estado)) return false;
       const svc = r.tipo_de_servicio?.toUpperCase() || '';
       if (upper === 'PEDIDOS') return PEDIDOS_SERVICES.has(svc);
       return svc === upper;
     });
-  }, [movilesZonasData, serviceFilter, movilEstados]);
+  }, [movilesZonasData, serviceFilter, movilEstados, allHiddenMovilIds]);
 
   const stats = useMemo(() => {
     // Build zona name map

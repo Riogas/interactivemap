@@ -49,6 +49,8 @@ interface ZonaMovilesViewModalProps {
   moviles: MovilData[];
   /** Registros crudos de moviles_zonas */
   movilesZonasData: MovilZonaRecord[];
+  /** IDs crudos de móviles "ocultos pero operativos" — se muestran tachados. */
+  allHiddenMovilIds?: Set<string>;
 }
 
 export default function ZonaMovilesViewModal({
@@ -58,6 +60,7 @@ export default function ZonaMovilesViewModal({
   initialServiceFilter,
   moviles,
   movilesZonasData,
+  allHiddenMovilIds,
 }: ZonaMovilesViewModalProps) {
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loadingZonas, setLoadingZonas] = useState(false);
@@ -224,11 +227,12 @@ export default function ZonaMovilesViewModal({
     }
   }, [isOpen]);
 
-  // ========== Render movil chip (read-only, tachado si estado 3/5/15) ==========
+  // ========== Render movil chip (read-only, tachado si estado 3/5/15 o si es oculto-pero-operativo) ==========
   const renderMovilChip = (record: MovilZonaRecord) => {
     const movilData = getMovil(record.movil_id);
     const estado = movilEstadosMap.get(String(record.movil_id));
-    const isTachado = estado !== undefined && ESTADOS_TACHADOS.has(estado);
+    const isHidden = allHiddenMovilIds?.has(String(record.movil_id)) ?? false;
+    const isTachado = isHidden || (estado !== undefined && ESTADOS_TACHADOS.has(estado));
 
     return (
       <div

@@ -4,8 +4,7 @@ import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { PedidoSupabase } from '@/types';
 import { motion } from 'framer-motion';
 import { isSubEstadoEntregado } from '@/utils/estadoPedido';
-
-const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 interface DashboardIndicatorsProps {
   moviles: any[];
@@ -16,6 +15,10 @@ interface DashboardIndicatorsProps {
   escenarioIds?: number[];
   maxCoordinateDelayMinutes?: number;
   allMovilEstados?: Map<string, number>;
+  /** IDs numéricos de móviles "ocultos pero operativos" (basado en `movilesFiltered`). */
+  hiddenMovilIds?: Set<number>;
+  /** IDs crudos (string) de móviles ocultos basado en el Map completo `allMovilEstados`. */
+  allHiddenMovilIds?: Set<string>;
   /** Tipo de servicio activo en la capa Móviles-Zonas del mapa (URGENTE/SERVICE/NOCTURNO) */
   zonasSinMovilServiceFilter?: string;
   /** Intervalo de refresco de zonas/demoras en segundos (default 60). Usar el mismo que el polling configurado en preferencias */
@@ -28,7 +31,7 @@ interface DashboardIndicatorsProps {
   onZonasNoActivasClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -62,15 +65,14 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   // ============= MÓVILES SIN REPORTAR GPS =============
   // Excluir estadoNro 3 ("No Activo") — esos están fuera de servicio, no es un problema de GPS
   // Esto coincide con el filtro 'actividad: activo' del sidebar (default)
+  // También excluir ocultos-pero-operativos (no se cuentan en ningún indicador de móviles).
   const movilesSinReportar = useMemo(() => {
     return moviles.filter(m => {
       if (!m.isInactive) return false;
-      // estadoNro 3 = No Activo (excluido del conteo, igual que el sidebar)
-      const estadoNro = m.estadoNro;
-      const esActivo = estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
-      return esActivo;
+      if (hiddenMovilIds && hiddenMovilIds.has(m.id)) return false;
+      return isMovilActiveForUI(m.estadoNro);
     }).length;
-  }, [moviles]);
+  }, [moviles, hiddenMovilIds]);
 
   // ============= DATOS DE ZONAS (fetch independiente para indicadores) =============
   const [zonasAllData, setZonasAllData] = useState<any[]>([]);
@@ -121,16 +123,18 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     return () => clearInterval(interval);
   }, [escenarioIds, zonasRefreshSeconds]);
 
-  // Zonas sin móviles: Match MovilesZonasLayer — filtrar por tipo de servicio activo + excluir estados 3/5/15
+  // Zonas sin móviles: Match MovilesZonasLayer — filtrar por tipo de servicio activo + excluir no-activos y ocultos
   const zonasSinMoviles = useMemo(() => {
     if (zonasAllData.length === 0) return 0;
     const svcUpper = (zonasSinMovilServiceFilter || 'URGENTE').toUpperCase();
     let filtered = movilesZonasRecords.filter((mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === svcUpper);
-    // Excluir móviles con estados inactivos (3, 5, 15) — mismo filtro que MovilesZonasLayer
+    // Excluir móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos
     if (allMovilEstados && allMovilEstados.size > 0) {
       filtered = filtered.filter((mz: any) => {
-        const estado = allMovilEstados.get(String(mz.movil_id));
-        return estado === undefined || !EXCLUDED_ESTADOS.has(estado);
+        const key = String(mz.movil_id);
+        if (allHiddenMovilIds && allHiddenMovilIds.has(key)) return false;
+        const estado = allMovilEstados.get(key);
+        return estado === undefined || isMovilActiveForUI(estado);
       });
     }
     // Computar conteos por zona {prioridad, transito}
@@ -160,7 +164,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       const counts = zonaCounts.get(z.zona_id);
       return !counts || (counts.prioridad === 0 && counts.transito === 0);
     }).length;
-  }, [zonasAllData, movilesZonasRecords, allMovilEstados, zonasSinMovilServiceFilter, demorasRecords]);
+  }, [zonasAllData, movilesZonasRecords, allMovilEstados, allHiddenMovilIds, zonasSinMovilServiceFilter, demorasRecords]);
 
   // Zonas no activas: Match ZonasActivasLayer — iterar zonas visibles y buscar en demoras
   const zonasNoActivas = useMemo(() => {

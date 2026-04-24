@@ -116,6 +116,7 @@ interface MapViewProps {
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
   allMovilEstados?: Map<string, number>; // Mapa completo movil_nro → estadoNro (todos los moviles)
+  allHiddenMovilIds?: Set<string>; // IDs de móviles ocultos-pero-operativos (capa móviles-zonas los excluye)
 }
 
 function MapUpdater({ 
@@ -594,6 +595,7 @@ const MapView = memo(function MapView({
   servicesVista = 'pendientes',
   onZonaClick,
   allMovilEstados = new Map(),
+  allHiddenMovilIds,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2097,7 +2099,7 @@ const MapView = memo(function MapView({
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} onZonaClick={onZonaClick} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} />
         )}
 
         {/* ✅ Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}

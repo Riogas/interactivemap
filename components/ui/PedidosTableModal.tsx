@@ -46,6 +46,9 @@ interface PedidosTableModalProps {
   onClose: () => void;
   pedidos: PedidoSupabase[];
   moviles: MovilData[];
+  /** IDs de móviles "ocultos pero operativos": sus pedidos se ven igual aunque
+   *  el móvil no esté en la lista `moviles` o seleccionado. */
+  hiddenMovilIds?: Set<number>;
   onPedidoClick?: (pedidoId: number) => void;
   onMovilClick?: (movilId: number) => void;
   vista?: 'pendientes' | 'finalizados';
@@ -83,7 +86,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, onInnerFiltersChange, externalResetToken }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, onInnerFiltersChange, externalResetToken }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -199,13 +202,19 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
           // Sin asignar: solo pasan en pendientes, asignacion='todos', sin restricción.
           return !isFinalizados && filters.asignacion === 'todos' && !hideUnassigned;
         }
+        // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
+        if (hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(p.movil));
       });
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción: ocultar sin asignar
       // y restringir a los móviles que el usuario puede ver (los que vienen
       // en la prop `moviles`, ya filtrados por empresa desde el dashboard).
+      // Incluir también los IDs ocultos-pero-operativos: sus pedidos igual se ven.
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
+      if (hiddenMovilIds) {
+        hiddenMovilIds.forEach(id => validMovilIds.add(id));
+      }
       result = result.filter(p => {
         if (!p.movil || Number(p.movil) === 0) return false;
         return validMovilIds.has(Number(p.movil));
@@ -218,7 +227,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, o
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles]);
+  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles, hiddenMovilIds]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre

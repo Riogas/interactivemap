@@ -20,6 +20,7 @@ import { isSubEstadoEntregado } from '@/utils/estadoPedido';
 import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
+import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
@@ -65,6 +66,10 @@ function DashboardContent() {
   movilesRef.current = moviles;
   const [selectedMoviles, setSelectedMoviles] = useState<number[]>([]); // Array de móviles seleccionados
   const userExplicitlyCleared = useRef(false); // Evita auto-selección cuando el usuario intencionalmente deseleccionó
+  // Ref al último Set<number> de móviles ocultos-pero-operativos. Se asigna más
+  // abajo (después de calcular pedidosCompletos/servicesCompletos). Permite que
+  // callbacks/effects definidos antes accedan a los IDs ocultos sin TDZ errors.
+  const hiddenMovilIdsRef = useRef<Set<number>>(new Set());
   
   // 🚀 Optimización: Detectar visibilidad de tab para pausar updates
   const isTabVisible = useTabVisibility();
@@ -667,8 +672,10 @@ function DashboardContent() {
     // 3. No es carga inicial (ya terminó la carga)
     // 4. El usuario NO limpió explícitamente la selección
     if (movilesFiltered.length > 0 && selectedMoviles.length === 0 && !isInitialLoad && !userExplicitlyCleared.current) {
-      console.log('✅ Auto-selección inicial: Marcando todos los móviles por defecto:', movilesFiltered.length);
-      setSelectedMoviles(movilesFiltered.map(m => m.id));
+      const hidden = hiddenMovilIdsRef.current;
+      const visible = movilesFiltered.filter(m => !hidden.has(m.id));
+      console.log('✅ Auto-selección inicial: Marcando todos los móviles por defecto:', visible.length);
+      setSelectedMoviles(visible.map(m => m.id));
     }
   }, [movilesFiltered.length, isInitialLoad]); // Depende de la cantidad de móviles y si es carga inicial
 
@@ -992,7 +999,8 @@ function DashboardContent() {
   // Handler para seleccionar todos los móviles
   const handleSelectAll = useCallback(() => {
     userExplicitlyCleared.current = false;
-    const filteredIds = movilesFiltered.map(m => m.id);
+    const hidden = hiddenMovilIdsRef.current;
+    const filteredIds = movilesFiltered.filter(m => !hidden.has(m.id)).map(m => m.id);
     setSelectedMoviles(filteredIds);
     setFocusedMovil(undefined);
   }, [movilesFiltered]);
@@ -1007,7 +1015,10 @@ function DashboardContent() {
   // 🆕 Cuando cambia el filtro de actividad, re-seleccionar solo móviles que cumplen el filtro
   useEffect(() => {
     userExplicitlyCleared.current = false; // Cambiar filtro = nueva selección automática
-    const filteredIds = applyActivityFilter(movilesFiltered).map(m => m.id);
+    const hidden = hiddenMovilIdsRef.current;
+    const filteredIds = applyActivityFilter(movilesFiltered)
+      .filter(m => !hidden.has(m.id))
+      .map(m => m.id);
     setSelectedMoviles(filteredIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movilesFilters.actividad]); // Solo cuando cambia el filtro de actividad
@@ -1297,6 +1308,27 @@ function DashboardContent() {
     return resultado;
   }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate]);
 
+  // Set de IDs de móviles "ocultos pero operativos": tienen estadoNro ∉ [0,1,2]
+  // pero igual tienen pedidos/services asignados del día. Se ocultan de
+  // colapsable de móviles, mapa, indicadores, etc. — pero sus pedidos/services
+  // SIGUEN visibles en los colapsables de pedidos/services y vistas extendidas.
+  const hiddenMovilIds = useMemo(
+    () => getHiddenMovilIds(movilesFiltered, pedidosCompletos, servicesCompletos),
+    [movilesFiltered, pedidosCompletos, servicesCompletos],
+  );
+
+  // Ref para que useCallback/useEffect definidos ANTES (handleSelectAll, auto-select
+  // inicial, reset por cambio de actividad) puedan acceder al último hiddenMovilIds
+  // sin TDZ errors por block-scope.
+  hiddenMovilIdsRef.current = hiddenMovilIds;
+
+  // Versión basada en el Map completo allMovilEstados (cubre móviles sin GPS).
+  // Devuelve Set<string> con movil_id crudo para matchear moviles_zonas.movil_id.
+  const allHiddenMovilIds = useMemo(
+    () => getHiddenMovilIdsFromEstadosMap(allMovilEstados, pedidosCompletos, servicesCompletos),
+    [allMovilEstados, pedidosCompletos, servicesCompletos],
+  );
+
   // Derivar tipos de servicio dinámicos de servicio_nombre de pedidos y services
   const tiposServicio = useMemo(() => {
     const nombres = new Set<string>();
@@ -1334,9 +1366,8 @@ function DashboardContent() {
   // Cálculo de saturación por zona, filtrado por tipo de servicio:
   //   - SERVICE  → usa servicesCompletos sin asignar + móviles con tipo SERVICE
   //   - URGENTE/NOCTURNO → usa pedidosCompletos sin asignar + móviles con ese tipo
-  //   Los móviles inactivos (estado 3/5/15) se excluyen de la capacidad.
+  //   Los móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos se excluyen de la capacidad.
   const saturacionData = useMemo(() => {
-    const EXCLUDED = new Set([3, 5, 15]);
     const isService = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
     const stats = new Map<number, { sinAsignar: number; capacidadTotal: number; capacidadDisponible: number; movilesEnZona: number; movilesCompartidos: number }>();
 
@@ -1364,7 +1395,8 @@ function DashboardContent() {
     priorityRecs.forEach(r => {
       const md = movilDataMap.get(r.movil_id);
       if (!md) return;
-      if (md.estadoNro !== undefined && EXCLUDED.has(md.estadoNro)) return;
+      if (md.estadoNro !== undefined && !isMovilActiveForUI(md.estadoNro)) return;
+      if (allHiddenMovilIds && allHiddenMovilIds.has(String(r.movil_id))) return;
       const nZones = isService ? 1 : (movilZoneCount.get(r.movil_id) ?? 1);
       const available = Math.max(0, md.tamanoLote - md.pedidosAsignados);
       const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
@@ -1399,7 +1431,7 @@ function DashboardContent() {
     }
 
     return stats;
-  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter]);
+  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
   // para el mapa. Sin esto, cada llamada inline crea un nuevo array → downstream re-renders.
   const movilesFilteredMarked = useMemo(
@@ -1412,9 +1444,10 @@ function DashboardContent() {
       ? []
       : applyActivityFilter(applyAdvancedFilters(movilesFilteredMarked)).filter(
           m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) &&
+               !hiddenMovilIds.has(m.id) &&
                (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY))
         ),
-    [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil2, applyActivityFilter, applyAdvancedFilters],
+    [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters],
   );
 
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
@@ -1651,6 +1684,8 @@ function DashboardContent() {
             escenarioIds={selectedEscenarioIds}
             maxCoordinateDelayMinutes={preferences.maxCoordinateDelayMinutes}
             allMovilEstados={allMovilEstados}
+            hiddenMovilIds={hiddenMovilIds}
+            allHiddenMovilIds={allHiddenMovilIds}
             onSinAsignarClick={onSinAsignarClick}
             onEntregadosClick={onEntregadosClick}
             onPorcentajeClick={onPorcentajeClick}
@@ -1773,6 +1808,7 @@ function DashboardContent() {
         onClose={() => setIsTrackingModalOpen(false)}
         onConfirm={handleTrackingConfirm}
         moviles={movilesFiltered}
+        hiddenMovilIds={hiddenMovilIds}
         selectedDate={selectedDate}
         selectedMovil={selectedMoviles.length === 1 ? selectedMoviles[0] : undefined}
       />
@@ -1784,6 +1820,7 @@ function DashboardContent() {
         onClose={() => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
+        hiddenMovilIds={hiddenMovilIds}
         onPedidoClick={handlePedidoClick}
         onMovilClick={handleMovilClick}
         vista={pedidosFilters.vista}
@@ -1806,6 +1843,7 @@ function DashboardContent() {
         onClose={() => { setIsServicesTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         services={servicesCompletos}
         moviles={movilesFiltered}
+        hiddenMovilIds={hiddenMovilIds}
         onServiceClick={handleServiceClick}
         onMovilClick={handleMovilClick}
         vista={servicesFilters.vista}
@@ -1838,6 +1876,7 @@ function DashboardContent() {
         onClose={() => setIsZonasSinMovilOpen(false)}
         escenarioIds={selectedEscenarioIds}
         allMovilEstados={allMovilEstados}
+        allHiddenMovilIds={allHiddenMovilIds}
         initialServiceFilter={movilesZonasServiceFilter}
       />
 
@@ -1846,6 +1885,7 @@ function DashboardContent() {
         onClose={() => setIsMovilesSinReportarOpen(false)}
         onMovilClick={(movilId) => { setIsMovilesSinReportarOpen(false); handleMovilClick(movilId); }}
         moviles={movilesFilteredMarked}
+        hiddenMovilIds={hiddenMovilIds}
       />
 
       <ZonasNoActivasModal
@@ -1914,6 +1954,7 @@ function DashboardContent() {
         initialServiceFilter={movilesZonasServiceFilter}
         moviles={movilesFiltered}
         movilesZonasData={movilesZonasData}
+        allHiddenMovilIds={allHiddenMovilIds}
       />
 
       {/* Modal de Leaderboard/Ranking */}
@@ -1921,6 +1962,7 @@ function DashboardContent() {
         isOpen={isLeaderboardOpen}
         onClose={() => setIsLeaderboardOpen(false)}
         moviles={applyActivityFilter(movilesFiltered)}
+        hiddenMovilIds={hiddenMovilIds}
         pedidos={pedidosCompletos}
         services={servicesCompletos}
         onMovilClick={(movilId) => {
@@ -1961,6 +2003,7 @@ function DashboardContent() {
         services={servicesCompletos}
         escenarioIds={selectedEscenarioIds}
         movilEstados={allMovilEstados}
+        allHiddenMovilIds={allHiddenMovilIds}
         onZonaClick={(zonaId, svcFilter) => {
           setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);
@@ -2044,6 +2087,7 @@ function DashboardContent() {
               <div className="flex-1 overflow-hidden">
                 <MovilSelector
                   moviles={movilesFilteredMarked}
+                  hiddenMovilIds={hiddenMovilIds}
                   selectedMoviles={selectedMoviles}
                   onToggleMovil={handleToggleMovil}
                   onSelectAll={handleSelectAll}
@@ -2163,7 +2207,9 @@ function DashboardContent() {
                       return isPendientes && !isEmpresaPartial && selectedMoviles.length === 0;
                     }
                     if (selectedMoviles.length > 0) {
-                      return selectedMoviles.some(id => Number(id) === Number(p.movil));
+                      // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
+                      return selectedMoviles.some(id => Number(id) === Number(p.movil))
+                        || hiddenMovilIds.has(Number(p.movil));
                     }
                     if (isEmpresaPartial) {
                       return validMovilIds.has(Number(p.movil));
@@ -2201,7 +2247,9 @@ function DashboardContent() {
                       return isPendientes && !isEmpresaPartial && selectedMoviles.length === 0;
                     }
                     if (selectedMoviles.length > 0) {
-                      return selectedMoviles.some(id => Number(id) === Number(s.movil));
+                      // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
+                      return selectedMoviles.some(id => Number(id) === Number(s.movil))
+                        || hiddenMovilIds.has(Number(s.movil));
                     }
                     if (isEmpresaPartial) {
                       return validMovilIds.has(Number(s.movil));
@@ -2255,6 +2303,7 @@ function DashboardContent() {
                 pedidosZonaFilter={pedidosZonaFilter}
                 onPedidosZonaFilterChange={setPedidosZonaFilter}
                 allMovilEstados={allMovilEstados}
+                allHiddenMovilIds={allHiddenMovilIds}
                 movilesZonasData={movilesZonasData}
                 movilesZonasServiceFilter={movilesZonasServiceFilter}
                 onMovilesZonasServiceFilterChange={setMovilesZonasServiceFilter}

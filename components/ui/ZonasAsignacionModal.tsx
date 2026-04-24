@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, PedidoSupabase } from '@/types';
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 // ========== Tipos internos ==========
 interface Zona {
@@ -46,9 +47,11 @@ interface ZonasAsignacionModalProps {
   onClose: () => void;
   moviles: MovilData[];
   pedidos: PedidoSupabase[];
+  /** IDs de móviles "ocultos pero operativos" — no deben aparecer como asignables. */
+  hiddenMovilIds?: Set<number>;
 }
 
-export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos }: ZonasAsignacionModalProps) {
+export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos, hiddenMovilIds }: ZonasAsignacionModalProps) {
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loadingZonas, setLoadingZonas] = useState(false);
   const [selectedZonaId, setSelectedZonaId] = useState<number | null>(null);
@@ -118,8 +121,9 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
   const filteredMoviles = useMemo(() => {
     const search = searchMovil.toLowerCase().trim();
     let list = moviles.filter(m => {
-      // No mostrar móviles inactivos / baja
-      if (m.estadoNro === 3 || m.estadoNro === 4) return false;
+      // Excluir móviles no-activos (cualquier estado ≠ 0/1/2) y los ocultos-pero-operativos
+      if (!isMovilActiveForUI(m.estadoNro)) return false;
+      if (hiddenMovilIds && hiddenMovilIds.has(m.id)) return false;
       return true;
     });
     if (search) {
@@ -130,7 +134,7 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
       );
     }
     return list.sort((a, b) => a.id - b.id);
-  }, [moviles, searchMovil]);
+  }, [moviles, searchMovil, hiddenMovilIds]);
 
   // ========== Moviles ya asignados en la zona seleccionada ==========
   const asignadosEnZona = useMemo(() => {

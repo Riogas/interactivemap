@@ -10,6 +10,8 @@ interface LeaderboardModalProps {
   isOpen: boolean;
   onClose: () => void;
   moviles: MovilData[];
+  /** IDs de móviles "ocultos pero operativos" — se excluyen SIEMPRE del ranking. */
+  hiddenMovilIds?: Set<number>;
   pedidos: PedidoSupabase[];
   services: ServiceSupabase[];
   onMovilClick?: (movilId: number) => void;
@@ -21,7 +23,7 @@ type ViewMode = 'pedidos' | 'services';
 
 
 
-export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, services, onMovilClick, onStatClick }: LeaderboardModalProps) {
+export default function LeaderboardModal({ isOpen, onClose, moviles, hiddenMovilIds, pedidos, services, onMovilClick, onStatClick }: LeaderboardModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('entregados');
   const [showOnlyActive, setShowOnlyActive] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('pedidos');
@@ -29,6 +31,8 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
   const leaderboard = useMemo(() => {
     const movilStats = moviles
       .filter(m => {
+        // Ocultos-pero-operativos se excluyen SIEMPRE (no forman parte del ranking)
+        if (hiddenMovilIds && hiddenMovilIds.has(m.id)) return false;
         if (showOnlyActive && (m.estadoNro === 3 || m.estadoNro === 4)) return false;
         return true;
       })
@@ -100,7 +104,7 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, pedidos, se
         default: return 0;
       }
     });
-  }, [moviles, pedidos, services, sortBy, showOnlyActive, viewMode]);
+  }, [moviles, hiddenMovilIds, pedidos, services, sortBy, showOnlyActive, viewMode]);
 
   // Summary stats
   const summary = useMemo(() => {

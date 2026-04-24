@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import { isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
@@ -613,8 +614,19 @@ function StatsContent() {
           const nombre = empresas.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`;
           return nombre === selectedEmpresa;
         });
-    // Activos: mismo criterio que sidebar — solo estadoNro null/undefined/0/1/2
-    const activos = list.filter(m => m.estadoNro === null || m.estadoNro === undefined || [0, 1, 2].includes(m.estadoNro));
+    // Móviles "ocultos pero operativos": no-activos con pedidos o services asignados.
+    // Se excluyen de TODO conteo de móviles (activos, conPedidos, totalLote, etc.).
+    const hiddenMovilIds = new Set<number>();
+    for (const m of list) {
+      if (isMovilActiveForUI(m.estadoNro)) continue;
+      const hasPedido = pedidos.some(p => p.movil != null && Number(p.movil) === m.nro);
+      if (hasPedido) { hiddenMovilIds.add(m.nro); continue; }
+      const hasService = services.some(s => s.movil != null && Number(s.movil) === m.nro);
+      if (hasService) hiddenMovilIds.add(m.nro);
+    }
+    // Activos: mismo criterio que sidebar — solo estadoNro null/undefined/0/1/2,
+    // y excluyendo los ocultos-pero-operativos.
+    const activos = list.filter(m => isMovilActiveForUI(m.estadoNro) && !hiddenMovilIds.has(m.nro));
     const totalActivos = activos.length;
     const conPedidos = activos.filter(m => m.pedidosAsignados > 0).length;
     const sinPedidos = totalActivos - conPedidos;
@@ -625,7 +637,7 @@ function StatsContent() {
     const disponible = activos.reduce((s, m) => s + Math.max(0, (m.tamanoLote ?? 0) - m.pedidosAsignados), 0);
     const pctDisponibilidad = totalLote > 0 ? Math.round((disponible / totalLote) * 100) : null;
     return { totalActivos, conPedidos, sinPedidos, pctConPedidos, pctSinPedidos, totalLote, disponible, pctDisponibilidad };
-  }, [movilesRaw, movilesConGps, selectedEmpresa, empresas]);
+  }, [movilesRaw, movilesConGps, selectedEmpresa, empresas, pedidos, services]);
 
   // ─── % Entregados en hora ───────────────────────────────────────────────────
   const pctEntregadosEnHora = useMemo(() => {

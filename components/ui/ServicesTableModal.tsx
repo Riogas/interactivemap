@@ -44,6 +44,8 @@ interface ServicesTableModalProps {
   onClose: () => void;
   services: ServiceSupabase[];
   moviles: MovilData[];
+  /** IDs de móviles "ocultos pero operativos" — sus services se ven igual. */
+  hiddenMovilIds?: Set<number>;
   onServiceClick?: (serviceId: number) => void;
   onMovilClick?: (movilId: number) => void;
   vista?: 'pendientes' | 'finalizados';
@@ -80,7 +82,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, onInnerFiltersChange, externalResetToken }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, onInnerFiltersChange, externalResetToken }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -164,12 +166,18 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
         if (!s.movil || Number(s.movil) === 0) {
           return !isFinalizados && filters.asignacion === 'todos' && !hideUnassigned;
         }
+        // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
+        if (hiddenMovilIds && hiddenMovilIds.has(Number(s.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(s.movil));
       });
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción: ocultar sin asignar
-      // y restringir a móviles del usuario.
+      // y restringir a móviles del usuario. Incluir los IDs ocultos-pero-operativos
+      // para que sus services no se pierdan.
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
+      if (hiddenMovilIds) {
+        hiddenMovilIds.forEach(id => validMovilIds.add(id));
+      }
       result = result.filter(s => {
         if (!s.movil || Number(s.movil) === 0) return false;
         return validMovilIds.has(Number(s.movil));
@@ -183,7 +191,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles]);
+  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles, hiddenMovilIds]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
   const servicesParaOpciones = useMemo(() => {

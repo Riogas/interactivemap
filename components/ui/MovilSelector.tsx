@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, ServiceSupabase, CustomMarker, EmpresaFleteraSupabase } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion, isSubEstadoEntregado } from '@/utils/estadoPedido';
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import clsx from 'clsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import FilterBar from './FilterBar';
@@ -12,6 +13,9 @@ import MapGuideModal from './MapGuideModal';
 
 interface MovilSelectorProps {
   moviles: MovilData[];
+  /** IDs de móviles "ocultos-pero-operativos" — se excluyen del colapsable de
+   *  móviles y contadores, pero sus pedidos/services siguen visibles. */
+  hiddenMovilIds?: Set<number>;
   selectedMoviles: number[];
   onToggleMovil: (movilId: number) => void;
   onSelectAll: () => void;
@@ -69,6 +73,7 @@ interface Category {
 
 export default function MovilSelector({
   moviles,
+  hiddenMovilIds,
   selectedMoviles,
   onToggleMovil,
   onSelectAll,
@@ -228,11 +233,16 @@ export default function MovilSelector({
     {
       result = result.filter(movil => {
         const estadoNro = movil.estadoNro;
-        const esActivo = estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
+        const esActivo = isMovilActiveForUI(estadoNro);
         if (movilesFilters.actividad === 'activo') return esActivo;
         if (movilesFilters.actividad === 'no_activo') return estadoNro === 3;
         return true;
       });
+    }
+
+    // Excluir móviles "ocultos pero operativos" del colapsable de móviles
+    if (hiddenMovilIds && hiddenMovilIds.size > 0) {
+      result = result.filter(movil => !hiddenMovilIds.has(movil.id));
     }
     
     // 🆕 Filtrar por estado (multi-selección)
@@ -271,7 +281,7 @@ export default function MovilSelector({
     
     // Ordenar por número de móvil (ascendente)
     return result.sort((a, b) => a.id - b.id);
-  }, [moviles, movilesSearch, movilesFilters]);
+  }, [moviles, movilesSearch, movilesFilters, hiddenMovilIds]);
 
   const allSelected = filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
 
@@ -296,6 +306,8 @@ export default function MovilSelector({
       result = result.filter(pedido => {
         // Sin asignar: solo pasan cuando NO hay filtro parcial de empresa
         if (!pedido.movil || Number(pedido.movil) === 0) return !isPartialEmpresa;
+        // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
+        if (hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
     } else if (isPartialEmpresa) {
@@ -389,9 +401,9 @@ export default function MovilSelector({
     } else {
       result.sort((a, b) => Number(b.id) - Number(a.id));
     }
-    
+
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, selectedEmpresas, empresas]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, selectedEmpresas, empresas, hiddenMovilIds]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -413,6 +425,8 @@ export default function MovilSelector({
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
         if (!service.movil || Number(service.movil) === 0) return !isPartialEmpresaSvc;
+        // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
+        if (hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
     } else if (isPartialEmpresaSvc) {
@@ -507,9 +521,9 @@ export default function MovilSelector({
     } else {
       result.sort((a, b) => Number(b.id) - Number(a.id));
     }
-    
+
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, selectedEmpresas, empresas]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, selectedEmpresas, empresas, hiddenMovilIds]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');

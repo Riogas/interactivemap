@@ -3,29 +3,32 @@
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { MovilData } from '@/types';
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   moviles: MovilData[];
+  /** IDs de móviles "ocultos pero operativos" — se excluyen del listado. */
+  hiddenMovilIds?: Set<number>;
   onMovilClick?: (movilId: number) => void;
 }
 
-export default function MovilesSinReportarModal({ isOpen, onClose, moviles, onMovilClick }: Props) {
+export default function MovilesSinReportarModal({ isOpen, onClose, moviles, hiddenMovilIds, onMovilClick }: Props) {
 
   const sinReportar = useMemo(() => {
     return moviles
       .filter(m => {
         if (!m.isInactive) return false;
-        const estadoNro = m.estadoNro;
-        return estadoNro === undefined || estadoNro === null || [0, 1, 2].includes(estadoNro);
+        if (hiddenMovilIds && hiddenMovilIds.has(m.id)) return false;
+        return isMovilActiveForUI(m.estadoNro);
       })
       .sort((a, b) => {
         const fa = a.currentPosition?.fechaInsLog ? new Date(a.currentPosition.fechaInsLog).getTime() : 0;
         const fb = b.currentPosition?.fechaInsLog ? new Date(b.currentPosition.fechaInsLog).getTime() : 0;
         return fb - fa; // descendente: más antiguo primero (mayor atraso arriba)
       });
-  }, [moviles]);
+  }, [moviles, hiddenMovilIds]);
 
   const formatFecha = (fechaStr?: string) => {
     if (!fechaStr) return '—';

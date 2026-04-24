@@ -73,8 +73,7 @@ interface SaturacionZonaModalProps {
 }
 
 // ──────────────────────── helpers ────────────────────────────────────────
-
-const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 function pctColor(pct: number): string {
   if (pct === 999 || pct === 998) return 'text-red-700';
@@ -118,7 +117,7 @@ function MovilCard({
   const pct = tamano > 0 ? Math.round((asignados / tamano) * 100) : 0;
 
   const badge = estadoBadge(movil.estadoNro);
-  const excluded = movil.estadoNro !== undefined && EXCLUDED_ESTADOS.has(movil.estadoNro);
+  const excluded = !isMovilActiveForUI(movil.estadoNro);
 
   return (
     <div className={`rounded-lg border p-3 ${excluded ? 'opacity-60 border-gray-200' : 'border-blue-200 bg-blue-50'}`}>
@@ -258,8 +257,8 @@ export default function SaturacionZonaModal({
       })
       .sort((a, b) => {
         // Ordenar: primero activos, luego por libres descendente
-        const excA = a.movil.estadoNro !== undefined && EXCLUDED_ESTADOS.has(a.movil.estadoNro);
-        const excB = b.movil.estadoNro !== undefined && EXCLUDED_ESTADOS.has(b.movil.estadoNro);
+        const excA = !isMovilActiveForUI(a.movil.estadoNro);
+        const excB = !isMovilActiveForUI(b.movil.estadoNro);
         if (excA !== excB) return excA ? 1 : -1;
         const libresA = Math.max(0, (a.movil.tamanoLote ?? 0) - (a.movil.pedidosAsignados ?? 0));
         const libresB = Math.max(0, (b.movil.tamanoLote ?? 0) - (b.movil.pedidosAsignados ?? 0));

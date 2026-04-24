@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-const EXCLUDED_ESTADOS = new Set([3, 5, 15]);
+import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 interface ZonaItem {
   zona_id: number;
@@ -22,11 +21,13 @@ interface Props {
   onClose: () => void;
   escenarioIds: number[];
   allMovilEstados?: Map<string, number>;
+  /** IDs crudos de móviles "ocultos pero operativos" — se excluyen del conteo. */
+  allHiddenMovilIds?: Set<string>;
   /** Tipo de servicio inicial (URGENTE/SERVICE/NOCTURNO). Default: 'URGENTE' */
   initialServiceFilter?: string;
 }
 
-export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allMovilEstados, initialServiceFilter = 'URGENTE' }: Props) {
+export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allMovilEstados, allHiddenMovilIds, initialServiceFilter = 'URGENTE' }: Props) {
   const [loading, setLoading] = useState(false);
   const [zonas, setZonas] = useState<ZonaItem[]>([]);
   const [serviceFilter, setServiceFilter] = useState(initialServiceFilter.toUpperCase());
@@ -63,11 +64,13 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
           (mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter
         );
 
-        // Excluir móviles con estados inactivos
+        // Excluir móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos
         if (allMovilEstados && allMovilEstados.size > 0) {
           movilesZonas = movilesZonas.filter((mz: any) => {
-            const estado = allMovilEstados.get(String(mz.movil_id));
-            return estado === undefined || !EXCLUDED_ESTADOS.has(estado);
+            const key = String(mz.movil_id);
+            if (allHiddenMovilIds && allHiddenMovilIds.has(key)) return false;
+            const estado = allMovilEstados.get(key);
+            return estado === undefined || isMovilActiveForUI(estado);
           });
         }
 
@@ -110,7 +113,7 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
 
     fetchData();
     return () => { cancelled = true; };
-  }, [isOpen, escenarioIds, allMovilEstados, serviceFilter]);
+  }, [isOpen, escenarioIds, allMovilEstados, allHiddenMovilIds, serviceFilter]);
 
   if (!isOpen) return null;
 

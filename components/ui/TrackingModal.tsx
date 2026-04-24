@@ -9,6 +9,8 @@ interface TrackingModalProps {
   onClose: () => void;
   onConfirm: (movilId: number, date: string) => void;
   moviles: MovilData[];
+  /** IDs de móviles "ocultos pero operativos" — no se listan. */
+  hiddenMovilIds?: Set<number>;
   selectedDate: string; // Fecha actual del dashboard (default)
   selectedMovil?: number; // Si ya hay un móvil seleccionado
 }
@@ -18,6 +20,7 @@ export default function TrackingModal({
   onClose,
   onConfirm,
   moviles,
+  hiddenMovilIds,
   selectedDate,
   selectedMovil: preSelectedMovil,
 }: TrackingModalProps) {
@@ -32,16 +35,19 @@ export default function TrackingModal({
     setSearch('');
   };
 
-  // Filtrar móviles por búsqueda
+  // Filtrar móviles por búsqueda. También excluye ocultos-pero-operativos.
   const filteredMoviles = useMemo(() => {
-    if (!search.trim()) return moviles;
+    const base = hiddenMovilIds && hiddenMovilIds.size > 0
+      ? moviles.filter(m => !hiddenMovilIds.has(m.id))
+      : moviles;
+    if (!search.trim()) return base;
     const q = search.toLowerCase();
-    return moviles.filter(m => 
+    return base.filter(m =>
       String(m.id).includes(q) ||
       (m.name && m.name.toLowerCase().includes(q)) ||
       (m.matricula && m.matricula.toLowerCase().includes(q))
     );
-  }, [moviles, search]);
+  }, [moviles, search, hiddenMovilIds]);
 
   // Móvil seleccionado actualmente
   const selectedMovilData = useMemo(() => {
