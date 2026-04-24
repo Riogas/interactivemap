@@ -314,8 +314,10 @@ export default function MovilSelector({
       // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
       // y también los pedidos (incl. entregados) que NO pertenezcan a los
       // móviles de las empresas del usuario. `moviles` ya viene filtrado
-      // por empresa desde el dashboard.
+      // por empresa desde el dashboard. Incluir también los IDs ocultos-pero-
+      // operativos: sus pedidos igual se ven.
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
+      if (hiddenMovilIds) hiddenMovilIds.forEach(id => validMovilIds.add(id));
       result = result.filter(pedido => {
         if (!pedido.movil || Number(pedido.movil) === 0) return false;
         return validMovilIds.has(Number(pedido.movil));
@@ -432,7 +434,9 @@ export default function MovilSelector({
     } else if (isPartialEmpresaSvc) {
       // Sin móviles seleccionados pero empresa parcial: restringir también a los
       // services (incl. finalizados) cuyos móviles estén dentro del set del user.
+      // Incluir también los IDs ocultos-pero-operativos.
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
+      if (hiddenMovilIds) hiddenMovilIds.forEach(id => validMovilIds.add(id));
       result = result.filter(service => {
         if (!service.movil || Number(service.movil) === 0) return false;
         return validMovilIds.has(Number(service.movil));

@@ -41,9 +41,16 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     // Finalizados: estado_nro === 2
     let finalizados = pedidos.filter(p => Number(p.estado_nro) === 2);
     
-    // Filtrar por móviles seleccionados
+    // Filtrar por móviles seleccionados. Pedidos de móviles ocultos-pero-
+    // operativos (p. ej. 167 sin GPS, o huérfanos ausentes de la lista visible)
+    // pasan siempre, para que el total coincida con la Vista Extendida y el
+    // colapsable de pedidos.
     if (selectedMoviles.length > 0) {
-      finalizados = finalizados.filter(p => p.movil && selectedMoviles.some(id => Number(id) === Number(p.movil)));
+      finalizados = finalizados.filter(p => {
+        if (!p.movil || Number(p.movil) === 0) return false;
+        if (hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
+        return selectedMoviles.some(id => Number(id) === Number(p.movil));
+      });
     }
     
     // Excluir pedidos hijo (re-entregas) del % entregados
@@ -60,7 +67,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       entregados,
       porcentajeEntregados,
     };
-  }, [pedidos, selectedMoviles]);
+  }, [pedidos, selectedMoviles, hiddenMovilIds]);
 
   // ============= MÓVILES SIN REPORTAR GPS =============
   // Excluir estadoNro 3 ("No Activo") — esos están fuera de servicio, no es un problema de GPS

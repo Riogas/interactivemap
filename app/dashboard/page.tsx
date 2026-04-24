@@ -2201,6 +2201,7 @@ function DashboardContent() {
                   const isPendientes = pedidosFilters.vista !== 'finalizados';
                   const isEmpresaPartial = hideUnassigned;
                   const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
+                  hiddenMovilIds.forEach(id => validMovilIds.add(id));
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = pedidosCompletos.filter(p => {
                     if (Number(p.estado_nro) !== targetEstado) return false;
@@ -2242,6 +2243,7 @@ function DashboardContent() {
                   const isPendientes = servicesFilters.vista !== 'finalizados';
                   const isEmpresaPartial = hideUnassigned;
                   const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
+                  hiddenMovilIds.forEach(id => validMovilIds.add(id));
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = servicesCompletos.filter(s => {
                     if (Number(s.estado_nro) !== targetEstado) return false;
