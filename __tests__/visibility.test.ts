@@ -40,12 +40,12 @@ describe('isMovilActiveForUI', () => {
     expect(isMovilActiveForUI(2)).toBe(true);
   });
 
-  it('retorna false para estadoNro 3 (no activo)', () => {
-    expect(isMovilActiveForUI(3)).toBe(false);
+  it('retorna true para estadoNro 4 (BAJA MOMENTANEA — operativo con distincion visual)', () => {
+    expect(isMovilActiveForUI(4)).toBe(true);
   });
 
-  it('retorna false para estadoNro 4 (baja momentanea)', () => {
-    expect(isMovilActiveForUI(4)).toBe(false);
+  it('retorna false para estadoNro 3 (no activo)', () => {
+    expect(isMovilActiveForUI(3)).toBe(false);
   });
 
   it('retorna false para estadoNro 5', () => {
@@ -99,9 +99,15 @@ describe('isMovilHidden', () => {
     expect(isMovilHidden(movil, pedidos)).toBe(true);
   });
 
-  it('OCULTA movil inactivo (estado 4) con pedido asignado', () => {
+  it('NO oculta movil estado 4 (baja momentanea, tratado como activo) con pedido asignado', () => {
     const movil = { id: 31, estadoNro: 4 };
     const pedidos = [{ movil: 31 }];
+    expect(isMovilHidden(movil, pedidos)).toBe(false);
+  });
+
+  it('OCULTA movil inactivo (estado 5) con pedido asignado', () => {
+    const movil = { id: 32, estadoNro: 5 };
+    const pedidos = [{ movil: 32 }];
     expect(isMovilHidden(movil, pedidos)).toBe(true);
   });
 
@@ -189,7 +195,7 @@ describe('getHiddenMovilIds', () => {
   it('retorna Set vacio si moviles inactivos no tienen pedidos ni services', () => {
     const moviles = [
       { id: 10, estadoNro: 3 },
-      { id: 11, estadoNro: 4 },
+      { id: 11, estadoNro: 5 },
     ];
     const result = getHiddenMovilIds(moviles, []);
     expect(result.size).toBe(0);
@@ -200,15 +206,17 @@ describe('getHiddenMovilIds', () => {
       { id: 1, estadoNro: 1 },  // activo con pedido → NO oculto
       { id: 2, estadoNro: 3 },  // inactivo con pedido → oculto
       { id: 3, estadoNro: 3 },  // inactivo sin pedido → NO oculto
-      { id: 4, estadoNro: 4 },  // inactivo con pedido → oculto
+      { id: 4, estadoNro: 4 },  // activo (baja momentanea) con pedido → NO oculto
+      { id: 5, estadoNro: 15 }, // inactivo con pedido → oculto
     ];
-    const pedidos = [{ movil: 1 }, { movil: 2 }, { movil: 4 }];
+    const pedidos = [{ movil: 1 }, { movil: 2 }, { movil: 4 }, { movil: 5 }];
     const result = getHiddenMovilIds(moviles, pedidos);
     expect(result.size).toBe(2);
     expect(result.has(2)).toBe(true);
-    expect(result.has(4)).toBe(true);
+    expect(result.has(5)).toBe(true);
     expect(result.has(1)).toBe(false);
     expect(result.has(3)).toBe(false);
+    expect(result.has(4)).toBe(false);
   });
 
   it('incluye movil inactivo oculto por service (no por pedido)', () => {
@@ -270,13 +278,22 @@ describe('getHiddenMovilIdsFromEstadosMap', () => {
     expect(result.has('20')).toBe(true);
   });
 
-  it('incluye movil no-activo (estado 4) con service asignado', () => {
+  it('NO incluye movil estado 4 (baja momentanea, tratado como activo) con service', () => {
     const estadosMap = new Map([
       ['30', 4],
     ]);
     const services = [{ movil: '30' }];
     const result = getHiddenMovilIdsFromEstadosMap(estadosMap, [], services);
-    expect(result.has('30')).toBe(true);
+    expect(result.has('30')).toBe(false);
+  });
+
+  it('incluye movil no-activo (estado 5) con service asignado', () => {
+    const estadosMap = new Map([
+      ['31', 5],
+    ]);
+    const services = [{ movil: '31' }];
+    const result = getHiddenMovilIdsFromEstadosMap(estadosMap, [], services);
+    expect(result.has('31')).toBe(true);
   });
 
   it('no incluye movil cuyo estadoNro es null (activo por defecto)', () => {

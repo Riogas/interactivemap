@@ -3,7 +3,10 @@
  *
  * Reglas del negocio:
  *  - Un móvil es "activo para UI" cuando su estadoNro es null/undefined o
- *    está en [0, 1, 2]. Todo otro estado (3, 4, 5, 15, …) cuenta como no-activo.
+ *    está en [0, 1, 2, 4]. El estado 4 (BAJA MOMENTÁNEA) cuenta como activo
+ *    pero se renderiza con un estilo visual distinto (violeta / ícono de
+ *    pausa) — esa distinción la manejan los componentes individualmente.
+ *    Los estados 3, 5, 15, … cuentan como no-activos.
  *  - Un móvil NO-activo pero que igual tiene pedidos o services asignados del
  *    día debe quedar "oculto-pero-operativo": no se muestra en colapsables de
  *    móviles ni entra en indicadores/estadísticas de móviles, pero sus pedidos
@@ -15,7 +18,7 @@
 /** True si estadoNro corresponde a un móvil "activo" desde el punto de vista de la UI. */
 export function isMovilActiveForUI(estadoNro: number | null | undefined): boolean {
   if (estadoNro === null || estadoNro === undefined) return true;
-  return estadoNro === 0 || estadoNro === 1 || estadoNro === 2;
+  return estadoNro === 0 || estadoNro === 1 || estadoNro === 2 || estadoNro === 4;
 }
 
 interface MovilLike {

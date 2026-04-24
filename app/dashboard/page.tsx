@@ -1308,10 +1308,12 @@ function DashboardContent() {
     return resultado;
   }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate]);
 
-  // Set de IDs de móviles "ocultos pero operativos": tienen estadoNro ∉ [0,1,2]
-  // pero igual tienen pedidos/services asignados del día. Se ocultan de
-  // colapsable de móviles, mapa, indicadores, etc. — pero sus pedidos/services
-  // SIGUEN visibles en los colapsables de pedidos/services y vistas extendidas.
+  // Set de IDs de móviles "ocultos pero operativos": tienen estadoNro fuera del
+  // conjunto de activos ([0,1,2,4]) pero igual tienen pedidos/services asignados
+  // del día. Se ocultan del colapsable de móviles, mapa, indicadores, etc. —
+  // pero sus pedidos/services SIGUEN visibles en los colapsables de
+  // pedidos/services y vistas extendidas. Estado 4 (BAJA MOMENTÁNEA) cuenta
+  // como activo y se renderiza con estilo violeta/pausa.
   const hiddenMovilIds = useMemo(
     () => getHiddenMovilIds(movilesFiltered, pedidosCompletos, servicesCompletos),
     [movilesFiltered, pedidosCompletos, servicesCompletos],
