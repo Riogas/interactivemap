@@ -49,9 +49,15 @@ export function isMovilHidden(
 }
 
 /**
- * Devuelve el set de IDs (numéricos) de los móviles ocultos-pero-operativos
- * dentro de una lista de móviles. Solo itera sobre los no-activos, para no
- * recorrer toda la lista innecesariamente.
+ * Devuelve el set de IDs (numéricos) de los móviles ocultos-pero-operativos.
+ *
+ * Incluye dos grupos:
+ *  1. Móviles presentes en `moviles` cuyo estadoNro es no-activo pero tienen
+ *     al menos un pedido/service asignado.
+ *  2. Móviles *referenciados* por pedidos/services pero ausentes de `moviles`
+ *     (p. ej. no logueados a GPS, dados de baja en la tabla de móviles pero
+ *     con pedidos pendientes en backend). Sin esto, sus pedidos quedarían
+ *     descartados en las vistas que cruzan contra `moviles + hiddenMovilIds`.
  */
 export function getHiddenMovilIds(
   moviles: MovilLike[],
@@ -59,10 +65,21 @@ export function getHiddenMovilIds(
   services?: Array<WithMovilRef>,
 ): Set<number> {
   const hidden = new Set<number>();
+  const known = new Set<number>();
   for (const m of moviles) {
+    known.add(m.id);
     if (isMovilActiveForUI(m.estadoNro)) continue;
     if (isMovilHidden(m, pedidos, services)) hidden.add(m.id);
   }
+  const addOrphan = (raw: number | string | null | undefined) => {
+    if (raw == null) return;
+    const id = Number(raw);
+    if (!Number.isFinite(id) || id === 0) return;
+    if (known.has(id)) return;
+    hidden.add(id);
+  };
+  for (const p of pedidos) addOrphan(p.movil);
+  if (services) for (const s of services) addOrphan(s.movil);
   return hidden;
 }
 
@@ -77,7 +94,19 @@ export function getHiddenMovilIdsFromEstadosMap(
   services?: Array<WithMovilRef>,
 ): Set<string> {
   const hidden = new Set<string>();
-  if (!estadosMap || estadosMap.size === 0) return hidden;
+  if (!estadosMap || estadosMap.size === 0) {
+    // Aun sin estados conocidos, los móviles referenciados por pedidos/services
+    // se tratan como operativos (ver getHiddenMovilIds).
+    const addOrphan = (raw: number | string | null | undefined) => {
+      if (raw == null) return;
+      const key = String(raw);
+      if (key === '' || key === '0') return;
+      hidden.add(key);
+    };
+    for (const p of pedidos) addOrphan(p.movil);
+    if (services) for (const s of services) addOrphan(s.movil);
+    return hidden;
+  }
   for (const [key, estadoNro] of estadosMap.entries()) {
     if (isMovilActiveForUI(estadoNro)) continue;
     const hasPedido = pedidos.some(p => p.movil != null && String(p.movil) === key);
@@ -90,5 +119,16 @@ export function getHiddenMovilIdsFromEstadosMap(
       if (hasService) hidden.add(key);
     }
   }
+  // Móviles referenciados por pedidos/services pero ausentes del Map de estados
+  // (no registrados en backend, sin GPS logueado, etc.).
+  const addOrphan = (raw: number | string | null | undefined) => {
+    if (raw == null) return;
+    const key = String(raw);
+    if (key === '' || key === '0') return;
+    if (estadosMap.has(key)) return;
+    hidden.add(key);
+  };
+  for (const p of pedidos) addOrphan(p.movil);
+  if (services) for (const s of services) addOrphan(s.movil);
   return hidden;
 }

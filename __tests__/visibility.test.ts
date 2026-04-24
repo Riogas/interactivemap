@@ -227,11 +227,54 @@ describe('getHiddenMovilIds', () => {
     expect(result.has(5)).toBe(true);
   });
 
-  it('no incluye movil inactivo si pedidos son de otros moviles', () => {
+  it('no incluye movil inactivo si pedidos son de otros moviles, pero sí el movil huérfano referenciado', () => {
+    // El movil 6 es inactivo pero sin pedidos propios → NO oculto.
+    // El movil 99 no está en la lista `moviles` pero tiene pedido → huérfano-operativo.
     const moviles = [{ id: 6, estadoNro: 3 }];
     const pedidos = [{ movil: 99 }];
     const result = getHiddenMovilIds(moviles, pedidos);
     expect(result.has(6)).toBe(false);
+    expect(result.has(99)).toBe(true);
+  });
+
+  it('incluye como huérfano-operativo un movil referenciado por pedido pero ausente de la lista', () => {
+    // Caso bug 167: pedido asignado a un movil que no está en `moviles`
+    // (no logueado a GPS, no registrado). Debe entrar al Set para que sus
+    // pedidos sigan visibles en vistas extendidas.
+    const moviles = [{ id: 10, estadoNro: 1 }];
+    const pedidos = [{ movil: 167 }];
+    const result = getHiddenMovilIds(moviles, pedidos);
+    expect(result.has(167)).toBe(true);
+    expect(result.has(10)).toBe(false);
+  });
+
+  it('incluye como huérfano un movil referenciado por service aunque no esté en la lista', () => {
+    const moviles: Array<{ id: number; estadoNro?: number | null }> = [];
+    const pedidos: Array<{ movil?: number | string | null }> = [];
+    const services = [{ movil: 200 }];
+    const result = getHiddenMovilIds(moviles, pedidos, services);
+    expect(result.has(200)).toBe(true);
+  });
+
+  it('los huérfanos aceptan movil_id como string y se guardan como número', () => {
+    const moviles: Array<{ id: number; estadoNro?: number | null }> = [];
+    const pedidos = [{ movil: '167' }];
+    const result = getHiddenMovilIds(moviles, pedidos);
+    expect(result.has(167)).toBe(true);
+    expect(typeof [...result][0]).toBe('number');
+  });
+
+  it('ignora huérfanos con movil null, 0 o no numérico', () => {
+    const moviles: Array<{ id: number; estadoNro?: number | null }> = [];
+    const pedidos = [
+      { movil: null },
+      { movil: undefined },
+      { movil: 0 },
+      { movil: '0' },
+      { movil: 'abc' },
+    ];
+    const result = getHiddenMovilIds(moviles, pedidos);
+    expect(result.size).toBe(0);
   });
 
   it('los IDs en el Set son numericos (no strings)', () => {
@@ -253,9 +296,11 @@ describe('getHiddenMovilIdsFromEstadosMap', () => {
     expect(result.size).toBe(0);
   });
 
-  it('retorna Set vacio si el Map es null/undefined-like (size=0)', () => {
+  it('con Map vacío, incluye como huérfanos los moviles referenciados por pedidos', () => {
+    // Cambio de semántica: sin estados conocidos, cualquier movil referenciado
+    // por un pedido se trata como huérfano-operativo para no descartar pedidos.
     const result = getHiddenMovilIdsFromEstadosMap(new Map(), [{ movil: '1' }]);
-    expect(result.size).toBe(0);
+    expect(result.has('1')).toBe(true);
   });
 
   it('no incluye moviles activos (estado 0/1/2) aunque tengan pedidos', () => {
@@ -363,5 +408,26 @@ describe('getHiddenMovilIdsFromEstadosMap', () => {
     const pedidos = [{ movil: null }, { movil: undefined }];
     const result = getHiddenMovilIdsFromEstadosMap(estadosMap, pedidos);
     expect(result.has('200')).toBe(false);
+  });
+
+  it('incluye como huérfano un movil referenciado por pedido pero ausente del Map', () => {
+    const estadosMap = new Map([['100', 1]]);
+    const pedidos = [{ movil: '167' }];
+    const result = getHiddenMovilIdsFromEstadosMap(estadosMap, pedidos);
+    expect(result.has('167')).toBe(true);
+    expect(result.has('100')).toBe(false);
+  });
+
+  it('ignora huérfanos con movil 0, string vacío, null o undefined', () => {
+    const estadosMap = new Map<string, number>();
+    const pedidos = [
+      { movil: null },
+      { movil: undefined },
+      { movil: 0 },
+      { movil: '0' },
+      { movil: '' },
+    ];
+    const result = getHiddenMovilIdsFromEstadosMap(estadosMap, pedidos);
+    expect(result.size).toBe(0);
   });
 });
