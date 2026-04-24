@@ -44,10 +44,11 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     // Filtrar por móviles seleccionados. Pedidos de móviles ocultos-pero-
     // operativos (p. ej. 167 sin GPS, o huérfanos ausentes de la lista visible)
     // pasan siempre, para que el total coincida con la Vista Extendida y el
-    // colapsable de pedidos.
+    // colapsable de pedidos. Los finalizados sin móvil asignado (huérfanos,
+    // p. ej. ENTR. SIN 1710) también pasan siempre, ya están entregados.
     if (selectedMoviles.length > 0) {
       finalizados = finalizados.filter(p => {
-        if (!p.movil || Number(p.movil) === 0) return false;
+        if (!p.movil || Number(p.movil) === 0) return true;
         if (hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(p.movil));
       });

@@ -199,8 +199,10 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
       result = result.filter(p => {
         if (!p.movil || Number(p.movil) === 0) {
-          // Sin asignar: solo pasan en pendientes, asignacion='todos', sin restricción.
-          return !isFinalizados && filters.asignacion === 'todos' && !hideUnassigned;
+          // Finalizados sin móvil (huérfanos, p. ej. ENTR. SIN 1710): pasan siempre.
+          if (isFinalizados) return true;
+          // Pendientes sin móvil: solo pasan en asignacion='todos' sin restricción.
+          return filters.asignacion === 'todos' && !hideUnassigned;
         }
         // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
         if (hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
