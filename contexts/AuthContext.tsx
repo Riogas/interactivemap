@@ -221,29 +221,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem('trackmovil_allowed_empresas');
           localStorage.removeItem('trackmovil_allowed_escenarios');
         } else {
-          // Validar escenarios: debe tener al menos uno y el del login debe matchear
-          if (escenarios.length === 0) {
-            console.log('❌ Login bloqueado: usuario no-root sin escenarios asignados');
-            return {
-              success: false,
-              error: 'El usuario no tiene escenarios asignados. Contacte al administrador.',
-            };
-          }
+          // Bypass: rol Despacho + escenario Montevideo (1000) puede entrar aunque
+          // no tenga escenarios/empresas configuradas en sus preferencias.
+          const tieneRolDespacho = (response.roles || []).some(
+            (r) => String(r.rolNombre || '').trim().toLowerCase() === 'despacho'
+          );
+          const bypassDespachoMontevideo = tieneRolDespacho && selectedEscenarioId === 1000;
 
-          allowedEscenarios = escenarios.map((e) => e.valor);
-          if (!allowedEscenarios.includes(selectedEscenarioId)) {
-            console.log(`❌ Login bloqueado: escenario ${selectedEscenarioId} no está en los permitidos [${allowedEscenarios.join(', ')}]`);
-            return {
-              success: false,
-              error: 'No tiene acceso al escenario seleccionado.',
-            };
-          }
+          if (bypassDespachoMontevideo) {
+            console.log('🚪 Bypass: rol Despacho + escenario Montevideo (1000) → acceso permitido sin permisos configurados');
+            allowedEscenarios = [1000];
+            // Si tiene empFleteras configuradas las respetamos; si no, sin restricción.
+            allowedEmpresas = empFleteras.length > 0 ? empFleteras.map((e) => e.valor) : null;
+            if (allowedEmpresas === null) {
+              localStorage.removeItem('trackmovil_allowed_empresas');
+            } else {
+              localStorage.setItem('trackmovil_allowed_empresas', JSON.stringify(allowedEmpresas));
+            }
+            localStorage.setItem('trackmovil_allowed_escenarios', JSON.stringify(allowedEscenarios));
+          } else {
+            // Validar escenarios: debe tener al menos uno y el del login debe matchear
+            if (escenarios.length === 0) {
+              console.log('❌ Login bloqueado: usuario no-root sin escenarios asignados');
+              return {
+                success: false,
+                error: 'El usuario no tiene escenarios asignados. Contacte al administrador.',
+              };
+            }
 
-          allowedEmpresas = empFleteras.map((e) => e.valor);
-          console.log(`✅ Empresas permitidas: ${allowedEmpresas.join(', ') || '(ninguna)'}`);
-          console.log(`✅ Escenarios permitidos: ${allowedEscenarios.join(', ')}`);
-          localStorage.setItem('trackmovil_allowed_empresas', JSON.stringify(allowedEmpresas));
-          localStorage.setItem('trackmovil_allowed_escenarios', JSON.stringify(allowedEscenarios));
+            allowedEscenarios = escenarios.map((e) => e.valor);
+            if (!allowedEscenarios.includes(selectedEscenarioId)) {
+              console.log(`❌ Login bloqueado: escenario ${selectedEscenarioId} no está en los permitidos [${allowedEscenarios.join(', ')}]`);
+              return {
+                success: false,
+                error: 'No tiene acceso al escenario seleccionado.',
+              };
+            }
+
+            allowedEmpresas = empFleteras.map((e) => e.valor);
+            console.log(`✅ Empresas permitidas: ${allowedEmpresas.join(', ') || '(ninguna)'}`);
+            console.log(`✅ Escenarios permitidos: ${allowedEscenarios.join(', ')}`);
+            localStorage.setItem('trackmovil_allowed_empresas', JSON.stringify(allowedEmpresas));
+            localStorage.setItem('trackmovil_allowed_escenarios', JSON.stringify(allowedEscenarios));
+          }
         }
 
         // Mapear roles del shape nuevo (rolId, rolNombre, aplicacionId, funcionalidades)
