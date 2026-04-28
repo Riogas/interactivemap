@@ -44,9 +44,11 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 overflow-hidden relative">
-      {/* Imagen de fondo personalizada */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+      {/* Imagen de fondo personalizada — bg-contain muestra la imagen completa
+          (sin recorte). El bg-slate-900 detrás cubre el área que sobra cuando
+          el aspect ratio del viewport no matchea con la imagen. */}
+      <div
+        className="absolute inset-0 bg-contain bg-center bg-no-repeat bg-slate-900"
         style={{
           backgroundImage: 'url(/images/background.png)',
         }}
