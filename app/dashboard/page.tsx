@@ -791,15 +791,23 @@ function DashboardContent() {
           .then(result => {
             if (result.success && result.data.length > 0) {
               const movilData = result.data[0];
-              
-              // 🔒 VERIFICAR SI EL MÓVIL PERTENECE A LAS EMPRESAS SELECCIONADAS
-              const perteneceAEmpresaSeleccionada = 
-                selectedEmpresas.length === 0 || // Si no hay filtro, mostrar todos
-                selectedEmpresas.includes(movilData.empresa_fletera_id);
-              
-              if (!perteneceAEmpresaSeleccionada) {
-                console.log(`🚫 Móvil ${movilId} pertenece a empresa ${movilData.empresa_fletera_id} que NO está seleccionada. No se agregará.`);
-                return; // No agregar el móvil
+
+              // 🔒 SCOPE de empresa en DOS niveles:
+              //   a) allowedEmpresas (permission, no-root/no-despacho) → SIEMPRE
+              //      bloquea si la empresa del movil no está. Incluso cuando
+              //      selectedEmpresas viene vacío momentáneamente durante el
+              //      load (no podemos confiar en eso para autorizar).
+              //   b) selectedEmpresas (filtro UI) → bloquea si hay filtro
+              //      activo y la empresa no está ahí.
+              const allowedEmpresas = user?.allowedEmpresas;
+              const hasRestriction = (allowedEmpresas?.length ?? 0) > 0;
+              if (hasRestriction && allowedEmpresas && !allowedEmpresas.includes(movilData.empresa_fletera_id)) {
+                console.log(`🚫 Móvil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera de allowedEmpresas. No se agrega.`);
+                return;
+              }
+              if (selectedEmpresas.length > 0 && !selectedEmpresas.includes(movilData.empresa_fletera_id)) {
+                console.log(`🔍 Móvil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera del filtro UI actual. No se agrega.`);
+                return;
               }
               
               const newMovil: MovilData = {
@@ -858,7 +866,11 @@ function DashboardContent() {
     });
     
     setLastUpdate(new Date());
-  }, [latestPosition, removeDuplicateMoviles, preferences.realtimeEnabled]);
+    // Nota: selectedEmpresas y user.allowedEmpresas en el array de deps son
+    // críticas porque el callback de fetch dentro evalúa el scope de empresa
+    // contra esos valores. Sin ellos en deps la closure se queda stale y un
+    // movil de empresa no permitida puede colarse momentáneamente al state.
+  }, [latestPosition, removeDuplicateMoviles, preferences.realtimeEnabled, user?.allowedEmpresas, selectedEmpresas]);
 
   // 🚗 Escuchar cuando aparece un móvil nuevo en la base de datos (solo si está activado)
   useEffect(() => {
