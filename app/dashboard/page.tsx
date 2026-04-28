@@ -481,12 +481,12 @@ function DashboardContent() {
         
         if (isInitialLoad) {
           // PRIMERA CARGA: Crear array completo de móviles
-          const newMoviles: MovilData[] = result.data.map((item: { 
-            movilId: number; 
-            movilName: string; 
+          const newMoviles: MovilData[] = result.data.map((item: {
+            movilId: number;
+            movilName: string;
             color: string;
             empresa_fletera_id: number;
-            position: any 
+            position: any
           }) => ({
             id: Number(item.movilId),
             name: item.movilName,
@@ -495,39 +495,77 @@ function DashboardContent() {
             currentPosition: item.position,
             history: undefined, // Se cargará bajo demanda
           }));
-          
+
           console.log('📊 Sample movil from API:', newMoviles[0]); // Ver ID del móvil
-          
+
           // Eliminar duplicados antes de establecer
           const uniqueMoviles = removeDuplicateMoviles(newMoviles);
-          
+
           // 🔥 NUEVO: Enriquecer con datos extendidos de Supabase
           const enrichedMoviles = await enrichMovilesWithExtendedData(uniqueMoviles);
-          
+
           setMoviles(enrichedMoviles);
           setIsInitialLoad(false); // Marcar que ya no es carga inicial
           console.log(`📦 Carga inicial completa con ${enrichedMoviles.length} móviles únicos enriquecidos`);
         } else {
-          // ACTUALIZACIÓN: Solo actualizar las posiciones GPS manteniendo TODAS las propiedades
-          setMoviles(prevMoviles => {
-            return prevMoviles.map(movil => {
-              // Buscar la nueva posición de este móvil
-              const updatedData = result.data.find((item: any) => item.movilId === movil.id);
-              
-              if (updatedData) {
-                // Solo actualizar currentPosition, mantener TODO el resto igual
-                // (history, pendientes, pedidosPendientes, serviciosPendientes, tamanoLote, pedidosAsignados)
-                return {
-                  ...movil, // Mantener TODAS las propiedades existentes
-                  currentPosition: updatedData.position, // Solo actualizar posición
-                };
+          // RECONCILIACIÓN (post-initial): la API trae el set "verdadero" de
+          // móviles con posición vigente. Detectamos:
+          //   a) móviles NUEVOS (en API y no en state) → los agregamos.
+          //   b) móviles BAJADOS (en state y no en API) → los removemos.
+          //   c) móviles existentes → solo actualizamos currentPosition,
+          //      preservando history/pedidosAsignados/tamanoLote/etc.
+          //
+          // Antes este path solo hacía (c) y los nuevos se silenciaban —
+          // por eso un F5 traía móviles que el polling/silence/visibility
+          // ya había recibido de la API pero no se habían incorporado.
+          const prevSnapshot = movilesRef.current;
+          const prevById = new Map(prevSnapshot.map(m => [m.id, m]));
+          const apiIds = new Set<number>(result.data.map((item: any) => Number(item.movilId)));
+
+          const newApiMoviles = result.data.filter(
+            (item: any) => !prevById.has(Number(item.movilId)),
+          );
+          const removedCount = prevSnapshot.filter(m => !apiIds.has(m.id)).length;
+
+          if (newApiMoviles.length === 0 && removedCount === 0) {
+            // Sin altas/bajas: solo updates de posición (camino antiguo, barato)
+            setMoviles(prevMoviles => prevMoviles.map(movil => {
+              const updatedData = result.data.find((item: any) => Number(item.movilId) === movil.id);
+              return updatedData
+                ? { ...movil, currentPosition: updatedData.position }
+                : movil;
+            }));
+            console.log('🔄 Posiciones GPS actualizadas (sin altas/bajas de móviles)');
+          } else {
+            // Hay altas o bajas: reconstruir lista preservando estado existente
+            // (history, pedidosAsignados, tamanoLote, etc.) y enriquecer los
+            // nuevos via enrichMovilesWithExtendedData.
+            console.log(
+              `🔄 Reconciliación: ${newApiMoviles.length} alta(s), ${removedCount} baja(s) detectada(s)`,
+            );
+
+            const merged: MovilData[] = result.data.map((item: any) => {
+              const existing = prevById.get(Number(item.movilId));
+              if (existing) {
+                return { ...existing, currentPosition: item.position };
               }
-              
-              // Si el móvil no está en la actualización, mantenerlo sin cambios
-              return movil;
+              return {
+                id: Number(item.movilId),
+                name: item.movilName,
+                color: item.color,
+                empresaFleteraId: item.empresa_fletera_id,
+                currentPosition: item.position,
+                history: undefined,
+              };
             });
-          });
-          console.log('🔄 Posiciones GPS actualizadas (historial, pendientes y datos extendidos preservados)');
+
+            const uniqueMerged = removeDuplicateMoviles(merged);
+            const enriched = await enrichMovilesWithExtendedData(uniqueMerged);
+            setMoviles(enriched);
+            console.log(
+              `✅ Reconciliación aplicada: state ahora tiene ${enriched.length} móviles`,
+            );
+          }
         }
         
         setLastUpdate(new Date());
