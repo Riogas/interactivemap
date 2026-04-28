@@ -6,6 +6,7 @@ import { PedidoSupabase, ServiceSupabase } from '@/types';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
+import { isPedidoInScope, isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
 
 // ============= Types =============
@@ -35,6 +36,8 @@ interface ZonaEstadisticasModalProps {
   scopedZonaIds?: Set<number> | null;
   /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
   scopedEmpresas?: number[] | null;
+  /** Scope (móviles + zonas) para filtrar pedidos/services cuando el user es distribuidor. */
+  scope?: ScopeFilter;
 }
 
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
@@ -57,6 +60,7 @@ export default function ZonaEstadisticasModal({
   onMovsPrioClick,
   scopedZonaIds = null,
   scopedEmpresas = null,
+  scope,
 }: ZonaEstadisticasModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
@@ -159,19 +163,32 @@ export default function ZonaEstadisticasModal({
 
   // Filter pedidos/services by service type
   // SERVICE mode usa la tabla 'services' (array separado); PEDIDOS usa 'pedidos' filtrado por URGENTE/NOCTURNO
+  // Si el user es distribuidor (scope.isRestricted) aplicamos isPedidoInScope/isServiceInScope
+  // con hideEntregadosSinMovil=true para que las estadísticas no incluyan entregados huérfanos
+  // ni pedidos/services fuera del scope (móvil + zona).
   const filteredPedidos = useMemo(() => {
     const upper = serviceFilter.toUpperCase();
+    let base: PedidoSupabase[];
     if (upper === 'SERVICE') {
-      // Los services están en su propio array — castear a la misma forma para reutilizar la lógica
-      return (services as unknown as PedidoSupabase[]);
+      // Los services están en su propio array — aplicar scope con isServiceInScope antes del cast
+      const filteredSvcs = scope?.isRestricted
+        ? services.filter(s => isServiceInScope(s, scope, { hideEntregadosSinMovil: true }))
+        : services;
+      // Castear a la misma forma para reutilizar la lógica downstream
+      return (filteredSvcs as unknown as PedidoSupabase[]);
     }
     if (upper === 'PEDIDOS') {
       // "PEDIDOS" = todos los pedidos (pedidos y services son arrays separados,
       // no es necesario filtrar por servicio_nombre aquí)
-      return pedidos;
+      base = pedidos;
+    } else {
+      base = pedidos.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === upper);
     }
-    return pedidos.filter(p => p.servicio_nombre && p.servicio_nombre.toUpperCase() === upper);
-  }, [pedidos, services, serviceFilter]);
+    if (scope?.isRestricted) {
+      base = base.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: true }));
+    }
+    return base;
+  }, [pedidos, services, serviceFilter, scope]);
 
   // Filter movilesZonasData by service type + active + not hidden-operativo
   const filteredMovilesZonas = useMemo(() => {

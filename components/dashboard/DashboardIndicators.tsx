@@ -5,6 +5,7 @@ import { PedidoSupabase } from '@/types';
 import { motion } from 'framer-motion';
 import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
+import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
 
 interface DashboardIndicatorsProps {
   moviles: any[];
@@ -27,6 +28,8 @@ interface DashboardIndicatorsProps {
   scopedZonaIds?: Set<number> | null;
   /** Empresas permitidas — se pasan como ?empresaIds= a /api/zonas, /api/moviles-zonas, /api/demoras. null = sin scope. */
   scopedEmpresas?: number[] | null;
+  /** Scope (móviles + zonas) para filtrar pedidos en sinAsignar / entregados / % cuando el user es distribuidor. */
+  scope?: ScopeFilter;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
@@ -35,29 +38,39 @@ interface DashboardIndicatorsProps {
   onZonasNoActivasClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
-    // Sin asignar: pendientes (estado 1) sin móvil o móvil === 0
-    let sinAsignar = pedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
-    
+    const scopeRestricted = scope?.isRestricted ?? false;
+
+    // Sin asignar: pendientes (estado 1) sin móvil o móvil === 0.
+    // Para distribuidor: solo cuentan los sin asignar cuya zona está en su scope.
+    let sinAsignar: PedidoSupabase[] = pedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
+    if (scopeRestricted && scope) {
+      sinAsignar = sinAsignar.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: false }));
+    }
+
     // Finalizados: estado_nro === 2
     let finalizados = pedidos.filter(p => Number(p.estado_nro) === 2);
-    
-    // Filtrar por móviles seleccionados. Pedidos de móviles ocultos-pero-
-    // operativos (p. ej. 167 sin GPS, o huérfanos ausentes de la lista visible)
-    // pasan siempre, para que el total coincida con la Vista Extendida y el
-    // colapsable de pedidos. Los finalizados sin móvil asignado (huérfanos,
-    // p. ej. ENTR. SIN 1710) también pasan siempre, ya están entregados.
-    if (selectedMoviles.length > 0) {
+
+    if (scopeRestricted && scope) {
+      // Distribuidor: hideEntregadosSinMovil=true (no puede ver entregados huérfanos),
+      // y los finalizados con móvil deben pertenecer a su scope (móvil + zona).
+      finalizados = finalizados.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: true }));
+    } else if (selectedMoviles.length > 0) {
+      // Filtrar por móviles seleccionados. Pedidos de móviles ocultos-pero-
+      // operativos (p. ej. 167 sin GPS, o huérfanos ausentes de la lista visible)
+      // pasan siempre, para que el total coincida con la Vista Extendida y el
+      // colapsable de pedidos. Los finalizados sin móvil asignado (huérfanos,
+      // p. ej. ENTR. SIN 1710) también pasan siempre, ya están entregados.
       finalizados = finalizados.filter(p => {
         if (!p.movil || Number(p.movil) === 0) return true;
         if (hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(p.movil));
       });
     }
-    
+
     // Excluir pedidos hijo (re-entregas) del % entregados
     const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
     // Entregados: pedidos con estado_nro = 2 y sub_estado_nro = 3 o 19
@@ -66,13 +79,13 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     const porcentajeEntregados = totalFinalizadosSinHijo > 0
       ? Math.round(entregados / totalFinalizadosSinHijo * 100)
       : 0;
-    
+
     return {
       sinAsignar: sinAsignar.length,
       entregados,
       porcentajeEntregados,
     };
-  }, [pedidos, selectedMoviles, hiddenMovilIds]);
+  }, [pedidos, selectedMoviles, hiddenMovilIds, scope]);
 
   // ============= MÓVILES SIN REPORTAR GPS =============
   // Excluir estadoNro 3 ("No Activo") — esos están fuera de servicio, no es un problema de GPS

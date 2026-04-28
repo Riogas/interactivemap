@@ -6,6 +6,7 @@ import { PedidoSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion, isPedidoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
+import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -63,6 +64,8 @@ interface PedidosTableModalProps {
   hideUnassigned?: boolean;
   onInnerFiltersChange?: (f: Filters) => void;
   externalResetToken?: number;
+  /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
+  scope?: ScopeFilter;
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -86,7 +89,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, onInnerFiltersChange, externalResetToken }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, onInnerFiltersChange, externalResetToken, scope }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -172,7 +175,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     let result: PedidoSupabase[];
     if (isFinalizados) {
       result = pedidos.filter(p => Number(p.estado_nro) === 2);
-      
+
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
         result = result.filter(p => isPedidoEntregado(p));
@@ -182,7 +185,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
       result = pedidos.filter(p => Number(p.estado_nro) === 1);
-      
+
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {
         result = result.filter(p => !p.movil || Number(p.movil) === 0);
@@ -190,7 +193,14 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
         result = result.filter(p => p.movil && Number(p.movil) !== 0);
       }
     }
-    
+
+    // Scope del usuario distribuidor (móviles + zonas permitidas). Para
+    // finalizados se ocultan SIEMPRE los entregados sin móvil ("ENTR. SIN 1710"
+    // huérfanos no son visibles para distribuidor). Sin scope: pasa todo.
+    if (scope?.isRestricted) {
+      result = result.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: isFinalizados }));
+    }
+
     // Filtro por móviles / empresa del usuario.
     // Regla: los finalizados también respetan la restricción de empresas (antes
     //        el bloque `if (isFinalizados)` lo salteaba y mostraba TODO).
@@ -229,15 +239,21 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles, hiddenMovilIds]);
+  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles, hiddenMovilIds, scope]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
   // TODOS los móviles/zonas/productos del día, independientemente de cuáles estén seleccionados en el mapa.
+  // También respetamos `scope` para que un distribuidor solo vea sus móviles/zonas/productos en los dropdowns.
   const pedidosParaOpciones = useMemo(() => {
-    if (isFinalizados) return pedidos.filter(p => Number(p.estado_nro) === 2);
-    return pedidos.filter(p => Number(p.estado_nro) === 1);
-  }, [pedidos, isFinalizados]);
+    let result: PedidoSupabase[];
+    if (isFinalizados) result = pedidos.filter(p => Number(p.estado_nro) === 2);
+    else result = pedidos.filter(p => Number(p.estado_nro) === 1);
+    if (scope?.isRestricted) {
+      result = result.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: isFinalizados }));
+    }
+    return result;
+  }, [pedidos, isFinalizados, scope]);
 
   const uniqueZonas = useMemo(() => {
     const set = new Set<number>();

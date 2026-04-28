@@ -21,7 +21,8 @@ import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
-import { getScopedEmpresas } from '@/lib/auth-scope';
+import { getScopedEmpresas, shouldScopeByEmpresa } from '@/lib/auth-scope';
+import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
@@ -1383,6 +1384,26 @@ function DashboardContent() {
   );
   const userHasEmpresaRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
 
+  // `userHasEmpresaRestriction` mira solo allowedEmpresas — se usa para filtrar
+  // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
+  // `isScopeRestricted` además exige que el user no sea root/despacho — es la
+  // condición correcta para los filtros de zona en Vista Extendida, indicadores
+  // y estadísticas. Coexisten porque su semántica es sutilmente distinta y el
+  // refactor a una sola variable está fuera del alcance de este cambio.
+  const isScopeRestricted = useMemo(
+    () => shouldScopeByEmpresa(user) && (user?.allowedEmpresas?.length ?? 0) > 0,
+    [user],
+  );
+
+  const scope = useMemo<ScopeFilter>(
+    () => ({
+      scopedZonaIds: isScopeRestricted ? (scopedZonaIds ?? new Set<number>()) : null,
+      allowedMovilIds,
+      isRestricted: isScopeRestricted,
+    }),
+    [isScopeRestricted, scopedZonaIds, allowedMovilIds],
+  );
+
   const pedidosCompletos = useMemo(() => {
     const pedidosMap = new Map<number, PedidoSupabase>();
 
@@ -1835,6 +1856,7 @@ function DashboardContent() {
             allHiddenMovilIds={allHiddenMovilIds}
             scopedZonaIds={scopedZonaIds}
             scopedEmpresas={scopedEmpresas}
+            scope={scope}
             onSinAsignarClick={onSinAsignarClick}
             onEntregadosClick={onEntregadosClick}
             onPorcentajeClick={onPorcentajeClick}
@@ -1970,6 +1992,7 @@ function DashboardContent() {
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
         hiddenMovilIds={hiddenMovilIds}
+        scope={scope}
         onPedidoClick={handlePedidoClick}
         onMovilClick={handleMovilClick}
         vista={pedidosFilters.vista}
@@ -1993,6 +2016,7 @@ function DashboardContent() {
         services={servicesCompletos}
         moviles={movilesFiltered}
         hiddenMovilIds={hiddenMovilIds}
+        scope={scope}
         onServiceClick={handleServiceClick}
         onMovilClick={handleMovilClick}
         vista={servicesFilters.vista}
@@ -2162,6 +2186,7 @@ function DashboardContent() {
         allHiddenMovilIds={allHiddenMovilIds}
         scopedZonaIds={scopedZonaIds}
         scopedEmpresas={scopedEmpresas}
+        scope={scope}
         onZonaClick={(zonaId, svcFilter) => {
           setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);
