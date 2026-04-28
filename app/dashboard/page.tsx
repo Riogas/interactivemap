@@ -2238,9 +2238,11 @@ function DashboardContent() {
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = pedidosCompletos.filter(p => {
                     if (Number(p.estado_nro) !== targetEstado) return false;
-                    // Sin asignar: solo en pendientes, sin restricción y sin móviles seleccionados.
+                    // Sin asignar: solo en pendientes y cuando no hay restricción de empresa.
+                    // Coincide con el criterio del colapsable (MovilSelector); selectedMoviles
+                    // no aplica porque por auto-seleccion casi siempre tiene >0 elementos.
                     if (!p.movil || Number(p.movil) === 0) {
-                      return isPendientes && !isEmpresaPartial && selectedMoviles.length === 0;
+                      return isPendientes && !isEmpresaPartial;
                     }
                     if (selectedMoviles.length > 0) {
                       // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
@@ -2280,8 +2282,10 @@ function DashboardContent() {
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = servicesCompletos.filter(s => {
                     if (Number(s.estado_nro) !== targetEstado) return false;
+                    // Sin asignar: solo en pendientes y cuando no hay restricción de empresa.
+                    // Mismo criterio que el colapsable de services (MovilSelector).
                     if (!s.movil || Number(s.movil) === 0) {
-                      return isPendientes && !isEmpresaPartial && selectedMoviles.length === 0;
+                      return isPendientes && !isEmpresaPartial;
                     }
                     if (selectedMoviles.length > 0) {
                       // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
