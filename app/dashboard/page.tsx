@@ -679,20 +679,32 @@ function DashboardContent() {
     return () => document.removeEventListener('visibilitychange', handler);
   }, [selectedDate, fetchPedidos, fetchServices, preferences.realtimeRefetchOnVisible]);
 
-  // 🔥 NUEVO: Seleccionar todos los móviles automáticamente en la carga inicial
+  // 🔥 Auto-selección de móviles:
+  //  a) Carga inicial → marca todos los visibles.
+  //  b) Aparecen móviles nuevos (realtime) y el user está en modo "Todos"
+  //     (userExplicitlyCleared=false) → suma los nuevos a la selección
+  //     para que el badge no salte a "filtrando todos menos los nuevos".
+  // El user mantiene control manual: si deselecciona/clear marca el flag
+  // userExplicitlyCleared=true y este efecto deja de auto-agregar.
   useEffect(() => {
-    // Solo auto-seleccionar si:
-    // 1. Hay móviles cargados
-    // 2. No hay ningún móvil seleccionado (primera carga)
-    // 3. No es carga inicial (ya terminó la carga)
-    // 4. El usuario NO limpió explícitamente la selección
-    if (movilesFiltered.length > 0 && selectedMoviles.length === 0 && !isInitialLoad && !userExplicitlyCleared.current) {
-      const hidden = hiddenMovilIdsRef.current;
-      const visible = movilesFiltered.filter(m => !hidden.has(m.id));
-      console.log('✅ Auto-selección inicial: Marcando todos los móviles por defecto:', visible.length);
-      setSelectedMoviles(visible.map(m => m.id));
-    }
-  }, [movilesFiltered.length, isInitialLoad]); // Depende de la cantidad de móviles y si es carga inicial
+    if (isInitialLoad) return;
+    if (userExplicitlyCleared.current) return;
+    if (movilesFiltered.length === 0) return;
+
+    const hidden = hiddenMovilIdsRef.current;
+    const visibleIds = movilesFiltered.filter(m => !hidden.has(m.id)).map(m => m.id);
+
+    setSelectedMoviles(prev => {
+      const missing = visibleIds.filter(id => !prev.includes(id));
+      if (missing.length === 0) return prev;
+      if (prev.length === 0) {
+        console.log('✅ Auto-selección inicial: marcando todos los móviles por defecto:', visibleIds.length);
+        return visibleIds;
+      }
+      console.log(`✅ Auto-agregando ${missing.length} móvil(es) nuevo(s) a la selección "Todos"`);
+      return [...prev, ...missing];
+    });
+  }, [movilesFiltered.length, isInitialLoad]);
 
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
