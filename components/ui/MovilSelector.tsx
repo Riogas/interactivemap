@@ -59,6 +59,12 @@ interface MovilSelectorProps {
    *  colapsable de pedidos. Calculado por el parent en base al perfil del
    *  usuario (no-root con restricción) + filtro manual de empresas. */
   hideUnassigned?: boolean;
+  /** True si el usuario tiene `allowedEmpresas` (no-root, no-despacho). En ese
+   *  caso el badge de empresas NUNCA dice "Todas" — siempre lista los nombres
+   *  de las empresas asignadas, igual que cuando un root/despacho filtra
+   *  manualmente. "Todas" implicaría el set global de empresas y eso no es
+   *  lo que un user restringido ve. */
+  isRestrictedUser?: boolean;
 }
 
 // Definir las categorías del árbol
@@ -113,6 +119,7 @@ export default function MovilSelector({
   onEmpresasChange,
   showEmpresaSelector = false,
   hideUnassigned = false,
+  isRestrictedUser = false,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -655,10 +662,16 @@ export default function MovilSelector({
           const selectedNames = empresas
             .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
             .map(e => e.nombre);
+          // Para users restringidos (no-root/no-despacho con allowedEmpresas),
+          // "Todas" sería engañoso porque el set ya viene pre-filtrado a sus
+          // empresas asignadas — siempre listamos los nombres como cuando un
+          // root/despacho filtra manualmente.
+          const showNamesAlways = isRestrictedUser;
+          const namesLabel = `🏢 Empresas: ${selectedNames.length <= 2 ? selectedNames.join(', ') : `${selectedNames.slice(0, 2).join(', ')} +${selectedNames.length - 2}`}`;
           badges.push({
-            label: allSelected
+            label: allSelected && !showNamesAlways
               ? '🏢 Empresas: Todas'
-              : `🏢 Empresas: ${selectedNames.length <= 2 ? selectedNames.join(', ') : `${selectedNames.slice(0, 2).join(', ')} +${selectedNames.length - 2}`}`,
+              : namesLabel,
             color: 'bg-amber-100 text-amber-700',
             onClear: !allSelected && onEmpresasChange
               ? () => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))

@@ -154,20 +154,20 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
     const rec = recorderRef.current;
     if (!rec || rec.state !== 'recording') return;
     setState('stopping');
-    try {
-      rec.requestData();
-    } catch {
-      // no-op
-    }
+    // En Firefox, llamar a `requestData()` antes de `stop()` produce un
+    // dataavailable extra cuyo timing pelea con el flush natural del stop —
+    // resultado: chunks puede quedar vacío. Confiamos en el flush de stop()
+    // (con timeslice corto en start() ya tenemos múltiples chunks bufferados).
     try {
       rec.stop();
     } catch {
       // no-op
     }
     if (stopTimeoutRef.current) clearTimeout(stopTimeoutRef.current);
-    // Fallback para Firefox: si onstop no dispara en 1.5s,
-    // finalizamos con lo que tengamos en chunks.
-    stopTimeoutRef.current = setTimeout(() => finalize(), 1500);
+    // Fallback para navegadores que no disparan onstop:
+    // 3s es holgado para que Firefox emita el último dataavailable + onstop
+    // antes de que finalicemos con lo bufferado.
+    stopTimeoutRef.current = setTimeout(() => finalize(), 3000);
   }, [finalize]);
 
   const start = useCallback(async () => {
@@ -236,7 +236,11 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
         doStop();
       };
 
-      recorder.start(1000);
+      // Timeslice corto = chunks más frecuentes en chunksRef. Asegura que
+      // incluso grabaciones cortas (< 1s) tengan al menos un chunk antes de
+      // stop, evitando "Grabación vacía" en Firefox cuando el flush final
+      // del stop() no se completa a tiempo.
+      recorder.start(250);
       setSeconds(0);
       setState('recording');
       tickRef.current = setInterval(() => {

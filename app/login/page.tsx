@@ -45,7 +45,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 overflow-hidden relative">
       {/* Imagen de fondo personalizada */}
-      <div 
+      <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{
           backgroundImage: 'url(/images/background.png)',
@@ -128,9 +128,6 @@ export default function LoginPage() {
                 className="h-40 w-auto"
               />
             </motion.div>
-            <p className="text-gray-600 text-sm mt-4">
-              Sistema de Rastreo en Tiempo Real
-            </p>
           </motion.div>
 
           {/* Formulario */}
