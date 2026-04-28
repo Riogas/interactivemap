@@ -925,8 +925,12 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
 
                         {/* Estado */}
                         <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${(!p.movil || Number(p.movil) === 0) ? 'bg-gray-500/20 text-gray-300' : 'bg-blue-500/20 text-blue-300'}`}>
-                            {(!p.movil || Number(p.movil) === 0) ? 'Sin Asignar' : getEstadoDescripcion(p.sub_estado_nro, p.sub_estado_desc)}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${esEntregado ? 'bg-green-500/20 text-green-300' : (!p.movil || Number(p.movil) === 0) ? 'bg-gray-500/20 text-gray-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                            {esEntregado
+                              ? getEstadoDescripcion(p.sub_estado_nro, p.sub_estado_desc, p.estado_nro)
+                              : (!p.movil || Number(p.movil) === 0)
+                                ? 'Sin Asignar'
+                                : getEstadoDescripcion(p.sub_estado_nro, p.sub_estado_desc, p.estado_nro)}
                           </span>
                         </td>
 

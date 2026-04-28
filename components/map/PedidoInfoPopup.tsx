@@ -149,7 +149,7 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
             ) : (() => {
               const esEntregado = isPedidoEntregado(pedido);
               const bannerColor = esEntregado ? '#22c55e' : '#ef4444';
-              const estadoDesc = getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc);
+              const estadoDesc = getEstadoDescripcion(pedido.sub_estado_nro, pedido.sub_estado_desc, pedido.estado_nro);
               return (
                 <div 
                   className="flex items-center justify-between rounded-lg px-3 py-2 border"

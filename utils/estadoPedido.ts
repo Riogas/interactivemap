@@ -44,19 +44,36 @@ const ESTADO_MAP: Record<EstadoKey, string> = {
 
 /**
  * Obtiene la descripción legible a partir de sub_estado_nro y sub_estado_desc.
- * @param subEstadoNro - Primera columna (1 = pendiente, 2 = finalizado)
- * @param subEstadoDesc - Segunda columna (código numérico como string)
+ * Algunos registros guardan el sub-código en sub_estado_nro (p.ej. 19) y otros
+ * lo guardan en sub_estado_desc (string). Si se recibe estadoNro como tercer
+ * argumento, también se prueba la key `${estadoNro}-${subEstadoNro}` como fallback.
+ *
+ * @param subEstadoNro - Categoría (1|2) o sub-código según el registro
+ * @param subEstadoDesc - Sub-código como string, o vacío
+ * @param estadoNro - Categoría principal (1|2). Opcional, mejora la resolución.
  * @returns Descripción textual o fallback.
  */
 export function getEstadoDescripcion(
   subEstadoNro: number | null | undefined,
-  subEstadoDesc: string | null | undefined
+  subEstadoDesc: string | null | undefined,
+  estadoNro?: number | string | null | undefined
 ): string {
-  if (subEstadoNro == null) return 'Sin estado';
-  if (subEstadoDesc == null || subEstadoDesc.trim() === '') return `Estado ${subEstadoNro}`;
+  const desc = (subEstadoDesc ?? '').toString().trim();
+  const nro = subEstadoNro != null ? Number(subEstadoNro) : null;
+  const main = estadoNro != null ? Number(estadoNro) : null;
 
-  const key: EstadoKey = `${subEstadoNro}-${subEstadoDesc.trim()}`;
-  return ESTADO_MAP[key] ?? (subEstadoDesc.trim() || `Estado ${subEstadoNro}`);
+  if (nro != null && desc !== '') {
+    const key = `${nro}-${desc}` as EstadoKey;
+    if (ESTADO_MAP[key]) return ESTADO_MAP[key];
+  }
+
+  if (main != null && nro != null) {
+    const key = `${main}-${nro}` as EstadoKey;
+    if (ESTADO_MAP[key]) return ESTADO_MAP[key];
+  }
+
+  if (nro == null) return 'Sin estado';
+  return desc || `Estado ${nro}`;
 }
 
 interface EntregadoCheckable {
