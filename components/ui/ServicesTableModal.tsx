@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ServiceSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
 import { isServiceEntregado } from '@/utils/estadoPedido';
+import { isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -59,6 +60,8 @@ interface ServicesTableModalProps {
   onClearPreFilter?: () => void;
   onInnerFiltersChange?: (f: Filters) => void;
   externalResetToken?: number;
+  /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
+  scope?: ScopeFilter;
 }
 
 // ========== Row bg colors ==========
@@ -82,7 +85,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, onInnerFiltersChange, externalResetToken }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, onInnerFiltersChange, externalResetToken, scope }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -138,7 +141,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     let result: ServiceSupabase[];
     if (isFinalizados) {
       result = services.filter(s => Number(s.estado_nro) === 2);
-      
+
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
         result = result.filter(s => isServiceEntregado(s));
@@ -148,7 +151,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
       result = services.filter(s => Number(s.estado_nro) === 1);
-      
+
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {
         result = result.filter(s => !s.movil || Number(s.movil) === 0);
@@ -156,7 +159,13 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
         result = result.filter(s => s.movil && Number(s.movil) !== 0);
       }
     }
-    
+
+    // Scope del usuario distribuidor (móviles + zonas permitidas). En finalizados
+    // se ocultan SIEMPRE los entregados sin móvil. Sin scope: pasa todo.
+    if (scope?.isRestricted) {
+      result = result.filter(s => isServiceInScope(s, scope, { hideEntregadosSinMovil: isFinalizados }));
+    }
+
     // Filtro por móviles / empresa del usuario.
     // Los finalizados también respetan la restricción de empresas.
     if (preFilterMovil || preFilterZona) {
@@ -191,13 +200,19 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles, hiddenMovilIds]);
+  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles, hiddenMovilIds, scope]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
+  // Respetamos scope: un distribuidor solo ve sus móviles/zonas/defectos en los dropdowns.
   const servicesParaOpciones = useMemo(() => {
-    if (isFinalizados) return services.filter(s => Number(s.estado_nro) === 2);
-    return services.filter(s => Number(s.estado_nro) === 1);
-  }, [services, isFinalizados]);
+    let result: ServiceSupabase[];
+    if (isFinalizados) result = services.filter(s => Number(s.estado_nro) === 2);
+    else result = services.filter(s => Number(s.estado_nro) === 1);
+    if (scope?.isRestricted) {
+      result = result.filter(s => isServiceInScope(s, scope, { hideEntregadosSinMovil: isFinalizados }));
+    }
+    return result;
+  }, [services, isFinalizados, scope]);
 
   const uniqueZonas = useMemo(() => {
     const set = new Set<number>();
