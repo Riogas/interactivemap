@@ -1505,6 +1505,8 @@ function DashboardContent() {
     pedidosCompletos.forEach(p => {
       const estado = Number(p.estado_nro);
       const tieneMovil = p.movil != null && Number(p.movil) !== 0;
+      // Distribuidor: nunca contar pedidos sin móvil en la capa pedidos/zona.
+      if (isScopeRestricted && !tieneMovil) return;
       // pendientes totales = todos los estado 1 (con o sin movil)
       if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
       // sin asignar = estado 1 sin movil asignado
@@ -1522,7 +1524,15 @@ function DashboardContent() {
       map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted]);
+
+  // Distribuidor: si por alguna razón el filtro pedidos/zona quedó en 'sin_asignar'
+  // (ej. estado persistido), forzarlo a 'pendientes' — ese filtro no aplica.
+  useEffect(() => {
+    if (isScopeRestricted && pedidosZonaFilter === 'sin_asignar') {
+      setPedidosZonaFilter('pendientes');
+    }
+  }, [isScopeRestricted, pedidosZonaFilter]);
 
   // � Cálculo de saturación por zona:
   //   Para cada móvil con prioridad activa en zonas, su capacidad disponible se proratea
@@ -2492,6 +2502,7 @@ function DashboardContent() {
                 pedidosZonaData={pedidosZonaData}
                 pedidosZonaFilter={pedidosZonaFilter}
                 onPedidosZonaFilterChange={setPedidosZonaFilter}
+                hideSinAsignarOption={isScopeRestricted}
                 allMovilEstados={allMovilEstados}
                 allHiddenMovilIds={allHiddenMovilIds}
                 movilesZonasData={movilesZonasData}

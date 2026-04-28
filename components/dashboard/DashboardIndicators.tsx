@@ -319,17 +319,21 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       {/* Contenedor scrollable de indicadores */}
       <div ref={scrollRef} className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar min-w-0 flex-1">
       <div className="flex items-center gap-1.5">
-        {/* Pedidos Sin Asignar */}
-        <Indicator
-          icon="📦"
-          label="Ped. sin Asig."
-          value={pedidosStats.sinAsignar}
-          color={pedidosStats.sinAsignar > 0 ? 'orange' : 'gray'}
-          onClick={onSinAsignarClick}
-        />
+        {/* Pedidos Sin Asignar — oculto para distribuidor (no ve sin asignar) */}
+        {!scope?.isRestricted && (
+          <>
+            <Indicator
+              icon="📦"
+              label="Ped. sin Asig."
+              value={pedidosStats.sinAsignar}
+              color={pedidosStats.sinAsignar > 0 ? 'orange' : 'gray'}
+              onClick={onSinAsignarClick}
+            />
 
-        {/* Separador */}
-        <div className="h-6 w-px bg-white/30" />
+            {/* Separador */}
+            <div className="h-6 w-px bg-white/30" />
+          </>
+        )}
 
         {/* Pedidos Entregados */}
         <Indicator

@@ -28,6 +28,8 @@ interface PedidosZonasLayerProps {
   zonaOpacity?: number;
   /** Callback al hacer click en una zona (abre modal de móviles en zona) */
   onZonaClick?: (zonaId: number) => void;
+  /** Si true, oculta la opción "Sin asignar" del select (distribuidor). */
+  hideSinAsignarOption?: boolean;
 }
 
 /**
@@ -89,7 +91,7 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
 }
 
 /** Control Leaflet con combo de filtro (pendientes / sin asignar / atrasados) */
-function PedidosZonaFilterControl({ filter, onFilterChange }: { filter: PedidosZonaFilter; onFilterChange: (f: PedidosZonaFilter) => void }) {
+function PedidosZonaFilterControl({ filter, onFilterChange, hideSinAsignarOption = false }: { filter: PedidosZonaFilter; onFilterChange: (f: PedidosZonaFilter) => void; hideSinAsignarOption?: boolean }) {
   const map = useMap();
   useEffect(() => {
     const FilterCtrl = L.Control.extend({
@@ -98,12 +100,15 @@ function PedidosZonaFilterControl({ filter, onFilterChange }: { filter: PedidosZ
         const container = L.DomUtil.create('div', 'mz-filter-control');
         L.DomEvent.disableClickPropagation(container);
         L.DomEvent.disableScrollPropagation(container);
+        const sinAsignarOption = hideSinAsignarOption
+          ? ''
+          : '<option value="sin_asignar">Sin asignar</option>';
         container.innerHTML = `
           <div class="mz-filter-inner">
             <span class="mz-filter-label">Pedidos:</span>
             <select class="mz-filter-select">
               <option value="pendientes">Pendientes</option>
-              <option value="sin_asignar">Sin asignar</option>
+              ${sinAsignarOption}
               <option value="atrasados">Atrasados</option>
             </select>
           </div>
@@ -117,7 +122,7 @@ function PedidosZonaFilterControl({ filter, onFilterChange }: { filter: PedidosZ
     const ctrl = new FilterCtrl();
     ctrl.addTo(map);
     return () => { ctrl.remove(); };
-  }, [map, filter, onFilterChange]);
+  }, [map, filter, onFilterChange, hideSinAsignarOption]);
   return null;
 }
 
@@ -148,7 +153,7 @@ function PedidosZonasLegend({ filter }: { filter: PedidosZonaFilter }) {
   return null;
 }
 
-const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick }: PedidosZonasLayerProps) {
+const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick, hideSinAsignarOption = false }: PedidosZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -195,7 +200,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
 
   return (
     <>
-      <PedidosZonaFilterControl filter={filter} onFilterChange={onFilterChange} />
+      <PedidosZonaFilterControl filter={filter} onFilterChange={onFilterChange} hideSinAsignarOption={hideSinAsignarOption} />
       <PedidosZonasLegend filter={filter} />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => (
         <React.Fragment key={zona.zona_id}>

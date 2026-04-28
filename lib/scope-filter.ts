@@ -14,14 +14,17 @@
  *
  * Reglas:
  *   - Sin scope (root/despacho) → todo pasa.
+ *   - Distribuidor (isRestricted=true) NUNCA ve pedidos/services sin móvil,
+ *     ni pendientes ni finalizados, sin importar la zona ni la opción
+ *     hideEntregadosSinMovil. Los pedidos sin asignar son responsabilidad de
+ *     despacho hasta que un móvil los toma.
  *   - Pedido con móvil: el móvil debe estar en allowedMovilIds Y la zona en scopedZonaIds.
- *   - Pedido pendiente sin móvil: la zona debe estar en scopedZonaIds.
- *   - Pedido finalizado sin móvil: NUNCA pasa cuando hideEntregadosSinMovil = true
- *     (caso típico en la Vista Extendida e indicadores).
  *   - Pedido sin zona: NO pasa bajo scope (no podemos decidir).
  *   - scopedZonaIds === null bajo isRestricted true es un caso defensivo: tratado
  *     como "todo pasa" para no romper si el caller no propaga el set; el dashboard
  *     siempre pasa un set concreto (eventualmente vacío) cuando isRestricted = true.
+ *   - hideEntregadosSinMovil queda en la firma por compat con callers existentes,
+ *     pero ya no aplica para distribuidor: la regla "sin móvil → false" corta antes.
  */
 
 interface ScopeCheckable {
@@ -44,7 +47,8 @@ export interface ScopeFilterOpts {
   hideEntregadosSinMovil: boolean;
 }
 
-function isInScope(item: ScopeCheckable, scope: ScopeFilter, opts: ScopeFilterOpts): boolean {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function isInScope(item: ScopeCheckable, scope: ScopeFilter, _opts: ScopeFilterOpts): boolean {
   if (!scope.isRestricted) return true;
   // Defensa: si caller dice isRestricted pero no nos pasó scopedZonaIds,
   // no podemos decidir — dejamos pasar para no esconder datos por error.
@@ -53,13 +57,10 @@ function isInScope(item: ScopeCheckable, scope: ScopeFilter, opts: ScopeFilterOp
   const movilId = item.movil != null ? Number(item.movil) : 0;
   const zonaId = item.zona_nro != null ? Number(item.zona_nro) : null;
   const sinMovil = !movilId;
-  const finalizado = Number(item.estado_nro) === 2;
 
-  if (sinMovil) {
-    if (finalizado && opts.hideEntregadosSinMovil) return false;
-    if (zonaId === null) return false;
-    return scope.scopedZonaIds.has(zonaId);
-  }
+  // Regla de distribuidor: nunca ve pedidos/services sin móvil
+  // (ni pendientes ni finalizados, sin importar la zona ni opts).
+  if (sinMovil) return false;
 
   if (!scope.allowedMovilIds.has(movilId)) return false;
   if (zonaId === null) return false;

@@ -88,20 +88,24 @@ describe('isPedidoInScope (scope normal)', () => {
     expect(isPedidoInScope({ movil: 999, zona_nro: 10, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
   });
 
-  it('pendiente sin movil + zona en scope → pasa', () => {
-    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
+  it('pendiente sin movil + zona en scope → NO pasa (distribuidor nunca ve sin móvil)', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
   });
 
   it('pendiente sin movil + zona FUERA de scope → NO pasa', () => {
     expect(isPedidoInScope({ movil: 0, zona_nro: 99, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
   });
 
+  it('pendiente sin movil + zona null → NO pasa', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: null, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
+  });
+
   it('finalizado sin movil → NO pasa con hideEntregadosSinMovil=true', () => {
     expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsHide)).toBe(false);
   });
 
-  it('finalizado sin movil + zona en scope → SI pasa con hideEntregadosSinMovil=false', () => {
-    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsKeep)).toBe(true);
+  it('finalizado sin movil + zona en scope → NO pasa aunque hideEntregadosSinMovil=false (regla distribuidor)', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsKeep)).toBe(false);
   });
 
   it('movil con zona null → NO pasa bajo scope (no decidible)', () => {
@@ -133,8 +137,8 @@ describe('isServiceInScope', () => {
     expect(isServiceInScope({ movil: 0, zona_nro: 20, estado_nro: 2 }, normalScope, optsHide)).toBe(false);
   });
 
-  it('scope normal + service pendiente sin movil + zona en scope → pasa', () => {
-    expect(isServiceInScope({ movil: 0, zona_nro: 30, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
+  it('scope normal + service pendiente sin movil + zona en scope → NO pasa (distribuidor nunca ve sin móvil)', () => {
+    expect(isServiceInScope({ movil: 0, zona_nro: 30, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
   });
 });
 
@@ -172,7 +176,7 @@ describe('isServiceInScope con scope vacío (fail-closed)', () => {
     expect(isServiceInScope({ movil: 0, zona_nro: 20, estado_nro: 1 }, emptyScope, optsHide)).toBe(false);
   });
 
-  it('scope vacío + service finalizado sin movil → NO pasa (hideEntregadosSinMovil corta antes del check de zona)', () => {
+  it('scope vacío + service finalizado sin movil → NO pasa (regla distribuidor: nunca sin móvil)', () => {
     expect(isServiceInScope({ movil: 0, zona_nro: 20, estado_nro: 2 }, emptyScope, optsHide)).toBe(false);
   });
 });
