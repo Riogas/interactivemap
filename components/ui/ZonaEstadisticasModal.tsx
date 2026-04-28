@@ -68,6 +68,17 @@ export default function ZonaEstadisticasModal({
   const [serviceFilter, setServiceFilter] = useState<string>('PEDIDOS');
   const [filters, setFilters] = useState<Partial<Record<SortKey | 'zonaText', string>>>({});
 
+  // Distribuidor: oculta columna/summary/filtro de "Sin Asignar" y excluye los
+  // pedidos sin móvil del cómputo de pendientes.
+  const hideSinAsignar = scope?.isRestricted ?? false;
+
+  // Si la columna sinAsignar queda oculta y el sort estaba en esa key, volver a 'zona'.
+  useEffect(() => {
+    if (hideSinAsignar && sortBy === 'sinAsignar') {
+      setSortBy('zona');
+    }
+  }, [hideSinAsignar, sortBy]);
+
   const setFilter = useCallback((key: SortKey | 'zonaText', value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
@@ -237,11 +248,18 @@ export default function ZonaEstadisticasModal({
     for (const zonaId of zonaIds) {
       const pedidosZona = filteredPedidos.filter(p => p.zona_nro === zonaId);
 
-      // Pendientes: TODOS los estado 1 (con y sin movil, igual que la capa heatmap)
-      const pendientesList = pedidosZona.filter(p => Number(p.estado_nro) === 1);
+      // Pendientes: TODOS los estado 1 (con y sin movil, igual que la capa heatmap).
+      // Distribuidor: NO sumarizar los sin móvil — la columna se elimina y la
+      // columna pendientes refleja solo los pedidos asignados a sus móviles.
+      const pendientesList = pedidosZona.filter(p => {
+        if (Number(p.estado_nro) !== 1) return false;
+        if (hideSinAsignar && (!p.movil || Number(p.movil) === 0)) return false;
+        return true;
+      });
       const pendientes = pendientesList.length;
 
-      // Sin asignar: subconjunto de pendientes sin movil asignado
+      // Sin asignar: subconjunto de pendientes sin movil asignado.
+      // Para distribuidor queda en 0 (la columna se oculta igualmente).
       const sinAsignar = pendientesList.filter(p =>
         !p.movil || Number(p.movil) === 0
       ).length;
@@ -297,7 +315,7 @@ export default function ZonaEstadisticasModal({
     }
 
     return result;
-  }, [filteredPedidos, zonas, filteredMovilesZonas, demorasData]);
+  }, [filteredPedidos, zonas, filteredMovilesZonas, demorasData, hideSinAsignar]);
 
   // Filter rows
   const filteredStats = useMemo(() => {
@@ -433,9 +451,11 @@ export default function ZonaEstadisticasModal({
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-5 gap-2 px-4 pt-3 pb-2">
+          <div className={`grid ${hideSinAsignar ? 'grid-cols-4' : 'grid-cols-5'} gap-2 px-4 pt-3 pb-2`}>
             <SummaryCard icon="🗺️" label="Zonas" value={summary.zonasCount} color="blue" />
-            <SummaryCard icon="⚠️" label="Sin Asignar" value={summary.totalSinAsignar} color="amber" />
+            {!hideSinAsignar && (
+              <SummaryCard icon="⚠️" label="Sin Asignar" value={summary.totalSinAsignar} color="amber" />
+            )}
             <SummaryCard icon="⏳" label="Pendientes" value={summary.totalPendientes} color="purple" />
             <SummaryCard icon="✅" label="Entregados" value={summary.totalEntregados} color="green" />
             <SummaryCard icon="📊" label="Cumplimiento" value={`${summary.avgCumplimiento}%`} color="cyan" />
@@ -447,7 +467,9 @@ export default function ZonaEstadisticasModal({
               <thead className="sticky top-0 z-10">
                 <tr className="text-gray-400 text-[10px] uppercase tracking-wider bg-slate-800/95 backdrop-blur-sm">
                   <ThSort label="Zona" sortKey="zona" current={sortBy} asc={sortAsc} onClick={handleSort} align="left" />
-                  <ThSort label="Sin Asig." sortKey="sinAsignar" current={sortBy} asc={sortAsc} onClick={handleSort} title="Pedidos sin asignar (sin móvil)" />
+                  {!hideSinAsignar && (
+                    <ThSort label="Sin Asig." sortKey="sinAsignar" current={sortBy} asc={sortAsc} onClick={handleSort} title="Pedidos sin asignar (sin móvil)" />
+                  )}
                   <ThSort label="#Pend." sortKey="pendientes" current={sortBy} asc={sortAsc} onClick={handleSort} title="Pedidos pendientes asignados" />
                   <ThSort label="#Atras." sortKey="atrasados" current={sortBy} asc={sortAsc} onClick={handleSort} title="Pedidos atrasados (delay < 0)" />
                   <ThSort label="% Atras." sortKey="pctAtrasos" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Atrasos = atrasados / pendientes" />
@@ -469,7 +491,10 @@ export default function ZonaEstadisticasModal({
                       className="w-full bg-slate-700/60 border border-slate-600/50 focus:border-cyan-500/70 rounded px-1.5 py-0.5 text-[10px] text-white placeholder-gray-500 outline-none"
                     />
                   </th>
-                  {(['sinAsignar', 'pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio'] as (SortKey)[]).map(key => (
+                  {((hideSinAsignar
+                    ? ['pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio']
+                    : ['sinAsignar', 'pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio']
+                  ) as (SortKey)[]).map(key => (
                     <th key={key} className="py-1 px-1">
                       <input
                         type="number"
@@ -503,11 +528,13 @@ export default function ZonaEstadisticasModal({
                         <span className="text-white font-semibold text-xs">{z.zonaNombre}</span>
                         <span className="text-gray-500 text-[10px] ml-1.5">#{z.zonaId}</span>
                       </td>
-                      <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.sinAsignar > 0 ? 'text-amber-400' : 'text-gray-600'}`}>
-                          {z.sinAsignar}
-                        </span>
-                      </td>
+                      {!hideSinAsignar && (
+                        <td className="py-1.5 px-1 text-center">
+                          <span className={`text-xs font-bold ${z.sinAsignar > 0 ? 'text-amber-400' : 'text-gray-600'}`}>
+                            {z.sinAsignar}
+                          </span>
+                        </td>
+                      )}
                       <td className="py-1.5 px-1 text-center">
                         <span className={`text-xs font-bold ${z.pendientes > 0 ? 'text-blue-400' : 'text-gray-600'}`}>
                           {z.pendientes}
@@ -566,7 +593,7 @@ export default function ZonaEstadisticasModal({
                 })}
                 {sorted.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="py-8 text-center text-gray-500 text-sm">
+                    <td colSpan={hideSinAsignar ? 9 : 10} className="py-8 text-center text-gray-500 text-sm">
                       {loading ? (
                         <span className="flex items-center justify-center gap-2">
                           <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>

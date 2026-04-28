@@ -98,6 +98,7 @@ interface MapViewProps {
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
   pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
   onPedidosZonaFilterChange?: (f: PedidosZonaFilter) => void;
+  hideSinAsignarOption?: boolean; // Si true, oculta opción "Sin asignar" del select pedidos/zona (distribuidor)
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
   onMovilesZonasServiceFilterChange?: (f: MovilesZonasServiceFilter) => void; // Callback cambio filtro
@@ -510,6 +511,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.demorasData?.size === next.demorasData?.size &&
     prev.pedidosZonaData === next.pedidosZonaData &&
     prev.pedidosZonaFilter === next.pedidosZonaFilter &&
+    prev.hideSinAsignarOption === next.hideSinAsignarOption &&
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
     prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
@@ -577,6 +579,7 @@ const MapView = memo(function MapView({
   pedidosZonaData,
   pedidosZonaFilter = 'pendientes',
   onPedidosZonaFilterChange,
+  hideSinAsignarOption = false,
   movilesZonasData = [],
   movilesZonasServiceFilter = 'all',
   onMovilesZonasServiceFilterChange,
@@ -2094,7 +2097,7 @@ const MapView = memo(function MapView({
           <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} zonaOpacity={zonaOpacity} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} />
         )}
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
