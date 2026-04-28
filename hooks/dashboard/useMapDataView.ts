@@ -8,6 +8,10 @@ interface MapDataViewOptions {
   demorasPollingSeconds: number;
   movilesZonasPollingSeconds: number;
   updatePreference: (key: any, value: any) => void;
+  /** Si null → sin scope (root/despacho). Si Set → solo se mantienen zonas de ese set. */
+  scopedZonaIds?: Set<number> | null;
+  /** Si null → sin scope. Si array → se pasa como ?empresaIds=... a las APIs. */
+  scopedEmpresas?: number[] | null;
 }
 
 /**
@@ -21,6 +25,8 @@ export function useMapDataView({
   demorasPollingSeconds,
   movilesZonasPollingSeconds,
   updatePreference,
+  scopedZonaIds = null,
+  scopedEmpresas = null,
 }: MapDataViewOptions) {
   const [showZonas, setShowZonas] = useState(false);
   const [zonasData, setZonasData] = useState<any[]>([]);
@@ -69,6 +75,10 @@ export function useMapDataView({
     }
   }, [updatePreference]);
 
+  // Stable keys derivados del scope (evita resetear effects por nueva referencia)
+  const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '__noscope__';
+  const scopeZonasKey = scopedZonaIds ? Array.from(scopedZonaIds).sort((a, b) => a - b).join(',') : '__nozonascope__';
+
   // Cargar zonas cuando se activa showZonas, filtradas por escenario_id
   useEffect(() => {
     if (!showZonas) {
@@ -79,14 +89,25 @@ export function useMapDataView({
       setZonasData([]);
       return;
     }
+    // Fail-closed: si hay scope con set vacío, no cargar nada
+    if (scopedZonaIds && scopedZonaIds.size === 0) {
+      setZonasData([]);
+      return;
+    }
 
     const loadZonas = async () => {
       try {
-        const response = await fetch('/api/zonas');
+        const url = scopedEmpresas && scopedEmpresas.length > 0
+          ? `/api/zonas?empresaIds=${scopedEmpresas.join(',')}`
+          : '/api/zonas';
+        const response = await fetch(url);
         const result = await response.json();
         if (result.success && result.data) {
           const zonasFiltradas = result.data.filter(
-            (z: any) => z.activa !== false && uniqueEscenarios.includes(z.escenario_id)
+            (z: any) =>
+              z.activa !== false &&
+              uniqueEscenarios.includes(z.escenario_id) &&
+              (scopedZonaIds == null || scopedZonaIds.has(z.zona_id))
           );
           console.log(`🗺️ ${zonasFiltradas.length} zonas activas para escenarios [${uniqueEscenarios.join(', ')}]`);
           setZonasData(zonasFiltradas);
@@ -96,7 +117,8 @@ export function useMapDataView({
       }
     };
     loadZonas();
-  }, [showZonas, uniqueEscenarios]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showZonas, uniqueEscenarios, scopedEmpresasKey, scopeZonasKey]);
 
   // Clave estable basada en el contenido de escenarios (evita resets del intervalo por nueva referencia de array)
   const uniqueEscenariosKey = uniqueEscenarios.join(',');
@@ -114,15 +136,30 @@ export function useMapDataView({
 
     if (uniqueEscenarios.length === 0) return;
 
+    // Fail-closed: si hay scope con set vacío, no cargar nada de la vista activa
+    if (scopedZonaIds && scopedZonaIds.size === 0) {
+      setAllZonasData([]);
+      setDemorasData(new Map());
+      setMovilesZonasData([]);
+      return;
+    }
+
+    const empresaIdsParam = scopedEmpresas && scopedEmpresas.length > 0
+      ? `?empresaIds=${scopedEmpresas.join(',')}`
+      : '';
+
     // Zonas GeoJSON se carga una sola vez al entrar a la vista (no en cada tick de polling)
     // porque el GeoJSON de zonas casi nunca cambia en el día.
     const loadZonasGeojson = async () => {
       try {
-        const zonasRes = await fetch('/api/zonas');
+        const zonasRes = await fetch(`/api/zonas${empresaIdsParam}`);
         const zonasResult = await zonasRes.json();
         if (zonasResult.success && zonasResult.data) {
           const zonasFiltradas = zonasResult.data.filter(
-            (z: any) => uniqueEscenarios.includes(z.escenario_id) && z.geojson
+            (z: any) =>
+              uniqueEscenarios.includes(z.escenario_id) &&
+              z.geojson &&
+              (scopedZonaIds == null || scopedZonaIds.has(z.zona_id))
           );
           console.log(`📊 ${zonasFiltradas.length} zonas con geojson cargadas (una vez)`);
           setAllZonasData(zonasFiltradas);
@@ -140,16 +177,16 @@ export function useMapDataView({
 
         // Demoras o Zonas Activas
         if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
-          const demorasRes = await fetch('/api/demoras');
+          const demorasRes = await fetch(`/api/demoras${empresaIdsParam}`);
           const demorasResult = await demorasRes.json();
           if (demorasResult.success && demorasResult.data) {
             const dMap = new Map<number, { minutos: number; activa: boolean }>();
             for (const d of demorasResult.data) {
-              if (uniqueEscenarios.includes(d.escenario_id)) {
-                const existing = dMap.get(d.zona_id);
-                if (!existing || d.minutos > existing.minutos) {
-                  dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
-                }
+              if (!uniqueEscenarios.includes(d.escenario_id)) continue;
+              if (scopedZonaIds != null && !scopedZonaIds.has(d.zona_id)) continue;
+              const existing = dMap.get(d.zona_id);
+              if (!existing || d.minutos > existing.minutos) {
+                dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
               }
             }
             console.log(`📊 ${dMap.size} demoras actualizadas`);
@@ -159,10 +196,13 @@ export function useMapDataView({
 
         // Móviles en Zonas o Saturación
         if (dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion') {
-          const mzRes = await fetch('/api/moviles-zonas');
+          const mzRes = await fetch(`/api/moviles-zonas${empresaIdsParam}`);
           const mzResult = await mzRes.json();
           if (mzResult.success && mzResult.data) {
-            setMovilesZonasData(mzResult.data);
+            const mzFiltered = scopedZonaIds == null
+              ? mzResult.data
+              : mzResult.data.filter((r: any) => scopedZonaIds.has(r.zona_id));
+            setMovilesZonasData(mzFiltered);
           }
         }
       } catch (err) {
@@ -212,7 +252,7 @@ export function useMapDataView({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataViewMode, uniqueEscenariosKey]);
+  }, [dataViewMode, uniqueEscenariosKey, scopedEmpresasKey, scopeZonasKey]);
 
   return {
     showZonas,

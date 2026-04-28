@@ -13,22 +13,39 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   escenarioIds: number[];
+  /** Scope de zonas permitidas (null = root/despacho, sin restricción). */
+  scopedZonaIds?: Set<number> | null;
+  /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
+  scopedEmpresas?: number[] | null;
 }
 
-export default function ZonasNoActivasModal({ isOpen, onClose, escenarioIds }: Props) {
+export default function ZonasNoActivasModal({ isOpen, onClose, escenarioIds, scopedZonaIds = null, scopedEmpresas = null }: Props) {
   const [loading, setLoading] = useState(false);
   const [zonas, setZonas] = useState<ZonaItem[]>([]);
 
+  // Stable keys para useEffect deps
+  const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '';
+  const scopedZonasKey = scopedZonaIds ? Array.from(scopedZonaIds).sort((a, b) => a - b).join(',') : '';
+
   useEffect(() => {
     if (!isOpen || escenarioIds.length === 0) return;
+    // Fail-closed: scope con set vacío → modal vacío sin fetch
+    if (scopedZonaIds && scopedZonaIds.size === 0) {
+      setZonas([]);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       try {
+        const empresaIdsParam = scopedEmpresas && scopedEmpresas.length > 0
+          ? `?empresaIds=${scopedEmpresas.join(',')}`
+          : '';
         const [zonasRes, demorasRes] = await Promise.all([
-          fetch('/api/zonas'),
-          fetch('/api/demoras'),
+          fetch(`/api/zonas${empresaIdsParam}`),
+          fetch(`/api/demoras${empresaIdsParam}`),
         ]);
         const [zonasResult, demorasResult] = await Promise.all([
           zonasRes.json(),
@@ -37,13 +54,17 @@ export default function ZonasNoActivasModal({ isOpen, onClose, escenarioIds }: P
         if (cancelled) return;
 
         const allZonas = (zonasResult.data || []).filter(
-          (z: any) => escenarioIds.includes(z.escenario_id) && z.geojson
+          (z: any) =>
+            escenarioIds.includes(z.escenario_id) &&
+            z.geojson &&
+            (scopedZonaIds == null || scopedZonaIds.has(z.zona_id))
         );
 
         // Mapa zona_id → demora con mayor minutos
         const dMap = new Map<number, { minutos: number; activa: boolean; nombre?: string }>();
         for (const d of (demorasResult.data || [])) {
           if (!escenarioIds.includes(d.escenario_id)) continue;
+          if (scopedZonaIds != null && !scopedZonaIds.has(d.zona_id)) continue;
           const existing = dMap.get(d.zona_id);
           if (!existing || d.minutos > existing.minutos) {
             dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
@@ -71,7 +92,8 @@ export default function ZonasNoActivasModal({ isOpen, onClose, escenarioIds }: P
 
     fetchData();
     return () => { cancelled = true; };
-  }, [isOpen, escenarioIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, escenarioIds, scopedEmpresasKey, scopedZonasKey]);
 
   if (!isOpen) return null;
 

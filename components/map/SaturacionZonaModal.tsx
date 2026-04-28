@@ -70,6 +70,8 @@ interface SaturacionZonaModalProps {
   movilesZonasData: MovilZonaRecord[];
   moviles: MovilInfo[];
   onClose: () => void;
+  /** Defensa en profundidad: si la zona no está en el set permitido, no se renderiza. */
+  scopedZonaIds?: Set<number> | null;
 }
 
 // ──────────────────────── helpers ────────────────────────────────────────
@@ -205,6 +207,7 @@ export default function SaturacionZonaModal({
   movilesZonasData,
   moviles,
   onClose,
+  scopedZonaIds = null,
 }: SaturacionZonaModalProps) {
   const zonaInfo = zonas.find(z => z.zona_id === zonaId);
   const zonaNombre = zonaInfo?.nombre ?? `Zona ${zonaId}`;
@@ -278,6 +281,10 @@ export default function SaturacionZonaModal({
     : sinAsignar > 0
       ? (capTotal > 0 ? 998 : 999)
       : 0;
+
+  // Defensa en profundidad: si el caller pasó scope y la zona no está, no renderizar.
+  // Se chequea después de los hooks para no romper rules-of-hooks.
+  if (scopedZonaIds && !scopedZonaIds.has(zonaId)) return null;
 
   return (
     <div

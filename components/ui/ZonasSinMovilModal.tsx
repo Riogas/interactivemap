@@ -25,9 +25,13 @@ interface Props {
   allHiddenMovilIds?: Set<string>;
   /** Tipo de servicio inicial (URGENTE/SERVICE/NOCTURNO). Default: 'URGENTE' */
   initialServiceFilter?: string;
+  /** Scope de zonas permitidas (null = root/despacho, sin restricción). */
+  scopedZonaIds?: Set<number> | null;
+  /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
+  scopedEmpresas?: number[] | null;
 }
 
-export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allMovilEstados, allHiddenMovilIds, initialServiceFilter = 'URGENTE' }: Props) {
+export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allMovilEstados, allHiddenMovilIds, initialServiceFilter = 'URGENTE', scopedZonaIds = null, scopedEmpresas = null }: Props) {
   const [loading, setLoading] = useState(false);
   const [zonas, setZonas] = useState<ZonaItem[]>([]);
   const [serviceFilter, setServiceFilter] = useState(initialServiceFilter.toUpperCase());
@@ -37,17 +41,30 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
     if (!isOpen) setServiceFilter(initialServiceFilter.toUpperCase());
   }, [initialServiceFilter, isOpen]);
 
+  // Stable keys para useEffect deps
+  const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '';
+  const scopedZonasKey = scopedZonaIds ? Array.from(scopedZonaIds).sort((a, b) => a - b).join(',') : '';
+
   useEffect(() => {
     if (!isOpen || escenarioIds.length === 0) return;
+    // Fail-closed: scope con set vacío → modal vacío sin fetch
+    if (scopedZonaIds && scopedZonaIds.size === 0) {
+      setZonas([]);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       try {
+        const empresaIdsParam = scopedEmpresas && scopedEmpresas.length > 0
+          ? `?empresaIds=${scopedEmpresas.join(',')}`
+          : '';
         const [zonasRes, mzRes, demorasRes] = await Promise.all([
-          fetch('/api/zonas'),
-          fetch('/api/moviles-zonas'),
-          fetch('/api/demoras'),
+          fetch(`/api/zonas${empresaIdsParam}`),
+          fetch(`/api/moviles-zonas${empresaIdsParam}`),
+          fetch(`/api/demoras${empresaIdsParam}`),
         ]);
         const [zonasResult, mzResult, demorasResult] = await Promise.all([
           zonasRes.json(),
@@ -57,11 +74,16 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
         if (cancelled) return;
 
         const allZonas: ZonaItem[] = (zonasResult.data || []).filter(
-          (z: any) => escenarioIds.includes(z.escenario_id) && z.geojson
+          (z: any) =>
+            escenarioIds.includes(z.escenario_id) &&
+            z.geojson &&
+            (scopedZonaIds == null || scopedZonaIds.has(z.zona_id))
         );
 
         let movilesZonas = (mzResult.data || []).filter(
-          (mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter
+          (mz: any) =>
+            (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter &&
+            (scopedZonaIds == null || scopedZonaIds.has(mz.zona_id))
         );
 
         // Excluir móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos
@@ -86,7 +108,10 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
         // Construir mapa de zonas no activas — mismo criterio que DashboardIndicators
         // (el registro con mayor minutos por zona es el que define si está activa o no)
         const dMap = new Map<number, { minutos: number; activa: boolean }>();
-        for (const d of (demorasResult.data || []).filter((d: any) => escenarioIds.includes(d.escenario_id))) {
+        for (const d of (demorasResult.data || []).filter((d: any) =>
+          escenarioIds.includes(d.escenario_id) &&
+          (scopedZonaIds == null || scopedZonaIds.has(d.zona_id))
+        )) {
           const existing = dMap.get(d.zona_id);
           if (!existing || d.minutos > existing.minutos) {
             dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
@@ -113,7 +138,8 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
 
     fetchData();
     return () => { cancelled = true; };
-  }, [isOpen, escenarioIds, allMovilEstados, allHiddenMovilIds, serviceFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, escenarioIds, allMovilEstados, allHiddenMovilIds, serviceFilter, scopedEmpresasKey, scopedZonasKey]);
 
   if (!isOpen) return null;
 

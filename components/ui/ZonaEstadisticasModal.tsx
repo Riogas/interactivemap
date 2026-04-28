@@ -31,6 +31,10 @@ interface ZonaEstadisticasModalProps {
   onZonaClick?: (zonaId: number, serviceFilter: string) => void;
   /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona */
   onMovsPrioClick?: (zonaId: number, movilIds: number[], serviceFilter: string) => void;
+  /** Scope de zonas permitidas (null = root/despacho, sin restricción). */
+  scopedZonaIds?: Set<number> | null;
+  /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
+  scopedEmpresas?: number[] | null;
 }
 
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
@@ -51,6 +55,8 @@ export default function ZonaEstadisticasModal({
   allHiddenMovilIds,
   onZonaClick,
   onMovsPrioClick,
+  scopedZonaIds = null,
+  scopedEmpresas = null,
 }: ZonaEstadisticasModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
@@ -72,19 +78,31 @@ export default function ZonaEstadisticasModal({
 
   // Stable key for escenarioIds to avoid re-fetching on each render
   const escenarioKey = JSON.stringify(escenarioIds);
+  const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '';
+  const scopedZonasKey = scopedZonaIds ? Array.from(scopedZonaIds).sort((a, b) => a - b).join(',') : '';
 
   // Fetch all data when modal opens
   useEffect(() => {
     if (!isOpen || escenarioIds.length === 0) return;
+    // Fail-closed: scope con set vacío → nada para mostrar
+    if (scopedZonaIds && scopedZonaIds.size === 0) {
+      setZonas([]);
+      setDemorasData(new Map());
+      setMovilesZonasData([]);
+      return;
+    }
 
     let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       try {
+        const empresaIdsParam = scopedEmpresas && scopedEmpresas.length > 0
+          ? `?empresaIds=${scopedEmpresas.join(',')}`
+          : '';
         const [zonasRes, demorasRes, mzRes] = await Promise.all([
-          fetch('/api/zonas'),
-          fetch('/api/demoras'),
-          fetch('/api/moviles-zonas'),
+          fetch(`/api/zonas${empresaIdsParam}`),
+          fetch(`/api/demoras${empresaIdsParam}`),
+          fetch(`/api/moviles-zonas${empresaIdsParam}`),
         ]);
         const [zonasResult, demorasResult, mzResult] = await Promise.all([
           zonasRes.json(),
@@ -97,7 +115,11 @@ export default function ZonaEstadisticasModal({
         // Zonas
         if (zonasResult.success && zonasResult.data) {
           const filtered = zonasResult.data
-            .filter((z: any) => z.activa !== false && escenarioIds.includes(z.escenario_id))
+            .filter((z: any) =>
+              z.activa !== false &&
+              escenarioIds.includes(z.escenario_id) &&
+              (scopedZonaIds == null || scopedZonaIds.has(z.zona_id))
+            )
             .map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre }));
           setZonas(filtered);
         }
@@ -106,11 +128,11 @@ export default function ZonaEstadisticasModal({
         if (demorasResult.success && demorasResult.data) {
           const dMap = new Map<number, { minutos: number; activa: boolean }>();
           for (const d of demorasResult.data) {
-            if (escenarioIds.includes(d.escenario_id)) {
-              const existing = dMap.get(d.zona_id);
-              if (!existing || d.minutos > existing.minutos) {
-                dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
-              }
+            if (!escenarioIds.includes(d.escenario_id)) continue;
+            if (scopedZonaIds != null && !scopedZonaIds.has(d.zona_id)) continue;
+            const existing = dMap.get(d.zona_id);
+            if (!existing || d.minutos > existing.minutos) {
+              dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
             }
           }
           setDemorasData(dMap);
@@ -118,7 +140,10 @@ export default function ZonaEstadisticasModal({
 
         // Moviles-Zonas
         if (mzResult.success && mzResult.data) {
-          setMovilesZonasData(mzResult.data);
+          const mzFiltered = scopedZonaIds == null
+            ? mzResult.data
+            : mzResult.data.filter((r: any) => scopedZonaIds.has(r.zona_id));
+          setMovilesZonasData(mzFiltered);
         }
       } catch (err) {
         console.error('Error loading estadísticas data:', err);
@@ -130,7 +155,7 @@ export default function ZonaEstadisticasModal({
     fetchData();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, escenarioKey]);
+  }, [isOpen, escenarioKey, scopedEmpresasKey, scopedZonasKey]);
 
   // Filter pedidos/services by service type
   // SERVICE mode usa la tabla 'services' (array separado); PEDIDOS usa 'pedidos' filtrado por URGENTE/NOCTURNO

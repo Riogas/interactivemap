@@ -34,8 +34,8 @@ export interface UserPreferences {
   serviceShape: MarkerShape; // Forma del marcador de services (compact/mini)
   showDemoraLabels: boolean; // Mostrar etiquetas de demora (minutos) en mapa
   zonaOpacity: number; // Opacidad de las capas de zonas (0-100)
-  nightStartHour: number; // Hora de inicio del horario nocturno (0-23)
-  dayStartHour: number; // Hora de inicio del horario diurno (0-23)
+  nightStartHour: number; // Hora de inicio del horario nocturno (0-23.5, intervalos de 0.5 = 30 min)
+  dayStartHour: number; // Hora de inicio del horario diurno (0-23.5, intervalos de 0.5 = 30 min)
   // Campos de visibilidad y Capas de Información (persisten en DB)
   movilesVisible: boolean; // true = mostrar capa de móviles
   pedidosVisible: boolean; // true = mostrar capa de pedidos
@@ -593,12 +593,15 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   <span className="text-sm text-gray-600 min-w-[120px]">Inicio nocturno:</span>
                   <select
                     value={preferences.nightStartHour}
-                    onChange={(e) => setPreferences({ ...preferences, nightStartHour: parseInt(e.target.value) })}
+                    onChange={(e) => setPreferences({ ...preferences, nightStartHour: parseFloat(e.target.value) })}
                     className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                   >
-                    {Array.from({ length: 24 }, (_, i) => (
-                      <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
-                    ))}
+                    {Array.from({ length: 48 }, (_, i) => {
+                      const value = i * 0.5;
+                      const h = Math.floor(value);
+                      const m = value % 1 === 0 ? '00' : '30';
+                      return <option key={i} value={value}>{String(h).padStart(2, '0')}:{m}</option>;
+                    })}
                   </select>
                   <span className="text-xs text-gray-400">🌙 Comienza la noche</span>
                 </div>
@@ -607,12 +610,15 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   <span className="text-sm text-gray-600 min-w-[120px]">Inicio diurno:</span>
                   <select
                     value={preferences.dayStartHour}
-                    onChange={(e) => setPreferences({ ...preferences, dayStartHour: parseInt(e.target.value) })}
+                    onChange={(e) => setPreferences({ ...preferences, dayStartHour: parseFloat(e.target.value) })}
                     className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
                   >
-                    {Array.from({ length: 24 }, (_, i) => (
-                      <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
-                    ))}
+                    {Array.from({ length: 48 }, (_, i) => {
+                      const value = i * 0.5;
+                      const h = Math.floor(value);
+                      const m = value % 1 === 0 ? '00' : '30';
+                      return <option key={i} value={value}>{String(h).padStart(2, '0')}:{m}</option>;
+                    })}
                   </select>
                   <span className="text-xs text-gray-400">☀️ Comienza el día</span>
                 </div>

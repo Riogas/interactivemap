@@ -20,6 +20,8 @@ import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
+import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
+import { getScopedEmpresas } from '@/lib/auth-scope';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
@@ -56,7 +58,7 @@ function DashboardContent() {
   const { user, escenarioId } = useAuth();
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
-  const { latestPosition, latestMovil, isConnected } = useRealtime();
+  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt } = useRealtime();
   
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
@@ -186,6 +188,26 @@ function DashboardContent() {
   const [empresas, setEmpresas] = useState<EmpresaFleteraSupabase[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
 
+  // Escenario IDs derivados de las empresas seleccionadas (stable reference)
+  const selectedEscenarioIds = useMemo(() => {
+    return [...new Set(
+      selectedEmpresas
+        .map(id => empresas.find(e => e.empresa_fletera_id === id)?.escenario_id)
+        .filter((v): v is number => v != null)
+    )];
+  }, [selectedEmpresas, empresas]);
+
+  // 🔒 Scope por rol/empresa: distribuidor sólo ve sus zonas; root/despacho ven todo.
+  // Guard explícito de user: durante el load inicial user es null y getScopedEmpresas(null)
+  // devolvería [] (fail-closed) — eso causaría un flash de contenido vacío para root/despacho.
+  // Con el guard, mientras user no carga scopedEmpresas = null (sin scope) y el comportamiento
+  // es idéntico al estado pre-scope. Una vez user carga, se re-evalúa correctamente.
+  const scopedEmpresas = useMemo(
+    () => (user ? getScopedEmpresas(user) : null),
+    [user]
+  );
+  const { scopedZonaIds } = useScopedZonaIds(user, selectedEscenarioIds);
+
   // 🔧 Map data view state + effects (extracted to useMapDataView hook)
   const {
     showZonas, setShowZonas,
@@ -199,16 +221,9 @@ function DashboardContent() {
     demorasPollingSeconds: preferences.demorasPollingSeconds ?? 30,
     movilesZonasPollingSeconds: preferences.movilesZonasPollingSeconds ?? 30,
     updatePreference,
+    scopedZonaIds,
+    scopedEmpresas,
   });
-
-  // Escenario IDs derivados de las empresas seleccionadas (stable reference)
-  const selectedEscenarioIds = useMemo(() => {
-    return [...new Set(
-      selectedEmpresas
-        .map(id => empresas.find(e => e.empresa_fletera_id === id)?.escenario_id)
-        .filter((v): v is number => v != null)
-    )];
-  }, [selectedEmpresas, empresas]);
 
   // Determina si hay que ocultar pedidos/services "sin asignar" (sin móvil).
   // Motivo: un user no-root nunca tiene contexto para decidir sobre pedidos
@@ -601,7 +616,8 @@ function DashboardContent() {
 
   // 🔄 Mejora #1 — Polling de reconciliación configurable (admin / root).
   // Cubre eventos del WS que se perdieron por desconexiones silenciosas: cada N segundos
-  // re-pedimos todo pedidos/services a la API. Solo en modo live (hoy). 0 = off.
+  // re-pedimos todo pedidos/services Y posiciones/móviles a la API.
+  // Solo en modo live (hoy). 0 = off.
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     if (selectedDate !== today) return; // Solo en modo live, no para fechas históricas
@@ -613,15 +629,17 @@ function DashboardContent() {
       console.log(`🔄 Polling reconciliación (${seconds}s) — sincronizando datos con la API`);
       fetchPedidos();
       fetchServices();
+      fetchPositions();
     }, seconds * 1000);
 
     return () => clearInterval(interval);
-  }, [selectedDate, fetchPedidos, fetchServices, preferences.realtimePollingReconcileSeconds]);
+  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimePollingReconcileSeconds]);
 
   // 🔇 Mejora #2 — Detección de silencio del WS (admin / root).
-  // Si durante N segundos no llegan eventos de pedidos NI de services, asumimos que el
-  // canal está mudo (caso clásico de Cloudflare/proxy que deja la TCP abierta pero no
-  // reenvía frames). Forzamos un refetch para recuperar cambios perdidos.
+  // Si durante N segundos no llegan eventos de pedidos NI de services NI de
+  // móviles/GPS, asumimos que el canal está mudo (caso clásico de Cloudflare/proxy
+  // que deja la TCP abierta pero no reenvía frames). Forzamos refetch completo
+  // — incluyendo posiciones/móviles — para recuperar cambios perdidos.
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     if (selectedDate !== today) return;
@@ -634,20 +652,22 @@ function DashboardContent() {
 
     const interval = setInterval(() => {
       const now = Date.now();
-      const silenceMs = now - Math.max(lastPedidoEventAt, lastServiceEventAt);
+      const silenceMs = now - Math.max(lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt);
       if (silenceMs > thresholdMs) {
         console.warn(`🔇 Silencio de WS > ${seconds}s (${Math.round(silenceMs / 1000)}s). Forzando refetch.`);
         fetchPedidos();
         fetchServices();
+        fetchPositions();
       }
     }, checkMs);
 
     return () => clearInterval(interval);
-  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, fetchPedidos, fetchServices, preferences.realtimeSilenceTimeoutSeconds]);
+  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds]);
 
   // 👀 Mejora #3 — Refetch al volver la pestaña a visible (admin / root).
   // Cuando la tab estuvo en background mucho tiempo, el WS puede haberse cerrado sin aviso
-  // o haber perdido eventos. Al volver, pedimos todo de nuevo para consolidar.
+  // o haber perdido eventos. Al volver, pedimos pedidos+services+posiciones de nuevo
+  // para consolidar móviles del colapsable y mapa.
   useEffect(() => {
     if (!preferences.realtimeRefetchOnVisible) return;
     const today = new Date().toISOString().split('T')[0];
@@ -658,26 +678,39 @@ function DashboardContent() {
         console.log('👀 Pestaña visible — refetch completo por preferencia');
         fetchPedidos();
         fetchServices();
+        fetchPositions();
       }
     };
     document.addEventListener('visibilitychange', handler);
     return () => document.removeEventListener('visibilitychange', handler);
-  }, [selectedDate, fetchPedidos, fetchServices, preferences.realtimeRefetchOnVisible]);
+  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeRefetchOnVisible]);
 
-  // 🔥 NUEVO: Seleccionar todos los móviles automáticamente en la carga inicial
+  // 🔥 Auto-selección de móviles:
+  //  a) Carga inicial → marca todos los visibles.
+  //  b) Aparecen móviles nuevos (realtime) y el user está en modo "Todos"
+  //     (userExplicitlyCleared=false) → suma los nuevos a la selección
+  //     para que el badge no salte a "filtrando todos menos los nuevos".
+  // El user mantiene control manual: si deselecciona/clear marca el flag
+  // userExplicitlyCleared=true y este efecto deja de auto-agregar.
   useEffect(() => {
-    // Solo auto-seleccionar si:
-    // 1. Hay móviles cargados
-    // 2. No hay ningún móvil seleccionado (primera carga)
-    // 3. No es carga inicial (ya terminó la carga)
-    // 4. El usuario NO limpió explícitamente la selección
-    if (movilesFiltered.length > 0 && selectedMoviles.length === 0 && !isInitialLoad && !userExplicitlyCleared.current) {
-      const hidden = hiddenMovilIdsRef.current;
-      const visible = movilesFiltered.filter(m => !hidden.has(m.id));
-      console.log('✅ Auto-selección inicial: Marcando todos los móviles por defecto:', visible.length);
-      setSelectedMoviles(visible.map(m => m.id));
-    }
-  }, [movilesFiltered.length, isInitialLoad]); // Depende de la cantidad de móviles y si es carga inicial
+    if (isInitialLoad) return;
+    if (userExplicitlyCleared.current) return;
+    if (movilesFiltered.length === 0) return;
+
+    const hidden = hiddenMovilIdsRef.current;
+    const visibleIds = movilesFiltered.filter(m => !hidden.has(m.id)).map(m => m.id);
+
+    setSelectedMoviles(prev => {
+      const missing = visibleIds.filter(id => !prev.includes(id));
+      if (missing.length === 0) return prev;
+      if (prev.length === 0) {
+        console.log('✅ Auto-selección inicial: marcando todos los móviles por defecto:', visibleIds.length);
+        return visibleIds;
+      }
+      console.log(`✅ Auto-agregando ${missing.length} móvil(es) nuevo(s) a la selección "Todos"`);
+      return [...prev, ...missing];
+    });
+  }, [movilesFiltered.length, isInitialLoad]);
 
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
@@ -1357,10 +1390,13 @@ function DashboardContent() {
         if (diff === null || diff >= 0) return;
       }
       const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
-      if (zona && zona !== 0) map.set(zona, (map.get(zona) ?? 0) + 1);
+      if (!zona || zona === 0) return;
+      // Scope por rol/empresa: el distribuidor sólo cuenta zonas que cubre.
+      if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
+      map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds]);
 
   // � Cálculo de saturación por zona:
   //   Para cada móvil con prioridad activa en zonas, su capacidad disponible se proratea
@@ -1395,6 +1431,8 @@ function DashboardContent() {
     // Para SERVICE no se proratea: un móvil libre puede atender cualquiera de sus zonas
     // Para URGENTE/NOCTURNO se divide entre la cantidad de zonas que cubre (prorrateo)
     priorityRecs.forEach(r => {
+      // Scope: zonas fuera del set permitido se ignoran
+      if (scopedZonaIds && !scopedZonaIds.has(r.zona_id)) return;
       const md = movilDataMap.get(r.movil_id);
       if (!md) return;
       if (md.estadoNro !== undefined && !isMovilActiveForUI(md.estadoNro)) return;
@@ -1418,6 +1456,7 @@ function DashboardContent() {
         if (s.movil != null && Number(s.movil) !== 0) return;
         const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
         if (!zona || zona === 0) return;
+        if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
         const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
         stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
       });
@@ -1427,13 +1466,14 @@ function DashboardContent() {
         if (p.movil != null && Number(p.movil) !== 0) return;
         const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
         if (!zona || zona === 0) return;
+        if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
         const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
         stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
       });
     }
 
     return stats;
-  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds]);
+  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
   // para el mapa. Sin esto, cada llamada inline crea un nuevo array → downstream re-renders.
   const movilesFilteredMarked = useMemo(
@@ -1688,6 +1728,8 @@ function DashboardContent() {
             allMovilEstados={allMovilEstados}
             hiddenMovilIds={hiddenMovilIds}
             allHiddenMovilIds={allHiddenMovilIds}
+            scopedZonaIds={scopedZonaIds}
+            scopedEmpresas={scopedEmpresas}
             onSinAsignarClick={onSinAsignarClick}
             onEntregadosClick={onEntregadosClick}
             onPorcentajeClick={onPorcentajeClick}
@@ -1880,6 +1922,8 @@ function DashboardContent() {
         allMovilEstados={allMovilEstados}
         allHiddenMovilIds={allHiddenMovilIds}
         initialServiceFilter={movilesZonasServiceFilter}
+        scopedZonaIds={scopedZonaIds}
+        scopedEmpresas={scopedEmpresas}
       />
 
       <MovilesSinReportarModal
@@ -1894,10 +1938,12 @@ function DashboardContent() {
         isOpen={isZonasNoActivasOpen}
         onClose={() => setIsZonasNoActivasOpen(false)}
         escenarioIds={selectedEscenarioIds}
+        scopedZonaIds={scopedZonaIds}
+        scopedEmpresas={scopedEmpresas}
       />
 
       {/* Modal de Saturación: click en zona del mapa */}
-      {saturacionModalZonaId !== null && (() => {
+      {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && (() => {
         const isServiceMode = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
         // Si el user tiene restricción de empresas o deseleccionó algunas,
         // no mostramos los pedidos sin asignar en la lista de saturación.
@@ -1944,6 +1990,7 @@ function DashboardContent() {
             movilesZonasData={movilesZonasData}
             moviles={moviles}
             onClose={() => setSaturacionModalZonaId(null)}
+            scopedZonaIds={scopedZonaIds}
           />
         );
       })()}
@@ -1957,6 +2004,8 @@ function DashboardContent() {
         moviles={movilesFiltered}
         movilesZonasData={movilesZonasData}
         allHiddenMovilIds={allHiddenMovilIds}
+        scopedZonaIds={scopedZonaIds}
+        scopedEmpresas={scopedEmpresas}
       />
 
       {/* Modal de Leaderboard/Ranking */}
@@ -2006,6 +2055,8 @@ function DashboardContent() {
         escenarioIds={selectedEscenarioIds}
         movilEstados={allMovilEstados}
         allHiddenMovilIds={allHiddenMovilIds}
+        scopedZonaIds={scopedZonaIds}
+        scopedEmpresas={scopedEmpresas}
         onZonaClick={(zonaId, svcFilter) => {
           setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);
@@ -2205,9 +2256,11 @@ function DashboardContent() {
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = pedidosCompletos.filter(p => {
                     if (Number(p.estado_nro) !== targetEstado) return false;
-                    // Sin asignar: solo en pendientes, sin restricción y sin móviles seleccionados.
+                    // Sin asignar: solo en pendientes y cuando no hay restricción de empresa.
+                    // Coincide con el criterio del colapsable (MovilSelector); selectedMoviles
+                    // no aplica porque por auto-seleccion casi siempre tiene >0 elementos.
                     if (!p.movil || Number(p.movil) === 0) {
-                      return isPendientes && !isEmpresaPartial && selectedMoviles.length === 0;
+                      return isPendientes && !isEmpresaPartial;
                     }
                     if (selectedMoviles.length > 0) {
                       // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
@@ -2247,8 +2300,10 @@ function DashboardContent() {
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = servicesCompletos.filter(s => {
                     if (Number(s.estado_nro) !== targetEstado) return false;
+                    // Sin asignar: solo en pendientes y cuando no hay restricción de empresa.
+                    // Mismo criterio que el colapsable de services (MovilSelector).
                     if (!s.movil || Number(s.movil) === 0) {
-                      return isPendientes && !isEmpresaPartial && selectedMoviles.length === 0;
+                      return isPendientes && !isEmpresaPartial;
                     }
                     if (selectedMoviles.length > 0) {
                       // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados

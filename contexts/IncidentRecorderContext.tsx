@@ -72,29 +72,103 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const finalizedRef = useRef<boolean>(false);
+  const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const available =
     typeof window !== 'undefined' &&
     !!navigator.mediaDevices?.getDisplayMedia &&
     typeof MediaRecorder !== 'undefined';
 
+  const cleanup = useCallback(() => {
+    if (tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+    if (stopTimeoutRef.current) {
+      clearTimeout(stopTimeoutRef.current);
+      stopTimeoutRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => {
+        try {
+          t.stop();
+        } catch {
+          // no-op
+        }
+      });
+      streamRef.current = null;
+    }
+  }, []);
+
+  const finalize = useCallback(
+    () => {
+      if (finalizedRef.current) return;
+      finalizedRef.current = true;
+      const rec = recorderRef.current;
+      const mime = rec?.mimeType || pickMimeType() || 'video/webm';
+      const chunks = chunksRef.current;
+      chunksRef.current = [];
+      cleanup();
+      if (!chunks.length) {
+        setToast({ type: 'err', msg: 'Grabación vacía, intentá de nuevo.' });
+        setState('idle');
+        return;
+      }
+      const blob = new Blob(chunks, { type: mime });
+      if (blob.size < 1024) {
+        setToast({ type: 'err', msg: 'Grabación vacía, intentá de nuevo.' });
+        setState('idle');
+        return;
+      }
+      setPendingBlob(blob);
+      setState('confirming');
+    },
+    [cleanup],
+  );
+
   useEffect(() => {
     return () => {
-      if (tickRef.current) clearInterval(tickRef.current);
+      cleanup();
       if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-        recorderRef.current.stop();
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
+        try {
+          recorderRef.current.stop();
+        } catch {
+          // no-op
+        }
       }
     };
-  }, []);
+  }, [cleanup]);
 
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  const doStop = useCallback(() => {
+    // Idempotente: chequeamos el estado síncrono del MediaRecorder
+    // (no el de React) para evitar doble stop en clicks repetidos.
+    // Tanto el click del botón como el track.onended (chip nativo
+    // "Dejar de compartir") convergen acá.
+    const rec = recorderRef.current;
+    if (!rec || rec.state !== 'recording') return;
+    setState('stopping');
+    try {
+      rec.requestData();
+    } catch {
+      // no-op
+    }
+    try {
+      rec.stop();
+    } catch {
+      // no-op
+    }
+    if (stopTimeoutRef.current) clearTimeout(stopTimeoutRef.current);
+    // Fallback para Firefox: si onstop no dispara en 1.5s,
+    // finalizamos con lo que tengamos en chunks.
+    stopTimeoutRef.current = setTimeout(() => finalize(), 1500);
+  }, [finalize]);
 
   const start = useCallback(async () => {
     if (state !== 'idle') return;
@@ -103,25 +177,41 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: 15, max: 30 },
-          // Cap a 720p: reduce tamaño ~4x vs 1080p con pérdida visual
-          // mínima para debug de UI.
-          width: { max: 1280 },
-          height: { max: 720 },
-        },
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      const videoConstraints: MediaTrackConstraints = {
+        frameRate: { ideal: 15, max: 30 },
+        // Cap a 720p: reduce tamaño ~4x vs 1080p con pérdida visual
+        // mínima para debug de UI.
+        width: { max: 1280 },
+        height: { max: 720 },
+      };
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+      };
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: videoConstraints,
+          audio: audioConstraints,
+        });
+      } catch (err) {
+        const name = (err as DOMException).name;
+        // Si el usuario canceló o denegó, no reintentar.
+        if (name === 'NotAllowedError' || name === 'AbortError') throw err;
+        // Firefox / navegadores que no soportan audio de display: reintentar sin audio.
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: videoConstraints,
+        });
+      }
 
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-        if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-          recorderRef.current.stop();
-        }
+        doStop();
       });
 
       streamRef.current = stream;
       chunksRef.current = [];
+      finalizedRef.current = false;
 
       const mimeType = pickMimeType();
       // Bitrate agresivo para minimizar el tamaño del video.
@@ -139,22 +229,11 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
       };
 
       recorder.onstop = () => {
-        const mime = recorder.mimeType || mimeType || 'video/webm';
-        const blob = new Blob(chunksRef.current, { type: mime });
-        chunksRef.current = [];
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-        setPendingDurationS((currentSecs) => {
-          // Capturamos las seconds actuales; el setter es la forma segura de leer el último valor
-          return currentSecs;
-        });
-        // Al momento de stop, ya teníamos el último seconds renderizado
-        setPendingBlob(blob);
-        setState('confirming');
-        if (tickRef.current) {
-          clearInterval(tickRef.current);
-          tickRef.current = null;
-        }
+        finalize();
+      };
+
+      recorder.onerror = () => {
+        doStop();
       };
 
       recorder.start(1000);
@@ -176,17 +255,11 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
         setState('idle');
       }
     }
-  }, [state, available]);
+  }, [state, available, doStop, finalize]);
 
   const stop = useCallback(() => {
-    if (state !== 'recording') return;
-    setState('stopping');
-    try {
-      recorderRef.current?.stop();
-    } catch {
-      // no-op
-    }
-  }, [state]);
+    doStop();
+  }, [doStop]);
 
   const confirmUpload = async () => {
     if (!pendingBlob) return;

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { getEstadoDescripcion } from '@/utils/estadoPedido';
+import { getEstadoDescripcion, isServiceEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
 
 /**
@@ -204,7 +204,11 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
                 <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-2 border border-green-200">
                   <div className="text-[9px] text-green-600 font-semibold mb-0.5">Estado</div>
                   <div className="font-bold text-green-900 text-xs">
-                    {(!service.movil || Number(service.movil) === 0) ? 'SIN ASIGNAR' : getEstadoDescripcion(service.sub_estado_nro, service.sub_estado_desc)}
+                    {isServiceEntregado(service)
+                      ? getEstadoDescripcion(service.sub_estado_nro, service.sub_estado_desc, service.estado_nro)
+                      : (!service.movil || Number(service.movil) === 0)
+                        ? 'SIN ASIGNAR'
+                        : getEstadoDescripcion(service.sub_estado_nro, service.sub_estado_desc, service.estado_nro)}
                     {!!service.movil && Number(service.movil) !== 0 && <span className="text-green-700 font-normal"> – #{service.movil}</span>}
                   </div>
                 </div>

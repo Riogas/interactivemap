@@ -51,6 +51,10 @@ interface ZonaMovilesViewModalProps {
   movilesZonasData: MovilZonaRecord[];
   /** IDs crudos de móviles "ocultos pero operativos" — se muestran tachados. */
   allHiddenMovilIds?: Set<string>;
+  /** Scope de zonas permitidas (null = root/despacho, sin restricción). */
+  scopedZonaIds?: Set<number> | null;
+  /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
+  scopedEmpresas?: number[] | null;
 }
 
 export default function ZonaMovilesViewModal({
@@ -61,6 +65,8 @@ export default function ZonaMovilesViewModal({
   moviles,
   movilesZonasData,
   allHiddenMovilIds,
+  scopedZonaIds = null,
+  scopedEmpresas = null,
 }: ZonaMovilesViewModalProps) {
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loadingZonas, setLoadingZonas] = useState(false);
@@ -80,16 +86,32 @@ export default function ZonaMovilesViewModal({
   }, [isOpen, initialServiceFilter]);
 
   // ========== Fetch zonas + moviles_zonas (si prop está vacío) ==========
+  const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '';
+  const scopedZonasKey = scopedZonaIds ? Array.from(scopedZonaIds).sort((a, b) => a - b).join(',') : '';
   useEffect(() => {
     if (!isOpen) return;
+    // Fail-closed: scope con set vacío → nada para mostrar
+    if (scopedZonaIds && scopedZonaIds.size === 0) {
+      setZonas([]);
+      setInternalMzData([]);
+      setLoadingZonas(false);
+      return;
+    }
     setLoadingZonas(true);
 
+    const empresaIdsParam = scopedEmpresas && scopedEmpresas.length > 0
+      ? `?empresaIds=${scopedEmpresas.join(',')}`
+      : '';
+
     const fetches: Promise<void>[] = [
-      fetch('/api/zonas')
+      fetch(`/api/zonas${empresaIdsParam}`)
         .then(r => r.json())
         .then(res => {
           if (res.success && res.data) {
-            setZonas(res.data);
+            const zs = scopedZonaIds == null
+              ? res.data
+              : res.data.filter((z: any) => scopedZonaIds.has(z.zona_id));
+            setZonas(zs);
           }
         })
         .catch(() => {}),
@@ -98,11 +120,14 @@ export default function ZonaMovilesViewModal({
     // Si no nos pasaron datos de moviles_zonas, cargarlos nosotros
     if (movilesZonasData.length === 0) {
       fetches.push(
-        fetch('/api/moviles-zonas')
+        fetch(`/api/moviles-zonas${empresaIdsParam}`)
           .then(r => r.json())
           .then(res => {
             if (res.success && res.data) {
-              setInternalMzData(res.data);
+              const mz = scopedZonaIds == null
+                ? res.data
+                : res.data.filter((r: MovilZonaRecord) => scopedZonaIds.has(r.zona_id));
+              setInternalMzData(mz);
             }
           })
           .catch(() => {})
@@ -110,7 +135,8 @@ export default function ZonaMovilesViewModal({
     }
 
     Promise.all(fetches).finally(() => setLoadingZonas(false));
-  }, [isOpen, movilesZonasData.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, movilesZonasData.length, scopedEmpresasKey, scopedZonasKey]);
 
   // ========== Auto-seleccionar zona inicial cuando llegan los datos ==========
   useEffect(() => {
