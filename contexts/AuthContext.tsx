@@ -220,9 +220,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // escenarios ni empresas). El rol viene de SecuritySuite via el flag
         // isDespacho del LDAP/AS400, materializado en response.roles cuando se
         // ejecuta el upsert correspondiente en PG.
-        const tieneRolDespacho = (response.roles || []).some(
-          (r) => String(r.rolNombre || '').trim().toLowerCase() === 'despacho'
-        );
+        //
+        // Detección robusta: chequea rolId === 49 (DESPACHO_ROL_ID por convención)
+        // OR que el nombre contenga 'despacho' (matchea 'Despacho', 'DESPACHO',
+        // 'Despacho Móvil', etc.). lib/auth-scope.ts usa el mismo criterio.
+        const tieneRolDespacho = (response.roles || []).some((r) => {
+          if (Number(r.rolId) === 49) return true;
+          const nombre = String(r.rolNombre || '').trim().toLowerCase();
+          return nombre.includes('despacho');
+        });
 
         if (isRoot || tieneRolDespacho) {
           console.log(
