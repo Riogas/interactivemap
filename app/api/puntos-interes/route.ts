@@ -16,7 +16,17 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = getServerSupabaseClient();
     const body = await request.json();
-    const { nombre, descripcion, icono, latitud, longitud, tipo, usuario_email } = body;
+    const {
+      nombre,
+      descripcion,
+      icono,
+      latitud,
+      longitud,
+      tipo,
+      usuario_email,
+      escenario_id,
+      empresa_fletera_id,
+    } = body;
 
     // Validaciones
     if (!usuario_email) {
@@ -80,6 +90,13 @@ export async function POST(request: NextRequest) {
       upsertData.id = body.id;
     }
 
+    if (escenario_id !== undefined) {
+      upsertData.escenario_id = escenario_id;
+    }
+    if (empresa_fletera_id !== undefined) {
+      upsertData.empresa_fletera_id = empresa_fletera_id;
+    }
+
     const { data, error } = await supabase
       .from('puntos_interes')
       .upsert(upsertData, {
@@ -132,6 +149,8 @@ export async function GET(request: NextRequest) {
     const supabase = getServerSupabaseClient();
     const { searchParams } = new URL(request.url);
     const usuario_email = searchParams.get('usuario_email');
+    const scopeRole = searchParams.get('scope_role'); // 'distribuidor' | 'root' | 'despacho' | null
+    const scopeEmpresasRaw = searchParams.get('scope_empresas'); // CSV de IDs
 
     if (!usuario_email) {
       return NextResponse.json(
@@ -140,15 +159,46 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('📍 Obteniendo puntos para:', usuario_email);
+    // Validar formato email: rechazar valores con caracteres que puedan
+    // alterar el filtro PostgREST .or() (`,`, `(`, `)`, `"`, espacios).
+    if (!/^[^\s,()"]+@[^\s,()"]+\.[^\s,()"]+$/.test(usuario_email)) {
+      return NextResponse.json(
+        { error: 'usuario_email inválido' },
+        { status: 400 }
+      );
+    }
 
-    // Obtener puntos privados del usuario + todos los públicos + OSM del usuario
-    const { data, error } = await supabase
+    console.log('📍 Obteniendo puntos para:', usuario_email, 'scope:', scopeRole);
+
+    let query = (supabase
       .from('puntos_interes')
       .select('*')
-      .or(`usuario_email.eq.${usuario_email},tipo.eq.publico`)
-      .eq('visible', true)
-      .order('created_at', { ascending: false }) as any;
+      .eq('visible', true) as any);
+
+    if (scopeRole === 'distribuidor') {
+      // Distribuidor: privados solo de sus empresas, + públicos + osm (siempre).
+      const empresas = (scopeEmpresasRaw || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .map((s) => Number(s))
+        .filter((n) => Number.isFinite(n));
+
+      if (empresas.length === 0) {
+        // Fail-closed para privados: solo públicos y osm.
+        query = query.in('tipo', ['publico', 'osm']);
+      } else {
+        const csv = empresas.join(',');
+        query = query.or(
+          `and(tipo.eq.privado,empresa_fletera_id.in.(${csv})),tipo.eq.publico,tipo.eq.osm`
+        );
+      }
+    } else {
+      // Root/despacho/sin scope: comportamiento legacy — privados del usuario + públicos.
+      query = query.or(`usuario_email.eq.${usuario_email},tipo.eq.publico`);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error('❌ Error al obtener puntos:', error);

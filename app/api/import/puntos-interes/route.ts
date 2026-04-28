@@ -20,6 +20,8 @@ import { getServerSupabaseClient } from '@/lib/supabase';
  *     descripcion?: string | null;
  *     usuario_email: string;
  *     icono?: string;
+ *     escenario_id?: number | null;
+ *     empresa_fletera_id?: number | null;
  *   }>
  * }
  */

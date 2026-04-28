@@ -232,6 +232,8 @@ export interface CustomMarker {
   tipo?: 'publico' | 'privado' | 'osm'; // Tipo de punto de interés
   categoria?: string; // Categoría OSM (riogas, gobierno, hospitales, etc.)
   telefono?: number | string | null; // Teléfono del punto de interés
+  escenario_id?: number | null;
+  empresa_fletera_id?: number | null;
 }
 
 // Punto de Interés (Supabase - Persistente)
@@ -247,6 +249,8 @@ export interface PuntoInteresSupabase {
   visible: boolean;
   usuario_id: string; // UUID
   usuario_email: string | null;
+  escenario_id: number | null;
+  empresa_fletera_id: number | null;
   created_at: string;
   updated_at: string;
 }

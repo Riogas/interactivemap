@@ -11,16 +11,81 @@ async function readRequestBody(request: NextRequest): Promise<string> {
   const contentType = request.headers.get('content-type') || '';
   const charsetMatch = contentType.match(/charset=([\w-]+)/i);
   const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'iso-8859-1'; // GeneXus/AS400 raramente especifica charset
-  
+
   if (charset === 'utf-8' || charset === 'utf8') {
     return await request.text();
   }
-  
+
   const buffer = await request.arrayBuffer();
   const decoder = new TextDecoder(charset);
   const decoded = decoder.decode(buffer);
   console.log(`🔤 Body decodificado con charset: ${charset}`);
   return decoded;
+}
+
+/**
+ * Intenta reparar JSON con comillas sin escapar dentro de valores string.
+ * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS""
+ *
+ * Estrategia: usa la posición del error para encontrar la comilla
+ * interna que rompió el parseo, la escapa, y reintenta.
+ */
+function safeParseJSON(rawBody: string): any {
+  // Paso 0: reemplazar caracteres de control ASCII (<0x20) que sean ilegales
+  // en strings JSON pero que AS400/GeneXus puede enviar sin escapar.
+  const sanitized = rawBody.replace(/[\x00-\x1F]/g, (ch) => {
+    if (ch === '\t') return '\\t';
+    if (ch === '\n') return '\\n';
+    if (ch === '\r') return '\\r';
+    return '';
+  });
+
+  try {
+    return JSON.parse(sanitized);
+  } catch (firstError) {
+    console.warn('⚠️  JSON.parse falló, intentando sanitizar comillas internas...');
+
+    let text = sanitized;
+    const maxAttempts = 50;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const result = JSON.parse(text);
+        console.log(`✅ JSON reparado después de ${attempt + 1} correcciones`);
+        return result;
+      } catch (err: any) {
+        const posMatch = err.message.match(/position\s+(\d+)/);
+        if (!posMatch) throw firstError;
+
+        const errorPos = parseInt(posMatch[1], 10);
+
+        let fixPos = -1;
+        for (let i = errorPos - 1; i >= 0; i--) {
+          if (text[i] === '"' && (i === 0 || text[i - 1] !== '\\')) {
+            fixPos = i;
+            break;
+          }
+        }
+
+        if (fixPos < 0) throw firstError;
+
+        console.log(`🔧 Escapando comilla en posición ${fixPos} (intento ${attempt + 1})`);
+        text = text.substring(0, fixPos) + '\\' + text.substring(fixPos);
+      }
+    }
+
+    throw firstError;
+  }
+}
+
+/**
+ * Convierte un valor numérico arbitrario a number o null. Acepta strings parseables.
+ * Negativos válidos (anticipación). Devuelve null para NaN, undefined, '' y no-números.
+ */
+function parseNumOrNull(raw: unknown): number | null {
+  if (raw == null || raw === '') return null;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
@@ -147,6 +212,12 @@ function transformServiceToSupabase(service: any) {
 
     // Fletero
     fletero: service.Fletero?.trim() || service.fletero || '',
+
+    // Métricas de atraso/demora (AS400)
+    atraso_cump_mins: parseNumOrNull(service.AtrasoCumpMins ?? service.atraso_cump_mins),
+    demora_movil_desde_asignacion_mins: parseNumOrNull(
+      service.DemoraMovilDesdeAsignacionMins ?? service.demora_movil_desde_asignacion_mins
+    ),
   };
 }
 
@@ -163,7 +234,7 @@ export async function POST(request: NextRequest) {
   console.log(`📋 IMPORTACIÓN DE SERVICES [${timestamp}]`);
 
   try {
-    const body = JSON.parse(await readRequestBody(request));
+    const body = safeParseJSON(await readRequestBody(request));
 
     let { services } = body;
 
@@ -230,7 +301,7 @@ export async function PUT(request: NextRequest) {
   console.log(`🔄 ACTUALIZACIÓN DE SERVICES [${timestamp}]`);
 
   try {
-    const body = JSON.parse(await readRequestBody(request));
+    const body = safeParseJSON(await readRequestBody(request));
 
     let { services } = body;
 
