@@ -10,6 +10,11 @@ interface RealtimeContextType {
   error: string | null;
   latestPosition: GPSTrackingSupabase | null;
   latestMovil: MovilSupabase | null;
+  /**
+   * ms epoch del último evento Realtime recibido (gps_latest_positions o moviles).
+   * El dashboard lo usa para detectar silencio del WS y forzar refetch.
+   */
+  lastEventAt: number;
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined);
@@ -25,15 +30,20 @@ export function RealtimeProvider({
 }: RealtimeProviderProps) {
   const [latestPosition, setLatestPosition] = React.useState<GPSTrackingSupabase | null>(null);
   const [latestMovil, setLatestMovil] = React.useState<MovilSupabase | null>(null);
+  // ms epoch del último evento Realtime recibido — sirve al dashboard para detectar
+  // silencio del WS de móviles/GPS y forzar refetch (paralelo al de pedidos/services).
+  const [lastEventAt, setLastEventAt] = React.useState<number>(() => Date.now());
 
   // Callbacks estables — sin useCallback aquí se recrean en cada render y hacen
   // que useGPSTracking/useMoviles rehagan la suscripción a Supabase innecesariamente.
   const onNewPosition = useCallback((newPosition: GPSTrackingSupabase) => {
     setLatestPosition(newPosition);
+    setLastEventAt(Date.now());
   }, []);
 
   const onMovilChange = useCallback((movil: MovilSupabase) => {
     setLatestMovil(movil);
+    setLastEventAt(Date.now());
   }, []);
 
   // Hook de GPS Tracking en tiempo real
@@ -71,8 +81,8 @@ export function RealtimeProvider({
   // objeto y fuerza re-render de todos los consumidores de useRealtime(), aunque los
   // valores no hayan cambiado.
   const contextValue = useMemo<RealtimeContextType>(
-    () => ({ positions, isConnected, error, latestPosition, latestMovil }),
-    [positions, isConnected, error, latestPosition, latestMovil],
+    () => ({ positions, isConnected, error, latestPosition, latestMovil, lastEventAt }),
+    [positions, isConnected, error, latestPosition, latestMovil, lastEventAt],
   );
 
   return (

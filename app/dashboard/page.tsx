@@ -58,7 +58,7 @@ function DashboardContent() {
   const { user, escenarioId } = useAuth();
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
-  const { latestPosition, latestMovil, isConnected } = useRealtime();
+  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt } = useRealtime();
   
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
@@ -616,7 +616,8 @@ function DashboardContent() {
 
   // 🔄 Mejora #1 — Polling de reconciliación configurable (admin / root).
   // Cubre eventos del WS que se perdieron por desconexiones silenciosas: cada N segundos
-  // re-pedimos todo pedidos/services a la API. Solo en modo live (hoy). 0 = off.
+  // re-pedimos todo pedidos/services Y posiciones/móviles a la API.
+  // Solo en modo live (hoy). 0 = off.
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     if (selectedDate !== today) return; // Solo en modo live, no para fechas históricas
@@ -628,15 +629,17 @@ function DashboardContent() {
       console.log(`🔄 Polling reconciliación (${seconds}s) — sincronizando datos con la API`);
       fetchPedidos();
       fetchServices();
+      fetchPositions();
     }, seconds * 1000);
 
     return () => clearInterval(interval);
-  }, [selectedDate, fetchPedidos, fetchServices, preferences.realtimePollingReconcileSeconds]);
+  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimePollingReconcileSeconds]);
 
   // 🔇 Mejora #2 — Detección de silencio del WS (admin / root).
-  // Si durante N segundos no llegan eventos de pedidos NI de services, asumimos que el
-  // canal está mudo (caso clásico de Cloudflare/proxy que deja la TCP abierta pero no
-  // reenvía frames). Forzamos un refetch para recuperar cambios perdidos.
+  // Si durante N segundos no llegan eventos de pedidos NI de services NI de
+  // móviles/GPS, asumimos que el canal está mudo (caso clásico de Cloudflare/proxy
+  // que deja la TCP abierta pero no reenvía frames). Forzamos refetch completo
+  // — incluyendo posiciones/móviles — para recuperar cambios perdidos.
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     if (selectedDate !== today) return;
@@ -649,20 +652,22 @@ function DashboardContent() {
 
     const interval = setInterval(() => {
       const now = Date.now();
-      const silenceMs = now - Math.max(lastPedidoEventAt, lastServiceEventAt);
+      const silenceMs = now - Math.max(lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt);
       if (silenceMs > thresholdMs) {
         console.warn(`🔇 Silencio de WS > ${seconds}s (${Math.round(silenceMs / 1000)}s). Forzando refetch.`);
         fetchPedidos();
         fetchServices();
+        fetchPositions();
       }
     }, checkMs);
 
     return () => clearInterval(interval);
-  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, fetchPedidos, fetchServices, preferences.realtimeSilenceTimeoutSeconds]);
+  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds]);
 
   // 👀 Mejora #3 — Refetch al volver la pestaña a visible (admin / root).
   // Cuando la tab estuvo en background mucho tiempo, el WS puede haberse cerrado sin aviso
-  // o haber perdido eventos. Al volver, pedimos todo de nuevo para consolidar.
+  // o haber perdido eventos. Al volver, pedimos pedidos+services+posiciones de nuevo
+  // para consolidar móviles del colapsable y mapa.
   useEffect(() => {
     if (!preferences.realtimeRefetchOnVisible) return;
     const today = new Date().toISOString().split('T')[0];
@@ -673,11 +678,12 @@ function DashboardContent() {
         console.log('👀 Pestaña visible — refetch completo por preferencia');
         fetchPedidos();
         fetchServices();
+        fetchPositions();
       }
     };
     document.addEventListener('visibilitychange', handler);
     return () => document.removeEventListener('visibilitychange', handler);
-  }, [selectedDate, fetchPedidos, fetchServices, preferences.realtimeRefetchOnVisible]);
+  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeRefetchOnVisible]);
 
   // 🔥 Auto-selección de móviles:
   //  a) Carga inicial → marca todos los visibles.
