@@ -867,36 +867,61 @@ function DashboardContent() {
       console.log('⏸️ Modo Tiempo Real desactivado - ignorando nuevos móviles');
       return;
     }
-    
+
     if (!latestMovil) return;
-    
+
     const movilId = parseInt(latestMovil.id); // ✅ Usar 'id' y convertir a number
+    const movilEmpresaId = latestMovil.empresa_fletera_id;
+
+    // 🔒 Validar empresa ANTES de tocar state. Sino el móvil entra y luego
+    // el filtro server-side (fetchPositions) o client-side lo descarta — eso
+    // produce el efecto de "aparece y se va" en el colapsable.
+    //   - User con allowedEmpresas (no-root, no-despacho) y empresa fuera del set → ignorar.
+    //   - User con filtro manual parcial (selectedEmpresas no incluye la empresa) → ignorar.
+    const allowed = user?.allowedEmpresas;
+    const userHasRestriction = (allowed?.length ?? 0) > 0;
+    if (userHasRestriction && allowed && !allowed.includes(movilEmpresaId)) {
+      console.log(
+        `🚫 latestMovil ${movilId}: empresa ${movilEmpresaId} fuera de allowedEmpresas, ignorando`,
+      );
+      return;
+    }
+    if (selectedEmpresas.length > 0 && !selectedEmpresas.includes(movilEmpresaId)) {
+      console.log(
+        `🔍 latestMovil ${movilId}: empresa ${movilEmpresaId} fuera del filtro actual, ignorando`,
+      );
+      return;
+    }
+
     console.log(`🚗 Nuevo móvil detectado en tiempo real:`, latestMovil);
-    
+
     setMoviles(prevMoviles => {
       // Verificar si el móvil ya existe en la lista
       const existingMovil = prevMoviles.find(m => m.id === movilId);
-      
+
       if (existingMovil) {
         console.log(`ℹ️ Móvil ${movilId} ya existe, ignorando evento`);
         return prevMoviles;
       }
-      
-      // Agregar el nuevo móvil a la lista
+
+      // Agregar el nuevo móvil a la lista. Llevamos empresaFleteraId para que
+      // los filtros downstream (movilesFiltered, validMovilIds, etc.) lo
+      // matcheen sin tener que esperar al próximo fetchPositions.
       const newMovil: MovilData = {
         id: movilId,
         name: `Móvil-${movilId}`,
         color: `hsl(${(movilId * 137.508) % 360}, 70%, 50%)`, // Color generado
+        empresaFleteraId: movilEmpresaId,
         currentPosition: undefined, // Se actualizará con el primer GPS
         history: undefined,
       };
-      
-      console.log(`✅ Agregando móvil ${movilId} a la lista`);
+
+      console.log(`✅ Agregando móvil ${movilId} (empresa ${movilEmpresaId}) a la lista`);
       return removeDuplicateMoviles([...prevMoviles, newMovil]);
     });
-    
+
     setLastUpdate(new Date());
-  }, [latestMovil, removeDuplicateMoviles, preferences.realtimeEnabled]);
+  }, [latestMovil, removeDuplicateMoviles, preferences.realtimeEnabled, user?.allowedEmpresas, selectedEmpresas]);
 
   // Función para cargar el historial de un móvil específico
   const fetchMovilHistory = useCallback(async (movilId: number) => {
@@ -1335,18 +1360,29 @@ function DashboardContent() {
   // Fecha seleccionada en formato YYYYMMDD para filtrar por fch_para
   const selectedDateCompact = useMemo(() => selectedDate.replace(/-/g, ''), [selectedDate]);
 
+  // Set de IDs de móviles permitidos para el usuario actual. Se computa a partir
+  // de movilesFiltered (que ya respeta selectedEmpresas + allowedEmpresas).
+  // Lo usamos para filtrar pedidos/services en su origen (pedidosCompletos)
+  // cuando el user no es root/despacho — así los counts del indicador y todos
+  // los downstream nunca incluyen pedidos de empresas no permitidas.
+  const allowedMovilIds = useMemo(
+    () => new Set(movilesFiltered.map(m => m.id)),
+    [movilesFiltered],
+  );
+  const userHasEmpresaRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
+
   const pedidosCompletos = useMemo(() => {
     const pedidosMap = new Map<number, PedidoSupabase>();
-    
+
     // Agregar pedidos iniciales
     pedidosIniciales.forEach(p => pedidosMap.set(p.id, p));
-    
+
     // Actualizar/agregar pedidos de realtime (sobrescriben los iniciales si existen)
     pedidosRealtime.forEach(p => pedidosMap.set(p.id, p));
-    
+
     // 🔥 Filtrar por fecha seleccionada: solo incluir pedidos de la fecha actual
     // Esto evita que realtime inyecte pedidos de otras fechas
-    const resultado = Array.from(pedidosMap.values()).filter(p => {
+    let resultado = Array.from(pedidosMap.values()).filter(p => {
       // Verificar por fch_para (formato YYYYMMDD) o por fch_hora_para (timestamp)
       if (p.fch_para && p.fch_para === selectedDateCompact) return true;
       if (p.fch_hora_para && p.fch_hora_para.startsWith(selectedDate)) return true;
@@ -1354,30 +1390,49 @@ function DashboardContent() {
       if (!p.fch_para && !p.fch_hora_para) return true;
       return false;
     });
-    
+
+    // 🔒 Empresa scope: si el user es no-root/no-despacho con allowedEmpresas,
+    // descartamos pedidos cuyo móvil pertenezca a una empresa no permitida.
+    // Pedidos sin asignar (movil null/0) se mantienen acá; el render-level
+    // hideUnassigned los oculta donde corresponda.
+    if (userHasEmpresaRestriction) {
+      resultado = resultado.filter(p => {
+        if (p.movil == null || Number(p.movil) === 0) return true;
+        return allowedMovilIds.has(Number(p.movil));
+      });
+    }
+
     dbg('🔷 DASHBOARD: pedidosCompletos calculado');
     dbg(`📊 Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
-    
+
     return resultado;
-  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate]);
+  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds]);
 
   // Combinar services iniciales con updates de realtime
   const servicesCompletos = useMemo(() => {
     const servicesMap = new Map<number, ServiceSupabase>();
     servicesIniciales.forEach(s => servicesMap.set(s.id, s));
     servicesRealtime.forEach(s => servicesMap.set(s.id, s));
-    
+
     // 🔥 Filtrar por fecha seleccionada
-    const resultado = Array.from(servicesMap.values()).filter(s => {
+    let resultado = Array.from(servicesMap.values()).filter(s => {
       if (s.fch_para && s.fch_para === selectedDateCompact) return true;
       if (s.fch_hora_para && s.fch_hora_para.startsWith(selectedDate)) return true;
       if (!s.fch_para && !s.fch_hora_para) return true;
       return false;
     });
-    
+
+    // 🔒 Mismo filtro que pedidosCompletos: empresa scope para no-root.
+    if (userHasEmpresaRestriction) {
+      resultado = resultado.filter(s => {
+        if (s.movil == null || Number(s.movil) === 0) return true;
+        return allowedMovilIds.has(Number(s.movil));
+      });
+    }
+
     dbg(`🔧 DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
-  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate]);
+  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds]);
 
   // Set de IDs de móviles "ocultos pero operativos": tienen estadoNro fuera del
   // conjunto de activos ([0,1,2,4]) pero igual tienen pedidos/services asignados
@@ -2228,6 +2283,7 @@ function DashboardContent() {
                   onEmpresasChange={setSelectedEmpresas}
                   showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
                   hideUnassigned={hideUnassigned}
+                  isRestrictedUser={userHasEmpresaRestriction}
                 />
               </div>
             </motion.div>
