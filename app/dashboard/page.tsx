@@ -20,6 +20,8 @@ import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
+import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
+import { getScopedEmpresas } from '@/lib/auth-scope';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
@@ -186,6 +188,26 @@ function DashboardContent() {
   const [empresas, setEmpresas] = useState<EmpresaFleteraSupabase[]>([]);
   const [selectedEmpresas, setSelectedEmpresas] = useState<number[]>([]);
 
+  // Escenario IDs derivados de las empresas seleccionadas (stable reference)
+  const selectedEscenarioIds = useMemo(() => {
+    return [...new Set(
+      selectedEmpresas
+        .map(id => empresas.find(e => e.empresa_fletera_id === id)?.escenario_id)
+        .filter((v): v is number => v != null)
+    )];
+  }, [selectedEmpresas, empresas]);
+
+  // 🔒 Scope por rol/empresa: distribuidor sólo ve sus zonas; root/despacho ven todo.
+  // Guard explícito de user: durante el load inicial user es null y getScopedEmpresas(null)
+  // devolvería [] (fail-closed) — eso causaría un flash de contenido vacío para root/despacho.
+  // Con el guard, mientras user no carga scopedEmpresas = null (sin scope) y el comportamiento
+  // es idéntico al estado pre-scope. Una vez user carga, se re-evalúa correctamente.
+  const scopedEmpresas = useMemo(
+    () => (user ? getScopedEmpresas(user) : null),
+    [user]
+  );
+  const { scopedZonaIds } = useScopedZonaIds(user, selectedEscenarioIds);
+
   // 🔧 Map data view state + effects (extracted to useMapDataView hook)
   const {
     showZonas, setShowZonas,
@@ -199,16 +221,9 @@ function DashboardContent() {
     demorasPollingSeconds: preferences.demorasPollingSeconds ?? 30,
     movilesZonasPollingSeconds: preferences.movilesZonasPollingSeconds ?? 30,
     updatePreference,
+    scopedZonaIds,
+    scopedEmpresas,
   });
-
-  // Escenario IDs derivados de las empresas seleccionadas (stable reference)
-  const selectedEscenarioIds = useMemo(() => {
-    return [...new Set(
-      selectedEmpresas
-        .map(id => empresas.find(e => e.empresa_fletera_id === id)?.escenario_id)
-        .filter((v): v is number => v != null)
-    )];
-  }, [selectedEmpresas, empresas]);
 
   // Determina si hay que ocultar pedidos/services "sin asignar" (sin móvil).
   // Motivo: un user no-root nunca tiene contexto para decidir sobre pedidos
@@ -1357,10 +1372,13 @@ function DashboardContent() {
         if (diff === null || diff >= 0) return;
       }
       const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
-      if (zona && zona !== 0) map.set(zona, (map.get(zona) ?? 0) + 1);
+      if (!zona || zona === 0) return;
+      // Scope por rol/empresa: el distribuidor sólo cuenta zonas que cubre.
+      if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
+      map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds]);
 
   // � Cálculo de saturación por zona:
   //   Para cada móvil con prioridad activa en zonas, su capacidad disponible se proratea
@@ -1395,6 +1413,8 @@ function DashboardContent() {
     // Para SERVICE no se proratea: un móvil libre puede atender cualquiera de sus zonas
     // Para URGENTE/NOCTURNO se divide entre la cantidad de zonas que cubre (prorrateo)
     priorityRecs.forEach(r => {
+      // Scope: zonas fuera del set permitido se ignoran
+      if (scopedZonaIds && !scopedZonaIds.has(r.zona_id)) return;
       const md = movilDataMap.get(r.movil_id);
       if (!md) return;
       if (md.estadoNro !== undefined && !isMovilActiveForUI(md.estadoNro)) return;
@@ -1418,6 +1438,7 @@ function DashboardContent() {
         if (s.movil != null && Number(s.movil) !== 0) return;
         const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
         if (!zona || zona === 0) return;
+        if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
         const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
         stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
       });
@@ -1427,13 +1448,14 @@ function DashboardContent() {
         if (p.movil != null && Number(p.movil) !== 0) return;
         const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
         if (!zona || zona === 0) return;
+        if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
         const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
         stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
       });
     }
 
     return stats;
-  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds]);
+  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
   // para el mapa. Sin esto, cada llamada inline crea un nuevo array → downstream re-renders.
   const movilesFilteredMarked = useMemo(
@@ -1688,6 +1710,8 @@ function DashboardContent() {
             allMovilEstados={allMovilEstados}
             hiddenMovilIds={hiddenMovilIds}
             allHiddenMovilIds={allHiddenMovilIds}
+            scopedZonaIds={scopedZonaIds}
+            scopedEmpresas={scopedEmpresas}
             onSinAsignarClick={onSinAsignarClick}
             onEntregadosClick={onEntregadosClick}
             onPorcentajeClick={onPorcentajeClick}
@@ -1880,6 +1904,8 @@ function DashboardContent() {
         allMovilEstados={allMovilEstados}
         allHiddenMovilIds={allHiddenMovilIds}
         initialServiceFilter={movilesZonasServiceFilter}
+        scopedZonaIds={scopedZonaIds}
+        scopedEmpresas={scopedEmpresas}
       />
 
       <MovilesSinReportarModal
@@ -1894,10 +1920,12 @@ function DashboardContent() {
         isOpen={isZonasNoActivasOpen}
         onClose={() => setIsZonasNoActivasOpen(false)}
         escenarioIds={selectedEscenarioIds}
+        scopedZonaIds={scopedZonaIds}
+        scopedEmpresas={scopedEmpresas}
       />
 
       {/* Modal de Saturación: click en zona del mapa */}
-      {saturacionModalZonaId !== null && (() => {
+      {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && (() => {
         const isServiceMode = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
         // Si el user tiene restricción de empresas o deseleccionó algunas,
         // no mostramos los pedidos sin asignar en la lista de saturación.
@@ -1944,6 +1972,7 @@ function DashboardContent() {
             movilesZonasData={movilesZonasData}
             moviles={moviles}
             onClose={() => setSaturacionModalZonaId(null)}
+            scopedZonaIds={scopedZonaIds}
           />
         );
       })()}
@@ -1957,6 +1986,8 @@ function DashboardContent() {
         moviles={movilesFiltered}
         movilesZonasData={movilesZonasData}
         allHiddenMovilIds={allHiddenMovilIds}
+        scopedZonaIds={scopedZonaIds}
+        scopedEmpresas={scopedEmpresas}
       />
 
       {/* Modal de Leaderboard/Ranking */}
@@ -2006,6 +2037,8 @@ function DashboardContent() {
         escenarioIds={selectedEscenarioIds}
         movilEstados={allMovilEstados}
         allHiddenMovilIds={allHiddenMovilIds}
+        scopedZonaIds={scopedZonaIds}
+        scopedEmpresas={scopedEmpresas}
         onZonaClick={(zonaId, svcFilter) => {
           setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);

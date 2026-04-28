@@ -23,6 +23,10 @@ interface DashboardIndicatorsProps {
   zonasSinMovilServiceFilter?: string;
   /** Intervalo de refresco de zonas/demoras en segundos (default 60). Usar el mismo que el polling configurado en preferencias */
   zonasRefreshSeconds?: number;
+  /** Scope de zonas permitidas para "Zonas sin Móvil" / "Zonas No Activas". null = sin scope (root/despacho). */
+  scopedZonaIds?: Set<number> | null;
+  /** Empresas permitidas — se pasan como ?empresaIds= a /api/zonas, /api/moviles-zonas, /api/demoras. null = sin scope. */
+  scopedEmpresas?: number[] | null;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
@@ -31,7 +35,7 @@ interface DashboardIndicatorsProps {
   onZonasNoActivasClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -87,8 +91,19 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   const [movilesZonasRecords, setMovilesZonasRecords] = useState<any[]>([]);
   const [demorasRecords, setDemorasRecords] = useState<any[]>([]);
 
+  // Stable keys para evitar re-fetch en cada render (Set/array references cambian aunque el contenido sea igual)
+  const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '';
+  const scopedZonasKey = scopedZonaIds ? Array.from(scopedZonaIds).sort((a, b) => a - b).join(',') : '';
+
   useEffect(() => {
     if (escenarioIds.length === 0) {
+      setZonasAllData([]);
+      setMovilesZonasRecords([]);
+      setDemorasRecords([]);
+      return;
+    }
+    // Fail-closed: scope con set vacío → no fetch, conteos en 0
+    if (scopedZonaIds && scopedZonaIds.size === 0) {
       setZonasAllData([]);
       setMovilesZonasRecords([]);
       setDemorasRecords([]);
@@ -97,11 +112,14 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
 
     const loadZonasData = async () => {
       try {
+        const empresaIdsParam = scopedEmpresas && scopedEmpresas.length > 0
+          ? `?empresaIds=${scopedEmpresas.join(',')}`
+          : '';
         // Fetch zonas, moviles-zonas y demoras en paralelo
         const [zonasRes, mzRes, demorasRes] = await Promise.all([
-          fetch('/api/zonas'),
-          fetch('/api/moviles-zonas'),
-          fetch('/api/demoras'),
+          fetch(`/api/zonas${empresaIdsParam}`),
+          fetch(`/api/moviles-zonas${empresaIdsParam}`),
+          fetch(`/api/demoras${empresaIdsParam}`),
         ]);
         const [zonasResult, mzResult, demorasResult] = await Promise.all([
           zonasRes.json(),
@@ -111,13 +129,26 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
 
         if (zonasResult.success) {
           // Filtrar por escenarios seleccionados Y con geojson (igual que useMapDataView)
-          setZonasAllData(zonasResult.data.filter((z: any) => escenarioIds.includes(z.escenario_id) && z.geojson));
+          // y aplicar scope client-side por zona (consistente con otros modales)
+          setZonasAllData(zonasResult.data.filter((z: any) =>
+            escenarioIds.includes(z.escenario_id) &&
+            z.geojson &&
+            (scopedZonaIds == null || scopedZonaIds.has(z.zona_id))
+          ));
         }
         if (mzResult.success) {
-          setMovilesZonasRecords(mzResult.data || []);
+          const mz = scopedZonaIds == null
+            ? (mzResult.data || [])
+            : (mzResult.data || []).filter((r: any) => scopedZonaIds.has(r.zona_id));
+          setMovilesZonasRecords(mz);
         }
         if (demorasResult.success) {
-          setDemorasRecords(demorasResult.data.filter((d: any) => escenarioIds.includes(d.escenario_id)) || []);
+          setDemorasRecords(
+            (demorasResult.data || []).filter((d: any) =>
+              escenarioIds.includes(d.escenario_id) &&
+              (scopedZonaIds == null || scopedZonaIds.has(d.zona_id))
+            )
+          );
         }
       } catch (err) {
         console.error('❌ Error loading zonas data for indicators:', err);
@@ -129,7 +160,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     const refreshMs = Math.max(10, zonasRefreshSeconds) * 1000;
     const interval = setInterval(loadZonasData, refreshMs);
     return () => clearInterval(interval);
-  }, [escenarioIds, zonasRefreshSeconds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escenarioIds, zonasRefreshSeconds, scopedEmpresasKey, scopedZonasKey]);
 
   // Zonas sin móviles: Match MovilesZonasLayer — filtrar por tipo de servicio activo + excluir no-activos y ocultos
   const zonasSinMoviles = useMemo(() => {

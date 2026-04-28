@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
+import { parseZonasJsonb } from '@/lib/auth-scope';
 
 /**
  * GET /api/moviles-zonas
  * Obtener asignaciones móvil-zona
- * 
+ *
  * Query params:
  *   - movilId: filtrar por móvil específico
  *   - zonaId: filtrar por zona específica
  *   - escenarioId: filtrar por escenario (default: todos)
  *   - activa: filtrar por estado (default: true)
+ *   - empresaIds: CSV de empresa_fletera_id (scoping zona + movil)
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -22,8 +24,70 @@ export async function GET(request: NextRequest) {
     const zonaId = searchParams.get('zonaId');
     const escenarioId = searchParams.get('escenarioId');
     const activa = searchParams.get('activa');
+    const empresaIdsCsv = searchParams.get('empresaIds');
 
     const supabase = getServerSupabaseClient();
+
+    // Si se piden empresaIds, resolver scope de zonas permitidas + móviles permitidos.
+    let allowedZonaIds: Set<number> | null = null;
+    let allowedMovilIds: Set<string> | null = null;
+    if (empresaIdsCsv !== null) {
+      const empresaIds = empresaIdsCsv
+        .split(',')
+        .map((v) => parseInt(v, 10))
+        .filter((n) => Number.isFinite(n));
+      if (empresaIds.length === 0) {
+        return NextResponse.json({ success: true, count: 0, data: [] });
+      }
+
+      // 1) zonas permitidas vía fleteras_zonas
+      let fzQuery = (supabase as any)
+        .from('fleteras_zonas')
+        .select('zonas')
+        .in('empresa_fletera_id', empresaIds);
+      if (escenarioId) {
+        fzQuery = fzQuery.eq('escenario_id', parseInt(escenarioId));
+      }
+      const { data: fzData, error: fzError } = await fzQuery;
+      if (fzError) {
+        console.error('❌ Error al resolver scope de zonas (moviles-zonas):', fzError);
+        return NextResponse.json(
+          { error: 'Error al resolver scope de zonas', details: fzError.message },
+          { status: 500 },
+        );
+      }
+      allowedZonaIds = new Set<number>();
+      for (const row of fzData ?? []) {
+        for (const z of parseZonasJsonb(row?.zonas)) allowedZonaIds.add(z);
+      }
+
+      // 2) móviles permitidos: pertenecen a alguna de esas empresas.
+      // moviles_zonas.movil_id (TEXT) referencia moviles.id::text.
+      const { data: movData, error: movError } = await (supabase as any)
+        .from('moviles')
+        .select('id')
+        .in('empresa_fletera_id', empresaIds);
+      if (movError) {
+        console.error('❌ Error al resolver móviles permitidos:', movError);
+        return NextResponse.json(
+          { error: 'Error al resolver móviles permitidos', details: movError.message },
+          { status: 500 },
+        );
+      }
+      allowedMovilIds = new Set<string>();
+      for (const row of movData ?? []) {
+        if (row?.id != null) allowedMovilIds.add(String(row.id));
+      }
+
+      // Si zonas o móviles permitidos están vacíos → fail-closed
+      // (sin móviles propios o sin zonas asignadas, no hay nada que mostrar).
+      // OR (no AND): un distribuidor con zonas asignadas pero sin móviles propios
+      // no debe ver móviles ajenos en esas zonas, y viceversa.
+      if (allowedZonaIds.size === 0 || allowedMovilIds.size === 0) {
+        return NextResponse.json({ success: true, count: 0, data: [] });
+      }
+    }
+
     let query = (supabase as any)
       .from('moviles_zonas')
       .select('*')
@@ -44,6 +108,15 @@ export async function GET(request: NextRequest) {
     // Por defecto solo activas, salvo que se pida explícitamente todas
     if (activa !== 'all') {
       query = query.eq('activa', activa !== 'false');
+    }
+
+    // AND intencional: solo móviles propios EN zonas propias.
+    // Un móvil propio asignado a una zona ajena queda fuera (correcto por spec).
+    if (allowedZonaIds && allowedZonaIds.size > 0) {
+      query = query.in('zona_id', Array.from(allowedZonaIds));
+    }
+    if (allowedMovilIds && allowedMovilIds.size > 0) {
+      query = query.in('movil_id', Array.from(allowedMovilIds));
     }
 
     const { data, error } = await query;

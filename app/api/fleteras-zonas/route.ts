@@ -20,11 +20,35 @@ export async function GET(request: NextRequest) {
       .order('tipo_de_zona', { ascending: true })
       .order('tipo_de_servicio', { ascending: true });
 
-    const escenario_id = sp.get('escenario_id');
-    if (escenario_id) query = query.eq('escenario_id', parseInt(escenario_id));
+    // escenario_id puede venir repetido (?escenario_id=1&escenario_id=2) o como CSV en escenario_ids
+    const escenarioIds = sp.getAll('escenario_id');
+    const escenarioIdsCsv = sp.get('escenario_ids');
+    const escenarioIdsParsed = [
+      ...escenarioIds,
+      ...(escenarioIdsCsv ? escenarioIdsCsv.split(',') : []),
+    ]
+      .map((v) => parseInt(v, 10))
+      .filter((n) => Number.isFinite(n));
+    if (escenarioIdsParsed.length === 1) {
+      query = query.eq('escenario_id', escenarioIdsParsed[0]);
+    } else if (escenarioIdsParsed.length > 1) {
+      query = query.in('escenario_id', escenarioIdsParsed);
+    }
 
-    const empresa_fletera_id = sp.get('empresa_fletera_id');
-    if (empresa_fletera_id) query = query.eq('empresa_fletera_id', parseInt(empresa_fletera_id));
+    // empresa_fletera_id idem: soporta múltiples valores o CSV en empresa_fletera_ids
+    const empresaIds = sp.getAll('empresa_fletera_id');
+    const empresaIdsCsv = sp.get('empresa_fletera_ids');
+    const empresaIdsParsed = [
+      ...empresaIds,
+      ...(empresaIdsCsv ? empresaIdsCsv.split(',') : []),
+    ]
+      .map((v) => parseInt(v, 10))
+      .filter((n) => Number.isFinite(n));
+    if (empresaIdsParsed.length === 1) {
+      query = query.eq('empresa_fletera_id', empresaIdsParsed[0]);
+    } else if (empresaIdsParsed.length > 1) {
+      query = query.in('empresa_fletera_id', empresaIdsParsed);
+    }
 
     const tipo_de_zona = sp.get('tipo_de_zona');
     if (tipo_de_zona) query = query.ilike('tipo_de_zona', tipo_de_zona);
