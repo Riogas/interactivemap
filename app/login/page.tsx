@@ -128,9 +128,6 @@ export default function LoginPage() {
                 className="h-40 w-auto"
               />
             </motion.div>
-            <p className="text-gray-600 text-sm mt-4">
-              Sistema de Rastreo en Tiempo Real
-            </p>
           </motion.div>
 
           {/* Formulario */}
