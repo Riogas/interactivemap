@@ -6,6 +6,8 @@ import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { isPedidoEntregado } from '@/utils/estadoPedido';
+import { filterPuntosInteresByScope } from '@/lib/puntos-interes-scope';
+import { isRoot, isDespacho, getScopedEmpresas } from '@/lib/auth-scope';
 import { MarkerShape } from '@/components/ui/PreferencesModal';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
@@ -687,34 +689,61 @@ const MapView = memo(function MapView({
   // Cargar marcadores personalizados desde la API
   useEffect(() => {
     const loadMarkers = async () => {
-      try {
-        // Obtener email del usuario desde localStorage (trackmovil_user)
-        const userStr = localStorage.getItem('trackmovil_user');
-        if (!userStr) {
-          console.warn('⚠️ No hay usuario logueado, cargando desde localStorage');
-          const savedMarkers = localStorage.getItem('customMarkers');
-          if (savedMarkers) {
-            setCustomMarkers(JSON.parse(savedMarkers));
-          }
-          return;
+      // Obtener email del usuario desde localStorage (trackmovil_user)
+      const userStr = localStorage.getItem('trackmovil_user');
+      if (!userStr) {
+        console.warn('⚠️ No hay usuario logueado, cargando desde localStorage');
+        const savedMarkers = localStorage.getItem('customMarkers');
+        if (savedMarkers) {
+          setCustomMarkers(JSON.parse(savedMarkers));
         }
+        return;
+      }
 
-        const user = JSON.parse(userStr);
+      // Parse defensivo: si el JSON está corrupto, no caemos al cache de
+      // localStorage (podría tener POIs privados de otra sesión sin filtrar).
+      let user: any = null;
+      try {
+        user = JSON.parse(userStr);
+      } catch {
+        console.warn('⚠️ trackmovil_user corrupto, limpiando marcadores');
+        setCustomMarkers([]);
+        return;
+      }
+
+      try {
         const usuario_email = user.email || user.username;
 
         if (!usuario_email) {
           console.warn('⚠️ Usuario sin email, usando localStorage');
           const savedMarkers = localStorage.getItem('customMarkers');
           if (savedMarkers) {
-            setCustomMarkers(JSON.parse(savedMarkers));
+            const cachedMarkers: CustomMarker[] = JSON.parse(savedMarkers);
+            setCustomMarkers(filterPuntosInteresByScope(cachedMarkers, user));
           }
           return;
         }
 
-        console.log('📍 Cargando puntos para usuario:', usuario_email);
+        // Determinar scope para enviar al server (server-side filter primario).
+        let scopeRole: 'root' | 'despacho' | 'distribuidor' = 'distribuidor';
+        if (isRoot(user)) scopeRole = 'root';
+        else if (isDespacho(user)) scopeRole = 'despacho';
+        const scopeEmpresas = scopeRole === 'distribuidor'
+          ? (getScopedEmpresas(user) || [])
+          : [];
+
+        const params = new URLSearchParams({
+          usuario_email,
+          scope_role: scopeRole,
+        });
+        if (scopeRole === 'distribuidor') {
+          params.set('scope_empresas', scopeEmpresas.join(','));
+        }
+
+        console.log('📍 Cargando puntos para usuario:', usuario_email, 'scope:', scopeRole);
 
         // Cargar desde API
-        const response = await fetch(`/api/puntos-interes?usuario_email=${encodeURIComponent(usuario_email)}`);
+        const response = await fetch(`/api/puntos-interes?${params.toString()}`);
         if (response.ok) {
           const { data } = await response.json();
           // Convertir de PuntoInteresSupabase a CustomMarker
@@ -731,27 +760,34 @@ const MapView = memo(function MapView({
             tipo: punto.tipo || 'privado',
             categoria: punto.categoria || null,
             telefono: punto.telefono ?? null,
+            escenario_id: punto.escenario_id ?? null,
+            empresa_fletera_id: punto.empresa_fletera_id ?? null,
           }));
-          setCustomMarkers(markers);
+          // Defensa en profundidad: re-filtrar client-side por si el server llegase
+          // a devolver algo fuera de scope (caches, bugs, etc.).
+          const scopedMarkers = filterPuntosInteresByScope(markers, user);
+          setCustomMarkers(scopedMarkers);
           // Guardar backup en localStorage
-          localStorage.setItem('customMarkers', JSON.stringify(markers));
-          console.log(`✅ ${markers.length} marcadores cargados desde Supabase`);
+          localStorage.setItem('customMarkers', JSON.stringify(scopedMarkers));
+          console.log(`✅ ${scopedMarkers.length}/${markers.length} marcadores cargados (post-scope)`);
         } else {
           console.warn('⚠️ No se pudieron cargar los marcadores, usando modo offline');
           toast.error('⚠️ No se pudieron cargar los puntos desde el servidor. Usando datos locales.');
           // Fallback a localStorage si la API falla
           const savedMarkers = localStorage.getItem('customMarkers');
           if (savedMarkers) {
-            setCustomMarkers(JSON.parse(savedMarkers));
+            const cachedMarkers: CustomMarker[] = JSON.parse(savedMarkers);
+            setCustomMarkers(filterPuntosInteresByScope(cachedMarkers, user));
           }
         }
       } catch (error) {
         console.error('❌ Error al cargar marcadores:', error);
         toast.error('❌ Error al cargar los puntos. Usando datos locales.');
-        // Fallback a localStorage
+        // Fallback a localStorage — re-filtrar por scope para evitar leaks de POIs privados.
         const savedMarkers = localStorage.getItem('customMarkers');
         if (savedMarkers) {
-          setCustomMarkers(JSON.parse(savedMarkers));
+          const cachedMarkers: CustomMarker[] = JSON.parse(savedMarkers);
+          setCustomMarkers(filterPuntosInteresByScope(cachedMarkers, user));
         }
       }
     };

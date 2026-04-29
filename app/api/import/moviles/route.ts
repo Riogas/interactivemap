@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { successResponse, errorResponse, logRequest } from '@/lib/api-response';
 import { requireApiKey } from '@/lib/auth-middleware';
+import {
+  isValidLatLng,
+  selectMovilesNeedingDailyPosition,
+  buildHistoryInsertRows,
+  type MovilCandidate,
+} from '@/lib/import-helpers/gps-autocreate';
 
 /**
  * Lee el body del request respetando el charset del Content-Type.
@@ -83,6 +89,22 @@ function safeParseJSON(rawBody: string): any {
  * - descripcion: "Móvil {ID}"
  * - escenario_id: 1000
  */
+/**
+ * Sanitiza un valor que puede venir como número, string o NaN/0/fuera de rango
+ * y lo devuelve como número válido o null.
+ * Reglas: NaN → null, 0 → null (AS400 manda 0 como "sin valor"),
+ * fuera de rango lat/lng → null. Acepta strings parseables.
+ */
+function parseLatLngOrNull(raw: unknown, kind: 'lat' | 'lng'): number | null {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  if (n === 0) return null;
+  if (kind === 'lat' && (n < -90 || n > 90)) return null;
+  if (kind === 'lng' && (n < -180 || n > 180)) return null;
+  return n;
+}
+
 function transformMovilToSupabase(movil: any) {
   // Detectar empresa fletera con fallback a 999 "Sin Empresa"
   const empresaFleteraId = movil.EFleteraId ?? movil.empresa_fletera_id ?? 999;
@@ -125,7 +147,58 @@ function transformMovilToSupabase(movil: any) {
     debug_mode: movil.debugMode ?? movil.debug_mode ?? false,
     gps_n8n: movil.gpsN8n ?? movil.gps_n8n ?? false,
     grabar_pantalla: movil.grabarPantalla ?? movil.grabar_pantalla ?? false,
+    pto_vta_lat: parseLatLngOrNull(movil.ptoVtaX ?? movil.pto_vta_lat, 'lat'),
+    pto_vta_lng: parseLatLngOrNull(movil.ptoVtaY ?? movil.pto_vta_lng, 'lng'),
   };
+}
+
+/**
+ * Best-effort: para los móviles transformados que tengan pto_vta_lat/lng válidos,
+ * verifica si ya tienen registro del día en gps_latest_positions (TZ Montevideo).
+ * Los que falten reciben un INSERT a gps_tracking_history — el trigger
+ * sync_gps_latest_position se encarga del upsert. Errores no abortan el import.
+ *
+ * @returns cantidad de móviles para los que se intentó autocrear posición.
+ */
+async function maybeAutocreateGpsForToday(
+  movilesUpserted: ReadonlyArray<{
+    id: string;
+    escenario_id: number;
+    pto_vta_lat: number | null;
+    pto_vta_lng: number | null;
+  }>
+): Promise<number> {
+  try {
+    const candidatos: MovilCandidate[] = [];
+    for (const m of movilesUpserted) {
+      if (!m?.id) continue;
+      if (!isValidLatLng(m.pto_vta_lat, m.pto_vta_lng)) continue;
+      candidatos.push({
+        movil_id: String(m.id),
+        escenario_id: Number(m.escenario_id),
+        lat: Number(m.pto_vta_lat),
+        lng: Number(m.pto_vta_lng),
+      });
+    }
+    if (candidatos.length === 0) return 0;
+
+    const needing = await selectMovilesNeedingDailyPosition(supabase as any, candidatos);
+    if (needing.length === 0) return 0;
+
+    const rows = buildHistoryInsertRows(needing);
+    const { error } = await supabase
+      .from('gps_tracking_history')
+      .insert(rows as any);
+    if (error) {
+      console.error('[gps-autocreate] insert gps_tracking_history falló', error);
+      return 0;
+    }
+    console.log(`✅ [gps-autocreate] insertados ${rows.length} registros iniciales del día`);
+    return rows.length;
+  } catch (err) {
+    console.error('[gps-autocreate] error inesperado', err);
+    return 0;
+  }
 }
 
 /**
@@ -282,11 +355,15 @@ export async function POST(request: NextRequest) {
       console.log('📋 IDs procesados:', data.map((m: any) => m.id).join(', '));
     }
 
+    // Autocreación GPS del día a partir del punto de venta del móvil (best-effort)
+    const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
+
     // PASO 9: Preparar respuesta exitosa
     console.log('\n📤 PASO 9: Preparando respuesta');
     console.log('----------------------------------------');
     const responseData = {
       count: data?.length || 0,
+      gps_autocreated_count: gpsAutocreatedCount,
       moviles: data,
     };
     const message = `${data?.length || 0} móvil(es) importado(s)/actualizado(s) correctamente`;
@@ -411,10 +488,14 @@ export async function PUT(request: NextRequest) {
 
     // Éxito
     console.log(`✅ ${data?.length || 0} móviles actualizados exitosamente`);
-    
+
+    // Autocreación GPS del día a partir del punto de venta del móvil (best-effort)
+    const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
+
     return successResponse(
       {
         count: data?.length || 0,
+        gps_autocreated_count: gpsAutocreatedCount,
         moviles: data,
       },
       `${data?.length || 0} móvil(es) actualizado(s) correctamente`,

@@ -83,6 +83,16 @@ function safeParseJSON(rawBody: string): any {
 }
 
 /**
+ * Convierte un valor numérico arbitrario a number o null. Acepta strings parseables.
+ * Negativos válidos (anticipación). Devuelve null para NaN, undefined, '' y no-números.
+ */
+function parseNumOrNull(raw: unknown): number | null {
+  if (raw == null || raw === '') return null;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * Transforma campos de PascalCase a snake_case para Supabase
  */
 function transformPedidoToSupabase(pedido: any) {
@@ -235,6 +245,12 @@ function transformPedidoToSupabase(pedido: any) {
     campana: pedido.campana ?? pedido.Campana ?? '',
     obsfletero: pedido.obsfletero ?? pedido.ObsFletero ?? '',
     fletero: pedido.Fletero?.trim() || pedido.fletero || '',
+
+    // Métricas de atraso/demora (AS400)
+    atraso_cump_mins: parseNumOrNull(pedido.AtrasoCumpMins ?? pedido.atraso_cump_mins),
+    demora_movil_desde_asignacion_mins: parseNumOrNull(
+      pedido.DemoraMovilDesdeAsignacionMins ?? pedido.demora_movil_desde_asignacion_mins
+    ),
   };
 }
 

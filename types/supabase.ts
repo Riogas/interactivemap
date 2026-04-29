@@ -38,6 +38,8 @@ export interface Database {
           debug_mode: boolean | null
           gps_n8n: boolean | null
           grabar_pantalla: boolean | null
+          pto_vta_lat: number | null
+          pto_vta_lng: number | null
           created_at: string | null
           updated_at: string | null
         }
@@ -67,6 +69,8 @@ export interface Database {
           debug_mode?: boolean | null
           gps_n8n?: boolean | null
           grabar_pantalla?: boolean | null
+          pto_vta_lat?: number | null
+          pto_vta_lng?: number | null
           created_at?: string | null
           updated_at?: string | null
         }
@@ -96,6 +100,8 @@ export interface Database {
           debug_mode?: boolean | null
           gps_n8n?: boolean | null
           grabar_pantalla?: boolean | null
+          pto_vta_lat?: number | null
+          pto_vta_lng?: number | null
           created_at?: string | null
           updated_at?: string | null
         }
@@ -153,6 +159,8 @@ export interface Database {
           latitud: number | null
           longitud: number | null
           pedido_hijo: number | null
+          atraso_cump_mins: number | null
+          demora_movil_desde_asignacion_mins: number | null
         }
         Insert: {
           id: number
@@ -206,6 +214,8 @@ export interface Database {
           latitud?: number | null
           longitud?: number | null
           pedido_hijo?: number | null
+          atraso_cump_mins?: number | null
+          demora_movil_desde_asignacion_mins?: number | null
         }
         Update: {
           id?: number
@@ -259,6 +269,8 @@ export interface Database {
           latitud?: number | null
           longitud?: number | null
           pedido_hijo?: number | null
+          atraso_cump_mins?: number | null
+          demora_movil_desde_asignacion_mins?: number | null
         }
       }
       services: {
@@ -309,6 +321,8 @@ export interface Database {
           latitud: number | null
           longitud: number | null
           fletero: string | null
+          atraso_cump_mins: number | null
+          demora_movil_desde_asignacion_mins: number | null
           created_at: string | null
           updated_at: string | null
         }
@@ -359,6 +373,8 @@ export interface Database {
           latitud?: number | null
           longitud?: number | null
           fletero?: string | null
+          atraso_cump_mins?: number | null
+          demora_movil_desde_asignacion_mins?: number | null
           created_at?: string | null
           updated_at?: string | null
         }
@@ -409,6 +425,8 @@ export interface Database {
           latitud?: number | null
           longitud?: number | null
           fletero?: string | null
+          atraso_cump_mins?: number | null
+          demora_movil_desde_asignacion_mins?: number | null
           created_at?: string | null
           updated_at?: string | null
         }
