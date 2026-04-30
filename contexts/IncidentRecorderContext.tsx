@@ -19,6 +19,7 @@ import {
   useCallback,
 } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useObjectUrl } from '@/lib/hooks/useObjectUrl';
 
 export type RecorderState = 'idle' | 'recording' | 'stopping' | 'confirming' | 'uploading';
 
@@ -67,6 +68,9 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingDurationS, setPendingDurationS] = useState(0);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  // Hook con cleanup automatico: evita el leak de hacer URL.createObjectURL
+  // inline en JSX (cada re-render creaba un Blob URL nuevo sin revocar los previos).
+  const previewUrl = useObjectUrl(pendingBlob);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -355,7 +359,7 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
                 />
               </div>
               <div className="rounded-lg overflow-hidden bg-slate-900 aspect-video">
-                <video src={URL.createObjectURL(pendingBlob)} controls className="w-full h-full" />
+                {previewUrl && <video src={previewUrl} controls className="w-full h-full" />}
               </div>
             </div>
             <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
