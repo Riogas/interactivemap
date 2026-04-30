@@ -67,7 +67,10 @@ export function useGPSTracking(
   const [positions, setPositions] = useState<Map<string, GPSTrackingSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  // Usamos ref en lugar de useState para evitar stale closure: el callback
+  // de subscribe() captura el valor inicial (0) y la guard `retryCount < MAX_RETRIES`
+  // nunca se actualiza, generando un loop infinito de reconexiones.
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     console.log('🔄 Iniciando suscripción GPS Tracking...');
@@ -76,7 +79,6 @@ export function useGPSTracking(
     let isComponentMounted = true;
 
     const MAX_RETRIES = 5;
-    const RETRY_DELAY = 3000; // 3 segundos
 
     const setupChannel = () => {
       // Limpiar canal anterior si existe
@@ -162,25 +164,26 @@ export function useGPSTracking(
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
             setError(null);
-            setRetryCount(0); // Reset retry counter on success
+            retryCountRef.current = 0; // Reset retry counter on success
             console.log('✅ Conectado a Realtime GPS Tracking');
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
-            console.warn(`⚠️ Error en suscripción GPS: ${status}. Intento ${retryCount + 1}/${MAX_RETRIES}`);
-            
-            // Intentar reconectar automáticamente
-            if (retryCount < MAX_RETRIES && isComponentMounted) {
-              console.log(`🔄 Reconectando... (intento ${retryCount + 1}/${MAX_RETRIES})`);
-              setRetryCount(prev => prev + 1);
-              
+            console.warn(`⚠️ Error en suscripción GPS: ${status}. Intento ${retryCountRef.current + 1}/${MAX_RETRIES}`);
+
+            // Intentar reconectar automáticamente con backoff exponencial
+            if (retryCountRef.current < MAX_RETRIES && isComponentMounted) {
+              retryCountRef.current++;
+              const delay = Math.min(1000 * 2 ** retryCountRef.current, 30000);
+              console.log(`🔄 Reconectando... (intento ${retryCountRef.current}/${MAX_RETRIES} en ${delay}ms)`);
+
               // Programar reconexión
               reconnectTimer = setTimeout(() => {
                 if (isComponentMounted) {
                   console.log('🔄 Intentando reconectar...');
                   setupChannel();
                 }
-              }, RETRY_DELAY);
-            } else if (retryCount >= MAX_RETRIES) {
+              }, delay);
+            } else if (retryCountRef.current >= MAX_RETRIES) {
               setError('Error de conexión persistente. Verifica tu red o Supabase.');
               console.error('❌ Máximo de reintentos alcanzado');
             }
