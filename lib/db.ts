@@ -1,4 +1,5 @@
 import { MovilCoordinate } from '@/types';
+import { logger, verbose } from '@/lib/logger';
 
 const API_URL = process.env.EXTERNAL_API_URL;
 
@@ -12,12 +13,12 @@ export async function getMovilCoordinates(
   limit: number = 100
 ): Promise<MovilCoordinate[]> {
   
-  console.log(`🔴 Connecting to external API: ${API_URL}`);
-  
+  logger.debug('db connecting to external API', { apiUrl: API_URL });
+
   const dateFilter = startDate || new Date().toISOString().split('T')[0];
   const url = `${API_URL}/coordinates?movilId=${movilId}&startDate=${dateFilter}&limit=${limit}`;
-  
-  console.log(`📡 Fetching: ${url}`);
+
+  logger.debug('db fetching coordinates', { movilId, startDate: dateFilter, limit });
   
   const response = await fetch(url, {
     headers: {
@@ -31,17 +32,17 @@ export async function getMovilCoordinates(
   }
   
   const result = await response.json();
-  console.log(`✅ API Response:`, result);
-  
+  verbose('db coordinates response', result);
+
   // La API devuelve {success, data: [...]}
   const data = result.data || [];
-  console.log(`✅ Retrieved ${data.length} coordinates from AS400`);
-  
+  logger.info('db coordinates retrieved', { count: data.length, movilId });
+
   return data.map((item: any) => {
     const coordXRaw = String(item.coordx || item.coordX || '').trim();
     const coordYRaw = String(item.coordy || item.coordY || '').trim();
-    
-    console.log('🔍 Coordenadas raw:', { coordXRaw, coordYRaw });
+
+    verbose('db coordenadas raw', { coordXRaw, coordYRaw });
     
     return {
       identificador: Number(item.identificador),
@@ -68,17 +69,17 @@ export async function getLatestPosition(movilId: number): Promise<MovilCoordinat
 export async function getAllMovilesLatestPositions(
   movilIds?: number[]
 ): Promise<Map<number, MovilCoordinate>> {
-  console.log(`🔴 Fetching ALL latest positions from API`);
-  
+  logger.debug('db fetching all latest positions');
+
   const dateFilter = new Date().toISOString().split('T')[0];
   let url = `${API_URL}/latest-positions?startDate=${dateFilter}`;
-  
+
   // Si se especifican IDs específicos, agregarlos al query
   if (movilIds && movilIds.length > 0) {
     url += `&movilIds=${movilIds.join(',')}`;
-    console.log(`📡 Filtering by móviles: ${movilIds.join(',')}`);
+    logger.debug('db filtering by móviles', { count: movilIds.length });
   } else {
-    console.log(`📡 No filter - fetching ALL móviles`);
+    logger.debug('db sin filtro - fetching ALL móviles');
   }
   
   const response = await fetch(url, {
@@ -93,8 +94,8 @@ export async function getAllMovilesLatestPositions(
   }
   
   const result = await response.json();
-  console.log(`✅ Retrieved ${result.count} móviles from AS400`);
-  
+  logger.info('db retrieved móviles from AS400', { count: result.count });
+
   const positions = new Map<number, MovilCoordinate>();
   
   const data = result.data || [];
@@ -118,8 +119,8 @@ export async function getAllMovilesLatestPositions(
     }
   });
   
-  console.log(`✅ Loaded ${positions.size} valid móviles (filtered out invalid coordinates)`);
-  
+  logger.info('db loaded valid móviles', { count: positions.size });
+
   return positions;
 }
 
@@ -127,7 +128,7 @@ export async function getAllMovilesLatestPositions(
  * Obtener lista de empresas fleteras desde AS400
  */
 export async function getEmpresasFleteras() {
-  console.log(`🏢 Fetching empresas fleteras from: ${API_URL}/empresas-fleteras`);
+  logger.debug('db fetching empresas fleteras');
   
   const response = await fetch(`${API_URL}/empresas-fleteras`, {
     headers: {
@@ -141,8 +142,8 @@ export async function getEmpresasFleteras() {
   }
   
   const result = await response.json();
-  console.log(`✅ Retrieved ${result.count} empresas fleteras`);
-  
+  logger.info('db retrieved empresas fleteras', { count: result.count });
+
   return result.data || [];
 }
 
@@ -150,7 +151,7 @@ export async function getEmpresasFleteras() {
  * Obtener móviles de una empresa fletera específica
  */
 export async function getMovilesByEmpresa(empresaId: number) {
-  console.log(`🚗 Fetching móviles for empresa ${empresaId}`);
+  logger.debug('db fetching móviles por empresa', { empresaId });
   
   const response = await fetch(`${API_URL}/moviles-por-empresa?empresaId=${empresaId}`, {
     headers: {
@@ -164,8 +165,8 @@ export async function getMovilesByEmpresa(empresaId: number) {
   }
   
   const result = await response.json();
-  console.log(`✅ Retrieved ${result.count} móviles for empresa ${empresaId}`);
-  
+  logger.info('db retrieved móviles for empresa', { empresaId, count: result.count });
+
   return result.data || [];
 }
 
@@ -184,7 +185,7 @@ export async function getAllMovilesLatestPositionsByEmpresas(
     url += `&empresaIds=${empresaIds.join(',')}`;
   }
   
-  console.log(`🔍 Fetching latest positions (filtered by empresas): ${url}`);
+  logger.debug('db fetching latest positions filtered by empresas', { empresaIds });
   
   const response = await fetch(url, {
     headers: {
@@ -199,8 +200,8 @@ export async function getAllMovilesLatestPositionsByEmpresas(
   
   const result = await response.json();
   const data = result.data || [];
-  
-  console.log(`✅ Retrieved ${data.length} coordinates from AS400`);
+
+  logger.info('db retrieved coordinates from AS400', { count: data.length });
   
   // Convertir a Map para fácil acceso por ID
   const positions = new Map<number, MovilCoordinate>();
@@ -225,8 +226,8 @@ export async function getAllMovilesLatestPositionsByEmpresas(
     }
   });
   
-  console.log(`✅ Loaded ${positions.size} valid móviles for selected empresas`);
-  
+  logger.info('db loaded valid móviles for selected empresas', { count: positions.size });
+
   return positions;
 }
 
@@ -240,7 +241,7 @@ export async function getPedidosServiciosMovil(
   const dateFilter = fechaDesde || new Date().toISOString().split('T')[0] + ' 00:00:00';
   const url = `${API_URL}/pedidos-servicios/${movilId}?fecha_desde=${encodeURIComponent(dateFilter)}`;
   
-  console.log(`📦 Fetching pedidos/servicios: ${url}`);
+  logger.debug('db fetching pedidos/servicios', { movilId, fechaDesde: dateFilter });
   
   const response = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -252,8 +253,8 @@ export async function getPedidosServiciosMovil(
   }
   
   const result = await response.json();
-  console.log(`✅ Retrieved ${result.count} pedidos/servicios`);
-  
+  logger.info('db retrieved pedidos/servicios', { count: result.count, movilId });
+
   return result;
 }
 
@@ -267,7 +268,7 @@ export async function getPedidosServiciosPendientes(
   const dateFilter = fechaDesde || new Date().toISOString().split('T')[0] + ' 00:00:00';
   const url = `${API_URL}/pedidos-servicios-pendientes/${movilId}?fecha_desde=${encodeURIComponent(dateFilter)}`;
   
-  console.log(`⏳ Fetching pendientes: ${url}`);
+  logger.debug('db fetching pendientes', { movilId, fechaDesde: dateFilter });
   
   const response = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -279,7 +280,12 @@ export async function getPedidosServiciosPendientes(
   }
   
   const result = await response.json();
-  console.log(`✅ Retrieved ${result.total} pendientes (${result.pedidosPendientes} pedidos, ${result.serviciosPendientes} servicios)`);
-  
+  logger.info('db retrieved pendientes', {
+    total: result.total,
+    pedidos: result.pedidosPendientes,
+    servicios: result.serviciosPendientes,
+    movilId,
+  });
+
   return result;
 }

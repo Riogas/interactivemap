@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { PROXY_BASE_URL } from './config';
+import { logger } from '@/lib/logger';
 
 // URL base de la API - Ahora usa el proxy de Next.js para evitar CORS
 const API_BASE_URL = PROXY_BASE_URL;
@@ -118,7 +119,7 @@ export const authService = {
         localStorage.setItem('trackmovil_user', JSON.stringify(parsedResponse.user));
       } else {
         // Si no hay usuario, no guardar nada
-        console.warn('⚠️ Login success=true pero sin datos de usuario. Considerando como login inválido.');
+        logger.warn('login success=true pero sin datos de usuario; tratando como inválido');
       }
 
       return parsedResponse;

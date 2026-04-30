@@ -21,6 +21,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { gpsLog } from '@/lib/debug-config';
+import { logger } from '@/lib/logger';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -168,24 +169,27 @@ class GPSBatchQueue {
         gpsLog(`${'═'.repeat(80)}\n`);
 
       } catch (error: any) {
-        console.error(`❌ Error en intento ${attempt}/${this.MAX_RETRIES}:`);
-        console.error(`   - Mensaje: ${error.message}`);
-        console.error(`   - Tipo: ${error.name}`);
-        console.error(`   - Código: ${error.code || 'N/A'}`);
-        console.error(`   - Causa: ${error.cause || 'N/A'}`);
-        
+        logger.error('gps batch error en intento', {
+          attempt,
+          maxRetries: this.MAX_RETRIES,
+          message: error.message,
+          name: error.name,
+          code: error.code || null,
+          cause: error.cause || null,
+        });
+
         // Detectar tipo de error
         const isTimeout = error.name === 'AbortError' || error.message.includes('timeout');
         const isNetwork = error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED');
         const isForeignKey = error.message.includes('violates foreign key constraint') && error.message.includes('fk_gps_movil');
-        
+
         if (isTimeout) {
-          console.error(`   ⏱️ TIMEOUT: Supabase no respondió en 15 segundos`);
+          logger.error('gps batch timeout: Supabase no respondió en 15 segundos');
         } else if (isNetwork) {
-          console.error(`   🌐 ERROR DE RED: No se pudo conectar a Supabase`);
+          logger.error('gps batch error de red: no se pudo conectar a Supabase');
         } else if (isForeignKey) {
-          console.error(`   🔗 ERROR DE FK: Móvil no existe en base de datos`);
-          
+          logger.error('gps batch error de FK: móvil no existe en base de datos');
+
           // Intentar crear los móviles faltantes
           const missingMoviles = await this.createMissingMoviles(batch);
           if (missingMoviles.length > 0) {
@@ -203,9 +207,11 @@ class GPSBatchQueue {
           gpsLog(`⏳ Esperando ${delay}ms antes de reintentar...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          console.error(`💥 BATCH FALLIDO después de ${this.MAX_RETRIES} intentos`);
-          console.error(`   - Registros perdidos: ${batch.length}`);
-          console.error(`   - Error final:`, error.message);
+          logger.error('gps batch fallido después de máximos reintentos', {
+            maxRetries: this.MAX_RETRIES,
+            recordsLost: batch.length,
+            finalError: error.message,
+          });
         }
       }
     }
@@ -297,7 +303,7 @@ class GPSBatchQueue {
           
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(`   ❌ Error al crear móvil ${movilId}: ${response.status} - ${errorText}`);
+            logger.error('gps error al crear móvil', { movilId, status: response.status, errorText });
             continue;
           }
           
@@ -318,11 +324,11 @@ class GPSBatchQueue {
             gpsLog(`   ✅ Móvil ${movilId} verificado en Supabase`);
             createdMoviles.push(movilId);
           } else {
-            console.error(`   ⚠️ Móvil ${movilId} no encontrado en Supabase después de crear`);
+            logger.warn('gps móvil no encontrado en Supabase después de crear', { movilId });
           }
-          
+
         } catch (error: any) {
-          console.error(`   ❌ Error al crear móvil ${movilId}:`, error.message);
+          logger.error('gps error al crear móvil', { movilId, message: error.message });
         }
       }
       
@@ -333,7 +339,7 @@ class GPSBatchQueue {
       return createdMoviles;
       
     } catch (error: any) {
-      console.error(`   ❌ Error en createMissingMoviles:`, error.message);
+      logger.error('gps error en createMissingMoviles', { message: error.message });
       return [];
     }
   }
