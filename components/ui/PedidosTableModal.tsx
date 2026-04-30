@@ -413,7 +413,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
   const getMovilName = useCallback((movilId: number | null) => {
     if (!movilId) return '—';
     const m = moviles.find(mv => mv.id === Number(movilId));
-    return m ? (m.name || `Móvil ${m.id}`) : `#${movilId}`;
+    return m ? (m.name || String(m.id)) : String(movilId);
   }, [moviles]);
 
   const getMovilColor = useCallback((movilId: number | null) => {
@@ -822,12 +822,18 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                     <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('estado')}>
                       Estado <SortArrow col="estado" />
                     </th>
+                    {isFinalizados && (
+                      <>
+                        <th className="px-4 py-3 text-gray-400 whitespace-nowrap">Cumplido</th>
+                        <th className="px-4 py-3 text-gray-400 whitespace-nowrap">Atraso</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="text-center py-12 text-gray-500">
+                      <td colSpan={isFinalizados ? 15 : 13} className="text-center py-12 text-gray-500">
                         <svg className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
@@ -950,6 +956,29 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                           </span>
                         </td>
 
+                        {/* Cumplido + Atraso (solo finalizados) */}
+                        {isFinalizados && (() => {
+                          const tieneMovil = !!p.movil && Number(p.movil) !== 0;
+                          const mostrarAtraso = esEntregado && tieneMovil && p.atraso_cump_mins != null;
+                          const atraso = mostrarAtraso ? Number(p.atraso_cump_mins) : null;
+                          const atrasoColor =
+                            atraso == null ? 'text-gray-500' :
+                            atraso <= 0 ? 'text-green-400' :
+                            atraso < 15 ? 'text-yellow-400' : 'text-red-400';
+                          const atrasoLabel =
+                            atraso == null ? '—' :
+                            atraso <= 0 ? `${Math.abs(atraso)}' antes` : `${atraso}'`;
+                          return (
+                            <>
+                              <td className="px-4 py-2.5 text-gray-300 text-xs whitespace-nowrap font-mono" onClick={() => onPedidoClick?.(p.id)}>
+                                {p.fch_hora_finalizacion ? formatTime(p.fch_hora_finalizacion) : '—'}
+                              </td>
+                              <td className={`px-4 py-2.5 text-xs whitespace-nowrap font-bold ${atrasoColor}`} onClick={() => onPedidoClick?.(p.id)}>
+                                {atrasoLabel}
+                              </td>
+                            </>
+                          );
+                        })()}
 
                       </tr>
                       );

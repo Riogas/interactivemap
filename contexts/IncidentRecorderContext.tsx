@@ -228,8 +228,13 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
 
+      // Firefox fires `onstop` BEFORE flushing the final `dataavailable` event
+      // in some cases, leaving `chunksRef` empty when finalize() runs.
+      // Diferir la finalización 300ms da tiempo al último dataavailable.
+      // En Chrome, la diferencia es invisible (los chunks ya están bufferados
+      // por el timeslice de 250ms del start()).
       recorder.onstop = () => {
-        finalize();
+        setTimeout(() => finalize(), 300);
       };
 
       recorder.onerror = () => {

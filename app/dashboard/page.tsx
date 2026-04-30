@@ -313,6 +313,11 @@ function DashboardContent() {
     return today.toISOString().split('T')[0]; // Formato YYYY-MM-DD
   });
 
+  // True solo si selectedDate es la fecha de hoy. Usado para deshabilitar
+  // capas/botones que solo tienen sentido en modo live (demoras, saturación,
+  // distribución, móviles/zonas, pedidos/zona, estadísticas por zona).
+  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+
   // 🔧 Filter helpers (extracted to useFilterHelpers hook)
   const {
     isInUruguay, filterByDelay, filterByTipoServicio,
@@ -1912,12 +1917,13 @@ function DashboardContent() {
           {/* TODO: REQUIERE_PERMISO - tour-fab-fleteras-zonas (ver docs/PENDING_PERMISSIONS.md) */}
           {/* TODO: REQUIERE_PERMISO - tour-fab-ranking (ver docs/PENDING_PERMISSIONS.md) */}
 
-          {/* Botón Estadísticas por zonas */}
+          {/* Botón Estadísticas por zonas — solo habilitado para fecha de hoy */}
           <button
             id="tour-fab-estadisticas-zonas"
-            onClick={() => { setIsZonaEstadisticasOpen(true); setIsActionsExpanded(false); }}
-            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700"
-            title="Estadísticas por zonas"
+            onClick={() => { if (!isToday) return; setIsZonaEstadisticasOpen(true); setIsActionsExpanded(false); }}
+            disabled={!isToday}
+            className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform ${isToday ? 'hover:scale-110 bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 cursor-pointer' : 'bg-gradient-to-br from-gray-500 to-gray-600 opacity-50 cursor-not-allowed'}`}
+            title={isToday ? 'Estadísticas por zonas' : 'Solo disponible para la fecha de hoy'}
           >
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
@@ -2498,6 +2504,7 @@ function DashboardContent() {
                 serviceShape={preferences.serviceShape || 'triangle'}
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
+                isToday={isToday}
                 demorasData={demorasData}
                 pedidosZonaData={pedidosZonaData}
                 pedidosZonaFilter={pedidosZonaFilter}
