@@ -313,14 +313,16 @@ export default function MovilSelector({
     // de empresas y (b) filtro manual parcial de empresas.
     const isPartialEmpresa = hideUnassigned;
 
+    // Los sin asignar solo son visibles para usuarios privilegiados cuando TODOS
+    // los móviles del colapsable están seleccionados (ninguno excluido).
+    const visibleMovilIds = moviles.filter(m => !hiddenMovilIds?.has(m.id)).map(m => m.id);
+    const allSelected = visibleMovilIds.length > 0 && visibleMovilIds.every(id => selectedMoviles.includes(id));
+    const canSeeUnassigned = privilegedUser && allSelected;
+
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
-    // Cuando hay filtro activo de móviles, los pedidos sin asignar NO pasan
-    // (independientemente de isPartialEmpresa), como indica la spec AC1.
     if (selectedMoviles.length > 0) {
       result = result.filter(pedido => {
-        // Sin asignar: usuarios privilegiados siempre los ven; el resto no
-        if (!pedido.movil || Number(pedido.movil) === 0) return privilegedUser;
-        // Filtrar estrictamente por los móviles seleccionados
+        if (!pedido.movil || Number(pedido.movil) === 0) return canSeeUnassigned;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
     } else if (isPartialEmpresa && !privilegedUser) {
@@ -420,7 +422,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -438,13 +440,14 @@ export default function MovilSelector({
     // Mismo criterio que para pedidos: el parent calcula y baja el flag.
     const isPartialEmpresaSvc = hideUnassigned;
 
-    // Filtrar por móviles seleccionados. Cuando hay filtro activo de móviles,
-    // los services sin asignar NO pasan (spec AC2).
+    // Sin asignar solo visibles para privilegiados cuando TODOS los móviles están seleccionados.
+    const visibleMovilIdsSvc = moviles.filter(m => !hiddenMovilIds?.has(m.id)).map(m => m.id);
+    const allSelectedSvc = visibleMovilIdsSvc.length > 0 && visibleMovilIdsSvc.every(id => selectedMoviles.includes(id));
+    const canSeeUnassignedSvc = privilegedUser && allSelectedSvc;
+
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
-        // Sin asignar: usuarios privilegiados siempre los ven; el resto no
-        if (!service.movil || Number(service.movil) === 0) return privilegedUser;
-        // Filtrar estrictamente por los móviles seleccionados
+        if (!service.movil || Number(service.movil) === 0) return canSeeUnassignedSvc;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
     } else if (isPartialEmpresaSvc && !privilegedUser) {
@@ -544,7 +547,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
