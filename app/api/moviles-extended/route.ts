@@ -30,21 +30,23 @@ export async function GET(request: NextRequest) {
 
     // 2. Contar pedidos asignados por móvil (solo estado=1 y fecha de hoy)
     const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const hojSinGuiones = hoy.replace(/-/g, ''); // '2026-02-17' → '20260217' (formato services)
+    const hoyFechaInicio = `${hoy}T00:00:00`;
+    const hoyFechaFin = `${hoy}T23:59:59`;
+    const hoySinGuiones = hoy.replace(/-/g, ''); // '2026-04-30' → '20260430' (formato fch_para en services)
     const [pedidosResult, servicesResult] = await Promise.all([
       supabase
         .from('pedidos')
         .select('movil')
         .eq('escenario', 1000)
-        .in('estado_nro', [1]) // Solo estado 1 (Pendiente/Asignado)
-        .eq('fch_para', hoy) // Solo pedidos del día actual
+        .in('estado_nro', [1])
+        .eq('fch_para', hoy)
         .not('movil', 'is', null),
       supabase
         .from('services')
         .select('movil')
-        .eq('escenario', 1000)
-        .in('estado_nro', [1]) // Solo estado 1 (Pendiente/Asignado)
-        .eq('fch_para', hojSinGuiones) // Solo services del día actual
+        .in('estado_nro', [1])
+        // Mismo criterio que /api/services: fch_hora_para (timestamp) O fch_para (YYYYMMDD)
+        .or(`and(fch_hora_para.gte.${hoyFechaInicio},fch_hora_para.lte.${hoyFechaFin}),fch_para.eq.${hoySinGuiones}`)
         .not('movil', 'is', null),
     ]);
 
@@ -81,7 +83,7 @@ export async function GET(request: NextRequest) {
     }));
 
     console.log(`✅ Fetched ${movilesExtended.length} moviles with extended data`);
-    console.log('📊 Sample movil data:', movilesExtended[0]); // Ver primer móvil
+    console.log(`📊 Pedidos hoy: ${pedidosResult.data.length}, Services hoy: ${servicesResult.data.length}`);
 
     return NextResponse.json({
       success: true,
