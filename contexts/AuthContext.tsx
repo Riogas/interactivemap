@@ -146,6 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('trackmovil_permisos');
     setUser(null);
     setPermisos(new Set());
+  };
+
   useEffect(() => {
     try {
       const cookies = document.cookie.split(';');
