@@ -308,11 +308,13 @@ export default function MovilSelector({
     // de empresas y (b) filtro manual parcial de empresas.
     const isPartialEmpresa = hideUnassigned;
 
-    // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles + sin asignar
+    // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
+    // Cuando hay filtro activo de móviles, los pedidos sin asignar NO pasan
+    // (independientemente de isPartialEmpresa), como indica la spec AC1.
     if (selectedMoviles.length > 0) {
       result = result.filter(pedido => {
-        // Sin asignar: solo pasan cuando NO hay filtro parcial de empresa
-        if (!pedido.movil || Number(pedido.movil) === 0) return !isPartialEmpresa;
+        // Sin asignar: nunca pasan cuando hay filtro de móviles activo
+        if (!pedido.movil || Number(pedido.movil) === 0) return false;
         // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
         if (hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
@@ -430,10 +432,11 @@ export default function MovilSelector({
     // Mismo criterio que para pedidos: el parent calcula y baja el flag.
     const isPartialEmpresaSvc = hideUnassigned;
 
-    // Filtrar por móviles seleccionados (sin asignar solo pasan cuando no hay filtro parcial de empresa)
+    // Filtrar por móviles seleccionados. Cuando hay filtro activo de móviles,
+    // los services sin asignar NO pasan (spec AC2).
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
-        if (!service.movil || Number(service.movil) === 0) return !isPartialEmpresaSvc;
+        if (!service.movil || Number(service.movil) === 0) return false;
         // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
         if (hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
@@ -641,18 +644,24 @@ export default function MovilSelector({
           });
         }
 
-        // Badge de móviles seleccionados
+        // Badge de móviles seleccionados.
+        // "Todos" cuando filteredMoviles (los visibles en el colapsable) están
+        // todos seleccionados — usa `allSelected` calculado arriba (spec AC3/AC6).
+        // El +N es el rebalse de los seleccionados que no caben en el badge (spec AC5).
         {
-          const allMovilesSelected = selectedMoviles.length === moviles.length;
           const noneSelected = selectedMoviles.length === 0;
+          // allSelected ya compara filteredMoviles.every(m => selectedMoviles.includes(m.id))
+          const VISIBLE_IDS = 5;
           badges.push({
-            label: allMovilesSelected
+            label: allSelected
               ? '🚗 Móviles: Todos'
               : noneSelected
               ? '🚗 Móviles: Ninguno'
-              : `🚗 Móviles: ${selectedMoviles.length <= 5 ? selectedMoviles.join(', ') : `${selectedMoviles.slice(0, 5).join(', ')} +${selectedMoviles.length - 5}`}`,
+              : `🚗 Móviles: ${selectedMoviles.length <= VISIBLE_IDS
+                  ? selectedMoviles.join(', ')
+                  : `${selectedMoviles.slice(0, VISIBLE_IDS).join(', ')} +${selectedMoviles.length - VISIBLE_IDS}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: allMovilesSelected ? undefined : onSelectAll,
+            onClear: allSelected ? undefined : onSelectAll,
           });
         }
 
