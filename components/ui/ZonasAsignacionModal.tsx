@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, PedidoSupabase } from '@/types';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ========== Tipos internos ==========
 interface Zona {
@@ -52,6 +53,8 @@ interface ZonasAsignacionModalProps {
 }
 
 export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos, hiddenMovilIds }: ZonasAsignacionModalProps) {
+  const { hasPermiso } = useAuth();
+  const canAsignar = hasPermiso('asigmovil');
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loadingZonas, setLoadingZonas] = useState(false);
   const [selectedZonaId, setSelectedZonaId] = useState<number | null>(null);
@@ -303,12 +306,12 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
     return (
       <div
         key={movilData.id}
-        draggable
-        onDragStart={(e) => handleDragStart(e, movilData.id)}
-        onDragEnd={handleDragEnd}
+        draggable={canAsignar}
+        onDragStart={canAsignar ? (e) => handleDragStart(e, movilData.id) : undefined}
+        onDragEnd={canAsignar ? handleDragEnd : undefined}
         className={`
-          flex items-center gap-2 px-3 py-2 rounded-lg cursor-grab active:cursor-grabbing
-          transition-all duration-200 select-none group
+          flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 select-none group
+          ${canAsignar ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}
           ${isDragging ? 'opacity-40 scale-95' : 'opacity-100'}
           ${inDropZone
             ? 'bg-gray-700/50 hover:bg-gray-600/50 border border-gray-600'
@@ -586,7 +589,8 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
                 )}
               </div>
 
-              {/* ===== Panel derecho: MÓVILES DISPONIBLES ===== */}
+              {/* ===== Panel derecho: MÓVILES DISPONIBLES — solo si tiene permiso asigmovil ===== */}
+              {canAsignar && (
               <div className="w-60 flex-shrink-0 border-l border-gray-700/50 flex flex-col bg-gray-850">
                 <div className="px-4 py-3 border-b border-gray-700/30">
                   <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-2 mb-2">
@@ -650,6 +654,7 @@ export default function ZonasAsignacionModal({ isOpen, onClose, moviles, pedidos
                   )}
                 </div>
               </div>
+              )}
             </div>
 
             {/* ========== Footer ========== */}

@@ -60,9 +60,59 @@ function parsePreferencia(
   }
 }
 
+// Acciones de permisos consultadas al Security Suite
+const PERMISOS_A_CONSULTAR = [
+  { ObjetoKey: 'dashboard', AccionKey: 'stats' },
+  { ObjetoKey: 'dashboard', AccionKey: 'date' },
+  { ObjetoKey: 'dashboard', AccionKey: 'updptsventa' },
+  { ObjetoKey: 'dashboard', AccionKey: 'asigmovil' },
+  { ObjetoKey: 'dashboard', AccionKey: 'configzonaemp' },
+  { ObjetoKey: 'dashboard', AccionKey: 'ranking' },
+];
+
+async function fetchPermisos(token: string): Promise<Set<string>> {
+  try {
+    const res = await fetch('/api/auth/permisos', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        aplicacion: 'RiogasTracking',
+        permisos: PERMISOS_A_CONSULTAR,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('⚠️ fetchPermisos: respuesta no OK', res.status);
+      return new Set();
+    }
+
+    const data = await res.json();
+    const granted = new Set<string>();
+
+    if (Array.isArray(data.resultados)) {
+      for (const r of data.resultados) {
+        if (r.permitido === 'GRANTED') {
+          granted.add(r.accionKey as string);
+        }
+      }
+    }
+
+    console.log('✅ Permisos cargados:', [...granted]);
+    return granted;
+  } catch (e) {
+    console.warn('⚠️ Error al cargar permisos:', e);
+    return new Set();
+  }
+}
+
 interface AuthContextType {
   user: User | null;
   escenarioId: number;
+  permisos: Set<string>;
+  hasPermiso: (accionKey: string) => boolean;
   login: (username: string, password: string, escenarioId?: number) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -73,6 +123,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [escenarioId, setEscenarioId] = useState<number>(1000);
+  const [permisos, setPermisos] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
   // ⏰ Duración máxima de sesión: 8 horas (en milisegundos)
@@ -92,14 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('trackmovil_token');
     localStorage.removeItem('trackmovil_allowed_empresas');
     localStorage.removeItem('trackmovil_allowed_escenarios');
+    localStorage.removeItem('trackmovil_permisos');
     setUser(null);
+    setPermisos(new Set());
   };
 
-  // Limpieza proactiva de cookies legacy de Supabase (sb-*-auth-token).
-  // Antes usábamos sync-session con anonymous sign-ins; eso dejaba cookies
-  // que ahora pueden estar expiradas y hacer que Realtime quede colgado.
-  // Como ya no sincronizamos sesión con Supabase, estas cookies no sirven
-  // para nada y conviene borrarlas al arranque.
   useEffect(() => {
     try {
       const cookies = document.cookie.split(';');
@@ -166,6 +214,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Cargar escenario persistido
         const savedEscenario = localStorage.getItem('trackmovil_escenario_id');
         if (savedEscenario) setEscenarioId(parseInt(savedEscenario, 10));
+
+        // Cargar permisos persistidos
+        const savedPermisos = localStorage.getItem('trackmovil_permisos');
+        if (savedPermisos) {
+          try {
+            const arr: string[] = JSON.parse(savedPermisos);
+            setPermisos(new Set(arr));
+          } catch {
+            // ignore: se recargarán si el usuario hace algo
+          }
+        }
 
         setUser({
           ...parsedUser,
@@ -291,6 +350,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('trackmovil_token', newUser.token);
         localStorage.setItem('trackmovil_escenario_id', String(selectedEscenarioId));
 
+        // Cargar permisos del Security Suite
+        const grantedPermisos = await fetchPermisos(newUser.token);
+        setPermisos(grantedPermisos);
+        localStorage.setItem('trackmovil_permisos', JSON.stringify([...grantedPermisos]));
+
         setUser(newUser);
         setEscenarioId(selectedEscenarioId);
         return { success: true };
@@ -331,17 +395,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 2. Cerrar sesión local (GeneXus)
     console.log('🔐 Limpiando sesión local...');
     setUser(null);
+    setPermisos(new Set());
     authService.logout();
     localStorage.removeItem('trackmovil_allowed_empresas');
     localStorage.removeItem('trackmovil_allowed_escenarios');
     localStorage.removeItem('trackmovil_escenario_id');
+    localStorage.removeItem('trackmovil_permisos');
     setEscenarioId(1000);
     console.log('✅ Sesión cerrada completamente');
   };
 
+  const hasPermiso = (accionKey: string): boolean => permisos.has(accionKey);
+
   const value = {
     user,
     escenarioId,
+    permisos,
+    hasPermiso,
     login,
     logout,
     isAuthenticated: !!user,

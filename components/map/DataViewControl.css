@@ -76,6 +76,20 @@
   background: #f1f5f9;
 }
 
+.dv-option.dv-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+
+.dv-option.dv-disabled:hover {
+  background: transparent;
+}
+
+.dv-option.dv-disabled input[type="radio"] {
+  cursor: not-allowed;
+}
+
 .dv-option input[type="radio"] {
   accent-color: #3b82f6;
   width: 16px;

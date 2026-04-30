@@ -56,7 +56,7 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
 
 function DashboardContent() {
   // Hook de autenticación (para obtener empresas permitidas y escenario)
-  const { user, escenarioId } = useAuth();
+  const { user, escenarioId, hasPermiso } = useAuth();
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
   const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt } = useRealtime();
@@ -312,6 +312,23 @@ function DashboardContent() {
     const today = new Date();
     return today.toISOString().split('T')[0]; // Formato YYYY-MM-DD
   });
+
+  // True solo si selectedDate es la fecha de hoy. Usado para deshabilitar
+  // capas/botones que solo tienen sentido en modo live (demoras, saturación,
+  // distribución, móviles/zonas, pedidos/zona, estadísticas por zona).
+  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+
+  // Fix 4: Resetear capa a 'distribucion' si la fecha activa no es hoy y
+  // el modo actual es solo válido en tiempo real.
+  useEffect(() => {
+    if (!isToday) {
+      const liveOnlyModes = ['demoras', 'moviles-zonas', 'zonas-activas', 'pedidos-zona', 'saturacion'];
+      if (liveOnlyModes.includes(dataViewMode)) {
+        updatePreference('dataViewMode', 'distribucion');
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToday, dataViewMode]);
 
   // 🔧 Filter helpers (extracted to useFilterHelpers hook)
   const {
@@ -1384,6 +1401,14 @@ function DashboardContent() {
   );
   const userHasEmpresaRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
 
+  // Usuarios que deben ver pedidos sin asignar y móviles fuera del panel
+  // incluso cuando el filtro de empresa es parcial.
+  const isPrivilegedUser = useMemo(
+    () => user?.isRoot === 'S' ||
+      (user?.roles?.some(r => [48, 49, 50].includes(Number(r.RolId))) ?? false),
+    [user],
+  );
+
   // `userHasEmpresaRestriction` mira solo allowedEmpresas — se usa para filtrar
   // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
   // `isScopeRestricted` además exige que el user no sea root/despacho — es la
@@ -1612,9 +1637,40 @@ function DashboardContent() {
   }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
   // para el mapa. Sin esto, cada llamada inline crea un nuevo array → downstream re-renders.
+
+  // Conteo client-side de pedidos+services estado=1 por móvil, derivado de los datos
+  // ya cargados en memoria. Es la fuente de verdad para el badge de lote en el sidebar —
+  // evita dependencias de timing en el endpoint /api/moviles-extended.
+  const pedidosAsignadosClientMap = useMemo(() => {
+    const map = new Map<number, number>();
+    pedidosCompletos.forEach(p => {
+      if (p.movil && Number(p.movil) !== 0 && Number(p.estado_nro) === 1) {
+        const k = Number(p.movil);
+        map.set(k, (map.get(k) || 0) + 1);
+      }
+    });
+    servicesCompletos.forEach(s => {
+      if (s.movil && Number(s.movil) !== 0 && Number(s.estado_nro) === 1) {
+        const k = Number(s.movil);
+        map.set(k, (map.get(k) || 0) + 1);
+      }
+    });
+    return map;
+  }, [pedidosCompletos, servicesCompletos]);
+
   const movilesFilteredMarked = useMemo(
-    () => markInactiveMoviles(movilesFiltered),
-    [movilesFiltered, markInactiveMoviles],
+    () => markInactiveMoviles(movilesFiltered).map(m => {
+      const count = pedidosAsignadosClientMap.get(m.id) ?? 0;
+      if (count === (m.pedidosAsignados ?? 0)) return m;
+      // Preservar color especial de NO_ACTIVO/BAJA_MOMENTÁNEA, recalcular el resto
+      const isPaused = m.estadoNro === 3 || m.estadoNro === 4;
+      return {
+        ...m,
+        pedidosAsignados: count,
+        ...(isPaused ? {} : { color: getMovilColorByOccupancy(count, m.tamanoLote ?? 0) }),
+      };
+    }),
+    [movilesFiltered, markInactiveMoviles, pedidosAsignadosClientMap, getMovilColorByOccupancy],
   );
 
   const movilesForMap = useMemo(
@@ -1909,15 +1965,41 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* TODO: REQUIERE_PERMISO - tour-fab-fleteras-zonas (ver docs/PENDING_PERMISSIONS.md) */}
-          {/* TODO: REQUIERE_PERMISO - tour-fab-ranking (ver docs/PENDING_PERMISSIONS.md) */}
+          {/* FAB: Zonas por Empresa Fletera — requiere permiso configzonaemp */}
+          {hasPermiso('configzonaemp') && (
+            <button
+              id="tour-fab-fleteras-zonas"
+              onClick={() => { setIsFleterasZonasOpen(true); setIsActionsExpanded(false); }}
+              className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700"
+              title="Zonas por Empresa Fletera"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </button>
+          )}
 
-          {/* Botón Estadísticas por zonas */}
+          {/* FAB: Ranking de Móviles — requiere permiso ranking */}
+          {hasPermiso('ranking') && (
+            <button
+              id="tour-fab-ranking"
+              onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
+              className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
+              title="Ranking de Móviles"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </button>
+          )}
+
+          {/* Botón Estadísticas por zonas — solo habilitado para fecha de hoy */}
           <button
             id="tour-fab-estadisticas-zonas"
-            onClick={() => { setIsZonaEstadisticasOpen(true); setIsActionsExpanded(false); }}
-            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700"
-            title="Estadísticas por zonas"
+            onClick={() => { if (!isToday) return; setIsZonaEstadisticasOpen(true); setIsActionsExpanded(false); }}
+            disabled={!isToday}
+            className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform ${isToday ? 'hover:scale-110 bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 cursor-pointer' : 'bg-gradient-to-br from-gray-500 to-gray-600 opacity-50 cursor-not-allowed'}`}
+            title={isToday ? 'Estadísticas por zonas' : 'Solo disponible para la fecha de hoy'}
           >
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
@@ -1925,7 +2007,22 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* TODO: REQUIERE_PERMISO - tour-fab-estadisticas (ver docs/PENDING_PERMISSIONS.md) */}
+          {/* FAB: Estadísticas — requiere permiso stats */}
+          {hasPermiso('stats') && (
+            <button
+              id="tour-fab-estadisticas"
+              onClick={() => {
+                window.open(`/dashboard/stats?date=${selectedDate}`, '_blank');
+                setIsActionsExpanded(false);
+              }}
+              className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+              title="Estadísticas globales"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Botón toggle FAB ⚡ */}
@@ -2331,6 +2428,7 @@ function DashboardContent() {
                   showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
                   hideUnassigned={hideUnassigned}
                   isRestrictedUser={userHasEmpresaRestriction}
+                  privilegedUser={isPrivilegedUser}
                 />
               </div>
             </motion.div>
@@ -2498,6 +2596,7 @@ function DashboardContent() {
                 serviceShape={preferences.serviceShape || 'triangle'}
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
+                isToday={isToday}
                 demorasData={demorasData}
                 pedidosZonaData={pedidosZonaData}
                 pedidosZonaFilter={pedidosZonaFilter}

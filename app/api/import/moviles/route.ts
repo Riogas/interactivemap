@@ -295,22 +295,18 @@ export async function POST(request: NextRequest) {
     }
     console.log('✅ Validación exitosa');
 
-    // PASO 5: Mostrar datos de cada móvil
-    console.log('\n� PASO 5: Datos de móviles recibidos');
-    console.log('----------------------------------------');
-    movilesArray.forEach((movil, index) => {
-      console.log(`Móvil #${index + 1}:`, JSON.stringify(movil, null, 2));
-    });
+    // PASO 5: Resumen de móviles recibidos (verbose detallado solo en DEBUG).
+    console.log(`\n📥 PASO 5: ${movilesArray.length} móviles recibidos`);
+    if (process.env.IMPORT_VERBOSE === '1') {
+      movilesArray.forEach((movil, index) => {
+        console.log(`Móvil #${index + 1}:`, JSON.stringify(movil, null, 2));
+      });
+    }
 
-    // PASO 6: Transformar datos
-    console.log('\n🔄 PASO 6: Transformando datos a formato Supabase');
-    console.log('----------------------------------------');
-    const transformedMoviles = movilesArray.map((movil, index) => {
-      const transformed = transformMovilToSupabase(movil);
-      console.log(`Móvil #${index + 1} transformado:`, JSON.stringify(transformed, null, 2));
-      return transformed;
-    });
-    console.log('✅ Transformación completada');
+    // PASO 6: Transformar datos (sin loguear cada uno — es O(n) de string alloc).
+    console.log('\n🔄 PASO 6: Transformando');
+    const transformedMoviles = movilesArray.map(transformMovilToSupabase);
+    console.log(`✅ Transformados ${transformedMoviles.length}`);
 
     // PASO 7: Insertar/Actualizar en Supabase (UPSERT)
     console.log('\n💾 PASO 7: Insertando/Actualizando en Supabase (UPSERT)');

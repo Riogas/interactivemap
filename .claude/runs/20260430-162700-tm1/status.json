@@ -1,0 +1,30 @@
+{
+  "runId": "20260430-162700-tm1",
+  "state": "completed",
+  "current_stage": null,
+  "current_iteration": null,
+  "current_intent": null,
+  "started_at": "2026-04-30T16:27:00Z",
+  "updated_at": "2026-04-30T17:14:00Z",
+  "completed_stages": [
+    { "name": "triage", "verdict": "bug-fix", "duration_seconds": 57 },
+    { "name": "implementer", "verdict": "delivered", "duration_seconds": 333 },
+    { "name": "code-reviewer", "verdict": "APPROVED", "duration_seconds": 155 },
+    { "name": "qa-tester", "verdict": "PASSED", "duration_seconds": 253 },
+    { "name": "ux-validator", "verdict": "UX_BLOCKED_ENV", "duration_seconds": 877 }
+  ],
+  "stages_planned": ["triage", "implementer", "code-reviewer", "qa-tester", "ux-validator"],
+  "stages_skipped": [
+    { "name": "analyst", "reason": "bucket=bug-fix, mini-spec inline" },
+    { "name": "architect", "reason": "bucket=bug-fix, sin flag --architect" },
+    { "name": "security-reviewer", "reason": "no toca auth/db/api" },
+    { "name": "dependency-reviewer", "reason": "no toca manifests" },
+    { "name": "documenter", "reason": "bucket=bug-fix" }
+  ],
+  "estimated_cost_so_far_usd": 0.42,
+  "verdict_final": "MERGE_READY_WITH_BLOCKER_NOTE",
+  "multi_intent": false,
+  "intents_progress": [],
+  "request_quality": "bueno",
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil"
+}

@@ -96,6 +96,7 @@ interface MapViewProps {
   serviceShape?: MarkerShape; // Forma del marcador de services (compact/mini)
   dataViewMode?: DataViewMode; // Capas de Información activa
   onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
+  isToday?: boolean; // True si selectedDate === hoy. Si false, las capas dependientes de datos en vivo se deshabilitan.
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
   pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
@@ -577,6 +578,7 @@ const MapView = memo(function MapView({
   serviceShape = 'triangle',
   dataViewMode = 'normal',
   onDataViewChange,
+  isToday = true,
   demorasData = new Map(),
   pedidosZonaData,
   pedidosZonaFilter = 'pendientes',
@@ -2117,7 +2119,7 @@ const MapView = memo(function MapView({
 
         {/* 📊 Control de Capas de Información (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
-          <DataViewControl value={dataViewMode} onChange={onDataViewChange} />
+          <DataViewControl value={dataViewMode} onChange={onDataViewChange} isToday={isToday} />
         )}
 
         {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}

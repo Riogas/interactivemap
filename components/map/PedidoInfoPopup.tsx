@@ -121,7 +121,7 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
 
           {/* Contenido */}
           <div className="p-3 space-y-2.5 overflow-y-auto flex-1">
-            {/* Etiqueta de Atraso/Demora - solo para pedidos NO entregados */}
+            {/* Etiqueta de Atraso/Demora - solo para pedidos NO finalizados */}
             {Number(pedido.estado_nro) !== 2 ? (
             <div 
               className="flex items-center justify-between rounded-lg px-3 py-2 border"
@@ -301,6 +301,39 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Datos de cumplido — solo pedidos finalizados (estado_nro=2) */}
+            {Number(pedido.estado_nro) === 2 && (pedido.fch_hora_finalizacion || pedido.atraso_cump_mins != null) && (() => {
+              const esEntregado = isPedidoEntregado(pedido);
+              const tieneMovil = !!pedido.movil && Number(pedido.movil) !== 0;
+              const mostrarAtraso = esEntregado && tieneMovil && pedido.atraso_cump_mins != null;
+              const atraso = mostrarAtraso ? Number(pedido.atraso_cump_mins) : null;
+              const atrasoColor = atraso == null ? '#6B7280' : atraso <= 0 ? '#22C55E' : atraso < 15 ? '#EAB308' : '#EF4444';
+              const atrasoLabel = atraso == null ? '—' : atraso <= 0 ? `${Math.abs(atraso)} min antes` : `${atraso} min atrasado`;
+              return (
+                <div>
+                  <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cumplido</h4>
+                  <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-2.5 border border-emerald-200 space-y-2">
+                    <div className={`grid ${mostrarAtraso ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                      {pedido.fch_hora_finalizacion && (
+                        <div className="bg-white rounded-md p-1.5 border border-emerald-200">
+                          <div className="text-[9px] text-emerald-700 font-semibold mb-0.5">Fecha Cumplido</div>
+                          <div className="text-[10px] font-bold text-gray-900">
+                            {format(parseLocalDate(pedido.fch_hora_finalizacion), "dd/MM HH:mm", { locale: es })}
+                          </div>
+                        </div>
+                      )}
+                      {mostrarAtraso && (
+                        <div className="bg-white rounded-md p-1.5 border" style={{ borderColor: `${atrasoColor}55` }}>
+                          <div className="text-[9px] font-semibold mb-0.5" style={{ color: atrasoColor }}>Atraso</div>
+                          <div className="text-[10px] font-bold" style={{ color: atrasoColor }}>{atrasoLabel}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </motion.div>

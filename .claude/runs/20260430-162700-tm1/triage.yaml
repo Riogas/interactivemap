@@ -1,0 +1,51 @@
+multi_intent: false
+relation: n/a
+intents:
+  - id: 1
+    summary: |
+      Fix bug múltiple en filtro de móviles del dashboard:
+      1. Filtro de móviles no se aplica — pedidos/services muestran registros de móviles no seleccionados
+      2. Badge "Seleccionar todos" renderiza IDs concatenados en lugar de "Todos"
+      3. Contador "+N" del badge usa total global en lugar del total del colapsable
+    bucket: bug-fix
+    confidence: high
+    touches:
+      ui: true
+      db: false
+      auth: false
+      api: false
+      infra: false
+    size_estimate_loc: 120
+    risk: medium
+    recommended_agents:
+      - implementer
+      - code-reviewer
+      - qa-tester
+    recommended_models:
+      analyst: skip
+      architect: skip
+      implementer: sonnet
+      code-reviewer: sonnet
+      qa-tester: sonnet
+      ux-validator: skip
+      security-reviewer: skip
+      documenter: skip
+rationale: |
+  Tres problemas en un único componente (MovilSelector.tsx) — líneas ~312-320 (filtro pedidos),
+  ~434-440 (filtro services), ~645-657 (badge móviles).
+  La raíz: filteredMoviles (visibles en colapsable) y selectedMoviles son estados independientes
+  y el badge no sincroniza; además la lógica de filtro no descarta inactivos ni "sin asignar".
+clarifying_questions_resolved:
+  - q: "¿El colapsable Empresa Fletera es donde están los 80 móviles mencionados?"
+    a: "Sí. El colapsable per-empresa contiene N móviles (ej 80). 'Todos' = todos los del colapsable."
+  - q: "Cuando se selecciona Todos ¿badge debe decir 'Todos' o nombres?"
+    a: "Decir 'Todos' literal — comportamiento como en primer login (sin filtro activo)."
+  - q: "¿Pedidos 'Sin asignar' deben filtrarse cuando hay filtro parcial?"
+    a: "Sí. Texto del usuario: 'no deber mostrar ni los pedidos de moviles inactivos, ni los pedidos sin movil'."
+files_likely_affected:
+  - app/dashboard/page.tsx
+  - components/ui/MovilSelector.tsx
+  - hooks/dashboard/useFilterHelpers.ts
+override_orquestador:
+  ux_validator: keep
+  ux_reason: "Bug es 100% visual + interactivo — usuario explicitó 'validar con ux-validator' en pedido original"

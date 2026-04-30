@@ -35,10 +35,12 @@ export async function GET(request: NextRequest) {
     
     const supabase = getServerSupabaseClient();
     
-    // Obtener móviles activos con sus datos
+    // Obtener móviles activos con sus datos.
+    // pto_vta_lat/pto_vta_lng se incluyen para fallback cuando no hay
+    // posición GPS reportada por la app de pedidos (ver más abajo).
     let movilesQuery = supabase
       .from('moviles')
-      .select('id, empresa_fletera_id, matricula, estado_nro, descripcion')
+      .select('id, empresa_fletera_id, matricula, estado_nro, descripcion, pto_vta_lat, pto_vta_lng')
       .eq('mostrar_en_mapa', true);
     
     // Filtro por móvil específico (tiene prioridad)
@@ -84,33 +86,65 @@ export async function GET(request: NextRequest) {
     });
     
     console.log(`📍 Móviles con posición vigente: ${latestPositions.size} de ${moviles.length}`);
-    
-    // Solo incluir móviles que tienen una posición en gps_latest_positions (tabla limpia por cron)
-    const movilesConCoordenadas = moviles.filter((movil: any) => latestPositions.has(movil.id));
-    
-    console.log(`✅ Móviles con GPS vigente: ${movilesConCoordenadas.length}`);
-    
-    // Combinar datos de móviles con posiciones
-    const data = movilesConCoordenadas.map((movil: any, index: number) => {
-      const position = latestPositions.get(movil.id);
-      
-      return {
-        movilId: Number(movil.id),
-        movilName: movil.descripcion || `Móvil-${movil.id}`,
-        color: getMovilColor(index),
-        empresa_fletera_id: movil.empresa_fletera_id,
-        estado: movil.estado_nro,
-        position: {
-          identificador: position.id,
-          origen: 'SUPABASE',
-          coordX: position.latitud,
-          coordY: position.longitud,
-          fechaInsLog: position.fecha_hora,
-          auxIn2: position.velocidad?.toString() || '0',
-          distRecorrida: position.distancia_recorrida || 0,
-        },
-      };
-    });
+
+    // Política: si un móvil tiene gps_latest_position vigente la usamos; si NO
+    // la tiene pero el importer le asignó pto_vta_lat/lng, usamos esas como
+    // posición fallback. Esto evita el delay entre importer → trigger →
+    // gps_latest_positions, y permite que un móvil recién activado aparezca
+    // en el mapa/colapsable inmediatamente. Sin ninguna de las dos, el móvil
+    // se descarta para no romper el mapa.
+    const ptovtaFallbackCount = { used: 0, dropped: 0 };
+    const data = moviles
+      .map((movil: any, index: number) => {
+        const position = latestPositions.get(movil.id);
+        if (position) {
+          return {
+            movilId: Number(movil.id),
+            movilName: movil.descripcion || `Móvil-${movil.id}`,
+            color: getMovilColor(index),
+            empresa_fletera_id: movil.empresa_fletera_id,
+            estado: movil.estado_nro,
+            position: {
+              identificador: position.id,
+              origen: 'SUPABASE',
+              coordX: position.latitud,
+              coordY: position.longitud,
+              fechaInsLog: position.fecha_hora,
+              auxIn2: position.velocidad?.toString() || '0',
+              distRecorrida: position.distancia_recorrida || 0,
+            },
+          };
+        }
+        // Fallback: pto_vta_lat/lng (definidos en moviles por el importer).
+        const lat = Number(movil.pto_vta_lat);
+        const lng = Number(movil.pto_vta_lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+          ptovtaFallbackCount.used++;
+          return {
+            movilId: Number(movil.id),
+            movilName: movil.descripcion || `Móvil-${movil.id}`,
+            color: getMovilColor(index),
+            empresa_fletera_id: movil.empresa_fletera_id,
+            estado: movil.estado_nro,
+            position: {
+              identificador: 0,
+              origen: 'PTOVTA_FALLBACK',
+              coordX: lat,
+              coordY: lng,
+              fechaInsLog: new Date().toISOString(),
+              auxIn2: '0',
+              distRecorrida: 0,
+            },
+          };
+        }
+        ptovtaFallbackCount.dropped++;
+        return null;
+      })
+      .filter(Boolean);
+
+    console.log(
+      `✅ Total devueltos: ${data.length} (gps=${latestPositions.size}, ptovta_fallback=${ptovtaFallbackCount.used}, sin_coords=${ptovtaFallbackCount.dropped})`
+    );
 
     console.log(`✅ API /all-positions - Returning ${data.length} móviles with GPS data`);
 

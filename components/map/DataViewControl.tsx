@@ -9,7 +9,11 @@ export type DataViewMode = 'normal' | 'distribucion' | 'demoras' | 'moviles-zona
 interface DataViewControlProps {
   value: DataViewMode;
   onChange: (mode: DataViewMode) => void;
+  /** Si false, las capas dependientes de datos en vivo (demoras/saturación/distribución/pedidos-zona/móviles-zonas) se deshabilitan. */
+  isToday?: boolean;
 }
+
+const DATE_DEPENDENT_MODES: DataViewMode[] = ['distribucion', 'demoras', 'moviles-zonas', 'pedidos-zona', 'saturacion'];
 
 /**
  * Control del mapa estilo Leaflet para seleccionar la Capas de Información:
@@ -18,10 +22,17 @@ interface DataViewControlProps {
  * - Cant Móviles en Zonas
  * Se posiciona arriba del control de capas (bottomright).
  */
-export default function DataViewControl({ value, onChange }: DataViewControlProps) {
+export default function DataViewControl({ value, onChange, isToday = true }: DataViewControlProps) {
   const map = useMap();
   const controlRef = useRef<L.Control | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Si el modo activo depende de la fecha y no estamos en hoy, forzar 'normal'.
+  useEffect(() => {
+    if (!isToday && DATE_DEPENDENT_MODES.includes(value)) {
+      onChange('normal');
+    }
+  }, [isToday, value, onChange]);
 
   useEffect(() => {
     if (!map) return;
@@ -123,7 +134,7 @@ export default function DataViewControl({ value, onChange }: DataViewControlProp
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
-  // Sync external value changes to the DOM radios
+  // Sync external value changes to the DOM radios + apply disabled state
   useEffect(() => {
     if (!containerRef.current) return;
     const radio = containerRef.current.querySelector<HTMLInputElement>(`input[value="${value}"]`);
@@ -134,7 +145,20 @@ export default function DataViewControl({ value, onChange }: DataViewControlProp
     if (toggle) {
       toggle.classList.toggle('dv-active', value !== 'normal');
     }
-  }, [value]);
+
+    // Aplicar disabled visual + funcional a las opciones dependientes de fecha
+    const radios = containerRef.current.querySelectorAll<HTMLInputElement>('input[name="dv-mode"]');
+    radios.forEach((r) => {
+      const isDateDependent = DATE_DEPENDENT_MODES.includes(r.value as DataViewMode);
+      const shouldDisable = !isToday && isDateDependent;
+      r.disabled = shouldDisable;
+      const label = r.closest('label.dv-option') as HTMLElement | null;
+      if (label) {
+        label.classList.toggle('dv-disabled', shouldDisable);
+        label.title = shouldDisable ? 'Solo disponible para la fecha de hoy' : '';
+      }
+    });
+  }, [value, isToday]);
 
   return null;
 }

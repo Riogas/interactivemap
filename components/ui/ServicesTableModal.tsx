@@ -341,7 +341,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const getMovilName = useCallback((movilId: number | null) => {
     if (!movilId) return '—';
     const m = moviles.find(mv => mv.id === Number(movilId));
-    return m ? (m.name || `Móvil ${m.id}`) : `#${movilId}`;
+    return m ? (m.name || String(m.id)) : String(movilId);
   }, [moviles]);
 
   const getMovilColor = useCallback((movilId: number | null) => {

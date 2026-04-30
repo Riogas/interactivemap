@@ -30,30 +30,43 @@ export async function GET(request: NextRequest) {
 
     // 2. Contar pedidos asignados por móvil (solo estado=1 y fecha de hoy)
     const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const { data: pedidosCount, error: pedidosError } = await supabase
-      .from('pedidos')
-      .select('movil')
-      .eq('escenario', 1000)
-      .in('estado_nro', [1]) // Solo estado 1 (Pendiente/Asignado)
-      .eq('fch_para', hoy) // Solo pedidos del día actual
-      .not('movil', 'is', null);
+    const hoyFechaInicio = `${hoy}T00:00:00`;
+    const hoyFechaFin = `${hoy}T23:59:59`;
+    const hoySinGuiones = hoy.replace(/-/g, ''); // '2026-04-30' → '20260430' (formato fch_para en services)
+    const [pedidosResult, servicesResult] = await Promise.all([
+      supabase
+        .from('pedidos')
+        .select('movil')
+        .eq('escenario', 1000)
+        .in('estado_nro', [1])
+        .eq('fch_para', hoy)
+        .not('movil', 'is', null),
+      supabase
+        .from('services')
+        .select('movil')
+        .in('estado_nro', [1])
+        // Mismo criterio que /api/services: fch_hora_para (timestamp) O fch_para (YYYYMMDD)
+        .or(`and(fch_hora_para.gte.${hoyFechaInicio},fch_hora_para.lte.${hoyFechaFin}),fch_para.eq.${hoySinGuiones}`)
+        .not('movil', 'is', null),
+    ]);
 
-    if (pedidosError) {
-      console.error('❌ Error counting pedidos:', pedidosError);
-      return NextResponse.json({
-        success: false,
-        error: pedidosError.message,
-      }, { status: 500 });
+    if (pedidosResult.error) {
+      console.error('❌ Error counting pedidos:', pedidosResult.error);
+      return NextResponse.json({ success: false, error: pedidosResult.error.message }, { status: 500 });
+    }
+    if (servicesResult.error) {
+      console.error('❌ Error counting services:', servicesResult.error);
+      return NextResponse.json({ success: false, error: servicesResult.error.message }, { status: 500 });
     }
 
-    // 3. Agrupar pedidos por móvil
-    const pedidosPorMovil = pedidosCount.reduce((acc: Record<number, number>, pedido) => {
-      const movilNro = pedido.movil;
-      if (movilNro) {
-        acc[movilNro] = (acc[movilNro] || 0) + 1;
-      }
-      return acc;
-    }, {});
+    // 3. Agrupar pedidos + services por móvil
+    const pedidosPorMovil: Record<number, number> = {};
+    for (const pedido of pedidosResult.data) {
+      if (pedido.movil) pedidosPorMovil[pedido.movil] = (pedidosPorMovil[pedido.movil] || 0) + 1;
+    }
+    for (const service of servicesResult.data) {
+      if (service.movil) pedidosPorMovil[service.movil] = (pedidosPorMovil[service.movil] || 0) + 1;
+    }
 
     // 4. Combinar datos
     const movilesExtended = movilesData.map(movil => ({
@@ -70,7 +83,7 @@ export async function GET(request: NextRequest) {
     }));
 
     console.log(`✅ Fetched ${movilesExtended.length} moviles with extended data`);
-    console.log('📊 Sample movil data:', movilesExtended[0]); // Ver primer móvil
+    console.log(`📊 Pedidos hoy: ${pedidosResult.data.length}, Services hoy: ${servicesResult.data.length}`);
 
     return NextResponse.json({
       success: true,
