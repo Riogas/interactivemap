@@ -63,7 +63,11 @@ interface GPSRecord {
 
 class GPSBatchQueue {
   private queue: GPSRecord[] = [];
-  private isProcessing: boolean = false;
+  // flushPromise sirve como mutex atomico: si ya hay un flush en curso,
+  // los callers reusan la misma Promise en lugar de iniciar uno paralelo.
+  // Evita la race del booleano `isProcessing` previo, donde dos addBatch
+  // concurrentes podian limpiar la cola entre medias y perder records.
+  private flushPromise: Promise<void> | null = null;
   private flushTimer: NodeJS.Timeout | null = null;
   
   // Configuración
@@ -117,20 +121,39 @@ class GPSBatchQueue {
   }
 
   /**
-   * Procesar la cola e insertar en Supabase
+   * Procesar la cola e insertar en Supabase.
+   *
+   * Atomic: si ya hay un flush en curso, devuelve la misma Promise para
+   * que los callers concurrentes esperen el mismo resultado en vez de
+   * iniciar flushes paralelos (que perderian records al hacer `queue = []`).
    */
   private async flush(): Promise<void> {
-    // Si ya estamos procesando o la cola está vacía, salir
-    if (this.isProcessing || this.queue.length === 0) {
+    if (this.flushPromise) {
+      return this.flushPromise;
+    }
+    this.flushPromise = this._doFlush().finally(() => {
+      this.flushPromise = null;
+    });
+    return this.flushPromise;
+  }
+
+  /**
+   * Implementacion real del flush. Solo se ejecuta una vez por ciclo
+   * gracias al mutex flushPromise.
+   *
+   * En caso de error tras agotar los reintentos, re-encola los records
+   * al frente de la cola y propaga la excepcion para que el caller
+   * pueda decidir (en general, el siguiente flush los reintentara).
+   */
+  private async _doFlush(): Promise<void> {
+    // Atomic: extraemos TODOS los records actuales y dejamos la cola
+    // vacia. splice asegura que records insertados durante el flush
+    // (a partir de aqui) NO se borren cuando termine.
+    const batch = this.queue.splice(0, this.queue.length);
+    if (batch.length === 0) {
       return;
     }
 
-    this.isProcessing = true;
-    
-    // Tomar los registros a procesar y limpiar la cola
-    const batch = [...this.queue];
-    this.queue = [];
-    
     gpsLog(`\n${'═'.repeat(80)}`);
     gpsLog(`🔄 INICIANDO FLUSH DE GPS BATCH`);
     gpsLog(`${'═'.repeat(80)}`);
@@ -139,17 +162,18 @@ class GPSBatchQueue {
 
     let attempt = 0;
     let success = false;
+    let lastError: Error | null = null;
 
     while (attempt < this.MAX_RETRIES && !success) {
       attempt++;
-      
+
       try {
         gpsLog(`\n🔧 Intento ${attempt}/${this.MAX_RETRIES}`);
-        
+
         const startTime = Date.now();
-        
+
         // Insertar en Supabase
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('gps_tracking_history')
           .insert(batch);
 
@@ -160,32 +184,35 @@ class GPSBatchQueue {
         }
 
         success = true;
-        
+
         gpsLog(`✅ Batch insertado exitosamente`);
         gpsLog(`   - Registros: ${batch.length}`);
         gpsLog(`   - Duración: ${duration}ms`);
         gpsLog(`   - Velocidad: ${(batch.length / (duration / 1000)).toFixed(2)} reg/s`);
         gpsLog(`${'═'.repeat(80)}\n`);
 
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const err = error as { message?: string; name?: string; code?: string; cause?: unknown };
+        lastError = error instanceof Error ? error : new Error(String(error));
         console.error(`❌ Error en intento ${attempt}/${this.MAX_RETRIES}:`);
-        console.error(`   - Mensaje: ${error.message}`);
-        console.error(`   - Tipo: ${error.name}`);
-        console.error(`   - Código: ${error.code || 'N/A'}`);
-        console.error(`   - Causa: ${error.cause || 'N/A'}`);
-        
+        console.error(`   - Mensaje: ${err.message}`);
+        console.error(`   - Tipo: ${err.name}`);
+        console.error(`   - Código: ${err.code || 'N/A'}`);
+        console.error(`   - Causa: ${err.cause || 'N/A'}`);
+
         // Detectar tipo de error
-        const isTimeout = error.name === 'AbortError' || error.message.includes('timeout');
-        const isNetwork = error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED');
-        const isForeignKey = error.message.includes('violates foreign key constraint') && error.message.includes('fk_gps_movil');
-        
+        const message = err.message ?? '';
+        const isTimeout = err.name === 'AbortError' || message.includes('timeout');
+        const isNetwork = message.includes('fetch failed') || message.includes('ECONNREFUSED');
+        const isForeignKey = message.includes('violates foreign key constraint') && message.includes('fk_gps_movil');
+
         if (isTimeout) {
           console.error(`   ⏱️ TIMEOUT: Supabase no respondió en 15 segundos`);
         } else if (isNetwork) {
           console.error(`   🌐 ERROR DE RED: No se pudo conectar a Supabase`);
         } else if (isForeignKey) {
           console.error(`   🔗 ERROR DE FK: Móvil no existe en base de datos`);
-          
+
           // Intentar crear los móviles faltantes
           const missingMoviles = await this.createMissingMoviles(batch);
           if (missingMoviles.length > 0) {
@@ -204,13 +231,19 @@ class GPSBatchQueue {
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           console.error(`💥 BATCH FALLIDO después de ${this.MAX_RETRIES} intentos`);
-          console.error(`   - Registros perdidos: ${batch.length}`);
-          console.error(`   - Error final:`, error.message);
+          console.error(`   - Registros: ${batch.length} re-encolados al frente`);
+          console.error(`   - Error final:`, message);
         }
       }
     }
 
-    this.isProcessing = false;
+    if (!success) {
+      // Re-encolar al frente para no perder records y propagar el error
+      // para que el caller pueda decidir (typicamente el siguiente flush
+      // por timer los reintentara).
+      this.queue.unshift(...batch);
+      throw lastError ?? new Error('GPS batch flush failed');
+    }
   }
 
   /**
@@ -241,7 +274,7 @@ class GPSBatchQueue {
   getStats() {
     return {
       queueSize: this.queue.length,
-      isProcessing: this.isProcessing,
+      isProcessing: this.flushPromise !== null,
       batchSize: this.BATCH_SIZE,
       flushInterval: this.FLUSH_INTERVAL,
     };
@@ -276,16 +309,28 @@ class GPSBatchQueue {
       // Crear cada móvil faltante usando el endpoint interno
       const createdMoviles: string[] = [];
       
+      // Base URL configurable: en prod no podemos asumir localhost:3002.
+      // Cae a localhost:3000 (default Next dev) si no esta seteada.
+      const baseUrl = process.env.APP_BASE_URL ?? 'http://localhost:3000';
+      const internalApiKey = process.env.INTERNAL_API_KEY;
+
       for (const movilId of missingIds) {
         try {
           gpsLog(`   📤 Creando móvil ${movilId}...`);
-          
+
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          // Solo enviamos x-api-key si la env esta seteada para no romper
+          // setups locales sin auth interno.
+          if (internalApiKey) {
+            headers['x-api-key'] = internalApiKey;
+          }
+
           // Llamar al endpoint interno de importación
-          const response = await fetch('http://localhost:3002/api/import/moviles', {
+          const response = await fetch(`${baseUrl}/api/import/moviles`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers,
             body: JSON.stringify({
               EscenarioId: 1000,
               IdentificadorId: parseInt(movilId),
