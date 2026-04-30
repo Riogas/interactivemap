@@ -163,7 +163,7 @@ export default function FloatingToolbar({
             </button>
 
             {/* Botones Admin - Solo root */}
-            {user?.isRoot === 'S' && (
+            {(user?.isRoot === 'S' || user?.isRoot === true) && (
               <div className="space-y-2">
                 <button
                   onClick={() => { window.open('/admin/incidencias', '_blank'); setIsOpen(false); }}
