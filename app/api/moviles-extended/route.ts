@@ -30,30 +30,41 @@ export async function GET(request: NextRequest) {
 
     // 2. Contar pedidos asignados por móvil (solo estado=1 y fecha de hoy)
     const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const { data: pedidosCount, error: pedidosError } = await supabase
-      .from('pedidos')
-      .select('movil')
-      .eq('escenario', 1000)
-      .in('estado_nro', [1]) // Solo estado 1 (Pendiente/Asignado)
-      .eq('fch_para', hoy) // Solo pedidos del día actual
-      .not('movil', 'is', null);
+    const hojSinGuiones = hoy.replace(/-/g, ''); // '2026-02-17' → '20260217' (formato services)
+    const [pedidosResult, servicesResult] = await Promise.all([
+      supabase
+        .from('pedidos')
+        .select('movil')
+        .eq('escenario', 1000)
+        .in('estado_nro', [1]) // Solo estado 1 (Pendiente/Asignado)
+        .eq('fch_para', hoy) // Solo pedidos del día actual
+        .not('movil', 'is', null),
+      supabase
+        .from('services')
+        .select('movil')
+        .eq('escenario', 1000)
+        .in('estado_nro', [1]) // Solo estado 1 (Pendiente/Asignado)
+        .eq('fch_para', hojSinGuiones) // Solo services del día actual
+        .not('movil', 'is', null),
+    ]);
 
-    if (pedidosError) {
-      console.error('❌ Error counting pedidos:', pedidosError);
-      return NextResponse.json({
-        success: false,
-        error: pedidosError.message,
-      }, { status: 500 });
+    if (pedidosResult.error) {
+      console.error('❌ Error counting pedidos:', pedidosResult.error);
+      return NextResponse.json({ success: false, error: pedidosResult.error.message }, { status: 500 });
+    }
+    if (servicesResult.error) {
+      console.error('❌ Error counting services:', servicesResult.error);
+      return NextResponse.json({ success: false, error: servicesResult.error.message }, { status: 500 });
     }
 
-    // 3. Agrupar pedidos por móvil
-    const pedidosPorMovil = pedidosCount.reduce((acc: Record<number, number>, pedido) => {
-      const movilNro = pedido.movil;
-      if (movilNro) {
-        acc[movilNro] = (acc[movilNro] || 0) + 1;
-      }
-      return acc;
-    }, {});
+    // 3. Agrupar pedidos + services por móvil
+    const pedidosPorMovil: Record<number, number> = {};
+    for (const pedido of pedidosResult.data) {
+      if (pedido.movil) pedidosPorMovil[pedido.movil] = (pedidosPorMovil[pedido.movil] || 0) + 1;
+    }
+    for (const service of servicesResult.data) {
+      if (service.movil) pedidosPorMovil[service.movil] = (pedidosPorMovil[service.movil] || 0) + 1;
+    }
 
     // 4. Combinar datos
     const movilesExtended = movilesData.map(movil => ({

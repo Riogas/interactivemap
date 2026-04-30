@@ -318,6 +318,18 @@ function DashboardContent() {
   // distribución, móviles/zonas, pedidos/zona, estadísticas por zona).
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
+  // Fix 4: Resetear capa a 'distribucion' si la fecha activa no es hoy y
+  // el modo actual es solo válido en tiempo real.
+  useEffect(() => {
+    if (!isToday) {
+      const liveOnlyModes = ['demoras', 'moviles-zonas', 'zonas-activas', 'pedidos-zona', 'saturacion'];
+      if (liveOnlyModes.includes(dataViewMode)) {
+        updatePreference('dataViewMode', 'distribucion');
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToday, dataViewMode]);
+
   // 🔧 Filter helpers (extracted to useFilterHelpers hook)
   const {
     isInUruguay, filterByDelay, filterByTipoServicio,
@@ -1389,6 +1401,14 @@ function DashboardContent() {
   );
   const userHasEmpresaRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
 
+  // Usuarios que deben ver pedidos sin asignar y móviles fuera del panel
+  // incluso cuando el filtro de empresa es parcial.
+  const isPrivilegedUser = useMemo(
+    () => user?.isRoot === 'S' ||
+      (user?.roles?.some(r => [48, 49, 50].includes(Number(r.RolId))) ?? false),
+    [user],
+  );
+
   // `userHasEmpresaRestriction` mira solo allowedEmpresas — se usa para filtrar
   // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
   // `isScopeRestricted` además exige que el user no sea root/despacho — es la
@@ -2377,6 +2397,7 @@ function DashboardContent() {
                   showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
                   hideUnassigned={hideUnassigned}
                   isRestrictedUser={userHasEmpresaRestriction}
+                  privilegedUser={isPrivilegedUser}
                 />
               </div>
             </motion.div>

@@ -1,0 +1,50 @@
+{
+  "runId": "20260430-162700-tm1",
+  "timestamp_start": "2026-04-30T16:27:00Z",
+  "timestamp_end": "2026-04-30T17:14:00Z",
+  "duration_seconds": 2820,
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil",
+  "request": {
+    "raw": "Bug múltiple en filtro móviles del dashboard (ver request.md)",
+    "quality": "bueno",
+    "enriched": false,
+    "flags": [],
+    "source": "telegram"
+  },
+  "triage": {
+    "bucket": "bug-fix",
+    "confidence": "high",
+    "touches": { "ui": true, "db": false, "auth": false, "api": false, "infra": false },
+    "size_estimate_loc": 120,
+    "risk": "medium",
+    "multi_intent": false
+  },
+  "stages": [
+    { "name": "triage", "model": "haiku", "skipped": false, "tokens_in": 1500, "tokens_out": 900, "duration_seconds": 57, "verdict": "bug-fix" },
+    { "name": "analyst", "skipped": true, "skip_reason": "bucket=bug-fix, mini-spec inline" },
+    { "name": "architect", "skipped": true, "skip_reason": "bucket=bug-fix, sin --architect" },
+    { "name": "implementer", "model": "sonnet", "iterations": [{ "n": 1, "tokens_in": 8500, "tokens_out": 4200, "duration_seconds": 333, "verdict": "delivered", "loc_changed": 16 }] },
+    { "name": "code-reviewer", "model": "sonnet", "iterations": [{ "n": 1, "tokens_in": 5800, "tokens_out": 1400, "duration_seconds": 155, "verdict": "APPROVED" }] },
+    { "name": "security-reviewer", "skipped": true, "skip_reason": "no toca auth/db/api" },
+    { "name": "dependency-reviewer", "skipped": true, "skip_reason": "no toca manifests" },
+    { "name": "qa-tester", "model": "sonnet", "iterations": [{ "n": 1, "tokens_in": 9500, "tokens_out": 3200, "duration_seconds": 253, "verdict": "PASSED", "tests_added": 37, "tests_total": 295, "suite_duration_ms": 756 }] },
+    { "name": "ux-validator", "model": "sonnet", "iterations": [{ "n": 1, "tokens_in": 12000, "tokens_out": 2400, "duration_seconds": 877, "verdict": "UX_BLOCKED", "reason": "Pre-existing build break in contexts/AuthContext.tsx (commit d2816fe)" }] },
+    { "name": "documenter", "skipped": true, "skip_reason": "bucket=bug-fix" }
+  ],
+  "totals": {
+    "tokens_in": 37300,
+    "tokens_out": 12100,
+    "estimated_usd": 0.42,
+    "iterations_total": 5,
+    "stages_run": 5,
+    "stages_skipped": 5
+  },
+  "verdict_final": "MERGE_READY_WITH_BLOCKER_NOTE",
+  "blocker_note": "Pre-existing build break in contexts/AuthContext.tsx:148 (missing closing brace of clearExpiredSession) introduced in commit d2816fe. Out of scope for this fix; reported to user for separate patch.",
+  "files_changed": [
+    "components/ui/MovilSelector.tsx",
+    "__tests__/movil-filter-fix.test.ts"
+  ],
+  "loc_changed": 16,
+  "tests_added": 37
+}

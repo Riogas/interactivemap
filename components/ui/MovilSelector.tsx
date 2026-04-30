@@ -65,6 +65,10 @@ interface MovilSelectorProps {
    *  manualmente. "Todas" implicaría el set global de empresas y eso no es
    *  lo que un user restringido ve. */
   isRestrictedUser?: boolean;
+  /** True para usuarios root / despacho / supervisor / dashboards: se les
+   *  muestran también los pedidos sin móvil y los de móviles fuera del panel
+   *  aunque el filtro de empresas sea parcial. */
+  privilegedUser?: boolean;
 }
 
 // Definir las categorías del árbol
@@ -120,6 +124,7 @@ export default function MovilSelector({
   showEmpresaSelector = false,
   hideUnassigned = false,
   isRestrictedUser = false,
+  privilegedUser = false,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -315,16 +320,17 @@ export default function MovilSelector({
       result = result.filter(pedido => {
         // Sin asignar: nunca pasan cuando hay filtro de móviles activo
         if (!pedido.movil || Number(pedido.movil) === 0) return false;
-        // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
-        if (hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
+        // Filtrar estrictamente por los móviles seleccionados
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
-    } else if (isPartialEmpresa) {
+    } else if (isPartialEmpresa && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
       // y también los pedidos (incl. entregados) que NO pertenezcan a los
       // móviles de las empresas del usuario. `moviles` ya viene filtrado
       // por empresa desde el dashboard. Incluir también los IDs ocultos-pero-
       // operativos: sus pedidos igual se ven.
+      // Nota: usuarios privilegiados (root/despacho/supervisor/dashboards) omiten
+      // este bloque y ven todos los pedidos incluyendo sin asignar.
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
       if (hiddenMovilIds) hiddenMovilIds.forEach(id => validMovilIds.add(id));
       result = result.filter(pedido => {
@@ -414,7 +420,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, selectedEmpresas, empresas, hiddenMovilIds]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -437,14 +443,14 @@ export default function MovilSelector({
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
         if (!service.movil || Number(service.movil) === 0) return false;
-        // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
-        if (hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
+        // Filtrar estrictamente por los móviles seleccionados
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
-    } else if (isPartialEmpresaSvc) {
+    } else if (isPartialEmpresaSvc && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: restringir también a los
       // services (incl. finalizados) cuyos móviles estén dentro del set del user.
       // Incluir también los IDs ocultos-pero-operativos.
+      // Nota: usuarios privilegiados omiten este bloque.
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
       if (hiddenMovilIds) hiddenMovilIds.forEach(id => validMovilIds.add(id));
       result = result.filter(service => {
@@ -537,7 +543,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, selectedEmpresas, empresas, hiddenMovilIds]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
