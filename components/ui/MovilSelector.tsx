@@ -318,8 +318,8 @@ export default function MovilSelector({
     // (independientemente de isPartialEmpresa), como indica la spec AC1.
     if (selectedMoviles.length > 0) {
       result = result.filter(pedido => {
-        // Sin asignar: nunca pasan cuando hay filtro de móviles activo
-        if (!pedido.movil || Number(pedido.movil) === 0) return false;
+        // Sin asignar: usuarios privilegiados siempre los ven; el resto no
+        if (!pedido.movil || Number(pedido.movil) === 0) return privilegedUser;
         // Filtrar estrictamente por los móviles seleccionados
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
@@ -442,7 +442,8 @@ export default function MovilSelector({
     // los services sin asignar NO pasan (spec AC2).
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
-        if (!service.movil || Number(service.movil) === 0) return false;
+        // Sin asignar: usuarios privilegiados siempre los ven; el resto no
+        if (!service.movil || Number(service.movil) === 0) return privilegedUser;
         // Filtrar estrictamente por los móviles seleccionados
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
