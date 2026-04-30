@@ -105,13 +105,50 @@ interface PreferencesModalProps {
 }
 
 export default function PreferencesModal({ isOpen, onClose, onSave }: PreferencesModalProps) {
-  const { user } = useAuth();
+  const { user, hasPermiso } = useAuth();
+  const canUpdPtsVenta = hasPermiso('updptsventa');
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
 
   // ===== Estado para importar Puntos de Interés =====
   const poiFileInputRef = useRef<HTMLInputElement>(null);
   const [importingPOI, setImportingPOI] = useState(false);
   const [importResultPOI, setImportResultPOI] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // ===== Estado para importar/actualizar Puntos de Venta =====
+  const ptvFileInputRef = useRef<HTMLInputElement>(null);
+  const [importingPTV, setImportingPTV] = useState(false);
+  const [importResultPTV, setImportResultPTV] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleImportPTV = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (ptvFileInputRef.current) ptvFileInputRef.current.value = '';
+
+    setImportingPTV(true);
+    setImportResultPTV(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('usuario', user?.username || 'admin');
+
+      const res = await fetch('/api/import/puntos-venta', {
+        method: 'POST',
+        body: formData,
+      });
+      const json = await res.json();
+
+      if (res.ok && json.success) {
+        setImportResultPTV({ ok: true, msg: `✅ ${json.count ?? 'N'} punto(s) de venta actualizados correctamente.` });
+      } else {
+        setImportResultPTV({ ok: false, msg: `❌ Error: ${json.error || 'Respuesta inesperada del servidor'}` });
+      }
+    } catch (err: any) {
+      setImportResultPTV({ ok: false, msg: `❌ Error al procesar el archivo: ${err.message}` });
+    } finally {
+      setImportingPTV(false);
+    }
+  }, [user]);
 
   const handleImportPOI = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -900,7 +937,50 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
 
               <hr className="border-gray-200" />
 
-              {/* TODO: REQUIERE_PERMISO - Actualizar Puntos de Venta (ver docs/PENDING_PERMISSIONS.md) */}
+              {/* ===== Actualizar Puntos de Venta — requiere permiso updptsventa ===== */}
+              {canUpdPtsVenta && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🏪</span>
+                    <span className="text-sm font-bold text-gray-800">Actualizar Puntos de Venta</span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-green-100 text-green-700">ADMIN</span>
+                  </div>
+                  <p className="text-xs text-gray-500 -mt-2">
+                    Importa o actualiza los puntos de venta desde un archivo Excel&nbsp;(.xlsx). Los registros existentes serán sobreescritos por ID.
+                  </p>
+
+                  <div
+                    className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all"
+                    onClick={() => ptvFileInputRef.current?.click()}
+                  >
+                    <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-sm text-gray-600 font-medium">
+                      {importingPTV ? 'Procesando...' : 'Seleccionar archivo .xlsx'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">Haz clic para elegir el archivo</p>
+                    <input
+                      ref={ptvFileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={handleImportPTV}
+                      disabled={importingPTV}
+                    />
+                  </div>
+
+                  {importResultPTV && (
+                    <div className={`text-sm px-4 py-3 rounded-lg border ${
+                      importResultPTV.ok
+                        ? 'bg-green-50 border-green-200 text-green-700'
+                        : 'bg-red-50 border-red-200 text-red-700'
+                    }`}>
+                      {importResultPTV.msg}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Footer */}

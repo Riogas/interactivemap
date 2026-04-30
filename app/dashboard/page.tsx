@@ -56,7 +56,7 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
 
 function DashboardContent() {
   // Hook de autenticación (para obtener empresas permitidas y escenario)
-  const { user, escenarioId } = useAuth();
+  const { user, escenarioId, hasPermiso } = useAuth();
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
   const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt } = useRealtime();
@@ -1914,8 +1914,33 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* TODO: REQUIERE_PERMISO - tour-fab-fleteras-zonas (ver docs/PENDING_PERMISSIONS.md) */}
-          {/* TODO: REQUIERE_PERMISO - tour-fab-ranking (ver docs/PENDING_PERMISSIONS.md) */}
+          {/* FAB: Zonas por Empresa Fletera — requiere permiso configzonaemp */}
+          {hasPermiso('configzonaemp') && (
+            <button
+              id="tour-fab-fleteras-zonas"
+              onClick={() => { setIsFleterasZonasOpen(true); setIsActionsExpanded(false); }}
+              className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700"
+              title="Zonas por Empresa Fletera"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </button>
+          )}
+
+          {/* FAB: Ranking de Móviles — requiere permiso ranking */}
+          {hasPermiso('ranking') && (
+            <button
+              id="tour-fab-ranking"
+              onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
+              className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
+              title="Ranking de Móviles"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </button>
+          )}
 
           {/* Botón Estadísticas por zonas — solo habilitado para fecha de hoy */}
           <button
@@ -1931,7 +1956,22 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* TODO: REQUIERE_PERMISO - tour-fab-estadisticas (ver docs/PENDING_PERMISSIONS.md) */}
+          {/* FAB: Estadísticas — requiere permiso stats */}
+          {hasPermiso('stats') && (
+            <button
+              id="tour-fab-estadisticas"
+              onClick={() => {
+                window.open(`/dashboard/stats?date=${selectedDate}`, '_blank');
+                setIsActionsExpanded(false);
+              }}
+              className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+              title="Estadísticas globales"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Botón toggle FAB ⚡ */}
