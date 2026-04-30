@@ -323,6 +323,10 @@ export default function MovilSelector({
     if (selectedMoviles.length > 0) {
       result = result.filter(pedido => {
         if (!pedido.movil || Number(pedido.movil) === 0) return canSeeUnassigned;
+        // Cuando todos los móviles del colapsable están seleccionados y el usuario
+        // es privilegiado, también pasan los pedidos de móviles ocultos (no activos
+        // pero con operativa). Si solo hay un subset seleccionado, NO pasan.
+        if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
     } else if (isPartialEmpresa && !privilegedUser) {
@@ -448,6 +452,8 @@ export default function MovilSelector({
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
         if (!service.movil || Number(service.movil) === 0) return canSeeUnassignedSvc;
+        // Mismo criterio que pedidos: móviles ocultos pasan cuando todos seleccionados y usuario privilegiado
+        if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
     } else if (isPartialEmpresaSvc && !privilegedUser) {
