@@ -947,13 +947,25 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
 
                         {/* Estado */}
                         <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${esEntregado ? 'bg-green-500/20 text-green-300' : (!p.movil || Number(p.movil) === 0) ? 'bg-gray-500/20 text-gray-300' : 'bg-blue-500/20 text-blue-300'}`}>
-                            {esEntregado
-                              ? getEstadoDescripcion(p.sub_estado_nro, p.sub_estado_desc, p.estado_nro)
-                              : (!p.movil || Number(p.movil) === 0)
-                                ? 'Sin Asignar'
-                                : getEstadoDescripcion(p.sub_estado_nro, p.sub_estado_desc, p.estado_nro)}
-                          </span>
+                          {(() => {
+                            const isPendiente = Number(p.estado_nro) === 1;
+                            const sinMovil = !p.movil || Number(p.movil) === 0;
+                            const text = (isPendiente && sinMovil)
+                              ? 'Sin Asignar'
+                              : getEstadoDescripcion(p.sub_estado_nro, p.sub_estado_desc, p.estado_nro);
+                            const colorClass = esEntregado
+                              ? 'bg-green-500/20 text-green-300'
+                              : (isPendiente && sinMovil)
+                                ? 'bg-gray-500/20 text-gray-300'
+                                : !isPendiente && !esEntregado
+                                  ? 'bg-orange-500/20 text-orange-300'
+                                  : 'bg-blue-500/20 text-blue-300';
+                            return (
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${colorClass}`}>
+                                {text}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* Cumplido + Atraso (solo finalizados) */}
