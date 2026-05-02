@@ -1,0 +1,66 @@
+diff --git a/components/map/PedidoInfoPopup.tsx b/components/map/PedidoInfoPopup.tsx
+index 6f5243b..dac9ed8 100644
+--- a/components/map/PedidoInfoPopup.tsx
++++ b/components/map/PedidoInfoPopup.tsx
+@@ -302,11 +302,10 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
+               </div>
+             )}
+ 
+-            {/* Datos de cumplido — solo pedidos finalizados (estado_nro=2) */}
+-            {Number(pedido.estado_nro) === 2 && (pedido.fch_hora_finalizacion || pedido.atraso_cump_mins != null) && (() => {
+-              const esEntregado = isPedidoEntregado(pedido);
++            {/* Datos de cumplido — solo pedidos entregados (estado_nro=2, sub_estado_nro 3 o 19) */}
++            {isPedidoEntregado(pedido) && (pedido.fch_hora_finalizacion || pedido.atraso_cump_mins != null) && (() => {
+               const tieneMovil = !!pedido.movil && Number(pedido.movil) !== 0;
+-              const mostrarAtraso = esEntregado && tieneMovil && pedido.atraso_cump_mins != null;
++              const mostrarAtraso = tieneMovil && pedido.atraso_cump_mins != null;
+               const atraso = mostrarAtraso ? Number(pedido.atraso_cump_mins) : null;
+               const atrasoColor = atraso == null ? '#6B7280' : atraso <= 0 ? '#22C55E' : atraso < 15 ? '#EAB308' : '#EF4444';
+               const atrasoLabel = atraso == null ? '—' : atraso <= 0 ? `${Math.abs(atraso)} min antes` : `${atraso} min atrasado`;
+diff --git a/components/ui/LeaderboardModal.tsx b/components/ui/LeaderboardModal.tsx
+index 0b041e2..52cb199 100644
+--- a/components/ui/LeaderboardModal.tsx
++++ b/components/ui/LeaderboardModal.tsx
+@@ -215,10 +215,10 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, hiddenMovil
+                     <span title="Pendientes (estado 1)">⏳ Pend.</span>
+                   </th>
+                   <th className="text-center py-2 px-1">
+-                    <span title="No Entregados (estado 2, sub_estado != 3)">❌ No Ent.</span>
++                    <span title="No Entregados (estado 2, sub_estado != 3 y != 19)">❌ No Ent.</span>
+                   </th>
+                   <th className="text-center py-2 px-1">
+-                    <span title="Entregados (estado 2, sub_estado = 3)">✅ Entreg.</span>
++                    <span title="Entregados (estado 2, sub_estado = 3 o 19)">✅ Entreg.</span>
+                   </th>
+                   <th className="text-center py-2 px-1 w-24">
+                     <span title="% Cumplimiento = entregados/(entregados+pendientes)">📊 Cumpl.</span>
+diff --git a/components/ui/PedidosTableModal.tsx b/components/ui/PedidosTableModal.tsx
+index faa1828..96812c9 100644
+--- a/components/ui/PedidosTableModal.tsx
++++ b/components/ui/PedidosTableModal.tsx
+@@ -970,8 +970,8 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
+ 
+                         {/* Cumplido + Atraso (solo finalizados) */}
+                         {isFinalizados && (() => {
+-                          const tieneMovil = !!p.movil && Number(p.movil) !== 0;
+-                          const mostrarAtraso = esEntregado && tieneMovil && p.atraso_cump_mins != null;
++                          // Atraso: mostrar para todos los finalizados que tengan el campo, sin restriccion de tipo o movil
++                          const mostrarAtraso = p.atraso_cump_mins != null;
+                           const atraso = mostrarAtraso ? Number(p.atraso_cump_mins) : null;
+                           const atrasoColor =
+                             atraso == null ? 'text-gray-500' :
+diff --git a/components/ui/ZonaEstadisticasModal.tsx b/components/ui/ZonaEstadisticasModal.tsx
+index ccf1adb..9038fd6 100644
+--- a/components/ui/ZonaEstadisticasModal.tsx
++++ b/components/ui/ZonaEstadisticasModal.tsx
+@@ -473,8 +473,8 @@ export default function ZonaEstadisticasModal({
+                   <ThSort label="#Pend." sortKey="pendientes" current={sortBy} asc={sortAsc} onClick={handleSort} title="Pedidos pendientes asignados" />
+                   <ThSort label="#Atras." sortKey="atrasados" current={sortBy} asc={sortAsc} onClick={handleSort} title="Pedidos atrasados (delay < 0)" />
+                   <ThSort label="% Atras." sortKey="pctAtrasos" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Atrasos = atrasados / pendientes" />
+-                  <ThSort label="#Entreg." sortKey="entregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="Entregados (estado 2, sub_estado 3)" />
+-                  <ThSort label="#No Ent." sortKey="noEntregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="No Entregados (estado 2, sub_estado ≠ 3)" />
++                  <ThSort label="#Entreg." sortKey="entregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="Entregados (estado 2, sub_estado 3 o 19)" />
++                  <ThSort label="#No Ent." sortKey="noEntregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="No Entregados (estado 2, sub_estado ≠ 3 y ≠ 19)" />
+                   <ThSort label="% Cump." sortKey="pctCumplimiento" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Cumplimiento = entregados / (entregados + no entregados)" />
+                   <ThSort label="Min Dem." sortKey="demora" current={sortBy} asc={sortAsc} onClick={handleSort} title="Minutos de demora de la zona" />
+                   <ThSort label="#Movs P." sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles activos en prioridad del tipo de servicio seleccionado (excl. est. 3/5/15)" />

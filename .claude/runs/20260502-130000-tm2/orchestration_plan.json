@@ -1,0 +1,27 @@
+{
+  "runId": "20260502-130000-tm2",
+  "bucket": "bug-fix",
+  "bucket_source": "auto-triage",
+  "stages": ["implementer", "code-reviewer", "qa-tester"],
+  "skipped": [
+    { "name": "analyst", "reason": "bucket=bug-fix, mini-spec inline" },
+    { "name": "architect", "reason": "bucket=bug-fix" },
+    { "name": "ux-validator", "reason": "bug-fix + no RTL, auto-skip" },
+    { "name": "security-reviewer", "reason": "no auth/db/api touches" },
+    { "name": "dependency-reviewer", "reason": "no package changes" },
+    { "name": "documenter", "reason": "bucket=bug-fix" }
+  ],
+  "implementer_model_chosen": "sonnet",
+  "implementer_model_triage_recommended": "sonnet",
+  "parallel_review_qa": false,
+  "parallel_review_qa_reason": "bug-fix with UI touches, prefer serial for clarity",
+  "max_iterations": 3,
+  "estimated_budget_usd": 0.15,
+  "files_to_change": [
+    "components/map/PedidoInfoPopup.tsx",
+    "components/ui/PedidosTableModal.tsx",
+    "components/ui/ZonaEstadisticasModal.tsx",
+    "components/ui/LeaderboardModal.tsx"
+  ],
+  "notes": "Bug 1 is tooltip-only. Bug 2 restricts card Cumplido section to isPedidoEntregado. Bug 3 removes tieneMovil && esEntregado condition from table atraso column."
+}

@@ -1,0 +1,31 @@
+runId: 20260502-122404-tm1
+bucket: bug-fix
+confidence: high
+multi_intent: false
+clarifying_questions: []
+
+touches:
+  ui: false
+  db: true
+  auth: false
+  api: true
+  infra: false
+
+size_estimate_loc: 40
+risk: low
+
+recommended_agents:
+  implementer: sonnet
+  code-reviewer: sonnet
+  qa-tester: sonnet
+
+rationale: >
+  Pedido claro y bien especificado. El repo ya tiene la infraestructura de seed
+  (gps-autocreate.ts + maybeAutocreateGpsForToday en import/moviles/route.ts).
+  La lógica de fallback PTOVTA ya existe en all-positions/route.ts pero no hace
+  el seed persistente. El fix es llamar maybeAutocreateGpsForToday desde
+  all-positions cuando detecta móviles sin GPS pero con pto_vta_lat/lng.
+  Fire-and-forget (no bloquea la respuesta). ~40 LOC, un solo archivo.
+
+  Colapsable: ya usa moviles-extended que lee de tabla moviles con mostrar_en_mapa=true,
+  independiente de gps_latest_positions — no necesita cambios.

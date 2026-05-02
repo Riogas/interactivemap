@@ -1,0 +1,53 @@
+{
+  "runId": "20260502-122404-tm1",
+  "timestamp_start": "2026-05-02T12:24:04Z",
+  "timestamp_end": "2026-05-02T12:40:00Z",
+  "duration_seconds": 956,
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil",
+  "request": {
+    "raw": "Seed gps_latest_positions desde pto_vta_lat/lng cuando movil tiene coords pero no GPS del dia",
+    "quality": "bueno",
+    "enriched": false,
+    "flags": []
+  },
+  "triage": {
+    "bucket": "bug-fix",
+    "confidence": "high",
+    "touches": { "ui": false, "db": true, "auth": false, "api": true, "infra": false },
+    "size_estimate_loc": 40,
+    "risk": "low"
+  },
+  "stages": [
+    { "name": "triage", "model": "orchestrator-inline", "skipped": false, "tokens_in": 0, "tokens_out": 0, "duration_seconds": 5, "verdict": "bug-fix" },
+    { "name": "implementer", "model": "sonnet", "iterations": [{ "n": 1, "tokens_in": 12000, "tokens_out": 4500, "duration_seconds": 360, "verdict": "delivered" }] },
+    { "name": "code-reviewer", "model": "sonnet-inline", "iterations": [{ "n": 1, "tokens_in": 3000, "tokens_out": 800, "duration_seconds": 120, "verdict": "APPROVED" }] },
+    { "name": "qa-tester", "model": "sonnet-inline", "iterations": [{ "n": 1, "tokens_in": 4000, "tokens_out": 6000, "duration_seconds": 300, "verdict": "PASSED 15/15" }] },
+    { "name": "analyst", "model": null, "skipped": true, "skip_reason": "bucket=bug-fix" },
+    { "name": "architect", "model": null, "skipped": true, "skip_reason": "bucket=bug-fix" },
+    { "name": "ux-validator", "model": null, "skipped": true, "skip_reason": "no UI files in diff" },
+    { "name": "security-reviewer", "model": null, "skipped": true, "skip_reason": "bucket!=large-feature" },
+    { "name": "dependency-reviewer", "model": null, "skipped": true, "skip_reason": "no lockfile changes" },
+    { "name": "documenter", "model": null, "skipped": true, "skip_reason": "bucket=bug-fix" }
+  ],
+  "arbiter_invocations": 0,
+  "totals": {
+    "tokens_in": 19000,
+    "tokens_out": 11300,
+    "estimated_usd": 0.12,
+    "iterations_total": 1,
+    "stages_run": 3,
+    "stages_skipped": 6,
+    "skip_savings_estimated_usd": 0.25
+  },
+  "verdict_final": "MERGE_READY",
+  "files_changed": [
+    "app/api/all-positions/route.ts",
+    "__tests__/all-positions-gps-seed.test.ts"
+  ],
+  "loc_changed": 426,
+  "cache": {
+    "preamble_tokens": 0,
+    "stages_with_cache_hit_estimated": 0,
+    "cache_savings_estimated_usd": 0
+  }
+}

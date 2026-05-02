@@ -1,0 +1,29 @@
+{
+  "runId": "20260502-130000-tm2",
+  "state": "completed",
+  "current_stage": null,
+  "current_iteration": 1,
+  "current_intent": null,
+  "started_at": "2026-05-02T13:00:00Z",
+  "updated_at": "2026-05-02T13:15:00Z",
+  "completed_stages": [
+    { "name": "triage", "verdict": "bug-fix", "duration_seconds": 60 },
+    { "name": "implementer", "verdict": "delivered", "duration_seconds": 300 },
+    { "name": "code-reviewer", "verdict": "APPROVED", "duration_seconds": 60 },
+    { "name": "qa-tester", "verdict": "PASSED 8/8", "duration_seconds": 60 }
+  ],
+  "stages_planned": ["triage", "implementer", "code-reviewer", "qa-tester"],
+  "stages_skipped": [
+    { "name": "analyst", "reason": "bucket=bug-fix" },
+    { "name": "architect", "reason": "bucket=bug-fix" },
+    { "name": "ux-validator", "reason": "no RTL, auto-skip" },
+    { "name": "security-reviewer", "reason": "no auth/db/api" },
+    { "name": "dependency-reviewer", "reason": "no package changes" },
+    { "name": "documenter", "reason": "bucket=bug-fix" }
+  ],
+  "estimated_cost_so_far_usd": 0.06,
+  "verdict_final": "MERGE_READY",
+  "multi_intent": false,
+  "intents_progress": [],
+  "arbiter_invocations": 0
+}
