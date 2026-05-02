@@ -302,11 +302,10 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
               </div>
             )}
 
-            {/* Datos de cumplido — solo pedidos finalizados (estado_nro=2) */}
-            {Number(pedido.estado_nro) === 2 && (pedido.fch_hora_finalizacion || pedido.atraso_cump_mins != null) && (() => {
-              const esEntregado = isPedidoEntregado(pedido);
+            {/* Datos de cumplido — solo pedidos entregados (estado_nro=2, sub_estado_nro 3 o 19) */}
+            {isPedidoEntregado(pedido) && (pedido.fch_hora_finalizacion || pedido.atraso_cump_mins != null) && (() => {
               const tieneMovil = !!pedido.movil && Number(pedido.movil) !== 0;
-              const mostrarAtraso = esEntregado && tieneMovil && pedido.atraso_cump_mins != null;
+              const mostrarAtraso = tieneMovil && pedido.atraso_cump_mins != null;
               const atraso = mostrarAtraso ? Number(pedido.atraso_cump_mins) : null;
               const atrasoColor = atraso == null ? '#6B7280' : atraso <= 0 ? '#22C55E' : atraso < 15 ? '#EAB308' : '#EF4444';
               const atrasoLabel = atraso == null ? '—' : atraso <= 0 ? `${Math.abs(atraso)} min antes` : `${atraso} min atrasado`;

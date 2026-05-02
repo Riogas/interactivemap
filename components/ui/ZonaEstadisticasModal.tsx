@@ -473,8 +473,8 @@ export default function ZonaEstadisticasModal({
                   <ThSort label="#Pend." sortKey="pendientes" current={sortBy} asc={sortAsc} onClick={handleSort} title="Pedidos pendientes asignados" />
                   <ThSort label="#Atras." sortKey="atrasados" current={sortBy} asc={sortAsc} onClick={handleSort} title="Pedidos atrasados (delay < 0)" />
                   <ThSort label="% Atras." sortKey="pctAtrasos" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Atrasos = atrasados / pendientes" />
-                  <ThSort label="#Entreg." sortKey="entregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="Entregados (estado 2, sub_estado 3)" />
-                  <ThSort label="#No Ent." sortKey="noEntregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="No Entregados (estado 2, sub_estado ≠ 3)" />
+                  <ThSort label="#Entreg." sortKey="entregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="Entregados (estado 2, sub_estado 3 o 19)" />
+                  <ThSort label="#No Ent." sortKey="noEntregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="No Entregados (estado 2, sub_estado ≠ 3 y ≠ 19)" />
                   <ThSort label="% Cump." sortKey="pctCumplimiento" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Cumplimiento = entregados / (entregados + no entregados)" />
                   <ThSort label="Min Dem." sortKey="demora" current={sortBy} asc={sortAsc} onClick={handleSort} title="Minutos de demora de la zona" />
                   <ThSort label="#Movs P." sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles activos en prioridad del tipo de servicio seleccionado (excl. est. 3/5/15)" />

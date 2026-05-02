@@ -215,10 +215,10 @@ export default function LeaderboardModal({ isOpen, onClose, moviles, hiddenMovil
                     <span title="Pendientes (estado 1)">⏳ Pend.</span>
                   </th>
                   <th className="text-center py-2 px-1">
-                    <span title="No Entregados (estado 2, sub_estado != 3)">❌ No Ent.</span>
+                    <span title="No Entregados (estado 2, sub_estado != 3 y != 19)">❌ No Ent.</span>
                   </th>
                   <th className="text-center py-2 px-1">
-                    <span title="Entregados (estado 2, sub_estado = 3)">✅ Entreg.</span>
+                    <span title="Entregados (estado 2, sub_estado = 3 o 19)">✅ Entreg.</span>
                   </th>
                   <th className="text-center py-2 px-1 w-24">
                     <span title="% Cumplimiento = entregados/(entregados+pendientes)">📊 Cumpl.</span>
