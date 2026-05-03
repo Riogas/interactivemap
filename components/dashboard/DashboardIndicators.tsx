@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { PedidoSupabase } from '@/types';
@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
+import { todayMontevideo } from '@/lib/date-utils';
 
 interface DashboardIndicatorsProps {
   moviles: any[];
@@ -273,7 +274,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
 
   // Detectar si la fecha seleccionada es histórica (no es hoy)
   const isHistorical = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayMontevideo();
     return selectedDate !== today;
   }, [selectedDate]);
 

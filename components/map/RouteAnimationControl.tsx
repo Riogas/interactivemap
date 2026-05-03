@@ -1,8 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { MovilData } from '@/types';
+import { todayMontevideo } from '@/lib/date-utils';
 
 interface RouteAnimationControlProps {
   isPlaying: boolean;
@@ -259,7 +260,7 @@ export default function RouteAnimationControl({
                         onMovilDateChange(selectedMovilId, e.target.value);
                       }
                     }}
-                    max={new Date().toISOString().split('T')[0]}
+                    max={todayMontevideo()}
                     className="px-2 py-1.5 border-2 border-purple-300 rounded-lg text-sm font-medium bg-purple-50 focus:border-purple-500 focus:outline-none transition-colors"
                   />
                 </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
 import { requireAuth } from '@/lib/auth-middleware';
+import { todayMontevideo } from '@/lib/date-utils';
 import https from 'https';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ const httpsAgent = new https.Agent({
 
 /**
  * GET /api/movil-session/[id]?fecha=2026-02-10
- * 
+ *
  * Obtiene datos de sesión del chofer para un móvil específico
  * desde el endpoint externo /tracking/getSessionData
  */
@@ -35,9 +36,9 @@ export async function GET(
       );
     }
 
-    // Obtener fecha del query string (default: hoy)
+    // Obtener fecha del query string (default: hoy en hora Montevideo)
     const { searchParams } = new URL(request.url);
-    const fecha = searchParams.get('fecha') || new Date().toISOString().split('T')[0];
+    const fecha = searchParams.get('fecha') || todayMontevideo();
 
     console.log(`📡 API /movil-session/${movilId} - Fetching session data (fecha: ${fecha})`);
 

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { ServiceSupabase } from '@/types';
@@ -8,6 +8,7 @@ import { es } from 'date-fns/locale';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion, isServiceEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
+import { todayMontevideo } from '@/lib/date-utils';
 
 /**
  * La DB almacena horas locales (Uruguay) con offset +00 incorrecto.
@@ -36,7 +37,7 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
     if (!service?.movil) return;
     const fetchMovilSession = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = todayMontevideo();
         const res = await fetch(`/api/movil-session/${service.movil}?fecha=${today}`);
         if (res.ok) {
           const data = await res.json();

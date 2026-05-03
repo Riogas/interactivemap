@@ -8,6 +8,7 @@ import {
   buildHistoryInsertRows,
   type MovilCandidate,
 } from '@/lib/import-helpers/gps-autocreate';
+import { todayMontevideo } from '@/lib/date-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,8 +62,8 @@ export async function GET(request: NextRequest) {
       ? empresaIdsParam.split(',').map(id => parseInt(id.trim()))
       : undefined;
 
-    // Si no se proporciona startDate, usar hoy
-    const dateFilter = startDate || new Date().toISOString().split('T')[0];
+    // Si no se proporciona startDate, usar hoy en hora Montevideo
+    const dateFilter = startDate || todayMontevideo();
 
     if (movilIdParam) {
       console.log(`🚀 API /all-positions - Fetching móvil específico: ${movilIdParam} (fecha: ${dateFilter})`);

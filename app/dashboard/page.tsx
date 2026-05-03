@@ -37,6 +37,7 @@ import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
+import { todayMontevideo } from '@/lib/date-utils';
 
 const DEBUG = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1';
 const dbg = (...args: any[]) => { if (DEBUG) console.log(...args); };
@@ -310,13 +311,13 @@ function DashboardContent() {
   // Estado para fecha seleccionada (por defecto hoy)
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+    return todayMontevideo(today); // Formato YYYY-MM-DD
   });
 
   // True solo si selectedDate es la fecha de hoy. Usado para deshabilitar
   // capas/botones que solo tienen sentido en modo live (demoras, saturación,
   // distribución, móviles/zonas, pedidos/zona, estadísticas por zona).
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = selectedDate === todayMontevideo();
 
   // Fix 4: Resetear capa a 'distribucion' si la fecha activa no es hoy y
   // el modo actual es solo válido en tiempo real.
@@ -675,7 +676,7 @@ function DashboardContent() {
   // re-pedimos todo pedidos/services Y posiciones/móviles a la API.
   // Solo en modo live (hoy). 0 = off.
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayMontevideo();
     if (selectedDate !== today) return; // Solo en modo live, no para fechas históricas
 
     const seconds = preferences.realtimePollingReconcileSeconds;
@@ -697,7 +698,7 @@ function DashboardContent() {
   // que deja la TCP abierta pero no reenvía frames). Forzamos refetch completo
   // — incluyendo posiciones/móviles — para recuperar cambios perdidos.
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayMontevideo();
     if (selectedDate !== today) return;
 
     const seconds = preferences.realtimeSilenceTimeoutSeconds;
@@ -726,7 +727,7 @@ function DashboardContent() {
   // para consolidar móviles del colapsable y mapa.
   useEffect(() => {
     if (!preferences.realtimeRefetchOnVisible) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayMontevideo();
     if (selectedDate !== today) return;
 
     const handler = () => {
@@ -1195,7 +1196,7 @@ function DashboardContent() {
       // Cargar pedidos y servicios pendientes
       try {
         console.log(`📦 Fetching pendientes for móvil ${movilId}...`);
-        const url = `/api/pedidos-servicios-pendientes/${movilId}?fecha=${selectedDate || new Date().toISOString().split('T')[0]}`;
+        const url = `/api/pedidos-servicios-pendientes/${movilId}?fecha=${selectedDate || todayMontevideo()}`;
         const response = await fetch(url);
         const result = await response.json();
 

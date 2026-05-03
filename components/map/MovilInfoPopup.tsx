@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ZonasMovilModal from '@/components/ui/ZonasMovilModal';
+import { todayMontevideo } from '@/lib/date-utils';
 
 interface SessionHistorial {
   chofer: string;
@@ -86,7 +87,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
     const fetchSession = async () => {
       setSessionLoading(true);
       try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = todayMontevideo();
         const res = await fetch(`/api/movil-session/${movil.id}?fecha=${today}`);
         if (res.ok) {
           const data = await res.json();

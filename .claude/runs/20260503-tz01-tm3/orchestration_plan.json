@@ -1,0 +1,32 @@
+{
+  "runId": "20260503-tz01-tm3",
+  "bucket": "bug-fix",
+  "bucket_source": "auto-triage",
+  "stages": ["implementer", "code-reviewer", "qa-tester"],
+  "stages_skipped": ["analyst", "architect", "ux-validator", "security-reviewer", "dependency-reviewer", "documenter"],
+  "skip_reasons": {
+    "analyst": "bug-fix bucket — mini-spec written inline",
+    "architect": "bug-fix bucket",
+    "ux-validator": "no UI logic changes, only computation helper",
+    "security-reviewer": "no auth/db/api surface changes",
+    "dependency-reviewer": "no lockfile changes",
+    "documenter": "bug-fix bucket"
+  },
+  "models": {
+    "implementer": "sonnet",
+    "code-reviewer": "sonnet",
+    "qa-tester": "sonnet"
+  },
+  "implementer_model_chosen": "sonnet",
+  "implementer_model_triage_recommended": "sonnet",
+  "deviation_reason": null,
+  "parallel_review_qa": false,
+  "parallel_review_qa_reason": "tests to write (new test file) — bucket=bug-fix with new test code",
+  "max_iterations": 3,
+  "budget_estimate_usd": 0.15,
+  "escalation_conditions": {
+    "A": "3 failed iterations on any stage",
+    "B": "contradictory verdicts reviewer vs qa",
+    "C": "not applicable (single intent)"
+  }
+}

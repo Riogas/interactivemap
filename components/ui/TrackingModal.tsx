@@ -1,8 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData } from '@/types';
+import { todayMontevideo } from '@/lib/date-utils';
 
 interface TrackingModalProps {
   isOpen: boolean;
@@ -179,7 +180,7 @@ export default function TrackingModal({
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
+                  max={todayMontevideo()}
                   className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-medium focus:border-purple-400 focus:outline-none transition-colors"
                 />
               </div>
