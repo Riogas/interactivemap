@@ -401,6 +401,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('trackmovil_allowed_escenarios');
     localStorage.removeItem('trackmovil_escenario_id');
     localStorage.removeItem('trackmovil_permisos');
+    // Limpiar fecha seleccionada de sessionStorage — al relogi debe arrancar en hoy.
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('trackmovil:selectedDate');
+    }
     setEscenarioId(1000);
     console.log('✅ Sesión cerrada completamente');
   };

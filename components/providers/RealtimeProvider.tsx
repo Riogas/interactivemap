@@ -15,6 +15,13 @@ interface RealtimeContextType {
    * El dashboard lo usa para detectar silencio del WS y forzar refetch.
    */
   lastEventAt: number;
+  /**
+   * Callback que el dashboard inyecta para que el provider lo llame
+   * cuando GPS o Móviles reconectan tras una caída.
+   * El dashboard lo usa para hacer fetchPositions() y recuperar eventos perdidos.
+   */
+  onReconnect: (() => void) | null;
+  setOnReconnect: (fn: (() => void) | null) => void;
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined);
@@ -33,6 +40,8 @@ export function RealtimeProvider({
   // ms epoch del último evento Realtime recibido — sirve al dashboard para detectar
   // silencio del WS de móviles/GPS y forzar refetch (paralelo al de pedidos/services).
   const [lastEventAt, setLastEventAt] = React.useState<number>(() => Date.now());
+  // Callback inyectado por el dashboard para fetchPositions al reconectar.
+  const [onReconnect, setOnReconnect] = React.useState<(() => void) | null>(null);
 
   // Callbacks estables — sin useCallback aquí se recrean en cada render y hacen
   // que useGPSTracking/useMoviles rehagan la suscripción a Supabase innecesariamente.
@@ -46,11 +55,27 @@ export function RealtimeProvider({
     setLastEventAt(Date.now());
   }, []);
 
+  // onReconnectRef permite que los hooks vean siempre la versión actual del callback
+  // sin que tengamos que recrear onReconnectGps/onReconnectMoviles cuando cambia.
+  const onReconnectRef = React.useRef<(() => void) | null>(null);
+  onReconnectRef.current = onReconnect;
+
+  const onReconnectGps = useCallback(() => {
+    console.log('🔄 RealtimeProvider: GPS reconectado — notificando al dashboard');
+    if (onReconnectRef.current) onReconnectRef.current();
+  }, []);
+
+  const onReconnectMoviles = useCallback(() => {
+    console.log('🔄 RealtimeProvider: Móviles reconectado — notificando al dashboard');
+    if (onReconnectRef.current) onReconnectRef.current();
+  }, []);
+
   // Hook de GPS Tracking en tiempo real
   const { positions, isConnected: gpsConnected, error: gpsError } = useGPSTracking(
     escenarioId,
     undefined,
     onNewPosition,
+    onReconnectGps,
   );
 
   // Hook de Móviles en tiempo real (para detectar móviles nuevos)
@@ -58,10 +83,17 @@ export function RealtimeProvider({
     escenarioId,
     undefined,
     onMovilChange,
+    onReconnectMoviles,
   );
 
   const isConnected = gpsConnected && movilesConnected;
   const error = gpsError;
+
+  // setOnReconnect estable — no recrear en cada render
+  const setOnReconnectStable = useCallback((fn: (() => void) | null) => {
+    // useState con función: envolver en () => fn para que React no la invoque
+    setOnReconnect(fn ? () => fn : null);
+  }, []);
 
   React.useEffect(() => {
     if (isConnected) {
@@ -81,8 +113,17 @@ export function RealtimeProvider({
   // objeto y fuerza re-render de todos los consumidores de useRealtime(), aunque los
   // valores no hayan cambiado.
   const contextValue = useMemo<RealtimeContextType>(
-    () => ({ positions, isConnected, error, latestPosition, latestMovil, lastEventAt }),
-    [positions, isConnected, error, latestPosition, latestMovil, lastEventAt],
+    () => ({
+      positions,
+      isConnected,
+      error,
+      latestPosition,
+      latestMovil,
+      lastEventAt,
+      onReconnect,
+      setOnReconnect: setOnReconnectStable,
+    }),
+    [positions, isConnected, error, latestPosition, latestMovil, lastEventAt, onReconnect, setOnReconnectStable],
   );
 
   return (

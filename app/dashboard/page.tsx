@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -60,7 +60,7 @@ function DashboardContent() {
   const { user, escenarioId, hasPermiso } = useAuth();
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
-  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt } = useRealtime();
+  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect } = useRealtime();
   
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
@@ -309,10 +309,27 @@ function DashboardContent() {
   const [isLoadingEmpresas, setIsLoadingEmpresas] = useState(true);
   
   // Estado para fecha seleccionada (por defecto hoy)
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const today = new Date();
-    return todayMontevideo(today); // Formato YYYY-MM-DD
+  // Persiste en sessionStorage para sobrevivir a F5. Se borra al cerrar la pestana
+  // (sessionStorage) y en el flujo de logout (AuthContext lo limpia explicitamente).
+  const [selectedDate, setSelectedDateRaw] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('trackmovil:selectedDate');
+      if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored) && stored <= todayMontevideo()) {
+        return stored;
+      }
+      // Valor invalido o futuro: limpiar y usar hoy
+      if (stored) sessionStorage.removeItem('trackmovil:selectedDate');
+    }
+    return todayMontevideo();
   });
+
+  // Wrapper estable que persiste en sessionStorage cada vez que cambia la fecha
+  const setSelectedDate = useCallback((date: string) => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('trackmovil:selectedDate', date);
+    }
+    setSelectedDateRaw(date);
+  }, []);
 
   // True solo si selectedDate es la fecha de hoy. Usado para deshabilitar
   // capas/botones que solo tienen sentido en modo live (demoras, saturación,
@@ -671,6 +688,15 @@ function DashboardContent() {
   useEffect(() => { fetchPedidosRef.current = fetchPedidos; }, [fetchPedidos]);
   useEffect(() => { fetchServicesRef.current = fetchServices; }, [fetchServices]);
 
+  // Registrar fetchPositions como callback de reconexion del RealtimeProvider.
+  // Cuando GPS o Moviles reconectan (tras una caida del WS), el provider llama
+  // a este callback para que el dashboard haga refetch completo y recupere los
+  // eventos de moviles/gps perdidos durante la desconexion.
+  useEffect(() => {
+    setOnReconnect(fetchPositions);
+    return () => setOnReconnect(null);
+  }, [setOnReconnect, fetchPositions]);
+
   // 🔄 Mejora #1 — Polling de reconciliación configurable (admin / root).
   // Cubre eventos del WS que se perdieron por desconexiones silenciosas: cada N segundos
   // re-pedimos todo pedidos/services Y posiciones/móviles a la API.
@@ -679,8 +705,11 @@ function DashboardContent() {
     const today = todayMontevideo();
     if (selectedDate !== today) return; // Solo en modo live, no para fechas históricas
 
-    const seconds = preferences.realtimePollingReconcileSeconds;
-    if (!seconds || seconds <= 0) return; // Apagado por preferencia
+    // 0 / null / undefined -> usar default 60s. Solo -1 desactiva explicitamente.
+    const seconds = (preferences.realtimePollingReconcileSeconds == null || preferences.realtimePollingReconcileSeconds === 0)
+      ? 60
+      : preferences.realtimePollingReconcileSeconds;
+    if (seconds === -1) return; // Desactivado explicitamente por el usuario
 
     const interval = setInterval(() => {
       console.log(`🔄 Polling reconciliación (${seconds}s) — sincronizando datos con la API`);
@@ -726,7 +755,8 @@ function DashboardContent() {
   // o haber perdido eventos. Al volver, pedimos pedidos+services+posiciones de nuevo
   // para consolidar móviles del colapsable y mapa.
   useEffect(() => {
-    if (!preferences.realtimeRefetchOnVisible) return;
+    // null / undefined -> default true. Solo false explicito desactiva.
+    if (preferences.realtimeRefetchOnVisible === false) return;
     const today = todayMontevideo();
     if (selectedDate !== today) return;
 
