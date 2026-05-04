@@ -3,7 +3,7 @@
 import toast from 'react-hot-toast';
 import { sendAuditBatch } from '@/lib/audit-client';
 
-export type DriftTrigger = 'interval' | 'reconnect' | 'visibility' | 'silence';
+export type DriftTrigger = 'interval' | 'reconnect' | 'visibility' | 'silence' | 'initial';
 
 export interface LastSyncState {
   at: number;
