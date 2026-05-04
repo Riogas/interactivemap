@@ -1,0 +1,59 @@
+{
+  "runId": "20260504-drift-tm5",
+  "timestamp_start": "2026-05-04T00:00:00Z",
+  "timestamp_end": "2026-05-04T01:15:00Z",
+  "duration_seconds": 4500,
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil",
+  "request": {
+    "raw": "Agregar instrumentacion visible (toast + indicador 🟢🟡🔴 + audit_log) al dashboard — solo root",
+    "quality": "bueno",
+    "enriched": false,
+    "flags": []
+  },
+  "triage": {
+    "bucket": "small-feature",
+    "confidence": "high",
+    "touches": { "ui": true, "db": false, "auth": false, "api": false, "infra": false },
+    "size_estimate_loc": 250,
+    "risk": "low"
+  },
+  "stages": [
+    { "name": "triage", "model": "inline", "skipped": false, "duration_seconds": 10, "verdict": "small-feature" },
+    { "name": "analyst", "model": "sonnet-inline", "skipped": false, "duration_seconds": 120, "verdict": "ok" },
+    { "name": "architect", "model": "sonnet-inline", "skipped": false, "duration_seconds": 180, "verdict": "ok" },
+    { "name": "implementer", "model": "sonnet-inline", "skipped": false, "iterations": [{ "n": 1, "duration_seconds": 900, "verdict": "delivered" }] },
+    { "name": "code-reviewer", "model": "sonnet-inline", "skipped": false, "iterations": [{ "n": 1, "duration_seconds": 300, "verdict": "APPROVED" }] },
+    { "name": "qa-tester", "model": "sonnet-inline", "skipped": false, "iterations": [{ "n": 1, "duration_seconds": 180, "verdict": "PASSED" }] },
+    { "name": "ux-validator", "model": "sonnet-inline", "skipped": false, "iterations": [{ "n": 1, "duration_seconds": 180, "verdict": "UX_APPROVED" }] },
+    { "name": "security-reviewer", "skipped": true, "skip_reason": "bucket=small-feature sin touches.auth/db/api" },
+    { "name": "dependency-reviewer", "skipped": true, "skip_reason": "diff no toca lock files" },
+    { "name": "documenter", "skipped": true, "skip_reason": "bucket=small-feature sin --docs" }
+  ],
+  "arbiter_invocations": 0,
+  "totals": {
+    "estimated_usd": 0.48,
+    "iterations_total": 4,
+    "stages_run": 7,
+    "stages_skipped": 3,
+    "skip_savings_estimated_usd": 0.15
+  },
+  "verdict_final": "MERGE_READY",
+  "files_changed": [
+    "lib/realtime-drift.ts",
+    "components/dashboard/RealtimeDriftIndicator.tsx",
+    "__tests__/realtime-drift.test.ts",
+    "lib/audit-client.ts",
+    "app/dashboard/page.tsx",
+    "components/ui/MovilSelector.tsx"
+  ],
+  "loc_changed": 320,
+  "tests_before": 342,
+  "tests_after": 365,
+  "tests_added": 23,
+  "cache": {
+    "preamble_tokens": 800,
+    "stages_with_cache_hit_estimated": 0,
+    "cache_savings_estimated_usd": 0.00,
+    "note": "run inline — no Agent() calls, cache no aplica"
+  }
+}

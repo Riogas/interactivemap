@@ -1,0 +1,44 @@
+runId: 20260504-drift-tm5
+bucket: small-feature
+confidence: high
+multi_intent: false
+clarifying_questions: []
+
+summary: >
+  Feature de instrumentacion visible del reconcile de realtime: toast (solo root),
+  indicador 🟢🟡🔴 (solo root), y audit_log al detectar drift (todos los users).
+  3 archivos nuevos + modificaciones en page.tsx y MovilSelector.tsx.
+
+touches:
+  ui: true
+  db: false
+  auth: false
+  api: false
+  infra: false
+
+size_estimate_loc: 250
+
+risk: low
+
+recommended_models:
+  analyst: sonnet
+  architect: sonnet
+  implementer: sonnet
+  code_reviewer: sonnet
+  qa_tester: sonnet
+  ux_validator: sonnet
+
+files_likely_affected:
+  - app/dashboard/page.tsx
+  - components/ui/MovilSelector.tsx
+  - components/dashboard/RealtimeDriftIndicator.tsx
+  - components/dashboard/RealtimeDriftToast.tsx
+  - lib/realtime-drift.ts
+  - __tests__/realtime-drift.test.ts
+
+notes: >
+  El usuario ya hizo el mapa de archivos y la spec de ACs detallada.
+  No hay ambiguedad. Pasar directamente a analyst con el request.md como base.
+  Gating critico: user?.isRoot === 'S' literal (no === true).
+  Toast lib: react-hot-toast (confirmado en MapView.tsx:34).
+  MovilSelector.tsx es el componente del header del colapsable de moviles.

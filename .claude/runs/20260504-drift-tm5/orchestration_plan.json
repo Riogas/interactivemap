@@ -1,0 +1,40 @@
+{
+  "runId": "20260504-drift-tm5",
+  "bucket": "small-feature",
+  "bucket_source": "auto-triage",
+  "stages": ["triage", "analyst", "architect", "implementer", "code-reviewer", "qa-tester", "ux-validator"],
+  "models": {
+    "triage": "inline",
+    "analyst": "sonnet",
+    "architect": "sonnet",
+    "implementer": "sonnet",
+    "code_reviewer": "sonnet",
+    "qa_tester": "sonnet",
+    "ux_validator": "sonnet"
+  },
+  "implementer_model_chosen": "sonnet",
+  "implementer_model_triage_recommended": "sonnet",
+  "parallel_review_qa": false,
+  "parallel_review_qa_reason": "tests nuevos a escribir — qa-tester escribe __tests__/realtime-drift.test.ts, condicional 3 de no-paralelo",
+  "auto_skips": {
+    "security-reviewer": "bucket=small-feature sin touches.auth/db/api",
+    "dependency-reviewer": "diff no toca package.json ni lock files",
+    "documenter": "bucket=small-feature sin flag --docs"
+  },
+  "ux_validator": "correr — diff toca UI (tsx components nuevos + header MovilSelector)",
+  "max_iterations": 3,
+  "escalation_conditions": {
+    "A": "3 iteraciones fallidas en algun stage -> pipeline-arbiter",
+    "B": "reviewer APPROVED + qa FAILED -> pipeline-arbiter",
+    "C": "n/a (single-intent)"
+  },
+  "budget_estimate_usd": 0.45,
+  "key_constraints": [
+    "isRoot check: user?.isRoot === 'S' literal, nunca === true",
+    "No tocar logica del reconcile, solo instrumentar",
+    "sendAuditBatch de lib/audit-client.ts (fire-and-forget, ya existe)",
+    "Toast lib: react-hot-toast (ya instalado, ver MapView.tsx:34)",
+    "AuditClientEvent.event_type debe ser uno de los tipos del union — usar 'custom' o extender el union para 'realtime_drift'",
+    "fetchPositions actualmente no devuelve added/removed — hay que modificarla para devolver ese dato (o calcular en los efectos)"
+  ]
+}
