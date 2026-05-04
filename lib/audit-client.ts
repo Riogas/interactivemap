@@ -15,7 +15,7 @@
  */
 
 export interface AuditClientEvent {
-  event_type: 'api_call' | 'navigation' | 'click' | 'custom' | 'realtime';
+  event_type: 'api_call' | 'navigation' | 'click' | 'custom' | 'realtime' | 'realtime_drift' | 'realtime_drift_fetch_failed';
   method?: string;
   endpoint?: string;
   request_body?: unknown;

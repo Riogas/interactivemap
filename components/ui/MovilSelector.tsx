@@ -10,6 +10,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import FilterBar from './FilterBar';
 import { VirtualList } from './VirtualList';
 import MapGuideModal from './MapGuideModal';
+import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicator';
+import type { LastSyncState } from '@/lib/realtime-drift';
 
 interface MovilSelectorProps {
   moviles: MovilData[];
@@ -66,9 +68,17 @@ interface MovilSelectorProps {
    *  lo que un user restringido ve. */
   isRestrictedUser?: boolean;
   /** True para usuarios root / despacho / supervisor / dashboards: se les
-   *  muestran también los pedidos sin móvil y los de móviles fuera del panel
+   *  muestran tambien los pedidos sin movil y los de moviles fuera del panel
    *  aunque el filtro de empresas sea parcial. */
   privilegedUser?: boolean;
+  /** Instrumentacion de drift: true si user?.isRoot === 'S'. Gating estricto — comparacion literal. */
+  isRootUser?: boolean;
+  /** Estado del ultimo sync de posiciones (null si nunca sincronizo). Solo visible si isRootUser. */
+  lastSync?: LastSyncState | null;
+  /** Callback para el boton Resync ahora (llama fetchPositions directamente). */
+  onResync?: () => void;
+  /** Segundos de polling configurados (para calcular umbrales 🟢🟡🔴). Default 60. */
+  pollingSeconds?: number;
 }
 
 // Definir las categorías del árbol
@@ -125,6 +135,10 @@ export default function MovilSelector({
   hideUnassigned = false,
   isRestrictedUser = false,
   privilegedUser = false,
+  isRootUser = false,
+  lastSync = null,
+  onResync,
+  pollingSeconds = 60,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -896,6 +910,14 @@ export default function MovilSelector({
                     <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                       {category.count}
                     </span>
+                  )}
+                  {/* Indicador de drift de realtime — solo para usuarios root */}
+                  {category.key === 'moviles' && isRootUser && (
+                    <RealtimeDriftIndicator
+                      lastSync={lastSync}
+                      pollingSeconds={pollingSeconds}
+                      onResync={onResync ?? (() => {})}
+                    />
                   )}
                 </div>
                 <div className="flex items-center gap-1">
