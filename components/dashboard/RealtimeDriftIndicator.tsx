@@ -42,16 +42,22 @@ export default function RealtimeDriftIndicator({
     return () => clearInterval(interval);
   }, []);
 
-  const color = getSyncColor(lastSync?.at ?? null, pollingSeconds, now);
+  // Antes del primer sync: estado neutro "iniciando" sin alarma.
+  // Solo pintamos 🔴 cuando hubo al menos un sync y se enfrió demasiado.
+  if (!lastSync) {
+    return (
+      <span className="inline-flex items-center gap-1" title="Cargando datos iniciales">
+        <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-500 font-mono whitespace-nowrap">
+          ⚪ iniciando
+        </span>
+      </span>
+    );
+  }
+
+  const color = getSyncColor(lastSync.at, pollingSeconds, now);
   const emoji = EMOJI[color];
-
-  const elapsedText = lastSync
-    ? `sync hace ${formatElapsed(now - lastSync.at)}`
-    : 'sin sync';
-
-  const tooltipText = lastSync
-    ? `Ultimo sync: ${lastSync.trigger} | +${lastSync.added} / -${lastSync.removed} moviles`
-    : 'Nunca se sincronizo';
+  const elapsedText = `sync hace ${formatElapsed(now - lastSync.at)}`;
+  const tooltipText = `Ultimo sync: ${lastSync.trigger} | +${lastSync.added} / -${lastSync.removed} moviles`;
 
   return (
     <span className="inline-flex items-center gap-1" title={tooltipText}>

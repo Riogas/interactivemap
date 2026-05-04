@@ -871,7 +871,13 @@ function DashboardContent() {
       setIsInitialLoad(true); // Forzar recarga completa cuando cambian las empresas o la fecha
       userExplicitlyCleared.current = false; // Reset: recarga = nueva selección automática
       setSelectedMoviles([]); // Limpiar selección para que auto-selección re-seleccione los filtrados
-      fetchPositions();
+      fetchPositions().then((result) => {
+        if (result.success) {
+          // Marcar el initial load como un sync exitoso para que el indicador
+          // arranque en 🟢 en vez de 🔴 "sin sync" durante los primeros 60s.
+          setLastSync({ at: Date.now(), trigger: 'initial', added: 0, removed: 0 });
+        }
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEmpresas, isLoadingEmpresas, selectedDate]); // Remover fetchPositions de dependencias para evitar loops
