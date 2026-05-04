@@ -970,8 +970,8 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
 
                         {/* Cumplido + Atraso (solo finalizados) */}
                         {isFinalizados && (() => {
-                          const tieneMovil = !!p.movil && Number(p.movil) !== 0;
-                          const mostrarAtraso = esEntregado && tieneMovil && p.atraso_cump_mins != null;
+                          // Atraso: mostrar para todos los finalizados que tengan el campo, sin restriccion de tipo o movil
+                          const mostrarAtraso = p.atraso_cump_mins != null;
                           const atraso = mostrarAtraso ? Number(p.atraso_cump_mins) : null;
                           const atrasoColor =
                             atraso == null ? 'text-gray-500' :

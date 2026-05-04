@@ -1,0 +1,29 @@
+{
+  "runId": "20260502-122404-tm1",
+  "state": "completed",
+  "current_stage": "done",
+  "current_iteration": 1,
+  "current_intent": null,
+  "started_at": "2026-05-02T12:24:04Z",
+  "updated_at": "2026-05-02T12:40:00Z",
+  "completed_stages": [
+    { "name": "triage", "verdict": "bug-fix", "duration_seconds": 5 },
+    { "name": "implementer", "verdict": "delivered", "duration_seconds": 360 },
+    { "name": "code-reviewer", "verdict": "APPROVED", "duration_seconds": 120 },
+    { "name": "qa-tester", "verdict": "PASSED 15/15", "duration_seconds": 300 }
+  ],
+  "stages_planned": [],
+  "stages_skipped": [
+    { "name": "analyst", "reason": "bucket=bug-fix" },
+    { "name": "architect", "reason": "bucket=bug-fix" },
+    { "name": "ux-validator", "reason": "diff no toca UI" },
+    { "name": "security-reviewer", "reason": "bucket!=large-feature" },
+    { "name": "dependency-reviewer", "reason": "no lockfile changes" },
+    { "name": "documenter", "reason": "bucket=bug-fix" }
+  ],
+  "estimated_cost_so_far_usd": 0.12,
+  "verdict_final": "MERGE_READY",
+  "multi_intent": false,
+  "intents_progress": [],
+  "arbiter_invocations": 0
+}

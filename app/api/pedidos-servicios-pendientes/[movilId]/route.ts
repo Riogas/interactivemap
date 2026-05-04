@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
+import { todayMontevideo } from '@/lib/date-utils';
 
 export async function GET(
   request: NextRequest,
@@ -15,11 +16,11 @@ export async function GET(
     const movilId = parseInt(resolvedParams.movilId);
     const searchParams = request.nextUrl.searchParams;
     const escenarioId = searchParams.get('escenario_id') || '1000';
-    // Obtener fecha: param 'fecha' o default a hoy
-    const fecha = searchParams.get('fecha') || new Date().toISOString().split('T')[0];
+    // Obtener fecha: param 'fecha' o default a hoy en hora Montevideo
+    const fecha = searchParams.get('fecha') || todayMontevideo();
 
     const supabase = getServerSupabaseClient();
-    
+
     // Obtener pedidos pendientes - Solo estado 1 (Asignado) del día exacto
     const { data: pedidos, error } = await supabase
       .from('pedidos')
@@ -29,9 +30,9 @@ export async function GET(
       .in('estado_nro', [1])
       .eq('fch_para', fecha) // Filtrar por fecha exacta del día
       .order('prioridad', { ascending: false });
-    
+
     if (error) throw error;
-    
+
     const result = {
       success: true,
       movilId,

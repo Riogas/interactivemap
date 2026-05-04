@@ -1,0 +1,27 @@
+{
+  "runId": "20260502-122404-tm1",
+  "bucket": "bug-fix",
+  "bucket_source": "auto-triage",
+  "stages": ["implementer", "code-reviewer", "qa-tester"],
+  "implementer_model_chosen": "sonnet",
+  "implementer_model_triage_recommended": "sonnet",
+  "deviation_reason": null,
+  "parallel_review_qa": false,
+  "parallel_review_qa_reason": "no data on test suite duration from previous runs; defaulting to serial",
+  "max_iterations": 3,
+  "budget_estimate_usd": 0.15,
+  "stages_skipped": [
+    { "name": "analyst", "reason": "bucket=bug-fix — mini-spec inline written by orchestrator" },
+    { "name": "architect", "reason": "bucket=bug-fix — no architectural decisions needed, pattern already exists" },
+    { "name": "ux-validator", "reason": "diff touches only API route (no UI files)" },
+    { "name": "security-reviewer", "reason": "bucket!=large-feature, no auth/db flags" },
+    { "name": "dependency-reviewer", "reason": "no package.json changes expected" },
+    { "name": "documenter", "reason": "bucket=bug-fix, diff < 30 LOC expected" }
+  ],
+  "key_insight": "gps-autocreate.ts helper + maybeAutocreateGpsForToday pattern already exists in import/moviles/route.ts. Fix is to replicate that call in all-positions/route.ts as fire-and-forget after detecting ptovta candidates without GPS entries. Need to add escenario_id to the moviles SELECT.",
+  "escalation_conditions": {
+    "condition_a": "3 reviewer rejections -> invoke pipeline-arbiter",
+    "condition_b": "reviewer APPROVED but qa FAILED on something reviewer should have caught",
+    "condition_c": "not applicable (single intent)"
+  }
+}

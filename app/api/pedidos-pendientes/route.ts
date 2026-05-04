@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
+import { todayMontevideo } from '@/lib/date-utils';
 
 const VERBOSE = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
 const rlog = (...args: unknown[]) => { if (VERBOSE) console.log(...args); };
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     // Obtener parámetros de query
     const searchParams = request.nextUrl.searchParams;
     const escenarioId = parseInt(searchParams.get('escenarioId') || '1000');
-    const fecha = searchParams.get('fecha') || new Date().toISOString().split('T')[0];
+    const fecha = searchParams.get('fecha') || todayMontevideo();
 
     rlog(`📦 Obteniendo TODOS los pedidos pendientes del día ${fecha}`);
 

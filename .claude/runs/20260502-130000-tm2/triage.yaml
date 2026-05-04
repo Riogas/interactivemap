@@ -1,0 +1,30 @@
+bucket: bug-fix
+confidence: high
+multi_intent: false
+touches:
+  ui: true
+  db: false
+  auth: false
+  api: false
+  infra: false
+size_estimate_loc: 40
+risk: low
+recommended_models:
+  implementer: sonnet
+  reviewer: sonnet
+  qa: sonnet
+areas_affected:
+  - components/map/PedidoInfoPopup.tsx
+  - components/ui/PedidosTableModal.tsx
+  - components/ui/ZonaEstadisticasModal.tsx
+  - components/ui/LeaderboardModal.tsx
+notes: |
+  3 related fixes in panel modal de estadistica por zona and pedidos card/table.
+  Bug 1: ZonaEstadisticasModal tooltip text says sub_estado 3 but should say 3 o 19.
+    The calculation logic is CORRECT (uses isPedidoEntregado which checks 3 and 19).
+    Fix: tooltip text only.
+  Bug 2: PedidoInfoPopup shows Cumplido section for all estado_nro=2 pedidos,
+    but should only show when isPedidoEntregado (estado=2, sub_estado IN 3,19).
+  Bug 3: PedidosTableModal atraso column in table restricts to esEntregado && tieneMovil,
+    but request says show for ALL finalizados that have the field.
+clarifying_questions: []

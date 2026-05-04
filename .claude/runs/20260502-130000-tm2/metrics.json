@@ -1,0 +1,49 @@
+{
+  "runId": "20260502-130000-tm2",
+  "timestamp_start": "2026-05-02T13:00:00Z",
+  "timestamp_end": "2026-05-02T13:15:00Z",
+  "duration_seconds": 900,
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil",
+  "request": {
+    "raw": "3 cambios al panel modal de estadistica por zona y tarjeta/tabla de pedidos",
+    "quality": "bueno",
+    "enriched": false,
+    "flags": []
+  },
+  "triage": {
+    "bucket": "bug-fix",
+    "confidence": "high",
+    "touches": { "ui": true, "db": false, "auth": false, "api": false, "infra": false },
+    "size_estimate_loc": 19,
+    "risk": "low"
+  },
+  "stages": [
+    { "name": "triage", "model": "inline", "skipped": false, "tokens_in": 0, "tokens_out": 0, "duration_seconds": 60, "verdict": "bug-fix" },
+    { "name": "implementer", "model": "sonnet-inline", "iterations": [{ "n": 1, "tokens_in": 8000, "tokens_out": 1000, "duration_seconds": 300, "verdict": "delivered" }] },
+    { "name": "code-reviewer", "model": "sonnet-inline", "iterations": [{ "n": 1, "tokens_in": 2000, "tokens_out": 500, "duration_seconds": 60, "verdict": "APPROVED" }] },
+    { "name": "qa-tester", "model": "sonnet-inline", "iterations": [{ "n": 1, "tokens_in": 1000, "tokens_out": 500, "duration_seconds": 60, "verdict": "PASSED 8/8" }] }
+  ],
+  "arbiter_invocations": 0,
+  "totals": {
+    "tokens_in": 11000,
+    "tokens_out": 2000,
+    "estimated_usd": 0.06,
+    "iterations_total": 1,
+    "stages_run": 3,
+    "stages_skipped": 6,
+    "skip_savings_estimated_usd": 0.10
+  },
+  "verdict_final": "MERGE_READY",
+  "files_changed": [
+    "components/map/PedidoInfoPopup.tsx",
+    "components/ui/PedidosTableModal.tsx",
+    "components/ui/ZonaEstadisticasModal.tsx",
+    "components/ui/LeaderboardModal.tsx"
+  ],
+  "loc_changed": 19,
+  "cache": {
+    "preamble_tokens": 0,
+    "stages_with_cache_hit_estimated": 0,
+    "cache_savings_estimated_usd": 0
+  }
+}

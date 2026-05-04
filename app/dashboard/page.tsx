@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -37,6 +37,7 @@ import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
+import { todayMontevideo } from '@/lib/date-utils';
 
 const DEBUG = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1';
 const dbg = (...args: any[]) => { if (DEBUG) console.log(...args); };
@@ -59,7 +60,7 @@ function DashboardContent() {
   const { user, escenarioId, hasPermiso } = useAuth();
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
-  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt } = useRealtime();
+  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect } = useRealtime();
   
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
@@ -308,15 +309,32 @@ function DashboardContent() {
   const [isLoadingEmpresas, setIsLoadingEmpresas] = useState(true);
   
   // Estado para fecha seleccionada (por defecto hoy)
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+  // Persiste en sessionStorage para sobrevivir a F5. Se borra al cerrar la pestana
+  // (sessionStorage) y en el flujo de logout (AuthContext lo limpia explicitamente).
+  const [selectedDate, setSelectedDateRaw] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('trackmovil:selectedDate');
+      if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored) && stored <= todayMontevideo()) {
+        return stored;
+      }
+      // Valor invalido o futuro: limpiar y usar hoy
+      if (stored) sessionStorage.removeItem('trackmovil:selectedDate');
+    }
+    return todayMontevideo();
   });
+
+  // Wrapper estable que persiste en sessionStorage cada vez que cambia la fecha
+  const setSelectedDate = useCallback((date: string) => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('trackmovil:selectedDate', date);
+    }
+    setSelectedDateRaw(date);
+  }, []);
 
   // True solo si selectedDate es la fecha de hoy. Usado para deshabilitar
   // capas/botones que solo tienen sentido en modo live (demoras, saturación,
   // distribución, móviles/zonas, pedidos/zona, estadísticas por zona).
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = selectedDate === todayMontevideo();
 
   // Fix 4: Resetear capa a 'distribucion' si la fecha activa no es hoy y
   // el modo actual es solo válido en tiempo real.
@@ -670,16 +688,28 @@ function DashboardContent() {
   useEffect(() => { fetchPedidosRef.current = fetchPedidos; }, [fetchPedidos]);
   useEffect(() => { fetchServicesRef.current = fetchServices; }, [fetchServices]);
 
+  // Registrar fetchPositions como callback de reconexion del RealtimeProvider.
+  // Cuando GPS o Moviles reconectan (tras una caida del WS), el provider llama
+  // a este callback para que el dashboard haga refetch completo y recupere los
+  // eventos de moviles/gps perdidos durante la desconexion.
+  useEffect(() => {
+    setOnReconnect(fetchPositions);
+    return () => setOnReconnect(null);
+  }, [setOnReconnect, fetchPositions]);
+
   // 🔄 Mejora #1 — Polling de reconciliación configurable (admin / root).
   // Cubre eventos del WS que se perdieron por desconexiones silenciosas: cada N segundos
   // re-pedimos todo pedidos/services Y posiciones/móviles a la API.
   // Solo en modo live (hoy). 0 = off.
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayMontevideo();
     if (selectedDate !== today) return; // Solo en modo live, no para fechas históricas
 
-    const seconds = preferences.realtimePollingReconcileSeconds;
-    if (!seconds || seconds <= 0) return; // Apagado por preferencia
+    // 0 / null / undefined -> usar default 60s. Solo -1 desactiva explicitamente.
+    const seconds = (preferences.realtimePollingReconcileSeconds == null || preferences.realtimePollingReconcileSeconds === 0)
+      ? 60
+      : preferences.realtimePollingReconcileSeconds;
+    if (seconds === -1) return; // Desactivado explicitamente por el usuario
 
     const interval = setInterval(() => {
       console.log(`🔄 Polling reconciliación (${seconds}s) — sincronizando datos con la API`);
@@ -697,7 +727,7 @@ function DashboardContent() {
   // que deja la TCP abierta pero no reenvía frames). Forzamos refetch completo
   // — incluyendo posiciones/móviles — para recuperar cambios perdidos.
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayMontevideo();
     if (selectedDate !== today) return;
 
     const seconds = preferences.realtimeSilenceTimeoutSeconds;
@@ -725,8 +755,9 @@ function DashboardContent() {
   // o haber perdido eventos. Al volver, pedimos pedidos+services+posiciones de nuevo
   // para consolidar móviles del colapsable y mapa.
   useEffect(() => {
-    if (!preferences.realtimeRefetchOnVisible) return;
-    const today = new Date().toISOString().split('T')[0];
+    // null / undefined -> default true. Solo false explicito desactiva.
+    if (preferences.realtimeRefetchOnVisible === false) return;
+    const today = todayMontevideo();
     if (selectedDate !== today) return;
 
     const handler = () => {
@@ -1195,7 +1226,7 @@ function DashboardContent() {
       // Cargar pedidos y servicios pendientes
       try {
         console.log(`📦 Fetching pendientes for móvil ${movilId}...`);
-        const url = `/api/pedidos-servicios-pendientes/${movilId}?fecha=${selectedDate || new Date().toISOString().split('T')[0]}`;
+        const url = `/api/pedidos-servicios-pendientes/${movilId}?fecha=${selectedDate || todayMontevideo()}`;
         const response = await fetch(url);
         const result = await response.json();
 

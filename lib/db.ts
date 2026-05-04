@@ -1,4 +1,5 @@
 import { MovilCoordinate } from '@/types';
+import { todayMontevideo } from '@/lib/date-utils';
 
 const API_URL = process.env.EXTERNAL_API_URL;
 
@@ -11,38 +12,38 @@ export async function getMovilCoordinates(
   startDate?: string,
   limit: number = 100
 ): Promise<MovilCoordinate[]> {
-  
+
   console.log(`🔴 Connecting to external API: ${API_URL}`);
-  
-  const dateFilter = startDate || new Date().toISOString().split('T')[0];
+
+  const dateFilter = startDate || todayMontevideo();
   const url = `${API_URL}/coordinates?movilId=${movilId}&startDate=${dateFilter}&limit=${limit}`;
-  
+
   console.log(`📡 Fetching: ${url}`);
-  
+
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
     },
     signal: AbortSignal.timeout(30000), // Timeout de 30 segundos
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   const result = await response.json();
   console.log(`✅ API Response:`, result);
-  
+
   // La API devuelve {success, data: [...]}
   const data = result.data || [];
   console.log(`✅ Retrieved ${data.length} coordinates from AS400`);
-  
+
   return data.map((item: any) => {
     const coordXRaw = String(item.coordx || item.coordX || '').trim();
     const coordYRaw = String(item.coordy || item.coordY || '').trim();
-    
+
     console.log('🔍 Coordenadas raw:', { coordXRaw, coordYRaw });
-    
+
     return {
       identificador: Number(item.identificador),
       origen: String(item.origen || '').trim(),
@@ -69,10 +70,10 @@ export async function getAllMovilesLatestPositions(
   movilIds?: number[]
 ): Promise<Map<number, MovilCoordinate>> {
   console.log(`🔴 Fetching ALL latest positions from API`);
-  
-  const dateFilter = new Date().toISOString().split('T')[0];
+
+  const dateFilter = todayMontevideo();
   let url = `${API_URL}/latest-positions?startDate=${dateFilter}`;
-  
+
   // Si se especifican IDs específicos, agregarlos al query
   if (movilIds && movilIds.length > 0) {
     url += `&movilIds=${movilIds.join(',')}`;
@@ -80,28 +81,28 @@ export async function getAllMovilesLatestPositions(
   } else {
     console.log(`📡 No filter - fetching ALL móviles`);
   }
-  
+
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
     },
     signal: AbortSignal.timeout(30000),
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   const result = await response.json();
   console.log(`✅ Retrieved ${result.count} móviles from AS400`);
-  
+
   const positions = new Map<number, MovilCoordinate>();
-  
+
   const data = result.data || [];
   data.forEach((item: any) => {
     const coordXRaw = String(item.coordx || item.coordX || '').trim();
     const coordYRaw = String(item.coordy || item.coordY || '').trim();
-    
+
     const coordinate: MovilCoordinate = {
       identificador: Number(item.identificador),
       origen: String(item.origen || '').trim(),
@@ -111,15 +112,15 @@ export async function getAllMovilesLatestPositions(
       auxIn2: String(item.auxin2 || item.auxIn2 || '').trim(),
       distRecorrida: Number(item.distrecorrida || item.distRecorrida) || 0,
     };
-    
+
     // Filtrar coordenadas inválidas (0,0)
     if (coordinate.coordX !== 0 && coordinate.coordY !== 0) {
       positions.set(coordinate.identificador, coordinate);
     }
   });
-  
+
   console.log(`✅ Loaded ${positions.size} valid móviles (filtered out invalid coordinates)`);
-  
+
   return positions;
 }
 
@@ -128,21 +129,21 @@ export async function getAllMovilesLatestPositions(
  */
 export async function getEmpresasFleteras() {
   console.log(`🏢 Fetching empresas fleteras from: ${API_URL}/empresas-fleteras`);
-  
+
   const response = await fetch(`${API_URL}/empresas-fleteras`, {
     headers: {
       'Content-Type': 'application/json',
     },
     signal: AbortSignal.timeout(30000),
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   const result = await response.json();
   console.log(`✅ Retrieved ${result.count} empresas fleteras`);
-  
+
   return result.data || [];
 }
 
@@ -151,21 +152,21 @@ export async function getEmpresasFleteras() {
  */
 export async function getMovilesByEmpresa(empresaId: number) {
   console.log(`🚗 Fetching móviles for empresa ${empresaId}`);
-  
+
   const response = await fetch(`${API_URL}/moviles-por-empresa?empresaId=${empresaId}`, {
     headers: {
       'Content-Type': 'application/json',
     },
     signal: AbortSignal.timeout(30000),
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   const result = await response.json();
   console.log(`✅ Retrieved ${result.count} móviles for empresa ${empresaId}`);
-  
+
   return result.data || [];
 }
 
@@ -176,39 +177,39 @@ export async function getAllMovilesLatestPositionsByEmpresas(
   startDate?: string,
   empresaIds?: number[]
 ): Promise<Map<number, MovilCoordinate>> {
-  const dateFilter = startDate || new Date().toISOString().split('T')[0];
-  
+  const dateFilter = startDate || todayMontevideo();
+
   // Construir URL con filtro de empresas si se proporciona
   let url = `${API_URL}/latest-positions?startDate=${dateFilter}`;
   if (empresaIds && empresaIds.length > 0) {
     url += `&empresaIds=${empresaIds.join(',')}`;
   }
-  
+
   console.log(`🔍 Fetching latest positions (filtered by empresas): ${url}`);
-  
+
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
     },
     signal: AbortSignal.timeout(30000),
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   const result = await response.json();
   const data = result.data || [];
-  
+
   console.log(`✅ Retrieved ${data.length} coordinates from AS400`);
-  
+
   // Convertir a Map para fácil acceso por ID
   const positions = new Map<number, MovilCoordinate>();
-  
+
   data.forEach((item: any) => {
     const coordXRaw = String(item.coordx || item.coordX || '').trim();
     const coordYRaw = String(item.coordy || item.coordY || '').trim();
-    
+
     const coordinate: MovilCoordinate = {
       identificador: Number(item.identificador),
       origen: String(item.origen || '').trim(),
@@ -218,15 +219,15 @@ export async function getAllMovilesLatestPositionsByEmpresas(
       auxIn2: String(item.auxin2 || item.auxIn2 || '').trim(),
       distRecorrida: Number(item.distrecorrida || item.distRecorrida) || 0,
     };
-    
+
     // Filtrar coordenadas inválidas (0,0)
     if (coordinate.coordX !== 0 && coordinate.coordY !== 0) {
       positions.set(coordinate.identificador, coordinate);
     }
   });
-  
+
   console.log(`✅ Loaded ${positions.size} valid móviles for selected empresas`);
-  
+
   return positions;
 }
 
@@ -237,23 +238,23 @@ export async function getPedidosServiciosMovil(
   movilId: number,
   fechaDesde?: string
 ) {
-  const dateFilter = fechaDesde || new Date().toISOString().split('T')[0] + ' 00:00:00';
+  const dateFilter = fechaDesde || `${todayMontevideo()} 00:00:00`;
   const url = `${API_URL}/pedidos-servicios/${movilId}?fecha_desde=${encodeURIComponent(dateFilter)}`;
-  
+
   console.log(`📦 Fetching pedidos/servicios: ${url}`);
-  
+
   const response = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(30000),
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   const result = await response.json();
   console.log(`✅ Retrieved ${result.count} pedidos/servicios`);
-  
+
   return result;
 }
 
@@ -264,22 +265,22 @@ export async function getPedidosServiciosPendientes(
   movilId: number,
   fechaDesde?: string
 ) {
-  const dateFilter = fechaDesde || new Date().toISOString().split('T')[0] + ' 00:00:00';
+  const dateFilter = fechaDesde || `${todayMontevideo()} 00:00:00`;
   const url = `${API_URL}/pedidos-servicios-pendientes/${movilId}?fecha_desde=${encodeURIComponent(dateFilter)}`;
-  
+
   console.log(`⏳ Fetching pendientes: ${url}`);
-  
+
   const response = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(30000),
   });
-  
+
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
-  
+
   const result = await response.json();
   console.log(`✅ Retrieved ${result.total} pendientes (${result.pedidosPendientes} pedidos, ${result.serviciosPendientes} servicios)`);
-  
+
   return result;
 }

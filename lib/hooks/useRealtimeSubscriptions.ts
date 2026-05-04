@@ -58,25 +58,34 @@ const dbg = (...args: any[]) => { if (DEBUG_REALTIME) console.log(...args); };
  * @param escenarioId - ID del escenario a monitorear
  * @param movilIds - Array de IDs de móviles a filtrar (opcional)
  * @param onUpdate - Callback cuando se recibe una actualización
+ * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
+ *   El consumidor debe usarlo para hacer refetch del estado completo, ya que los
+ *   eventos perdidos durante la desconexión no se reenvían.
  */
 export function useGPSTracking(
   escenarioId: number = 1,
   movilIds?: string[],
-  onUpdate?: (position: GPSTrackingSupabase) => void
+  onUpdate?: (position: GPSTrackingSupabase) => void,
+  onReconnect?: () => void
 ) {
   const [positions, setPositions] = useState<Map<string, GPSTrackingSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+
+  // wasConnectedRef: true después de la primera conexión exitosa.
+  // Permite distinguir "primera conexión" de "reconexión" en el callback de subscribe.
+  const wasConnectedRef = useRef(false);
+  // onReconnectRef: mantiene siempre la versión más reciente del callback sin
+  // que el efecto tenga que re-suscribirse cuando la función cambia en el padre.
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
 
   useEffect(() => {
     console.log('🔄 Iniciando suscripción GPS Tracking...');
     let channel: RealtimeChannel | null = null;
     let reconnectTimer: NodeJS.Timeout | null = null;
     let isComponentMounted = true;
-
-    const MAX_RETRIES = 5;
-    const RETRY_DELAY = 3000; // 3 segundos
+    const RETRY_DELAY = 5000;
 
     const setupChannel = () => {
       // Limpiar canal anterior si existe
@@ -87,7 +96,7 @@ export function useGPSTracking(
 
       // Crear canal único con timestamp para evitar conflictos
       const channelName = `gps-latest-${escenarioId}-${Date.now()}`;
-      
+
       // Crear canal de Realtime — suscrito a gps_latest_positions (1 fila por móvil)
       // Los eventos INSERT ocurren cuando un móvil aparece por primera vez
       // Los eventos UPDATE ocurren cuando el trigger sync_gps_latest_position actualiza la fila
@@ -108,10 +117,10 @@ export function useGPSTracking(
           },
           (payload) => {
             if (!isComponentMounted) return;
-            
+
             dbg('📍 GPS INSERT:', (payload.new as any)?.movil_id);
             const newPosition = payload.new as GPSTrackingSupabase;
-            
+
             // Filtrar por móvil si se especifica
             if (!movilIds || movilIds.includes(newPosition.movil_id)) {
               setPositions(prev => {
@@ -119,7 +128,7 @@ export function useGPSTracking(
                 updated.set(newPosition.movil_id, newPosition);
                 return updated;
               });
-              
+
               if (onUpdate) {
                 onUpdate(newPosition);
               }
@@ -136,17 +145,17 @@ export function useGPSTracking(
           },
           (payload) => {
             if (!isComponentMounted) return;
-            
+
             dbg('📍 GPS UPDATE:', (payload.new as any)?.movil_id);
             const updatedPosition = payload.new as GPSTrackingSupabase;
-            
+
             if (!movilIds || movilIds.includes(updatedPosition.movil_id)) {
               setPositions(prev => {
                 const updated = new Map(prev);
                 updated.set(updatedPosition.movil_id, updatedPosition);
                 return updated;
               });
-              
+
               if (onUpdate) {
                 onUpdate(updatedPosition);
               }
@@ -162,31 +171,31 @@ export function useGPSTracking(
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
             setError(null);
-            setRetryCount(0); // Reset retry counter on success
             console.log('✅ Conectado a Realtime GPS Tracking');
+            // Si era una reconexión (no la primera vez), solicitar refetch completo.
+            // Los eventos perdidos durante la desconexión no se reenvían, por eso
+            // el consumidor debe pedir el estado completo a la API.
+            if (wasConnectedRef.current && onReconnectRef.current) {
+              console.log('🔄 Realtime GPS reconectado — solicitando refetch completo');
+              onReconnectRef.current();
+            }
+            wasConnectedRef.current = true;
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
-            console.warn(`⚠️ Error en suscripción GPS: ${status}. Intento ${retryCount + 1}/${MAX_RETRIES}`);
-            
-            // Intentar reconectar automáticamente
-            if (retryCount < MAX_RETRIES && isComponentMounted) {
-              console.log(`🔄 Reconectando... (intento ${retryCount + 1}/${MAX_RETRIES})`);
-              setRetryCount(prev => prev + 1);
-              
-              // Programar reconexión
-              reconnectTimer = setTimeout(() => {
-                if (isComponentMounted) {
-                  console.log('🔄 Intentando reconectar...');
-                  setupChannel();
-                }
-              }, RETRY_DELAY);
-            } else if (retryCount >= MAX_RETRIES) {
-              setError('Error de conexión persistente. Verifica tu red o Supabase.');
-              console.error('❌ Máximo de reintentos alcanzado');
-            }
+            setError(`Error de conexión con Realtime GPS: ${status}`);
+            console.warn(`⚠️ Error en suscripción GPS: ${status}. Reconectando en ${RETRY_DELAY / 1000}s...`);
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) {
+                console.log('🔄 Reconectando GPS realtime...');
+                setupChannel();
+              }
+            }, RETRY_DELAY);
           } else if (status === 'CLOSED') {
             setIsConnected(false);
-            console.log('🔌 Suscripción GPS cerrada');
+            console.log('🔌 Suscripción GPS cerrada. Reconectando...');
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) setupChannel();
+            }, RETRY_DELAY);
           }
         });
     };
@@ -198,16 +207,14 @@ export function useGPSTracking(
     return () => {
       console.log('🧹 Limpiando suscripción GPS...');
       isComponentMounted = false;
-      
+
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
       }
-      
+
       if (channel) {
         supabase.removeChannel(channel);
       }
-      
-      setIsConnected(false);
     };
   }, [escenarioId, movilIds?.join(',')]); // Re-suscribir si cambian los filtros
 
@@ -216,58 +223,120 @@ export function useGPSTracking(
 
 /**
  * Hook para suscribirse a cambios en la tabla de móviles
+ * @param escenarioId - ID del escenario a monitorear
+ * @param empresaIds - Array de IDs de empresas a filtrar (opcional)
+ * @param onUpdate - Callback cuando se recibe una actualización de móvil
+ * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
+ *   El consumidor debe usarlo para hacer refetch del estado completo.
  */
 export function useMoviles(
   escenarioId: number = 1,
   empresaIds?: number[],
-  onUpdate?: (movil: MovilSupabase) => void
+  onUpdate?: (movil: MovilSupabase) => void,
+  onReconnect?: () => void
 ) {
   const [moviles, setMoviles] = useState<MovilSupabase[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
+  // wasConnectedRef: true después de la primera conexión exitosa.
+  const wasConnectedRef = useRef(false);
+  // onReconnectRef: mantiene siempre la versión más reciente sin forzar re-suscripción.
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
+
   useEffect(() => {
     console.log('🔄 Iniciando suscripción a móviles...');
-    
-    const channel = supabase
-      .channel('moviles-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // INSERT, UPDATE, DELETE
-          schema: 'public',
-          table: 'moviles',
-        },
-        (payload) => {
-          dbg('🚗 Movil change:', (payload.new as any)?.id);
-          
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const movil = payload.new as MovilSupabase;
-            
-            // Filtrar por empresa si se especifica
-            if (!empresaIds || empresaIds.includes(movil.empresa_fletera_id)) {
-              setMoviles(prev => {
-                const filtered = prev.filter(m => m.id !== movil.id);
-                return [...filtered, movil];
-              });
-              
-              if (onUpdate) {
-                onUpdate(movil);
+    let channel: RealtimeChannel | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let isComponentMounted = true;
+    const RETRY_DELAY = 5000;
+
+    const setupChannel = () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+        channel = null;
+      }
+
+      const channelName = `moviles-changes-${escenarioId}-${Date.now()}`;
+
+      channel = supabase
+        .channel(channelName, {
+          config: {
+            broadcast: { self: false },
+            presence: { key: '' },
+          },
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // INSERT, UPDATE, DELETE
+            schema: 'public',
+            table: 'moviles',
+          },
+          (payload) => {
+            if (!isComponentMounted) return;
+            dbg('🚗 Movil change:', (payload.new as any)?.id);
+
+            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              const movil = payload.new as MovilSupabase;
+
+              // Filtrar por empresa si se especifica
+              if (!empresaIds || empresaIds.includes(movil.empresa_fletera_id)) {
+                setMoviles(prev => {
+                  const filtered = prev.filter(m => m.id !== movil.id);
+                  return [...filtered, movil];
+                });
+
+                if (onUpdate) {
+                  onUpdate(movil);
+                }
               }
+            } else if (payload.eventType === 'DELETE') {
+              const oldMovil = payload.old as MovilSupabase;
+              setMoviles(prev => prev.filter(m => m.id !== oldMovil.id));
             }
-          } else if (payload.eventType === 'DELETE') {
-            const oldMovil = payload.old as MovilSupabase;
-            setMoviles(prev => prev.filter(m => m.id !== oldMovil.id));
           }
-        }
-      )
-      .subscribe((status) => {
-        dbg('📡 Moviles status:', status);
-        logRealtimeStatus('moviles-changes', 'moviles', status, { escenarioId });
-        setIsConnected(status === 'SUBSCRIBED');
-      });
+        )
+        .subscribe((status) => {
+          if (!isComponentMounted) return;
+          dbg('📡 Moviles status:', status);
+          logRealtimeStatus(channelName, 'moviles', status, { escenarioId });
+
+          if (status === 'SUBSCRIBED') {
+            setIsConnected(true);
+            console.log('✅ Conectado a Realtime Móviles');
+            // Si era una reconexión, solicitar refetch completo para recuperar
+            // los cambios perdidos durante la desconexión.
+            if (wasConnectedRef.current && onReconnectRef.current) {
+              console.log('🔄 Realtime Móviles reconectado — solicitando refetch completo');
+              onReconnectRef.current();
+            }
+            wasConnectedRef.current = true;
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            setIsConnected(false);
+            console.warn(`⚠️ Error en suscripción de móviles: ${status}. Reconectando en ${RETRY_DELAY / 1000}s...`);
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) {
+                console.log('🔄 Reconectando móviles realtime...');
+                setupChannel();
+              }
+            }, RETRY_DELAY);
+          } else if (status === 'CLOSED') {
+            setIsConnected(false);
+            console.log('🔌 Suscripción móviles cerrada. Reconectando...');
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) setupChannel();
+            }, RETRY_DELAY);
+          }
+        });
+    };
+
+    setupChannel();
 
     return () => {
-      supabase.removeChannel(channel);
+      isComponentMounted = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [escenarioId, empresaIds?.join(',')]);
 
@@ -287,12 +356,12 @@ export function usePedidos(
 
   useEffect(() => {
     console.log('🔄 Iniciando suscripción a pedidos...');
-    
+
     let filterString = `escenario_id=eq.${escenarioId}`;
     if (movilId) {
       filterString += `,movil_id=eq.${movilId}`;
     }
-    
+
     const channel = supabase
       .channel('pedidos-changes')
       .on(
@@ -305,22 +374,22 @@ export function usePedidos(
         },
         (payload) => {
           dbg('📦 Pedido change:', (payload.new as any)?.id);
-          
+
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const pedido = payload.new as PedidoSupabase;
             setPedidos(prev => {
-              const filtered = prev.filter(p => 
+              const filtered = prev.filter(p =>
                 !(p.id === pedido.id && p.escenario === pedido.escenario)
               );
               return [...filtered, pedido];
             });
-            
+
             if (onUpdate) {
               onUpdate(pedido);
             }
           } else if (payload.eventType === 'DELETE') {
             const oldPedido = payload.old as PedidoSupabase;
-            setPedidos(prev => prev.filter(p => 
+            setPedidos(prev => prev.filter(p =>
               !(p.id === oldPedido.id && p.escenario === oldPedido.escenario)
             ));
           }
@@ -352,7 +421,7 @@ export function useEmpresasFleteras(
 
   useEffect(() => {
     console.log('🔄 Iniciando suscripción a empresas fleteras...');
-    
+
     const channel = supabase
       .channel('empresas-changes')
       .on(
@@ -365,14 +434,14 @@ export function useEmpresasFleteras(
         },
         (payload) => {
           console.log('🏢 Cambio en empresas:', payload);
-          
+
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const empresa = payload.new as EmpresaFleteraSupabase;
             setEmpresas(prev => {
               const filtered = prev.filter(e => e.empresa_fletera_id !== empresa.empresa_fletera_id);
               return [...filtered, empresa];
             });
-            
+
             if (onUpdate) {
               onUpdate(empresa);
             }
@@ -591,7 +660,7 @@ export function useServicesRealtime(
         channel = null;
       }
       const channelName = `services-realtime-${escenarioId}-${Date.now()}`;
-      
+
       channel = supabase
         .channel(channelName, {
           config: {

@@ -1,0 +1,67 @@
+{
+  "runId": "20260503-tz01-tm3",
+  "timestamp_start": "2026-05-03T01:35:00Z",
+  "timestamp_end": "2026-05-03T01:48:00Z",
+  "duration_seconds": 780,
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil",
+  "request": {
+    "raw": "Fix timezone bug — 24 occurrences of new Date().toISOString().split('T')[0]",
+    "quality": "bueno",
+    "enriched": false,
+    "flags": []
+  },
+  "triage": {
+    "bucket": "bug-fix",
+    "confidence": "high",
+    "touches": { "ui": false, "db": false, "auth": false, "api": false, "infra": false },
+    "size_estimate_loc": 120,
+    "risk": "low"
+  },
+  "stages": [
+    { "name": "triage", "model": "sonnet", "skipped": false, "tokens_in": 800, "tokens_out": 200, "duration_seconds": 10, "verdict": "bug-fix" },
+    { "name": "implementer", "model": "sonnet", "iterations": [{ "n": 1, "tokens_in": 18000, "tokens_out": 6000, "duration_seconds": 600, "verdict": "delivered" }] },
+    { "name": "code-reviewer", "model": "sonnet", "iterations": [{ "n": 1, "tokens_in": 4000, "tokens_out": 500, "duration_seconds": 60, "verdict": "APPROVED" }] },
+    { "name": "qa-tester", "model": "sonnet", "iterations": [{ "n": 1, "tokens_in": 1000, "tokens_out": 200, "duration_seconds": 30, "verdict": "PASSED 320/320" }] }
+  ],
+  "stages_skipped": [
+    { "name": "analyst", "reason": "bug-fix bucket" },
+    { "name": "architect", "reason": "bug-fix bucket" },
+    { "name": "ux-validator", "reason": "no UI logic changes" },
+    { "name": "security-reviewer", "reason": "no auth/db/api surface" },
+    { "name": "dependency-reviewer", "reason": "no lockfile changes" },
+    { "name": "documenter", "reason": "bug-fix bucket" }
+  ],
+  "arbiter_invocations": 0,
+  "totals": {
+    "tokens_in": 23800,
+    "tokens_out": 6900,
+    "estimated_usd": 0.18,
+    "iterations_total": 1,
+    "stages_run": 4,
+    "stages_skipped": 6,
+    "skip_savings_estimated_usd": 0.10
+  },
+  "verdict_final": "MERGE_READY",
+  "files_changed": [
+    "lib/date-utils.ts",
+    "__tests__/date-utils.test.ts",
+    "lib/db.ts",
+    "app/api/all-positions/route.ts",
+    "app/api/moviles-extended/route.ts",
+    "app/api/movil-session/[id]/route.ts",
+    "app/api/movil/[id]/route.ts",
+    "app/api/pedidos-pendientes/route.ts",
+    "app/api/pedidos-servicios-pendientes/[movilId]/route.ts",
+    "app/dashboard/page.tsx",
+    "app/dashboard/stats/page.tsx",
+    "components/dashboard/DashboardIndicators.tsx",
+    "components/map/MovilInfoPopup.tsx",
+    "components/map/ServiceInfoPopup.tsx",
+    "components/map/PedidoInfoPopup.tsx",
+    "components/layout/Navbar.tsx",
+    "components/layout/FloatingToolbar.tsx",
+    "components/ui/TrackingModal.tsx",
+    "components/map/RouteAnimationControl.tsx"
+  ],
+  "loc_changed": 119
+}

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -6,6 +6,7 @@ import { EmpresaFleteraSupabase } from '@/types';
 import EmpresaSelector from '@/components/ui/EmpresaSelector';
 import PreferencesModal, { UserPreferences } from '@/components/ui/PreferencesModal';
 import { useAuth } from '@/contexts/AuthContext';
+import { todayMontevideo } from '@/lib/date-utils';
 
 interface NavbarProps {
   selectedDate: string;
@@ -72,7 +73,7 @@ export default function Navbar({
                 type="date"
                 value={selectedDate}
                 onChange={(e) => onDateChange(e.target.value)}
-                max={new Date().toISOString().split('T')[0]}
+                max={todayMontevideo()}
                 className="px-3 py-1.5 rounded-md border-0 focus:ring-2 focus:ring-blue-300 transition-all duration-200 text-gray-700 font-medium text-sm bg-white shadow-sm"
               />
             </div>

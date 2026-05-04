@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -6,6 +6,7 @@ import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { todayMontevideo } from '@/lib/date-utils';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
 interface Pedido {
@@ -218,7 +219,7 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
 // ─── Contenido principal ──────────────────────────────────────────────────────
 function StatsContent() {
   const searchParams = useSearchParams();
-  const date = searchParams.get('date') ?? new Date().toISOString().split('T')[0];
+  const date = searchParams.get('date') ?? todayMontevideo();
 
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [services, setServices] = useState<Service[]>([]);

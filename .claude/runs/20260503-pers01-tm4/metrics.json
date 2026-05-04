@@ -1,0 +1,57 @@
+{
+  "runId": "20260503-pers01-tm4",
+  "timestamp_start": "2026-05-03T00:00:00Z",
+  "timestamp_end": "2026-05-03T00:10:00Z",
+  "duration_seconds": 600,
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil",
+  "request": {
+    "raw": "Fix dos bugs del ciclo de vida del dashboard: selectedDate no persiste a F5 + drift de contador de moviles en realtime",
+    "quality": "bueno",
+    "enriched": false,
+    "flags": []
+  },
+  "triage": {
+    "bucket": "bug-fix",
+    "confidence": "high",
+    "touches": { "ui": false, "db": false, "auth": false, "api": false, "infra": false },
+    "size_estimate_loc": 80,
+    "risk": "low"
+  },
+  "stages": [
+    {
+      "name": "implementer",
+      "model": "sonnet",
+      "skipped": false,
+      "iterations": [{ "n": 1, "duration_seconds": 420, "verdict": "delivered" }]
+    },
+    {
+      "name": "code-reviewer",
+      "model": "sonnet",
+      "skipped": false,
+      "iterations": [{ "n": 1, "duration_seconds": 60, "verdict": "APPROVED" }]
+    },
+    {
+      "name": "qa-tester",
+      "model": "sonnet",
+      "skipped": false,
+      "iterations": [{ "n": 1, "duration_seconds": 30, "verdict": "PASSED 342/342" }]
+    }
+  ],
+  "arbiter_invocations": 0,
+  "totals": {
+    "estimated_usd": 0.18,
+    "iterations_total": 1,
+    "stages_run": 3,
+    "stages_skipped": 6,
+    "skip_savings_estimated_usd": 0.12
+  },
+  "verdict_final": "MERGE_READY",
+  "files_changed": [
+    "app/dashboard/page.tsx",
+    "contexts/AuthContext.tsx",
+    "lib/hooks/useRealtimeSubscriptions.ts",
+    "components/providers/RealtimeProvider.tsx",
+    "__tests__/dashboard-lifecycle.test.ts"
+  ],
+  "loc_changed": 420
+}

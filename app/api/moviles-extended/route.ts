@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '@/lib/auth-middleware';
+import { todayMontevideo } from '@/lib/date-utils';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -28,8 +29,8 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // 2. Contar pedidos asignados por móvil (solo estado=1 y fecha de hoy)
-    const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    // 2. Contar pedidos asignados por móvil (solo estado=1 y fecha de hoy en hora Montevideo)
+    const hoy = todayMontevideo(); // YYYY-MM-DD
     const hoyFechaInicio = `${hoy}T00:00:00`;
     const hoyFechaFin = `${hoy}T23:59:59`;
     const hoySinGuiones = hoy.replace(/-/g, ''); // '2026-04-30' → '20260430' (formato fch_para en services)

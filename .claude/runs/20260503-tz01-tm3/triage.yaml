@@ -1,0 +1,37 @@
+bucket: bug-fix
+confidence: high
+multi_intent: false
+clarifying_questions: []
+touches:
+  ui: false
+  db: false
+  auth: false
+  api: false
+  infra: false
+size_estimate_loc: 120
+risk: low
+recommended_models:
+  implementer: sonnet
+  reviewer: sonnet
+  qa: sonnet
+affected_areas:
+  - lib/date-utils.ts (new)
+  - lib/db.ts
+  - app/api/all-positions/route.ts
+  - app/api/moviles-extended/route.ts
+  - app/api/movil-session/[id]/route.ts
+  - app/api/movil/[id]/route.ts
+  - app/api/pedidos-pendientes/route.ts
+  - app/api/pedidos-servicios-pendientes/[movilId]/route.ts
+  - app/dashboard/page.tsx
+  - app/dashboard/stats/page.tsx
+  - components/dashboard/DashboardIndicators.tsx
+  - components/map/MovilInfoPopup.tsx
+  - components/map/ServiceInfoPopup.tsx
+  - components/map/PedidoInfoPopup.tsx
+  - components/layout/Navbar.tsx
+  - components/layout/FloatingToolbar.tsx
+  - components/ui/TrackingModal.tsx
+  - components/map/RouteAnimationControl.tsx
+  - __tests__/date-utils.test.ts (new)
+notes: "~24 mechanical replacements + 1 new helper file + unit tests. Pattern is identical everywhere."
