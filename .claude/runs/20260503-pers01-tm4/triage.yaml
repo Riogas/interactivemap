@@ -1,0 +1,27 @@
+bucket: bug-fix
+confidence: high
+multi_intent: false
+touches:
+  ui: false
+  db: false
+  auth: false
+  api: false
+  infra: false
+size_estimate_loc: 80
+risk: low
+recommended_models:
+  implementer: sonnet
+  reviewer: sonnet
+  qa: sonnet
+clarifying_questions: []
+affected_files:
+  - app/dashboard/page.tsx
+  - contexts/AuthContext.tsx
+  - lib/hooks/useRealtimeSubscriptions.ts
+  - components/providers/RealtimeProvider.tsx
+  - __tests__/ (tests nuevos)
+notes: >
+  Dos bugs relacionados al ciclo de vida del dashboard.
+  Bug 1: selectedDate no persiste a F5 (fix: sessionStorage).
+  Bug 2: realtime drift en useGPSTracking y useMoviles (fix: reconnect-refetch pattern de usePedidosRealtime).
+  Plus: defaults de realtimePollingReconcileSeconds y realtimeRefetchOnVisible cuando son 0/null.
