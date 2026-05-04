@@ -1,0 +1,289 @@
+warning: in the working copy of 'app/dashboard/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'components/ui/MovilSelector.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/audit-client.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git a/app/dashboard/page.tsx b/app/dashboard/page.tsx
+index f605d64..75d64b4 100644
+--- a/app/dashboard/page.tsx
++++ b/app/dashboard/page.tsx
+@@ -38,6 +38,7 @@ import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
+ import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
+ import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
+ import { todayMontevideo } from '@/lib/date-utils';
++import { reportDrift, LastSyncState } from '@/lib/realtime-drift';
+ 
+ const DEBUG = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1';
+ const dbg = (...args: any[]) => { if (DEBUG) console.log(...args); };
+@@ -95,6 +96,8 @@ function DashboardContent() {
+   const [isLoading, setIsLoading] = useState(true);
+   const [error, setError] = useState<string | null>(null);
+   const [isInitialLoad, setIsInitialLoad] = useState(true); // Flag para carga inicial
++  // Estado del ultimo sync de posiciones (instrumentacion visible de drift — solo root)
++  const [lastSync, setLastSync] = useState<LastSyncState | null>(null);
+   
+   // Estado para marcadores personalizados
+   const [isPlacingMarker, setIsPlacingMarker] = useState(false);
+@@ -240,6 +243,8 @@ function DashboardContent() {
+     const userDeselectedSome = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+     return userHasRestriction || userDeselectedSome;
+   }, [user?.allowedEmpresas, selectedEmpresas, empresas.length]);
++  // Variable derivada para el gating de UI de drift — comparacion literal con 'S' (no === true)
++  const isRoot = user?.isRoot === 'S';
+   
+   // � Móviles filtrados por empresas fleteras seleccionadas
+   const movilesFiltered = useMemo(() => {
+@@ -472,7 +477,7 @@ function DashboardContent() {
+     }
+   }, [getMovilColorByOccupancy]);
+ 
+-  const fetchPositions = useCallback(async () => {
++  const fetchPositions = useCallback(async (): Promise<{ added: number; removed: number; success: boolean }> => {
+     try {
+       // 🔒 Guard: usuario no-root con restricción pero 0 empresas válidas.
+       // Pasa cuando el ID del SecuritySuite (ej. 70) no matchea con ningún
+@@ -485,7 +490,7 @@ function DashboardContent() {
+         setMoviles([]);
+         setIsLoading(false);
+         setIsInitialLoad(false);
+-        return;
++        return { added: 0, removed: 0, success: true };
+       }
+ 
+       console.log('🔄 Fetching all positions from API...');
+@@ -601,17 +606,22 @@ function DashboardContent() {
+             console.log(
+               `✅ Reconciliación aplicada: state ahora tiene ${enriched.length} móviles`,
+             );
++            return { added: newApiMoviles.length, removed: removedCount, success: true };
+           }
+         }
+         
+         setLastUpdate(new Date());
+         setError(null);
++        // Fallback: path sin altas/bajas ya retornó arriba
++        return { added: 0, removed: 0, success: true };
+       } else {
+         setError(result.error || 'Error al cargar datos');
++        return { added: 0, removed: 0, success: false };
+       }
+     } catch (err) {
+       console.error('❌ Error fetching positions:', err);
+       setError('Error de conexión');
++      return { added: 0, removed: 0, success: false };
+     } finally {
+       setIsLoading(false);
+     }
+@@ -688,14 +698,32 @@ function DashboardContent() {
+   useEffect(() => { fetchPedidosRef.current = fetchPedidos; }, [fetchPedidos]);
+   useEffect(() => { fetchServicesRef.current = fetchServices; }, [fetchServices]);
+ 
++  // Wrapper de fetchPositions con instrumentacion de drift para el trigger de reconexion.
++  // Se registra en el RealtimeProvider para que lo llame cuando GPS/Moviles reconectan.
++  const fetchPositionsWithReconnectReport = useCallback(async () => {
++    const result = await fetchPositions();
++    if (result.success) {
++      setLastSync({ at: Date.now(), trigger: 'reconnect', added: result.added, removed: result.removed });
++    }
++    reportDrift({
++      trigger: 'reconnect',
++      added: result.added,
++      removed: result.removed,
++      totalBefore: movilesRef.current.length,
++      totalAfter: movilesRef.current.length + result.added - result.removed,
++      selectedDate: selectedDate ?? '',
++      isRoot,
++    });
++  }, [fetchPositions, selectedDate, isRoot]);
++
+   // Registrar fetchPositions como callback de reconexion del RealtimeProvider.
+   // Cuando GPS o Moviles reconectan (tras una caida del WS), el provider llama
+   // a este callback para que el dashboard haga refetch completo y recupere los
+   // eventos de moviles/gps perdidos durante la desconexion.
+   useEffect(() => {
+-    setOnReconnect(fetchPositions);
++    setOnReconnect(fetchPositionsWithReconnectReport);
+     return () => setOnReconnect(null);
+-  }, [setOnReconnect, fetchPositions]);
++  }, [setOnReconnect, fetchPositionsWithReconnectReport]);
+ 
+   // 🔄 Mejora #1 — Polling de reconciliación configurable (admin / root).
+   // Cubre eventos del WS que se perdieron por desconexiones silenciosas: cada N segundos
+@@ -711,15 +739,27 @@ function DashboardContent() {
+       : preferences.realtimePollingReconcileSeconds;
+     if (seconds === -1) return; // Desactivado explicitamente por el usuario
+ 
+-    const interval = setInterval(() => {
++    const interval = setInterval(async () => {
+       console.log(`🔄 Polling reconciliación (${seconds}s) — sincronizando datos con la API`);
+       fetchPedidos();
+       fetchServices();
+-      fetchPositions();
++      const result = await fetchPositions();
++      if (result.success) {
++        setLastSync({ at: Date.now(), trigger: 'interval', added: result.added, removed: result.removed });
++      }
++      reportDrift({
++        trigger: 'interval',
++        added: result.added,
++        removed: result.removed,
++        totalBefore: movilesRef.current.length,
++        totalAfter: movilesRef.current.length + result.added - result.removed,
++        selectedDate: selectedDate ?? '',
++        isRoot,
++      });
+     }, seconds * 1000);
+ 
+     return () => clearInterval(interval);
+-  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimePollingReconcileSeconds]);
++  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimePollingReconcileSeconds, isRoot]);
+ 
+   // 🔇 Mejora #2 — Detección de silencio del WS (admin / root).
+   // Si durante N segundos no llegan eventos de pedidos NI de services NI de
+@@ -743,12 +783,25 @@ function DashboardContent() {
+         console.warn(`🔇 Silencio de WS > ${seconds}s (${Math.round(silenceMs / 1000)}s). Forzando refetch.`);
+         fetchPedidos();
+         fetchServices();
+-        fetchPositions();
++        fetchPositions().then((result) => {
++          if (result.success) {
++            setLastSync({ at: Date.now(), trigger: 'silence', added: result.added, removed: result.removed });
++          }
++          reportDrift({
++            trigger: 'silence',
++            added: result.added,
++            removed: result.removed,
++            totalBefore: movilesRef.current.length,
++            totalAfter: movilesRef.current.length + result.added - result.removed,
++            selectedDate: selectedDate ?? '',
++            isRoot,
++          });
++        });
+       }
+     }, checkMs);
+ 
+     return () => clearInterval(interval);
+-  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds]);
++  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds, isRoot]);
+ 
+   // 👀 Mejora #3 — Refetch al volver la pestaña a visible (admin / root).
+   // Cuando la tab estuvo en background mucho tiempo, el WS puede haberse cerrado sin aviso
+@@ -760,17 +813,29 @@ function DashboardContent() {
+     const today = todayMontevideo();
+     if (selectedDate !== today) return;
+ 
+-    const handler = () => {
++    const handler = async () => {
+       if (document.visibilityState === 'visible') {
+         console.log('👀 Pestaña visible — refetch completo por preferencia');
+         fetchPedidos();
+         fetchServices();
+-        fetchPositions();
++        const result = await fetchPositions();
++        if (result.success) {
++          setLastSync({ at: Date.now(), trigger: 'visibility', added: result.added, removed: result.removed });
++        }
++        reportDrift({
++          trigger: 'visibility',
++          added: result.added,
++          removed: result.removed,
++          totalBefore: movilesRef.current.length,
++          totalAfter: movilesRef.current.length + result.added - result.removed,
++          selectedDate: selectedDate ?? '',
++          isRoot,
++        });
+       }
+     };
+     document.addEventListener('visibilitychange', handler);
+     return () => document.removeEventListener('visibilitychange', handler);
+-  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeRefetchOnVisible]);
++  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeRefetchOnVisible, isRoot]);
+ 
+   // 🔥 Auto-selección de móviles:
+   //  a) Carga inicial → marca todos los visibles.
+@@ -2460,6 +2525,16 @@ function DashboardContent() {
+                   hideUnassigned={hideUnassigned}
+                   isRestrictedUser={userHasEmpresaRestriction}
+                   privilegedUser={isPrivilegedUser}
++                  isRootUser={isRoot}
++                  lastSync={lastSync}
++                  onResync={fetchPositions}
++                  pollingSeconds={
++                    (preferences.realtimePollingReconcileSeconds == null || preferences.realtimePollingReconcileSeconds === 0)
++                      ? 60
++                      : preferences.realtimePollingReconcileSeconds === -1
++                        ? 60
++                        : preferences.realtimePollingReconcileSeconds
++                  }
+                 />
+               </div>
+             </motion.div>
+diff --git a/components/ui/MovilSelector.tsx b/components/ui/MovilSelector.tsx
+index f19551e..b2bee56 100644
+--- a/components/ui/MovilSelector.tsx
++++ b/components/ui/MovilSelector.tsx
+@@ -10,6 +10,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+ import FilterBar from './FilterBar';
+ import { VirtualList } from './VirtualList';
+ import MapGuideModal from './MapGuideModal';
++import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicator';
++import type { LastSyncState } from '@/lib/realtime-drift';
+ 
+ interface MovilSelectorProps {
+   moviles: MovilData[];
+@@ -66,9 +68,17 @@ interface MovilSelectorProps {
+    *  lo que un user restringido ve. */
+   isRestrictedUser?: boolean;
+   /** True para usuarios root / despacho / supervisor / dashboards: se les
+-   *  muestran también los pedidos sin móvil y los de móviles fuera del panel
++   *  muestran tambien los pedidos sin movil y los de moviles fuera del panel
+    *  aunque el filtro de empresas sea parcial. */
+   privilegedUser?: boolean;
++  /** Instrumentacion de drift: true si user?.isRoot === 'S'. Gating estricto — comparacion literal. */
++  isRootUser?: boolean;
++  /** Estado del ultimo sync de posiciones (null si nunca sincronizo). Solo visible si isRootUser. */
++  lastSync?: LastSyncState | null;
++  /** Callback para el boton Resync ahora (llama fetchPositions directamente). */
++  onResync?: () => void;
++  /** Segundos de polling configurados (para calcular umbrales 🟢🟡🔴). Default 60. */
++  pollingSeconds?: number;
+ }
+ 
+ // Definir las categorías del árbol
+@@ -125,6 +135,10 @@ export default function MovilSelector({
+   hideUnassigned = false,
+   isRestrictedUser = false,
+   privilegedUser = false,
++  isRootUser = false,
++  lastSync = null,
++  onResync,
++  pollingSeconds = 60,
+ }: MovilSelectorProps) {
+   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
+   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
+@@ -897,6 +911,14 @@ export default function MovilSelector({
+                       {category.count}
+                     </span>
+                   )}
++                  {/* Indicador de drift de realtime — solo para usuarios root */}
++                  {category.key === 'moviles' && isRootUser && (
++                    <RealtimeDriftIndicator
++                      lastSync={lastSync}
++                      pollingSeconds={pollingSeconds}
++                      onResync={onResync ?? (() => {})}
++                    />
++                  )}
+                 </div>
+                 <div className="flex items-center gap-1">
+                   {/* Botón de vista extendida (pedidos) */}
+diff --git a/lib/audit-client.ts b/lib/audit-client.ts
+index c455490..7a62190 100644
+--- a/lib/audit-client.ts
++++ b/lib/audit-client.ts
+@@ -15,7 +15,7 @@
+  */
+ 
+ export interface AuditClientEvent {
+-  event_type: 'api_call' | 'navigation' | 'click' | 'custom' | 'realtime';
++  event_type: 'api_call' | 'navigation' | 'click' | 'custom' | 'realtime' | 'realtime_drift' | 'realtime_drift_fetch_failed';
+   method?: string;
+   endpoint?: string;
+   request_body?: unknown;
