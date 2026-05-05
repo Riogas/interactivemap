@@ -67,6 +67,10 @@ interface PedidosTableModalProps {
    *  visibilidad de pedidos sin asignar y de móviles ocultos-pero-operativos.
    *  Sin esto, un subset deja pasar sin-asignar y huérfanos en el listado. */
   allMovilesSelected?: boolean;
+  /** True para usuarios root / despacho / supervisor / dashboards. Solo ellos
+   *  pueden ver pedidos finalizados sin móvil ("ENTR. SIN 1710" huérfanos) y
+   *  sólo en modo "Todos". Distribuidores nunca los ven. */
+  privilegedUser?: boolean;
   onInnerFiltersChange?: (f: Filters) => void;
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
@@ -94,7 +98,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, onInnerFiltersChange, externalResetToken, scope }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, onInnerFiltersChange, externalResetToken, scope }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -214,8 +218,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
       result = result.filter(p => {
         if (!p.movil || Number(p.movil) === 0) {
-          // Finalizados sin móvil (huérfanos, p. ej. ENTR. SIN 1710): pasan siempre.
-          if (isFinalizados) return true;
+          // Finalizados sin móvil (huérfanos tipo "ENTR. SIN 1710"): solo pasan
+          // en modo "Todos" Y para usuarios privilegiados (despacho/root/
+          // supervisor/dashboard). Distribuidores nunca los ven, y con subset
+          // de móviles tampoco — no corresponden al recorte del usuario.
+          if (isFinalizados) {
+            return allMovilesSelected && privilegedUser;
+          }
           // Pendientes sin móvil: solo en modo "Todos" — si el usuario tiene
           // un subset, los sin-asignar corresponden a otra cosa y no aplican.
           return filters.asignacion === 'todos' && !hideUnassigned && allMovilesSelected;
@@ -249,7 +258,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, moviles, hiddenMovilIds, scope]);
+  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre

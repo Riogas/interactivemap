@@ -2349,6 +2349,7 @@ function DashboardContent() {
         initialAsignacion={pedidosInitialAsignacion}
         hideUnassigned={hideUnassigned}
         allMovilesSelected={allMovilesSelected}
+        privilegedUser={isPrivilegedUser}
         onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[], tipoServicio: f.tipoServicio }))}
         externalResetToken={pedidosResetToken}
       />
@@ -2374,6 +2375,7 @@ function DashboardContent() {
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         hideUnassigned={hideUnassigned}
         allMovilesSelected={allMovilesSelected}
+        privilegedUser={isPrivilegedUser}
         onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, defecto: f.defecto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
         externalResetToken={servicesResetToken}
       />
