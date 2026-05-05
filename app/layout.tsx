@@ -4,6 +4,7 @@ import "./globals.css";
 import { RealtimeProvider } from "@/components/providers/RealtimeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ToastProvider } from "@/components/providers/ToastProvider";
+import { AuditProvider } from "@/components/providers/AuditProvider";
 import { IncidentRecorderProvider } from "@/contexts/IncidentRecorderContext";
 import { Suspense } from "react";
 
@@ -24,11 +25,13 @@ export default function RootLayout({
       <body className={`${inter.className} h-full m-0 p-0 overflow-hidden`}>
         <AuthProvider>
           <Suspense>
-            <IncidentRecorderProvider>
-              <RealtimeProvider escenarioId={1000}>
-                {children}
-              </RealtimeProvider>
-            </IncidentRecorderProvider>
+            <AuditProvider>
+              <IncidentRecorderProvider>
+                <RealtimeProvider escenarioId={1000}>
+                  {children}
+                </RealtimeProvider>
+              </IncidentRecorderProvider>
+            </AuditProvider>
           </Suspense>
         </AuthProvider>
         <ToastProvider />

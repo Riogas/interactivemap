@@ -369,6 +369,13 @@ export function autoRateLimit(request: NextRequest): true | NextResponse {
     return true;
   }
 
+  // 🚀 BYPASS para auditoría: el AuditProvider envía batches frecuentes y el config endpoint
+  // se polea cada 60s. Nunca deben bloquearse por rate limit.
+  if (pathname === '/api/audit' || pathname === '/api/audit/config') {
+    rlog(`   - 🚀 Audit endpoint - SIN RATE LIMIT`);
+    return true;
+  }
+
   // Determinar tipo basándose en la ruta
   let type: keyof typeof RATE_LIMIT_CONFIGS = 'default';
   
