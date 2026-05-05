@@ -727,6 +727,143 @@ describe('AC9 - filtro del mapa respeta selectedMoviles (bug reportado)', () => 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AC10 — vista FINALIZADOS en PedidosTableModal / ServicesTableModal:
+// los huérfanos sin móvil ("ENTR. SIN 1710" en pedidos, equivalente en
+// services) solo aparecen cuando (a) modo "Todos" Y (b) usuario privilegiado.
+// Bug reportado: un distribuidor o un usuario con subset de móviles veía
+// pedidos finalizados sin móvil, y no debía.
+// Replica el branch `selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil'`
+// del filtro de PedidosTableModal post-fix.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ModalFilterCtx {
+  isFinalizados: boolean;
+  selectedMoviles: number[];
+  hiddenMovilIds: Set<number>;
+  allMovilesSelected: boolean;
+  privilegedUser: boolean;
+  hideUnassigned: boolean;
+  filtersAsignacion: 'todos' | 'con_movil' | 'sin_movil';
+}
+
+function passesModalFilterPedidoSubset(p: MinPedido, ctx: ModalFilterCtx): boolean {
+  // Replica del branch interno del else if (selectedMoviles.length > 0)
+  if (!p.movil || Number(p.movil) === 0) {
+    if (ctx.isFinalizados) {
+      return ctx.allMovilesSelected && ctx.privilegedUser;
+    }
+    return ctx.filtersAsignacion === 'todos' && !ctx.hideUnassigned && ctx.allMovilesSelected;
+  }
+  if (ctx.selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
+  if (ctx.allMovilesSelected && ctx.hiddenMovilIds.has(Number(p.movil))) return true;
+  return false;
+}
+
+describe('AC10 - vista finalizados sin móvil: solo "Todos" + privilegiado', () => {
+  const baseCtx = (overrides: Partial<ModalFilterCtx>): ModalFilterCtx => ({
+    isFinalizados: true,
+    selectedMoviles: [106],
+    hiddenMovilIds: new Set(),
+    allMovilesSelected: false,
+    privilegedUser: false,
+    hideUnassigned: false,
+    filtersAsignacion: 'todos',
+    ...overrides,
+  });
+
+  const pedidoSinMovil: MinPedido = { id: 1, movil: null, estado_nro: 2 };
+  const pedidoConMovil: MinPedido = { id: 2, movil: 106, estado_nro: 2 };
+
+  it('subset + finalizados + sin móvil: NO pasa (bug reportado)', () => {
+    expect(passesModalFilterPedidoSubset(pedidoSinMovil, baseCtx({
+      selectedMoviles: [106],
+      allMovilesSelected: false,
+      privilegedUser: true,
+    }))).toBe(false);
+  });
+
+  it('distribuidor + "Todos" + finalizados + sin móvil: NO pasa', () => {
+    expect(passesModalFilterPedidoSubset(pedidoSinMovil, baseCtx({
+      allMovilesSelected: true,
+      privilegedUser: false, // distribuidor
+    }))).toBe(false);
+  });
+
+  it('privilegiado + "Todos" + finalizados + sin móvil: pasa', () => {
+    expect(passesModalFilterPedidoSubset(pedidoSinMovil, baseCtx({
+      allMovilesSelected: true,
+      privilegedUser: true,
+    }))).toBe(true);
+  });
+
+  it('privilegiado + subset + finalizados + sin móvil: NO pasa (no es Todos)', () => {
+    expect(passesModalFilterPedidoSubset(pedidoSinMovil, baseCtx({
+      selectedMoviles: [106],
+      allMovilesSelected: false,
+      privilegedUser: true,
+    }))).toBe(false);
+  });
+
+  it('subset + finalizados + pedido del móvil seleccionado: pasa', () => {
+    expect(passesModalFilterPedidoSubset(pedidoConMovil, baseCtx({
+      selectedMoviles: [106],
+      allMovilesSelected: false,
+      privilegedUser: true,
+    }))).toBe(true);
+  });
+
+  it('subset + finalizados + pedido de OTRO móvil: NO pasa', () => {
+    const pedidoOtro: MinPedido = { id: 3, movil: 999, estado_nro: 2 };
+    expect(passesModalFilterPedidoSubset(pedidoOtro, baseCtx({
+      selectedMoviles: [106],
+      privilegedUser: true,
+    }))).toBe(false);
+  });
+
+  it('"Todos" + privilegiado + finalizados + móvil oculto: pasa', () => {
+    const pedidoOculto: MinPedido = { id: 4, movil: 330, estado_nro: 2 };
+    expect(passesModalFilterPedidoSubset(pedidoOculto, baseCtx({
+      selectedMoviles: [106, 252],
+      hiddenMovilIds: new Set([330]),
+      allMovilesSelected: true,
+      privilegedUser: true,
+    }))).toBe(true);
+  });
+
+  it('subset + privilegiado + finalizados + móvil oculto: NO pasa (no Todos)', () => {
+    const pedidoOculto: MinPedido = { id: 4, movil: 330, estado_nro: 2 };
+    expect(passesModalFilterPedidoSubset(pedidoOculto, baseCtx({
+      selectedMoviles: [106],
+      hiddenMovilIds: new Set([330]),
+      allMovilesSelected: false,
+      privilegedUser: true,
+    }))).toBe(false);
+  });
+
+  it('subset + pendientes + sin móvil: NO pasa (regresión de AC9)', () => {
+    const pedidoPendienteSinMovil: MinPedido = { id: 5, movil: null, estado_nro: 1 };
+    expect(passesModalFilterPedidoSubset(pedidoPendienteSinMovil, baseCtx({
+      isFinalizados: false,
+      selectedMoviles: [106],
+      allMovilesSelected: false,
+      privilegedUser: true,
+    }))).toBe(false);
+  });
+
+  it('"Todos" + privilegiado + pendientes + sin móvil: pasa (regresión de AC9)', () => {
+    const pedidoPendienteSinMovil: MinPedido = { id: 5, movil: null, estado_nro: 1 };
+    expect(passesModalFilterPedidoSubset(pedidoPendienteSinMovil, baseCtx({
+      isFinalizados: false,
+      selectedMoviles: [106, 252],
+      allMovilesSelected: true,
+      privilegedUser: true,
+      filtersAsignacion: 'todos',
+      hideUnassigned: false,
+    }))).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EC1 — empresa fletera con 0 móviles disponibles
 // ─────────────────────────────────────────────────────────────────────────────
 
