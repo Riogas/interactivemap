@@ -314,17 +314,31 @@ export default function MovilSelector({
   // local (search + filtros del colapsable) están marcados.
   const allSelected = filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
 
-  // allMovilesSelected (alcance "header badge"): se usa SOLO para el badge
-  // "🚗 Móviles: Todos" del header. Compara contra TODOS los móviles
-  // operativos (excluyendo ocultos), ignorando el search local del
-  // colapsable. Sino, filtrar a 1 móvil por search y seleccionarlo hacía
-  // que el badge dijera "Todos" cuando en realidad solo había 1 marcado de N.
+  // allEmpresasSelected: true cuando el usuario tiene seleccionadas todas las
+  // empresas disponibles (o cuando no tiene multi-empresa selector — caso
+  // distribuidor con 1 sola empresa). Si el usuario tiene multi-empresa pero
+  // deseleccionó algunas, esto es false → "Todos" no aplica aunque marque
+  // todos los móviles visibles, porque hay empresas excluidas.
+  const allEmpresasSelected = !showEmpresaSelector
+    || !empresas
+    || empresas.length === 0
+    || (selectedEmpresas?.length ?? 0) === empresas.length;
+
+  // allMovilesSelected (alcance "header badge" + "ver sin-asignar"): true solo
+  // cuando (a) todas las empresas disponibles están seleccionadas (o no hay
+  // multi-empresa) Y (b) todos los móviles operativos del universo están en
+  // selectedMoviles (excluyendo ocultos). Se usa para:
+  //   - badge "🚗 Móviles: Todos" del header
+  //   - canSeeUnassigned: privilegiados ven pedidos/services sin asignar
+  // Si el usuario filtra parcialmente por empresa, "Todos" nunca aplica y los
+  // pedidos sin asignar no se muestran (corresponderían a otras empresas).
   const allMovilesSelected = useMemo(() => {
+    if (!allEmpresasSelected) return false;
     const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
       ? moviles.filter(m => !hiddenMovilIds.has(m.id))
       : moviles;
     return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
-  }, [moviles, selectedMoviles, hiddenMovilIds]);
+  }, [moviles, selectedMoviles, hiddenMovilIds, allEmpresasSelected]);
 
   // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
@@ -342,11 +356,13 @@ export default function MovilSelector({
     // de empresas y (b) filtro manual parcial de empresas.
     const isPartialEmpresa = hideUnassigned;
 
-    // Los sin asignar solo son visibles para usuarios privilegiados cuando TODOS
-    // los móviles del colapsable están seleccionados (ninguno excluido).
-    const visibleMovilIds = moviles.filter(m => !hiddenMovilIds?.has(m.id)).map(m => m.id);
-    const allSelected = visibleMovilIds.length > 0 && visibleMovilIds.every(id => selectedMoviles.includes(id));
-    const canSeeUnassigned = privilegedUser && allSelected;
+    // Los sin asignar y los de móviles ocultos-pero-operativos solo son
+    // visibles para usuarios privilegiados cuando TODOS los móviles operativos
+    // del universo están seleccionados Y todas las empresas están seleccionadas
+    // (alcance global, no del colapsable). Si el usuario filtró a un subset de
+    // empresas, los sin asignar no aplican porque podrían corresponder a
+    // empresas excluidas.
+    const canSeeUnassigned = privilegedUser && allMovilesSelected;
 
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
     if (selectedMoviles.length > 0) {
@@ -455,7 +471,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -473,10 +489,11 @@ export default function MovilSelector({
     // Mismo criterio que para pedidos: el parent calcula y baja el flag.
     const isPartialEmpresaSvc = hideUnassigned;
 
-    // Sin asignar solo visibles para privilegiados cuando TODOS los móviles están seleccionados.
-    const visibleMovilIdsSvc = moviles.filter(m => !hiddenMovilIds?.has(m.id)).map(m => m.id);
-    const allSelectedSvc = visibleMovilIdsSvc.length > 0 && visibleMovilIdsSvc.every(id => selectedMoviles.includes(id));
-    const canSeeUnassignedSvc = privilegedUser && allSelectedSvc;
+    // Sin asignar y de móviles ocultos solo visibles para privilegiados cuando
+    // todas las empresas + todos los móviles están seleccionados. Mismo
+    // criterio que en filteredPedidos: usa allMovilesSelected (incluye gating
+    // por empresa).
+    const canSeeUnassignedSvc = privilegedUser && allMovilesSelected;
 
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
@@ -582,7 +599,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
