@@ -1,0 +1,58 @@
+{
+  "runId": "20260505-mov-tm6",
+  "timestamp_start": "2026-05-02T13:00:00Z",
+  "timestamp_end": "2026-05-02T13:08:00Z",
+  "duration_seconds": 480,
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil",
+  "request": {
+    "raw": "Bug-fix: cambio en tabla moviles no se refleja en colapsable hasta F5",
+    "quality": "bueno",
+    "enriched": false,
+    "flags": []
+  },
+  "triage": {
+    "bucket": "bug-fix",
+    "confidence": "high",
+    "touches": { "ui": false, "db": false, "auth": false, "api": false, "infra": false },
+    "size_estimate_loc": 65,
+    "risk": "low"
+  },
+  "stages": [
+    {
+      "name": "implementer",
+      "model": "sonnet",
+      "skipped": false,
+      "iterations": [{ "n": 1, "duration_seconds": 120, "verdict": "delivered" }]
+    },
+    {
+      "name": "code-reviewer",
+      "model": "inline",
+      "skipped": false,
+      "iterations": [{ "n": 1, "duration_seconds": 0, "verdict": "APPROVED" }]
+    },
+    {
+      "name": "qa-tester",
+      "model": "vitest",
+      "skipped": false,
+      "iterations": [{ "n": 1, "duration_seconds": 2, "verdict": "PASSED 377/377" }]
+    }
+  ],
+  "arbiter_invocations": 0,
+  "totals": {
+    "tokens_in": 18000,
+    "tokens_out": 5000,
+    "estimated_usd": 0.08,
+    "iterations_total": 1,
+    "stages_run": 3,
+    "stages_skipped": 6,
+    "skip_savings_estimated_usd": 0.12
+  },
+  "verdict_final": "MERGE_READY",
+  "files_changed": [
+    "lib/realtime-drift.ts",
+    "components/providers/RealtimeProvider.tsx",
+    "app/dashboard/page.tsx",
+    "__tests__/movil-event-refetch.test.ts"
+  ],
+  "loc_changed": 65
+}
