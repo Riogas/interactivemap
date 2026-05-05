@@ -22,6 +22,14 @@ interface RealtimeContextType {
    */
   onReconnect: (() => void) | null;
   setOnReconnect: (fn: (() => void) | null) => void;
+  /**
+   * Callback que el dashboard inyecta para que el provider lo llame
+   * cuando llega cualquier evento UPDATE/INSERT/DELETE en la tabla `moviles`.
+   * El dashboard usa esto para disparar un refetch debounced y reflejar cambios
+   * de estado/activo sin necesidad de F5 ni esperar el polling de 60s.
+   */
+  onMovilEvent: (() => void) | null;
+  setOnMovilEvent: (fn: (() => void) | null) => void;
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined);
@@ -42,6 +50,8 @@ export function RealtimeProvider({
   const [lastEventAt, setLastEventAt] = React.useState<number>(() => Date.now());
   // Callback inyectado por el dashboard para fetchPositions al reconectar.
   const [onReconnect, setOnReconnect] = React.useState<(() => void) | null>(null);
+  // Callback inyectado por el dashboard para refetch debounced al recibir eventos de moviles.
+  const [onMovilEvent, setOnMovilEvent] = React.useState<(() => void) | null>(null);
 
   // Callbacks estables — sin useCallback aquí se recrean en cada render y hacen
   // que useGPSTracking/useMoviles rehagan la suscripción a Supabase innecesariamente.
@@ -50,9 +60,18 @@ export function RealtimeProvider({
     setLastEventAt(Date.now());
   }, []);
 
+  // onMovilEventRef permite que onMovilChange vea siempre la versión actual del callback
+  // sin recrear onMovilChange (que causaría re-suscripción a Supabase).
+  const onMovilEventRef = React.useRef<(() => void) | null>(null);
+  onMovilEventRef.current = onMovilEvent;
+
   const onMovilChange = useCallback((movil: MovilSupabase) => {
     setLatestMovil(movil);
     setLastEventAt(Date.now());
+    // Notificar al dashboard de que hubo un cambio en la tabla moviles.
+    // El debounce vive en el consumidor (dashboard) — aquí solo disparamos el callback.
+    console.log('🚗 Cambio en tabla moviles detectado — refetch debounced');
+    if (onMovilEventRef.current) onMovilEventRef.current();
   }, []);
 
   // onReconnectRef permite que los hooks vean siempre la versión actual del callback
@@ -95,6 +114,11 @@ export function RealtimeProvider({
     setOnReconnect(fn ? () => fn : null);
   }, []);
 
+  // setOnMovilEvent estable — mismo patrón que setOnReconnect
+  const setOnMovilEventStable = useCallback((fn: (() => void) | null) => {
+    setOnMovilEvent(fn ? () => fn : null);
+  }, []);
+
   React.useEffect(() => {
     if (isConnected) {
       console.log('✅ Conexión Realtime establecida para escenario_id =', escenarioId);
@@ -122,8 +146,10 @@ export function RealtimeProvider({
       lastEventAt,
       onReconnect,
       setOnReconnect: setOnReconnectStable,
+      onMovilEvent,
+      setOnMovilEvent: setOnMovilEventStable,
     }),
-    [positions, isConnected, error, latestPosition, latestMovil, lastEventAt, onReconnect, setOnReconnectStable],
+    [positions, isConnected, error, latestPosition, latestMovil, lastEventAt, onReconnect, setOnReconnectStable, onMovilEvent, setOnMovilEventStable],
   );
 
   return (
