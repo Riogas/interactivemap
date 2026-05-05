@@ -37,34 +37,33 @@ export default function RealtimeDriftIndicator({
 }: RealtimeDriftIndicatorProps) {
   const [now, setNow] = useState(() => Date.now());
 
+  // Tick cada 10s para recomputar el color (no se muestra el contador en seg).
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    const interval = setInterval(() => setNow(Date.now()), 10_000);
     return () => clearInterval(interval);
   }, []);
 
-  // Antes del primer sync: estado neutro "iniciando" sin alarma.
-  // Solo pintamos 🔴 cuando hubo al menos un sync y se enfrió demasiado.
+  // Antes del primer sync: punto neutro sin alarma.
   if (!lastSync) {
     return (
-      <span className="inline-flex items-center gap-1" title="Cargando datos iniciales">
-        <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-500 font-mono whitespace-nowrap">
-          ⚪ iniciando
-        </span>
+      <span
+        className="inline-flex items-center text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-500 font-mono"
+        title="Cargando datos iniciales"
+      >
+        ⚪
       </span>
     );
   }
 
   const color = getSyncColor(lastSync.at, pollingSeconds, now);
   const emoji = EMOJI[color];
-  const elapsedText = `sync hace ${formatElapsed(now - lastSync.at)}`;
-  const tooltipText = `Ultimo sync: ${lastSync.trigger} | +${lastSync.added} / -${lastSync.removed} moviles`;
+  const elapsedSeconds = Math.floor((now - lastSync.at) / 1000);
+  const tooltipText = `Ultimo sync: ${lastSync.trigger} hace ${formatElapsed(now - lastSync.at)} | +${lastSync.added} / -${lastSync.removed} moviles`;
 
   return (
     <span className="inline-flex items-center gap-1" title={tooltipText}>
-      <span
-        className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-600 font-mono whitespace-nowrap"
-      >
-        {emoji} {elapsedText}
+      <span className="inline-flex items-center text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-600 font-mono">
+        {emoji}
       </span>
       {color === 'red' && (
         <button
@@ -74,9 +73,9 @@ export default function RealtimeDriftIndicator({
             onResync();
           }}
           className="text-xs text-red-600 underline hover:text-red-800 transition-colors whitespace-nowrap"
-          title="Forzar resync ahora"
+          title={`Sin sync hace ${elapsedSeconds}s — forzar resync ahora`}
         >
-          Resync ahora
+          Resync
         </button>
       )}
     </span>
