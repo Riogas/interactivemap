@@ -1,0 +1,57 @@
+{
+  "runId": "20260505-200000-aud",
+  "timestamp_start": "2026-05-05T20:00:00Z",
+  "timestamp_end": "2026-05-05T20:30:00Z",
+  "duration_seconds": 1800,
+  "repo": "C:\\Users\\jgomez\\Documents\\Projects\\trackmovil",
+  "request": {
+    "raw": "Reimplementar sistema de auditoría con toggle global ON/OFF",
+    "quality": "bueno",
+    "enriched": false,
+    "flags": []
+  },
+  "triage": {
+    "bucket": "large-feature",
+    "confidence": "high",
+    "touches": { "ui": true, "db": true, "auth": true, "api": true, "infra": false },
+    "size_estimate_loc": 600,
+    "risk": "medium"
+  },
+  "stages": [
+    { "name": "implementer", "model": "sonnet", "skipped": false, "iterations": [{ "n": 1, "duration_seconds": 900, "verdict": "delivered" }] },
+    { "name": "code-reviewer", "model": "sonnet-inline", "skipped": false, "iterations": [{ "n": 1, "duration_seconds": 30, "verdict": "APPROVED" }] },
+    { "name": "qa-tester", "model": "vitest", "skipped": false, "iterations": [{ "n": 1, "duration_seconds": 15, "verdict": "PASSED 432/432" }] }
+  ],
+  "arbiter_invocations": 0,
+  "totals": {
+    "estimated_usd": 0.45,
+    "iterations_total": 1,
+    "stages_run": 3,
+    "stages_skipped": 5,
+    "skip_savings_estimated_usd": 0.30
+  },
+  "verdict_final": "MERGE_READY",
+  "files_changed": [
+    "app/layout.tsx",
+    "app/api/audit/route.ts",
+    "app/api/audit/list/route.ts",
+    "app/api/audit/config/route.ts",
+    "app/admin/auditoria/page.tsx",
+    "components/providers/AuditProvider.tsx",
+    "components/layout/FloatingToolbar.tsx",
+    "components/ui/PreferencesModal.tsx",
+    "lib/audit-client.ts",
+    "lib/audit-log.ts",
+    "lib/rate-limit.ts",
+    "lib/realtime-drift.ts",
+    "lib/hooks/useRealtimeSubscriptions.ts",
+    "__tests__/audit-config.test.ts",
+    "__tests__/audit-provider.test.ts",
+    "__tests__/realtime-drift.test.ts",
+    "docs/sqls/create-audit-log.sql",
+    "docs/sqls/alter-audit-log-add-response-body.sql",
+    "docs/sqls/create-audit-settings.sql",
+    "docs/AUDITORIA.md"
+  ],
+  "loc_changed": 2310
+}
