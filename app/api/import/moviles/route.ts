@@ -8,6 +8,7 @@ import {
   buildHistoryInsertRows,
   type MovilCandidate,
 } from '@/lib/import-helpers/gps-autocreate';
+import { importLog, importWarn, importError, importDebug } from '@/lib/logger';
 
 /**
  * Lee el body del request respetando el charset del Content-Type.
@@ -27,7 +28,7 @@ async function readRequestBody(request: NextRequest): Promise<string> {
   const buffer = await request.arrayBuffer();
   const decoder = new TextDecoder(charset);
   const decoded = decoder.decode(buffer);
-  console.log(`🔤 Body decodificado con charset: ${charset}`);
+  importLog(`🔤 Body decodificado con charset: ${charset}`);
   return decoded;
 }
 
@@ -43,7 +44,7 @@ function safeParseJSON(rawBody: string): any {
   try {
     return JSON.parse(rawBody);
   } catch (firstError) {
-    console.warn('⚠️  JSON.parse falló, intentando sanitizar comillas internas...');
+    importWarn('⚠️  JSON.parse falló, intentando sanitizar comillas internas...');
     
     let text = rawBody;
     const maxAttempts = 50;
@@ -51,7 +52,7 @@ function safeParseJSON(rawBody: string): any {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const result = JSON.parse(text);
-        console.log(`✅ JSON reparado después de ${attempt + 1} correcciones`);
+        importLog(`✅ JSON reparado después de ${attempt + 1} correcciones`);
         return result;
       } catch (err: any) {
         // Extraer la posición del error
@@ -71,7 +72,7 @@ function safeParseJSON(rawBody: string): any {
         
         if (fixPos < 0) throw firstError;
         
-        console.log(`🔧 Escapando comilla en posición ${fixPos} (intento ${attempt + 1})`);
+        importLog(`🔧 Escapando comilla en posición ${fixPos} (intento ${attempt + 1})`);
         // Insertar \ antes de la comilla para escaparla
         text = text.substring(0, fixPos) + '\\' + text.substring(fixPos);
       }
@@ -183,20 +184,26 @@ async function maybeAutocreateGpsForToday(
     if (candidatos.length === 0) return 0;
 
     const needing = await selectMovilesNeedingDailyPosition(supabase as any, candidatos);
-    if (needing.length === 0) return 0;
+    importDebug(`[gps-autocreate] candidatos con pto_vta: ${candidatos.length}`);
+    if (needing.length === 0) {
+      importLog('[gps-autocreate] todos los candidatos ya tienen GPS del día — nada que autocrear');
+      return 0;
+    }
+    importLog(`[gps-autocreate] ${needing.length}/${candidatos.length} móvil(es) necesitan seed del día`);
+    needing.forEach((c) => importDebug(`  → seed movil_id=${c.movil_id} (${c.lat}, ${c.lng})`));
 
     const rows = buildHistoryInsertRows(needing);
     const { error } = await supabase
       .from('gps_tracking_history')
       .insert(rows as any);
     if (error) {
-      console.error('[gps-autocreate] insert gps_tracking_history falló', error);
+      importError('[gps-autocreate] insert gps_tracking_history falló', error);
       return 0;
     }
-    console.log(`✅ [gps-autocreate] insertados ${rows.length} registros iniciales del día`);
+    importLog(`✅ [gps-autocreate] insertados ${rows.length} registros iniciales del día`);
     return rows.length;
   } catch (err) {
-    console.error('[gps-autocreate] error inesperado', err);
+    importError('[gps-autocreate] error inesperado', err);
     return 0;
   }
 }
@@ -215,14 +222,14 @@ export async function POST(request: NextRequest) {
   if (keyValidation instanceof NextResponse) return keyValidation;
 
   const timestamp = new Date().toISOString();
-  console.log('\n' + '='.repeat(80));
-  console.log(`🚀 [${timestamp}] POST /api/import/moviles - INICIO`);
-  console.log('='.repeat(80));
+  importLog('\n' + '='.repeat(80));
+  importLog(`🚀 [${timestamp}] POST /api/import/moviles - INICIO`);
+  importLog('='.repeat(80));
 
   try {
     // PASO 1: Verificar headers de la petición
-    console.log('\n📋 PASO 1: Headers de la petición');
-    console.log('----------------------------------------');
+    importLog('\n📋 PASO 1: Headers de la petición');
+    importLog('----------------------------------------');
     const headers = {
       'content-type': request.headers.get('content-type'),
       'accept': request.headers.get('accept'),
@@ -230,24 +237,24 @@ export async function POST(request: NextRequest) {
       'user-agent': request.headers.get('user-agent'),
       'authorization': request.headers.get('authorization') ? '***PRESENTE***' : 'NO PRESENTE',
     };
-    console.log(JSON.stringify(headers, null, 2));
+    importLog(JSON.stringify(headers, null, 2));
 
     // PASO 2: Intentar parsear el body
-    console.log('\n📦 PASO 2: Parseando body JSON');
-    console.log('----------------------------------------');
+    importLog('\n📦 PASO 2: Parseando body JSON');
+    importLog('----------------------------------------');
     let body;
     let rawBody = '';
     try {
       rawBody = await readRequestBody(request);
-      console.log('Body raw (primeros 500 chars):', rawBody.substring(0, 500));
-      console.log('Longitud total del body:', rawBody.length, 'caracteres');
+      importLog('Body raw (primeros 500 chars):', rawBody.substring(0, 500));
+      importLog('Longitud total del body:', rawBody.length, 'caracteres');
       
       body = safeParseJSON(rawBody);
-      console.log('✅ JSON parseado correctamente');
-      console.log('Claves en el body:', Object.keys(body));
+      importLog('✅ JSON parseado correctamente');
+      importLog('Claves en el body:', Object.keys(body));
     } catch (parseError: any) {
-      console.error('❌ ERROR al parsear JSON:', parseError.message);
-      console.error('Stack trace:', parseError.stack);
+      importError('❌ ERROR al parsear JSON:', parseError.message);
+      importError('Stack trace:', parseError.stack);
       return errorResponse(
         'JSON inválido en el body de la petición',
         400,
@@ -262,27 +269,27 @@ export async function POST(request: NextRequest) {
     logRequest('POST', '/api/import/moviles', body);
 
     // PASO 3: Extraer móviles del body
-    console.log('\n🔍 PASO 3: Extrayendo móviles del body');
-    console.log('----------------------------------------');
+    importLog('\n🔍 PASO 3: Extrayendo móviles del body');
+    importLog('----------------------------------------');
     let { moviles } = body;
 
     // Si no viene "moviles", asumir que el body ES el movil
     if (!moviles) {
-      console.log('⚠️  No se encontró clave "moviles", asumiendo que el body ES el móvil');
+      importLog('⚠️  No se encontró clave "moviles", asumiendo que el body ES el móvil');
       moviles = body;
     } else {
-      console.log(`✅ Clave "moviles" encontrada`);
+      importLog(`✅ Clave "moviles" encontrada`);
     }
 
     // Normalizar a array si es un solo objeto
     const movilesArray = Array.isArray(moviles) ? moviles : [moviles];
-    console.log(`📊 Cantidad de móviles a procesar: ${movilesArray.length}`);
+    importLog(`📊 Cantidad de móviles a procesar: ${movilesArray.length}`);
 
     // PASO 4: Validación
-    console.log('\n✔️  PASO 4: Validación de datos');
-    console.log('----------------------------------------');
+    importLog('\n✔️  PASO 4: Validación de datos');
+    importLog('----------------------------------------');
     if (movilesArray.length === 0) {
-      console.error('❌ VALIDACIÓN FALLIDA: Array de móviles vacío');
+      importError('❌ VALIDACIÓN FALLIDA: Array de móviles vacío');
       return errorResponse(
         'Se requiere al menos un móvil en el body',
         400,
@@ -293,26 +300,33 @@ export async function POST(request: NextRequest) {
         }
       );
     }
-    console.log('✅ Validación exitosa');
+    importLog('✅ Validación exitosa');
 
     // PASO 5: Resumen de móviles recibidos (verbose detallado solo en DEBUG).
-    console.log(`\n📥 PASO 5: ${movilesArray.length} móviles recibidos`);
+    importLog(`\n📥 PASO 5: ${movilesArray.length} móviles recibidos`);
     if (process.env.IMPORT_VERBOSE === '1') {
       movilesArray.forEach((movil, index) => {
-        console.log(`Móvil #${index + 1}:`, JSON.stringify(movil, null, 2));
+        importLog(`Móvil #${index + 1}:`, JSON.stringify(movil, null, 2));
       });
     }
 
-    // PASO 6: Transformar datos (sin loguear cada uno — es O(n) de string alloc).
-    console.log('\n🔄 PASO 6: Transformando');
+    // PASO 6: Transformar datos (verbose: shape de cada uno).
+    importLog('\n🔄 PASO 6: Transformando');
     const transformedMoviles = movilesArray.map(transformMovilToSupabase);
-    console.log(`✅ Transformados ${transformedMoviles.length}`);
+    importLog(`✅ Transformados ${transformedMoviles.length}`);
+    transformedMoviles.forEach((m, i) => {
+      importDebug(
+        `  [${i + 1}/${transformedMoviles.length}] id=${m.id} esc=${m.escenario_id} ` +
+        `empresa=${m.empresa_fletera_id} estado=${m.estado_nro} ` +
+        `pto_vta=${m.pto_vta_lat},${m.pto_vta_lng} mapa=${m.mostrar_en_mapa}`
+      );
+    });
 
     // PASO 7: Insertar/Actualizar en Supabase (UPSERT)
-    console.log('\n💾 PASO 7: Insertando/Actualizando en Supabase (UPSERT)');
-    console.log('----------------------------------------');
-    console.log('Conectando a Supabase...');
-    console.log('🔄 Usando UPSERT - Si existe actualiza, si no existe inserta');
+    importLog('\n💾 PASO 7: Insertando/Actualizando en Supabase (UPSERT)');
+    importLog('----------------------------------------');
+    importLog('Conectando a Supabase...');
+    importLog('🔄 Usando UPSERT - Si existe actualiza, si no existe inserta');
     
     const { data, error } = await supabase
       .from('moviles')
@@ -323,15 +337,15 @@ export async function POST(request: NextRequest) {
       .select();
 
     // PASO 8: Verificar resultado de Supabase
-    console.log('\n🔍 PASO 8: Verificando resultado de Supabase');
-    console.log('----------------------------------------');
+    importLog('\n🔍 PASO 8: Verificando resultado de Supabase');
+    importLog('----------------------------------------');
     if (error) {
-      console.error('❌ ERROR DE SUPABASE:');
-      console.error('  - Mensaje:', error.message);
-      console.error('  - Código:', error.code);
-      console.error('  - Detalles:', error.details);
-      console.error('  - Hint:', error.hint);
-      console.error('  - Error completo:', JSON.stringify(error, null, 2));
+      importError('❌ ERROR DE SUPABASE:');
+      importError('  - Mensaje:', error.message);
+      importError('  - Código:', error.code);
+      importError('  - Detalles:', error.details);
+      importError('  - Hint:', error.hint);
+      importError('  - Error completo:', JSON.stringify(error, null, 2));
       
       return errorResponse(
         'Error al insertar/actualizar móviles en la base de datos',
@@ -345,18 +359,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('✅ UPSERT exitoso en Supabase');
-    console.log('📊 Registros procesados:', data?.length || 0);
+    importLog('✅ UPSERT exitoso en Supabase');
+    importLog('📊 Registros procesados:', data?.length || 0);
     if (data && data.length > 0) {
-      console.log('📋 IDs procesados:', data.map((m: any) => m.id).join(', '));
+      importLog('📋 IDs procesados:', data.map((m: any) => m.id).join(', '));
     }
 
     // Autocreación GPS del día a partir del punto de venta del móvil (best-effort)
+    importLog('\n🛰️  PASO 8.5: Autocrear GPS del día desde pto_vta');
+    importLog('----------------------------------------');
+    const candidatosConPtoVta = transformedMoviles.filter(
+      (m) => isValidLatLng(m.pto_vta_lat, m.pto_vta_lng)
+    );
+    importLog(
+      `Móviles con pto_vta válido: ${candidatosConPtoVta.length}/${transformedMoviles.length}`
+    );
     const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
+    importLog(`Autocreados en gps_tracking_history hoy: ${gpsAutocreatedCount}`);
 
     // PASO 9: Preparar respuesta exitosa
-    console.log('\n📤 PASO 9: Preparando respuesta');
-    console.log('----------------------------------------');
+    importLog('\n📤 PASO 9: Preparando respuesta');
+    importLog('----------------------------------------');
     const responseData = {
       count: data?.length || 0,
       gps_autocreated_count: gpsAutocreatedCount,
@@ -364,27 +387,27 @@ export async function POST(request: NextRequest) {
     };
     const message = `${data?.length || 0} móvil(es) importado(s)/actualizado(s) correctamente`;
     
-    console.log('Respuesta a enviar:');
-    console.log('  - Success: true');
-    console.log('  - Message:', message);
-    console.log('  - Status Code: 200');
-    console.log('  - Count:', responseData.count);
+    importLog('Respuesta a enviar:');
+    importLog('  - Success: true');
+    importLog('  - Message:', message);
+    importLog('  - Status Code: 200');
+    importLog('  - Count:', responseData.count);
 
-    console.log('\n' + '='.repeat(80));
-    console.log(`✅ POST /api/import/moviles - ÉXITO (UPSERT)`);
-    console.log('='.repeat(80) + '\n');
+    importLog('\n' + '='.repeat(80));
+    importLog(`✅ POST /api/import/moviles - ÉXITO (UPSERT)`);
+    importLog('='.repeat(80) + '\n');
     
     return successResponse(responseData, message, 200);
     
   } catch (error: any) {
-    console.log('\n' + '='.repeat(80));
-    console.error(`💥 POST /api/import/moviles - ERROR INESPERADO`);
-    console.log('='.repeat(80));
-    console.error('Tipo de error:', error.constructor.name);
-    console.error('Mensaje:', error.message);
-    console.error('Stack trace completo:');
-    console.error(error.stack);
-    console.log('='.repeat(80) + '\n');
+    importLog('\n' + '='.repeat(80));
+    importError(`💥 POST /api/import/moviles - ERROR INESPERADO`);
+    importLog('='.repeat(80));
+    importError('Tipo de error:', error.constructor.name);
+    importError('Mensaje:', error.message);
+    importError('Stack trace completo:');
+    importError(error.stack);
+    importLog('='.repeat(80) + '\n');
     
     // Error al parsear JSON
     if (error instanceof SyntaxError) {
@@ -428,8 +451,8 @@ export async function PUT(request: NextRequest) {
       rawBody = await readRequestBody(request);
       body = safeParseJSON(rawBody);
     } catch (parseError: any) {
-      console.error('❌ ERROR al parsear JSON en PUT /api/import/moviles:', parseError.message);
-      console.error('📛 Body RAW completo:', rawBody);
+      importError('❌ ERROR al parsear JSON en PUT /api/import/moviles:', parseError.message);
+      importError('📛 Body RAW completo:', rawBody);
       return errorResponse(
         'JSON inválido en el body de la petición',
         400,
@@ -456,7 +479,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    console.log(`🔄 Actualizando ${movilesArray.length} móvil(es)...`);
+    importLog(`🔄 Actualizando ${movilesArray.length} móvil(es)...`);
 
     // Transformar campos a formato Supabase
     const transformedMoviles = movilesArray.map(transformMovilToSupabase);
@@ -471,7 +494,7 @@ export async function PUT(request: NextRequest) {
 
     // Manejo de error de Supabase
     if (error) {
-      console.error('❌ Error de Supabase:', error);
+      importError('❌ Error de Supabase:', error);
       return errorResponse(
         'Error al actualizar móviles en la base de datos',
         500,
@@ -483,7 +506,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Éxito
-    console.log(`✅ ${data?.length || 0} móviles actualizados exitosamente`);
+    importLog(`✅ ${data?.length || 0} móviles actualizados exitosamente`);
 
     // Autocreación GPS del día a partir del punto de venta del móvil (best-effort)
     const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
@@ -498,7 +521,7 @@ export async function PUT(request: NextRequest) {
       200
     );
   } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
+    importError('❌ Error inesperado:', error);
     
     if (error instanceof SyntaxError) {
       return errorResponse(
@@ -554,7 +577,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    console.log(`🗑️ Eliminando ${movil_ids.length} móviles...`);
+    importLog(`🗑️ Eliminando ${movil_ids.length} móviles...`);
 
     const { data, error } = await supabase
       .from('moviles')
@@ -564,7 +587,7 @@ export async function DELETE(request: NextRequest) {
 
     // Manejo de error de Supabase
     if (error) {
-      console.error('❌ Error de Supabase:', error);
+      importError('❌ Error de Supabase:', error);
       return errorResponse(
         'Error al eliminar móviles de la base de datos',
         500,
@@ -576,7 +599,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Éxito
-    console.log(`✅ ${data?.length || 0} móviles eliminados exitosamente`);
+    importLog(`✅ ${data?.length || 0} móviles eliminados exitosamente`);
     
     return successResponse(
       {
@@ -587,7 +610,7 @@ export async function DELETE(request: NextRequest) {
       200
     );
   } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
+    importError('❌ Error inesperado:', error);
     
     if (error instanceof SyntaxError) {
       return errorResponse(
