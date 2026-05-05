@@ -129,14 +129,12 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
     const newVal = !auditEnabled;
     setAuditToggling(true);
     try {
-      let token = '';
-      try {
-        const raw = localStorage.getItem('trackmovil_user');
-        if (raw) {
-          const parsed = JSON.parse(raw) as { jwt?: string };
-          token = parsed.jwt ?? '';
-        }
-      } catch { /* silencioso */ }
+      // El JWT se guarda en localStorage['trackmovil_token'] (key separada
+      // del user). El AuthContext mantiene 2 keys: 'trackmovil_user' (objeto
+      // sin jwt) y 'trackmovil_token' (string con el JWT).
+      const token = (typeof window !== 'undefined'
+        ? localStorage.getItem('trackmovil_token')
+        : '') ?? '';
       const res = await fetch('/api/audit/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
