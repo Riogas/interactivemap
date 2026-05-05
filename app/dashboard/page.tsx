@@ -914,6 +914,13 @@ function DashboardContent() {
       const missing = visibleIds.filter(id => !cleanPrev.includes(id));
 
       if (prev.length === 0) {
+        // Si el usuario explícitamente deseleccionó TODO (handleClearAll),
+        // mantener vacío. Sin este guard, cualquier evento Realtime (móvil
+        // nuevo, GPS update, baja) re-dispara el effect, ve prev=[] y
+        // re-selecciona toda la flota — bug reportado por usuarios.
+        if (userExplicitlyCleared.current) {
+          return prev;
+        }
         console.log('✅ Auto-selección inicial: marcando todos los móviles por defecto:', visibleIds.length);
         return visibleIds;
       }

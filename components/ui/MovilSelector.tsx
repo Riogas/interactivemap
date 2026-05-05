@@ -309,7 +309,22 @@ export default function MovilSelector({
     return result.sort((a, b) => a.id - b.id);
   }, [moviles, movilesSearch, movilesFilters, hiddenMovilIds]);
 
+  // allSelected (alcance "colapsable"): se usa para el botón "Seleccionar/
+  // Deseleccionar todos" del panel y refleja si todos los visibles del filtro
+  // local (search + filtros del colapsable) están marcados.
   const allSelected = filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
+
+  // allMovilesSelected (alcance "header badge"): se usa SOLO para el badge
+  // "🚗 Móviles: Todos" del header. Compara contra TODOS los móviles
+  // operativos (excluyendo ocultos), ignorando el search local del
+  // colapsable. Sino, filtrar a 1 móvil por search y seleccionarlo hacía
+  // que el badge dijera "Todos" cuando en realidad solo había 1 marcado de N.
+  const allMovilesSelected = useMemo(() => {
+    const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
+      ? moviles.filter(m => !hiddenMovilIds.has(m.id))
+      : moviles;
+    return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
+  }, [moviles, selectedMoviles, hiddenMovilIds]);
 
   // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
@@ -675,15 +690,15 @@ export default function MovilSelector({
         }
 
         // Badge de móviles seleccionados.
-        // "Todos" cuando filteredMoviles (los visibles en el colapsable) están
-        // todos seleccionados — usa `allSelected` calculado arriba (spec AC3/AC6).
-        // El +N es el rebalse de los seleccionados que no caben en el badge (spec AC5).
+        // "Todos" SOLO cuando todos los móviles operativos del sistema están
+        // seleccionados — usa `allMovilesSelected` (NO `allSelected`, que
+        // está restringido a los visibles del colapsable después del search).
+        // El +N es el rebalse de los seleccionados que no caben en el badge.
         {
           const noneSelected = selectedMoviles.length === 0;
-          // allSelected ya compara filteredMoviles.every(m => selectedMoviles.includes(m.id))
           const VISIBLE_IDS = 5;
           badges.push({
-            label: allSelected
+            label: allMovilesSelected
               ? '🚗 Móviles: Todos'
               : noneSelected
               ? '🚗 Móviles: Ninguno'
@@ -691,7 +706,7 @@ export default function MovilSelector({
                   ? selectedMoviles.join(', ')
                   : `${selectedMoviles.slice(0, VISIBLE_IDS).join(', ')} +${selectedMoviles.length - VISIBLE_IDS}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: allSelected ? undefined : onSelectAll,
+            onClear: allMovilesSelected ? undefined : onSelectAll,
           });
         }
 
