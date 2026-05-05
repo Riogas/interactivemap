@@ -247,6 +247,13 @@ function DashboardContent() {
     const userDeselectedSome = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
     return userHasRestriction || userDeselectedSome;
   }, [user?.allowedEmpresas, selectedEmpresas, empresas.length]);
+
+  // allEmpresasSelected: true cuando NO hay multi-empresa parcial. Refleja el
+  // mismo concepto que MovilSelector.allEmpresasSelected.
+  const allEmpresasSelected = useMemo(
+    () => empresas.length === 0 || selectedEmpresas.length === empresas.length,
+    [empresas.length, selectedEmpresas.length],
+  );
   // Variable derivada para el gating de UI de drift — comparacion literal con 'S' (no === true)
   const isRoot = user?.isRoot === 'S';
   
@@ -1726,6 +1733,18 @@ function DashboardContent() {
   // sin TDZ errors por block-scope.
   hiddenMovilIdsRef.current = hiddenMovilIds;
 
+  // allMovilesSelected (espejo del MovilSelector): true sólo cuando estamos en
+  // modo "Todos" — todas las empresas seleccionadas Y todos los móviles
+  // operativos del universo (excluyendo ocultos) están en selectedMoviles.
+  // Lo usa el filtro de pedidos/services del mapa para decidir si pasan los
+  // sin-asignar y los de móviles ocultos-pero-operativos. Si el usuario tiene
+  // un subset seleccionado, ninguno de esos pasa.
+  const allMovilesSelected = useMemo(() => {
+    if (!allEmpresasSelected) return false;
+    const operativos = movilesFiltered.filter(m => !hiddenMovilIds.has(m.id));
+    return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
+  }, [allEmpresasSelected, movilesFiltered, selectedMoviles, hiddenMovilIds]);
+
   // Versión basada en el Map completo allMovilEstados (cubre móviles sin GPS).
   // Devuelve Set<string> con movil_id crudo para matchear moviles_zonas.movil_id.
   const allHiddenMovilIds = useMemo(
@@ -2723,16 +2742,22 @@ function DashboardContent() {
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = pedidosCompletos.filter(p => {
                     if (Number(p.estado_nro) !== targetEstado) return false;
-                    // Sin asignar: solo en pendientes y cuando no hay restricción de empresa.
-                    // Coincide con el criterio del colapsable (MovilSelector); selectedMoviles
-                    // no aplica porque por auto-seleccion casi siempre tiene >0 elementos.
+                    // Sin asignar: solo cuando estamos en modo "Todos" — todas las
+                    // empresas + todos los moviles operativos seleccionados — y la
+                    // vista es pendientes y no hay empresa parcial. En subset
+                    // (selectedMoviles parcial) NO aparecen — corresponderian a
+                    // móviles fuera del filtro del usuario.
                     if (!p.movil || Number(p.movil) === 0) {
-                      return isPendientes && !isEmpresaPartial;
+                      return isPendientes && !isEmpresaPartial && allMovilesSelected;
                     }
                     if (selectedMoviles.length > 0) {
-                      // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
-                      return selectedMoviles.some(id => Number(id) === Number(p.movil))
-                        || hiddenMovilIds.has(Number(p.movil));
+                      // Subset de móviles: solo pasan los explicitamente
+                      // seleccionados. Los de móviles ocultos-pero-operativos
+                      // SOLO pasan en modo "Todos" — sino corresponden a un
+                      // segmento que el usuario no eligió ver.
+                      if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
+                      if (allMovilesSelected && hiddenMovilIds.has(Number(p.movil))) return true;
+                      return false;
                     }
                     if (isEmpresaPartial) {
                       return validMovilIds.has(Number(p.movil));
@@ -2767,15 +2792,18 @@ function DashboardContent() {
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = servicesCompletos.filter(s => {
                     if (Number(s.estado_nro) !== targetEstado) return false;
-                    // Sin asignar: solo en pendientes y cuando no hay restricción de empresa.
-                    // Mismo criterio que el colapsable de services (MovilSelector).
+                    // Sin asignar: solo en modo "Todos" (todas empresas + todos
+                    // moviles seleccionados) y vista pendientes. Mismo criterio
+                    // que el colapsable y el filtro de pedidos.
                     if (!s.movil || Number(s.movil) === 0) {
-                      return isPendientes && !isEmpresaPartial;
+                      return isPendientes && !isEmpresaPartial && allMovilesSelected;
                     }
                     if (selectedMoviles.length > 0) {
-                      // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
-                      return selectedMoviles.some(id => Number(id) === Number(s.movil))
-                        || hiddenMovilIds.has(Number(s.movil));
+                      // Subset: solo pasan los seleccionados. Los de móviles
+                      // ocultos-pero-operativos SOLO pasan en modo "Todos".
+                      if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
+                      if (allMovilesSelected && hiddenMovilIds.has(Number(s.movil))) return true;
+                      return false;
                     }
                     if (isEmpresaPartial) {
                       return validMovilIds.has(Number(s.movil));
