@@ -89,18 +89,41 @@ function computeAllSelected(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Réplica de allMovilesSelected (MovilSelector.tsx) — alcance HEADER BADGE.
-// Compara contra TODOS los móviles operativos (prop `moviles`, ya filtrada
-// por scope/empresa desde el dashboard, excluyendo ocultos). NO aplica search
-// local. Si filtrás a 1 móvil por search y lo seleccionás, el badge muestra
-// el ID en vez de "Todos".
+// Réplica de allEmpresasSelected (MovilSelector.tsx).
+// True si el usuario tiene seleccionadas todas las empresas disponibles, o si
+// no tiene multi-empresa selector (caso distribuidor con 1 sola empresa).
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface EmpresaScope {
+  showEmpresaSelector?: boolean;
+  empresas?: { id: number }[];
+  selectedEmpresas?: number[];
+}
+
+function computeAllEmpresasSelected(scope: EmpresaScope): boolean {
+  if (!scope.showEmpresaSelector) return true;
+  if (!scope.empresas || scope.empresas.length === 0) return true;
+  return (scope.selectedEmpresas?.length ?? 0) === scope.empresas.length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Réplica de allMovilesSelected (MovilSelector.tsx) — alcance HEADER BADGE
+// + canSeeUnassigned. True sólo cuando:
+//   (a) todas las empresas disponibles están seleccionadas (o no hay
+//       multi-empresa selector — caso distribuidor)
+//   Y
+//   (b) todos los móviles operativos del universo (prop `moviles` filtrada
+//       por scope/empresa, excluyendo ocultos) están en selectedMoviles.
+// Si el usuario filtra parcialmente por empresa, "Todos" nunca aplica.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function computeAllMovilesSelected(
   moviles: MinMovil[],
   selectedMoviles: number[],
-  hiddenMovilIds?: Set<number>
+  hiddenMovilIds?: Set<number>,
+  empresaScope?: EmpresaScope
 ): boolean {
+  if (empresaScope && !computeAllEmpresasSelected(empresaScope)) return false;
   const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
     ? moviles.filter(m => !hiddenMovilIds.has(m.id))
     : moviles;
@@ -469,6 +492,116 @@ describe('AC7 - badge usa universo operativo (no filteredMoviles)', () => {
     const selectedMoviles = [1, 2, 99]; // 99 ya no existe
     const allMovilesSelected = computeAllMovilesSelected(moviles, selectedMoviles);
     expect(allMovilesSelected).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AC8 — gating por empresas. El badge "Todos" y canSeeUnassigned solo aplican
+// cuando todas las empresas están seleccionadas (o no hay multi-empresa).
+// Bug reportado: con 5 empresas, marcar 2 y "seleccionar todos los móviles"
+// hacía que el badge dijera "Todos" cuando debe listar IDs y los pedidos
+// sin asignar (que pertenecen a "todas las empresas") no deben mostrarse.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AC8 - gating del badge "Todos" por empresas seleccionadas', () => {
+  const buildScope = (selected: number, total: number): EmpresaScope => ({
+    showEmpresaSelector: true,
+    empresas: Array.from({ length: total }, (_, i) => ({ id: i + 1 })),
+    selectedEmpresas: Array.from({ length: selected }, (_, i) => i + 1),
+  });
+
+  it('multi-empresa con todas las empresas seleccionadas + todos los móviles → "Todos"', () => {
+    const moviles: MinMovil[] = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const selectedMoviles = [1, 2, 3];
+    const scope = buildScope(5, 5); // 5 de 5 empresas
+    expect(computeAllMovilesSelected(moviles, selectedMoviles, undefined, scope)).toBe(true);
+  });
+
+  it('multi-empresa con SUBSET de empresas + todos sus móviles → NO "Todos" (bug reportado)', () => {
+    // 5 empresas totales, 2 seleccionadas. moviles = los 80 de esas 2.
+    // selectedMoviles cubre los 80. Antes del fix decía "Todos" — ahora "1, 2, ... +75"
+    const moviles: MinMovil[] = Array.from({ length: 80 }, (_, i) => ({ id: i + 1 }));
+    const selectedMoviles = moviles.map(m => m.id);
+    const scope = buildScope(2, 5); // 2 de 5
+    const allMov = computeAllMovilesSelected(moviles, selectedMoviles, undefined, scope);
+    expect(allMov).toBe(false);
+    expect(computeBadgeLabel(allMov, selectedMoviles)).toContain('+'); // muestra IDs con rebalse
+    expect(computeBadgeLabel(allMov, selectedMoviles)).not.toBe('Móviles: Todos');
+  });
+
+  it('distribuidor (sin selector de empresas) + todos los móviles → "Todos"', () => {
+    const moviles: MinMovil[] = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const selectedMoviles = [1, 2, 3];
+    const scope: EmpresaScope = { showEmpresaSelector: false };
+    expect(computeAllMovilesSelected(moviles, selectedMoviles, undefined, scope)).toBe(true);
+  });
+
+  it('multi-empresa con 1 sola empresa configurada y seleccionada → "Todos"', () => {
+    const moviles: MinMovil[] = [{ id: 1 }, { id: 2 }];
+    const selectedMoviles = [1, 2];
+    const scope = buildScope(1, 1); // 1 de 1
+    expect(computeAllMovilesSelected(moviles, selectedMoviles, undefined, scope)).toBe(true);
+  });
+
+  it('multi-empresa parcial bloquea aunque visibles + selected coincidan', () => {
+    const moviles: MinMovil[] = [{ id: 10 }, { id: 20 }];
+    const selectedMoviles = [10, 20];
+    const scope = buildScope(3, 5);
+    expect(computeAllMovilesSelected(moviles, selectedMoviles, undefined, scope)).toBe(false);
+  });
+
+  it('sin scope (call legacy sin empresaScope) → comporta como antes (solo chequea moviles)', () => {
+    const moviles: MinMovil[] = [{ id: 1 }, { id: 2 }];
+    const selectedMoviles = [1, 2];
+    expect(computeAllMovilesSelected(moviles, selectedMoviles)).toBe(true);
+  });
+
+  it('canSeeUnassigned: privilegiado pierde acceso a sin-asignar con empresa parcial', () => {
+    // Reproduce la lógica de canSeeUnassigned = privilegedUser && allMovilesSelected
+    const moviles: MinMovil[] = [{ id: 1 }, { id: 2 }];
+    const selectedMoviles = [1, 2];
+    const privilegedUser = true;
+    const scopeFull = buildScope(5, 5);
+    const scopePartial = buildScope(2, 5);
+    const canSeeFull = privilegedUser && computeAllMovilesSelected(moviles, selectedMoviles, undefined, scopeFull);
+    const canSeePartial = privilegedUser && computeAllMovilesSelected(moviles, selectedMoviles, undefined, scopePartial);
+    expect(canSeeFull).toBe(true);
+    expect(canSeePartial).toBe(false);
+  });
+});
+
+describe('AC8 - computeAllEmpresasSelected helper', () => {
+  it('sin selector de empresas → true', () => {
+    expect(computeAllEmpresasSelected({ showEmpresaSelector: false })).toBe(true);
+  });
+
+  it('con selector pero empresas vacías → true (caso defensivo)', () => {
+    expect(computeAllEmpresasSelected({ showEmpresaSelector: true, empresas: [] })).toBe(true);
+  });
+
+  it('todas seleccionadas → true', () => {
+    const scope: EmpresaScope = {
+      showEmpresaSelector: true,
+      empresas: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      selectedEmpresas: [1, 2, 3],
+    };
+    expect(computeAllEmpresasSelected(scope)).toBe(true);
+  });
+
+  it('subset → false', () => {
+    const scope: EmpresaScope = {
+      showEmpresaSelector: true,
+      empresas: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      selectedEmpresas: [1, 2],
+    };
+    expect(computeAllEmpresasSelected(scope)).toBe(false);
+  });
+
+  it('ninguna seleccionada → false (selectedEmpresas undefined o vacío)', () => {
+    const scope1: EmpresaScope = { showEmpresaSelector: true, empresas: [{ id: 1 }] };
+    const scope2: EmpresaScope = { showEmpresaSelector: true, empresas: [{ id: 1 }], selectedEmpresas: [] };
+    expect(computeAllEmpresasSelected(scope1)).toBe(false);
+    expect(computeAllEmpresasSelected(scope2)).toBe(false);
   });
 });
 
