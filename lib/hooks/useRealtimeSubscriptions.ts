@@ -50,14 +50,16 @@ export function useGPSTracking(
     const RETRY_DELAY = 5000;
 
     const setupChannel = () => {
-      // Limpiar canal anterior si existe
+      // Limpiar canal anterior si existe — unsubscribe primero para que el
+      // phx_leave llegue al server antes de cerrar el socket, liberando el slot
+      // del tenant (max_channels_per_client) sin tener que esperar al timeout.
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
         channel = null;
       }
 
-      // Crear canal único con timestamp para evitar conflictos
-      const channelName = `gps-latest-${escenarioId}-${Date.now()}`;
+      const channelName = `gps-latest-${escenarioId}`;
 
       // Crear canal de Realtime — suscrito a gps_latest_positions (1 fila por móvil)
       // Los eventos INSERT ocurren cuando un móvil aparece por primera vez
@@ -174,6 +176,7 @@ export function useGPSTracking(
       }
 
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
       }
     };
@@ -214,11 +217,12 @@ export function useMoviles(
 
     const setupChannel = () => {
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
         channel = null;
       }
 
-      const channelName = `moviles-changes-${escenarioId}-${Date.now()}`;
+      const channelName = `moviles-changes-${escenarioId}`;
 
       channel = supabase
         .channel(channelName, {
@@ -296,7 +300,10 @@ export function useMoviles(
     return () => {
       isComponentMounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        channel.unsubscribe();
+        supabase.removeChannel(channel);
+      }
     };
   }, [escenarioId, empresaIds?.join(',')]);
 
@@ -361,6 +368,7 @@ export function usePedidos(
       });
 
     return () => {
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [escenarioId, movilId]);
@@ -416,6 +424,7 @@ export function useEmpresasFleteras(
       });
 
     return () => {
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [escenarioId]);
@@ -454,11 +463,12 @@ export function usePedidosRealtime(
 
     const setupChannel = () => {
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
         channel = null;
       }
 
-      const channelName = `pedidos-realtime-${escenarioId}-${Date.now()}`;
+      const channelName = `pedidos-realtime-${escenarioId}`;
 
       channel = supabase
         .channel(channelName, {
@@ -573,7 +583,10 @@ export function usePedidosRealtime(
     return () => {
       isComponentMounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        channel.unsubscribe();
+        supabase.removeChannel(channel);
+      }
     };
   }, [escenarioId, movilIds?.join(',')]); // Recrear si cambian los móviles
 
@@ -613,10 +626,11 @@ export function useServicesRealtime(
 
     const setupChannel = () => {
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
         channel = null;
       }
-      const channelName = `services-realtime-${escenarioId}-${Date.now()}`;
+      const channelName = `services-realtime-${escenarioId}`;
 
       channel = supabase
         .channel(channelName, {
@@ -724,7 +738,10 @@ export function useServicesRealtime(
     return () => {
       isComponentMounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        channel.unsubscribe();
+        supabase.removeChannel(channel);
+      }
     };
   }, [escenarioId, movilIds?.join(',')]);
 
