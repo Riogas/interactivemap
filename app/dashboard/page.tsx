@@ -75,6 +75,10 @@ function DashboardContent() {
   // abajo (después de calcular pedidosCompletos/servicesCompletos). Permite que
   // callbacks/effects definidos antes accedan a los IDs ocultos sin TDZ errors.
   const hiddenMovilIdsRef = useRef<Set<number>>(new Set());
+  // Ref a la lista filtrada actual — sirve para que handlers como
+  // handleToggleMovil puedan calcular "modo Todos" sin re-crearse en cada
+  // cambio de filtros. Se asigna más abajo después de calcular movilesFiltered.
+  const movilesFilteredRef = useRef<MovilData[]>([]);
   
   // 🚀 Optimización: Detectar visibilidad de tab para pausar updates
   const isTabVisible = useTabVisibility();
@@ -249,10 +253,13 @@ function DashboardContent() {
   // � Móviles filtrados por empresas fleteras seleccionadas
   const movilesFiltered = useMemo(() => {
     if (selectedEmpresas.length === 0) return moviles;
-    return moviles.filter(m => 
+    return moviles.filter(m =>
       m.empresaFleteraId && selectedEmpresas.includes(m.empresaFleteraId)
     );
   }, [moviles, selectedEmpresas]);
+  // Mantener el ref actualizado para que handleToggleMovil pueda detectar
+  // "modo Todos" sin recrear el callback en cada render.
+  movilesFilteredRef.current = movilesFiltered;
   
   // Estado para filtros de móviles (recibidos desde MovilSelector)
   const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
@@ -885,30 +892,50 @@ function DashboardContent() {
 
   // 🔥 Auto-selección de móviles:
   //  a) Carga inicial → marca todos los visibles.
-  //  b) Aparecen móviles nuevos (realtime) y el user está en modo "Todos"
-  //     (userExplicitlyCleared=false) → suma los nuevos a la selección
-  //     para que el badge no salte a "filtrando todos menos los nuevos".
-  // El user mantiene control manual: si deselecciona/clear marca el flag
-  // userExplicitlyCleared=true y este efecto deja de auto-agregar.
+  //  b) Modo "Todos" (userExplicitlyCleared=false): mantener el invariante
+  //     selected = visibleIds. Cuando aparece un móvil nuevo se agrega;
+  //     cuando uno desaparece (cambio de estado a no-activo, baja, etc.)
+  //     se limpia del selected para que el badge siga diciendo "Todos".
+  //  c) Modo custom (flag=true): NO auto-agregar nuevos, pero sí limpiar
+  //     huérfanos (IDs que ya no están en visibleIds), porque sino el
+  //     badge cuenta selecciones inexistentes.
   useEffect(() => {
     if (isInitialLoad) return;
-    if (userExplicitlyCleared.current) return;
     if (movilesFiltered.length === 0) return;
 
     const hidden = hiddenMovilIdsRef.current;
     const visibleIds = movilesFiltered.filter(m => !hidden.has(m.id)).map(m => m.id);
+    const visibleSet = new Set(visibleIds);
 
     setSelectedMoviles(prev => {
-      const missing = visibleIds.filter(id => !prev.includes(id));
-      if (missing.length === 0) return prev;
+      // Limpiar huérfanos siempre (independiente de modo Todos/custom).
+      const cleanPrev = prev.filter(id => visibleSet.has(id));
+      const orphanCount = prev.length - cleanPrev.length;
+      const missing = visibleIds.filter(id => !cleanPrev.includes(id));
+
       if (prev.length === 0) {
         console.log('✅ Auto-selección inicial: marcando todos los móviles por defecto:', visibleIds.length);
         return visibleIds;
       }
-      console.log(`✅ Auto-agregando ${missing.length} móvil(es) nuevo(s) a la selección "Todos"`);
-      return [...prev, ...missing];
+
+      if (userExplicitlyCleared.current) {
+        // Modo custom: NO auto-agregar nuevos. Solo limpiar huérfanos.
+        if (orphanCount === 0) return prev;
+        console.log(`🧹 Limpiando ${orphanCount} ID(s) huérfano(s) de selección custom`);
+        return cleanPrev;
+      }
+
+      // Modo "Todos": mantener selected === visibleIds.
+      if (missing.length === 0 && orphanCount === 0) return prev;
+      if (missing.length > 0 || orphanCount > 0) {
+        console.log(
+          `🔄 Manteniendo "Todos": +${missing.length} nuevo(s), -${orphanCount} baja(s)`,
+        );
+        return visibleIds;
+      }
+      return prev;
     });
-  }, [movilesFiltered.length, isInitialLoad]);
+  }, [movilesFiltered.length, isInitialLoad, movilesFiltered]);
 
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
@@ -1273,14 +1300,27 @@ function DashboardContent() {
     }
   }, [selectedDate]);
 
-  // Handler para toggle de móvil en la lista (selección múltiple)
+  // Handler para toggle de móvil en la lista (selección múltiple).
+  // El flag userExplicitlyCleared se decide POST-toggle: si la selección
+  // resultante cubre todos los móviles visibles, volvemos a modo "Todos"
+  // (flag=false) para que un nuevo móvil que entre por realtime se
+  // auto-agregue. Si quedan algunos sin marcar, modo "custom" (flag=true)
+  // y los nuevos NO se auto-agregan.
   const handleToggleMovil = useCallback((movilId: number) => {
-    userExplicitlyCleared.current = true; // El usuario está modificando la selección manualmente
     setSelectedMoviles(prev => {
       const newSelection = prev.includes(movilId)
         ? prev.filter(id => id !== movilId) // Deseleccionar
         : [...prev, movilId]; // Agregar
-      
+
+      const hidden = hiddenMovilIdsRef.current;
+      const visibleIds = movilesFilteredRef.current
+        .filter(m => !hidden.has(m.id))
+        .map(m => m.id);
+      const visibleSet = new Set(visibleIds);
+      const selectedVisibleCount = newSelection.filter(id => visibleSet.has(id)).length;
+      const allSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+      userExplicitlyCleared.current = !allSelected;
+
       // Solo centrar en móvil individual si va a quedar exactamente 1 seleccionado
       // Si hay múltiples, el MapUpdater se encarga del zoom automático
       if (newSelection.length === 1) {
@@ -1288,7 +1328,7 @@ function DashboardContent() {
       } else {
         setFocusedMovil(undefined);
       }
-      
+
       return newSelection;
     });
   }, []);
