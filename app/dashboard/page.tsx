@@ -61,7 +61,7 @@ function DashboardContent() {
   const { user, escenarioId, hasPermiso } = useAuth();
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
-  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect } = useRealtime();
+  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect, setOnMovilEvent } = useRealtime();
   
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
@@ -724,6 +724,44 @@ function DashboardContent() {
     setOnReconnect(fetchPositionsWithReconnectReport);
     return () => setOnReconnect(null);
   }, [setOnReconnect, fetchPositionsWithReconnectReport]);
+
+  // Registrar refetch debounced de posiciones al recibir eventos de cambio en tabla moviles.
+  // Cuando el importer hace UPSERT (movil activo->inactivo, o nuevo), el RealtimeProvider
+  // llama a este callback. Usamos debounce 500ms via useRef para colapsar lotes (ej: 50
+  // eventos en <1s -> 1 solo fetchPositions al final).
+  const movileEventDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedFetchOnMovilEvent = useCallback(() => {
+    const today = todayMontevideo();
+    if (selectedDate !== today) return; // gate: no spamear refetch en modo historico
+    if (movileEventDebounceRef.current) clearTimeout(movileEventDebounceRef.current);
+    movileEventDebounceRef.current = setTimeout(async () => {
+      movileEventDebounceRef.current = null;
+      const result = await fetchPositions();
+      if (result.success) {
+        setLastSync({ at: Date.now(), trigger: 'moviles_event', added: result.added, removed: result.removed });
+        reportDrift({
+          trigger: 'moviles_event',
+          added: result.added,
+          removed: result.removed,
+          totalBefore: movilesRef.current.length,
+          totalAfter: movilesRef.current.length + result.added - result.removed,
+          selectedDate: selectedDate ?? '',
+          isRoot,
+        });
+      }
+    }, 500);
+  }, [fetchPositions, selectedDate, isRoot]);
+
+  useEffect(() => {
+    setOnMovilEvent(debouncedFetchOnMovilEvent);
+    return () => {
+      setOnMovilEvent(null);
+      if (movileEventDebounceRef.current) {
+        clearTimeout(movileEventDebounceRef.current);
+        movileEventDebounceRef.current = null;
+      }
+    };
+  }, [setOnMovilEvent, debouncedFetchOnMovilEvent]);
 
   // 🔄 Mejora #1 — Polling de reconciliación configurable (admin / root).
   // Cubre eventos del WS que se perdieron por desconexiones silenciosas: cada N segundos
