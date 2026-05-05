@@ -1,0 +1,32 @@
+{
+  "runId": "20260505-200000-aud",
+  "bucket": "large-feature",
+  "bucket_source": "auto-triage",
+  "stages": ["implementer", "code-reviewer", "qa-tester"],
+  "stages_skipped": [
+    { "name": "analyst", "reason": "spec completa en request.md con decisiones firmes" },
+    { "name": "architect", "reason": "plan claro — restore + extension bien acotada" },
+    { "name": "security-reviewer", "reason": "no hay superficie nueva de auth; POST /api/audit/config valida isRoot JWT igual que otros endpoints admin existentes" },
+    { "name": "ux-validator", "reason": "UI es restore de patron existente (toggle igual al de realtime avanzado)" },
+    { "name": "documenter", "reason": "docs requeridos estan en spec (req #11) — implementer los escribe directamente" }
+  ],
+  "implementer_model_chosen": "sonnet",
+  "implementer_model_triage_recommended": "sonnet",
+  "parallel_review_qa": false,
+  "parallel_review_qa_reason": "bucket=large-feature con tests nuevos a escribir — qa modifica codigo del test indirectamente; runner serial evita race",
+  "max_iterations": 3,
+  "budget_estimate_usd": 0.80,
+  "implementation_order": [
+    "1. Restaurar archivos de git history (git show b87d025^:<path>)",
+    "2. Crear docs/sqls/create-audit-settings.sql",
+    "3. Crear app/api/audit/config/route.ts (GET + POST en mismo archivo)",
+    "4. Modificar components/providers/AuditProvider.tsx — agregar toggle polling",
+    "5. Modificar components/ui/PreferencesModal.tsx — seccion Auditoria",
+    "6. Modificar components/layout/FloatingToolbar.tsx — boton Logs/Auditoria",
+    "7. Modificar lib/rate-limit.ts — bypass para /api/audit/config",
+    "8. Modificar app/layout.tsx — re-incluir AuditProvider",
+    "9. Crear/restaurar tests en __tests__/audit-config.test.ts y __tests__/audit-provider.test.ts",
+    "10. Crear docs/AUDITORIA.md",
+    "11. pnpm exec tsc --noEmit"
+  ]
+}

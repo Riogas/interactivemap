@@ -1,6 +1,7 @@
 'use client';
 
 import toast from 'react-hot-toast';
+import { sendAuditBatch } from '@/lib/audit-client';
 
 export type DriftTrigger = 'interval' | 'reconnect' | 'visibility' | 'silence' | 'initial' | 'moviles_event';
 
@@ -40,15 +41,74 @@ export function getSyncColor(
 }
 
 /**
- * Muestra toast de reconciliacion solo a usuarios root.
+ * Construye el evento de audit para un drift exitoso (testeable de forma pura).
+ */
+export function buildDriftAuditEvent(params: DriftParams) {
+  return {
+    event_type: 'realtime_drift' as const,
+    endpoint: 'dashboard/reconcile',
+    extra: {
+      trigger: params.trigger,
+      added: params.added,
+      removed: params.removed,
+      totalAfter: params.totalAfter,
+      totalBefore: params.totalBefore,
+      selectedDate: params.selectedDate,
+      userIsRoot: params.isRoot,
+    },
+  };
+}
+
+/**
+ * Reporta drift al audit_log y muestra toast si isRoot.
  * No hace nada si added === 0 && removed === 0.
+ * El caller es responsable de actualizar setLastSync separadamente.
  */
 export function reportDrift(params: DriftParams): void {
   if (params.added === 0 && params.removed === 0) return;
-  if (!params.isRoot) return;
 
-  toast(
-    `🔄 Reconciliacion (${params.trigger}): +${params.added} / -${params.removed} moviles`,
-    { duration: 3000 },
-  );
+  // Audit log para todos los usuarios (fire-and-forget)
+  sendAuditBatch([{
+    event_type: 'realtime_drift',
+    endpoint: 'dashboard/reconcile',
+    extra: {
+      trigger: params.trigger,
+      added: params.added,
+      removed: params.removed,
+      totalAfter: params.totalAfter,
+      totalBefore: params.totalBefore,
+      selectedDate: params.selectedDate,
+      userIsRoot: params.isRoot,
+    },
+  }]);
+
+  // Toast solo para usuarios root — gating estricto: isRoot debe ser true (derivado de user?.isRoot === 'S')
+  if (params.isRoot) {
+    toast(
+      `🔄 Reconciliacion (${params.trigger}): +${params.added} / -${params.removed} moviles`,
+      { duration: 3000 },
+    );
+  }
+}
+
+/**
+ * Reporta un fallo del fetch de posiciones (result.success === false).
+ * Siempre emite al audit_log, nunca muestra toast.
+ */
+export function reportDriftFetchFailed(params: {
+  trigger: DriftTrigger;
+  status: number;
+  selectedDate: string;
+  isRoot: boolean;
+}): void {
+  sendAuditBatch([{
+    event_type: 'realtime_drift_fetch_failed',
+    endpoint: 'dashboard/reconcile',
+    extra: {
+      trigger: params.trigger,
+      status: params.status,
+      selectedDate: params.selectedDate,
+      userIsRoot: params.isRoot,
+    },
+  }]);
 }

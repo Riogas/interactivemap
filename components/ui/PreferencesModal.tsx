@@ -119,6 +119,43 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
   const [importingPTV, setImportingPTV] = useState(false);
   const [importResultPTV, setImportResultPTV] = useState<{ ok: boolean; msg: string } | null>(null);
 
+  // ===== Estado para Auditoría (solo root) =====
+  const [auditEnabled, setAuditEnabled] = useState<boolean | null>(null);
+  const [auditMeta, setAuditMeta] = useState<{ updated_at: string; updated_by: string | null } | null>(null);
+  const [auditToggling, setAuditToggling] = useState(false);
+
+  const handleAuditToggle = async () => {
+    if (auditToggling || auditEnabled === null) return;
+    const newVal = !auditEnabled;
+    setAuditToggling(true);
+    try {
+      let token = '';
+      try {
+        const raw = localStorage.getItem('trackmovil_user');
+        if (raw) {
+          const parsed = JSON.parse(raw) as { jwt?: string };
+          token = parsed.jwt ?? '';
+        }
+      } catch { /* silencioso */ }
+      const res = await fetch('/api/audit/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ enabled: newVal }),
+      });
+      const json = await res.json() as { success: boolean; enabled: boolean; updated_at: string; updated_by: string | null; error?: string };
+      if (!res.ok || !json.success) {
+        console.error('[audit toggle] error:', json.error);
+        return;
+      }
+      setAuditEnabled(json.enabled);
+      setAuditMeta({ updated_at: json.updated_at, updated_by: json.updated_by });
+    } catch (err) {
+      console.error('[audit toggle] fetch error:', err);
+    } finally {
+      setAuditToggling(false);
+    }
+  };
+
   const handleImportPTV = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -226,6 +263,21 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
       setImportingPOI(false);
     }
   }, [user]);
+
+  // Cargar estado inicial del toggle de auditoría (solo para root)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (user?.isRoot !== 'S') return;
+    if (!isOpen) return;
+    if (auditEnabled !== null) return;
+    fetch('/api/audit/config')
+      .then((r) => r.json())
+      .then((j: { enabled: boolean; updated_at: string; updated_by: string | null }) => {
+        setAuditEnabled(j.enabled);
+        setAuditMeta({ updated_at: j.updated_at, updated_by: j.updated_by });
+      })
+      .catch(() => { /* silencioso */ });
+  }, [user?.isRoot, isOpen, auditEnabled]);
 
   // Cargar preferencias desde localStorage al montar (cache local de lo que ya se cargó de DB)
   useEffect(() => {
@@ -930,6 +982,55 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                           {preferences.realtimeEventsPerSecond}/s
                         </span>
                       </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ===== Auditoría — solo root (isRoot=S) ===== */}
+              {user?.isRoot === "S" && (
+                <>
+                  <hr className="border-gray-200" />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🔍</span>
+                      <span className="text-sm font-bold text-gray-800">Auditoría</span>
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-red-100 text-red-700">ADMIN</span>
+                    </div>
+                    <p className="text-xs text-gray-500 -mt-2">
+                      Cuando está ACTIVO, se registran todas las acciones de los usuarios (navegación, llamadas API, etc.).
+                      Por defecto está apagado para no consumir espacio en la base.
+                    </p>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex-1 pr-3">
+                        <div className="text-sm font-semibold text-gray-700">Auditar actividad de usuarios</div>
+                        {auditMeta && (
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            Última actualización:{" "}
+                            {new Date(auditMeta.updated_at).toLocaleString("es-UY", {
+                              day: "2-digit", month: "2-digit", year: "2-digit",
+                              hour: "2-digit", minute: "2-digit",
+                            })}
+                            {auditMeta.updated_by ? <> por <strong>{auditMeta.updated_by}</strong></> : null}
+                          </div>
+                        )}
+                        {auditEnabled === null && (
+                          <div className="text-xs text-gray-400 mt-0.5">Cargando...</div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={auditToggling || auditEnabled === null}
+                        onClick={() => void handleAuditToggle()}
+                        className={[
+                          "relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0",
+                          auditEnabled ? "bg-red-500" : "bg-gray-200",
+                          auditToggling ? "opacity-50 cursor-not-allowed" : "",
+                        ].join(" ")}
+                        title={auditToggling ? "Actualizando..." : auditEnabled ? "Desactivar auditoría" : "Activar auditoría"}
+                      >
+                        <span className={["inline-block h-4 w-4 transform rounded-full bg-white transition-transform", auditEnabled ? "translate-x-6" : "translate-x-1"].join(" ")} />
+                      </button>
                     </div>
                   </div>
                 </>

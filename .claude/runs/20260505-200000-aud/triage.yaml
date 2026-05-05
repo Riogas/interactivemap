@@ -1,0 +1,25 @@
+bucket: large-feature
+confidence: high
+multi_intent: false
+touches:
+  ui: true
+  db: true
+  auth: true
+  api: true
+  infra: false
+size_estimate_loc: 600
+risk: medium
+clarifying_questions: []
+recommended_models:
+  analyst: sonnet
+  architect: sonnet
+  implementer: sonnet
+  reviewer: sonnet
+  qa: sonnet
+reasoning: >
+  Restauracion + extension de un sistema de auditoria eliminado. Incluye:
+  8 archivos recuperados de git history, 2 endpoints nuevos (GET+POST /api/audit/config),
+  modificacion de AuditProvider con logica de toggle, UI en PreferencesModal y FloatingToolbar,
+  bypass de rate-limit, re-inclusion en layout.tsx, tests nuevos, y SQL + docs.
+  Spec completa con decisiones firmes — no requiere analyst ni architect.
+  Bucket large-feature por volumen (600+ LOC) y superficie (API+DB+UI+tests).
