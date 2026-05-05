@@ -606,6 +606,127 @@ describe('AC8 - computeAllEmpresasSelected helper', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AC9 — filtro del MAPA respeta selectedMoviles. Bug reportado: con un
+// subset de móviles seleccionados, el mapa mostraba todos los pedidos sin
+// asignar y los de móviles ocultos-pero-operativos.
+//
+// Esta función replica la lógica inline del filtro de pedidos del MapView en
+// app/dashboard/page.tsx (después del fix). Si modificás el filtro del mapa,
+// actualizá esta función para mantener los tests representativos.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MapFilterCtx {
+  isPendientes: boolean;
+  isEmpresaPartial: boolean;
+  validMovilIds: Set<number>;
+  selectedMoviles: number[];
+  hiddenMovilIds: Set<number>;
+  allMovilesSelected: boolean;
+}
+
+function passesMapFilterPedido(p: MinPedido, ctx: MapFilterCtx): boolean {
+  const targetEstado = ctx.isPendientes ? 1 : 2;
+  if (Number(p.estado_nro) !== targetEstado) return false;
+  if (!p.movil || Number(p.movil) === 0) {
+    return ctx.isPendientes && !ctx.isEmpresaPartial && ctx.allMovilesSelected;
+  }
+  if (ctx.selectedMoviles.length > 0) {
+    if (ctx.selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
+    if (ctx.allMovilesSelected && ctx.hiddenMovilIds.has(Number(p.movil))) return true;
+    return false;
+  }
+  if (ctx.isEmpresaPartial) {
+    return ctx.validMovilIds.has(Number(p.movil));
+  }
+  return true;
+}
+
+describe('AC9 - filtro del mapa respeta selectedMoviles (bug reportado)', () => {
+  const baseCtx = (overrides: Partial<MapFilterCtx>): MapFilterCtx => ({
+    isPendientes: true,
+    isEmpresaPartial: false,
+    validMovilIds: new Set([106, 252]),
+    selectedMoviles: [],
+    hiddenMovilIds: new Set(),
+    allMovilesSelected: false,
+    ...overrides,
+  });
+
+  it('subset seleccionado: pedido del móvil seleccionado pasa', () => {
+    const p = { id: 1, movil: 106, estado_nro: 1 };
+    expect(passesMapFilterPedido(p, baseCtx({ selectedMoviles: [106] }))).toBe(true);
+  });
+
+  it('subset seleccionado: pedido de OTRO móvil NO pasa (bug 1 reportado)', () => {
+    const p = { id: 1, movil: 252, estado_nro: 1 };
+    expect(passesMapFilterPedido(p, baseCtx({ selectedMoviles: [106] }))).toBe(false);
+  });
+
+  it('subset seleccionado + todas empresas: pedido sin asignar NO pasa (bug 2 reportado)', () => {
+    const p = { id: 1, movil: null, estado_nro: 1 };
+    // selectedMoviles=[106] → no es modo "Todos" → sin asignar oculto
+    expect(passesMapFilterPedido(p, baseCtx({
+      selectedMoviles: [106],
+      isEmpresaPartial: false,
+      allMovilesSelected: false,
+    }))).toBe(false);
+  });
+
+  it('subset seleccionado: pedido de móvil oculto-operativo NO pasa (bug 3)', () => {
+    const p = { id: 1, movil: 330, estado_nro: 1 };
+    expect(passesMapFilterPedido(p, baseCtx({
+      selectedMoviles: [106],
+      hiddenMovilIds: new Set([330]),
+      allMovilesSelected: false,
+    }))).toBe(false);
+  });
+
+  it('modo "Todos": pedido sin asignar pasa (vista pendientes, sin empresa parcial)', () => {
+    const p = { id: 1, movil: null, estado_nro: 1 };
+    expect(passesMapFilterPedido(p, baseCtx({
+      selectedMoviles: [106, 252],
+      allMovilesSelected: true,
+    }))).toBe(true);
+  });
+
+  it('modo "Todos": pedido de móvil oculto-operativo pasa', () => {
+    const p = { id: 1, movil: 330, estado_nro: 1 };
+    expect(passesMapFilterPedido(p, baseCtx({
+      selectedMoviles: [106, 252],
+      hiddenMovilIds: new Set([330]),
+      allMovilesSelected: true,
+    }))).toBe(true);
+  });
+
+  it('vista finalizados + sin asignar: NO pasa aun en modo "Todos" (sin asignar es solo pendientes)', () => {
+    const p = { id: 1, movil: null, estado_nro: 2 };
+    expect(passesMapFilterPedido(p, baseCtx({
+      isPendientes: false,
+      selectedMoviles: [106],
+      allMovilesSelected: true,
+    }))).toBe(false);
+  });
+
+  it('empresa parcial + sin asignar: NO pasa aunque allMovilesSelected (allMovilesSelected=false en ese caso)', () => {
+    const p = { id: 1, movil: null, estado_nro: 1 };
+    // allMovilesSelected es false cuando hay empresa parcial (gating del dashboard)
+    expect(passesMapFilterPedido(p, baseCtx({
+      isEmpresaPartial: true,
+      selectedMoviles: [],
+      allMovilesSelected: false,
+    }))).toBe(false);
+  });
+
+  it('estado_nro distinto al target descartado de entrada', () => {
+    const p = { id: 1, movil: 106, estado_nro: 2 }; // pedido finalizado en vista pendientes
+    expect(passesMapFilterPedido(p, baseCtx({
+      selectedMoviles: [106],
+      isPendientes: true,
+    }))).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EC1 — empresa fletera con 0 móviles disponibles
 // ─────────────────────────────────────────────────────────────────────────────
 
