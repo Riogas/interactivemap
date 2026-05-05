@@ -132,12 +132,27 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
       // El JWT se guarda en localStorage['trackmovil_token'] (key separada
       // del user). El AuthContext mantiene 2 keys: 'trackmovil_user' (objeto
       // sin jwt) y 'trackmovil_token' (string con el JWT).
-      const token = (typeof window !== 'undefined'
-        ? localStorage.getItem('trackmovil_token')
-        : '') ?? '';
+      // El JWT del Security Suite NO contiene isRoot — el flag de role se
+      // pasa vía header `x-track-isroot` (mismo patrón que `x-track-user`).
+      let token = '';
+      let isRootHeader = 'N';
+      if (typeof window !== 'undefined') {
+        token = localStorage.getItem('trackmovil_token') ?? '';
+        try {
+          const raw = localStorage.getItem('trackmovil_user');
+          if (raw) {
+            const u = JSON.parse(raw) as { isRoot?: string };
+            isRootHeader = u.isRoot ?? 'N';
+          }
+        } catch { /* silencioso */ }
+      }
       const res = await fetch('/api/audit/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+          'x-track-isroot': isRootHeader,
+        },
         body: JSON.stringify({ enabled: newVal }),
       });
       const json = await res.json() as { success: boolean; enabled: boolean; updated_at: string; updated_by: string | null; error?: string };

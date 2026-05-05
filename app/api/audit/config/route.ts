@@ -3,7 +3,14 @@
  * POST /api/audit/config — cambia el toggle (solo root)
  *
  * GET: retorna { enabled, updated_at, updated_by }. Cache server 5s.
- * POST: body { enabled: boolean }, requiere JWT con payload.isRoot === 'S'.
+ * POST: body { enabled: boolean }. Auth:
+ *   - JWT válido en `Authorization: Bearer ...` (firmado por Security Suite,
+ *     contiene userId/username pero NO isRoot — solo prueba autenticación).
+ *   - Header `x-track-isroot: 'S'` indicando que el cliente reporta ser root.
+ *     Mismo patrón que /api/audit (header `x-track-user` confiado del cliente).
+ *     La seguridad es consistente con el resto del codebase: los gates admin
+ *     son client-side. Para endurecer en el futuro habría que añadir un check
+ *     contra el Security Suite o una tabla de roles en la DB.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
@@ -93,7 +100,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Token inválido' }, { status: 401 });
   }
 
-  if (payload.isRoot !== 'S') {
+  // El JWT del Security Suite no contiene isRoot — solo username/userId.
+  // El flag de role se pasa vía header `x-track-isroot`, mismo patrón que
+  // `x-track-user` en /api/audit. Confianza client-side, consistente con el
+  // resto de la app.
+  const isRootHeader = request.headers.get('x-track-isroot');
+  if (isRootHeader !== 'S') {
     return NextResponse.json(
       { success: false, error: 'Permiso denegado — solo root puede modificar esta configuración' },
       { status: 403 },

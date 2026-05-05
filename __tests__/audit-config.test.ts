@@ -3,8 +3,13 @@
  *
  * AC1 — GET /api/audit/config: devuelve 200 con shape { enabled, updated_at, updated_by }
  * AC2 — POST sin Authorization: 401
- * AC3 — POST con JWT válido pero isRoot !== 'S': 403
- * AC4 — POST con JWT root: 200 y actualiza la fila
+ * AC3 — POST con JWT válido pero header x-track-isroot !== 'S': 403
+ * AC4 — POST con JWT + header x-track-isroot=S: 200 y actualiza la fila
+ *
+ * Nota: el JWT del Security Suite no incluye isRoot (solo username/userId).
+ * El flag de role se transmite vía header x-track-isroot, mismo patrón que
+ * x-track-user en /api/audit. Confianza client-side, alineado con el resto
+ * de la app.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -26,7 +31,7 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${header}.${body}.fake_signature`;
 }
 
-function makeRequest(method: string, body?: unknown, authHeader?: string): NextRequest {
+function makeRequest(method: string, body?: unknown, authHeader?: string, isRootHeader?: string): NextRequest {
   const url = 'http://localhost/api/audit/config';
   const headers: Record<string, string> = {};
   if (body !== undefined) {
@@ -34,6 +39,9 @@ function makeRequest(method: string, body?: unknown, authHeader?: string): NextR
   }
   if (authHeader) {
     headers['Authorization'] = authHeader;
+  }
+  if (isRootHeader !== undefined) {
+    headers['x-track-isroot'] = isRootHeader;
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new NextRequest(url, { method, body: body !== undefined ? JSON.stringify(body) : undefined, headers } as any);
@@ -135,26 +143,26 @@ describe('POST /api/audit/config', () => {
     expect(res.status).toBe(401);
   });
 
-  it('AC3 — con JWT válido pero isRoot !== S → 403', async () => {
-    const jwt = makeJwt({ username: 'user1', isRoot: 'N', userId: '42' });
-    const req = makeRequest('POST', { enabled: true }, `Bearer ${jwt}`);
+  it('AC3 — con JWT válido pero header x-track-isroot !== S → 403', async () => {
+    const jwt = makeJwt({ username: 'user1', userId: '42' });
+    const req = makeRequest('POST', { enabled: true }, `Bearer ${jwt}`, 'N');
     const res = await POST(req);
     expect(res.status).toBe(403);
     const json = await res.json() as { success: boolean };
     expect(json.success).toBe(false);
   });
 
-  it('AC3b — con JWT sin campo isRoot → 403', async () => {
+  it('AC3b — con JWT válido pero sin header x-track-isroot → 403', async () => {
     const jwt = makeJwt({ username: 'user1', userId: '42' });
     const req = makeRequest('POST', { enabled: true }, `Bearer ${jwt}`);
     const res = await POST(req);
     expect(res.status).toBe(403);
   });
 
-  it('AC4 — con JWT root → 200 y retorna enabled actualizado', async () => {
+  it('AC4 — con JWT + header x-track-isroot=S → 200 y retorna enabled actualizado', async () => {
     mockSupabase('success');
-    const jwt = makeJwt({ username: 'dmedaglia', isRoot: 'S', userId: '1' });
-    const req = makeRequest('POST', { enabled: true }, `Bearer ${jwt}`);
+    const jwt = makeJwt({ username: 'dmedaglia', userId: '1' });
+    const req = makeRequest('POST', { enabled: true }, `Bearer ${jwt}`, 'S');
     const res = await POST(req);
     expect(res.status).toBe(200);
     const json = await res.json() as { success: boolean; enabled: boolean; updated_at: string };
@@ -164,15 +172,15 @@ describe('POST /api/audit/config', () => {
   });
 
   it('devuelve 400 si body no tiene "enabled"', async () => {
-    const jwt = makeJwt({ username: 'dmedaglia', isRoot: 'S', userId: '1' });
-    const req = makeRequest('POST', { wrongField: 123 }, `Bearer ${jwt}`);
+    const jwt = makeJwt({ username: 'dmedaglia', userId: '1' });
+    const req = makeRequest('POST', { wrongField: 123 }, `Bearer ${jwt}`, 'S');
     const res = await POST(req);
     expect(res.status).toBe(400);
   });
 
   it('devuelve 400 si "enabled" no es boolean', async () => {
-    const jwt = makeJwt({ username: 'dmedaglia', isRoot: 'S', userId: '1' });
-    const req = makeRequest('POST', { enabled: 'yes' }, `Bearer ${jwt}`);
+    const jwt = makeJwt({ username: 'dmedaglia', userId: '1' });
+    const req = makeRequest('POST', { enabled: 'yes' }, `Bearer ${jwt}`, 'S');
     const res = await POST(req);
     expect(res.status).toBe(400);
   });
