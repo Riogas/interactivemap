@@ -569,14 +569,22 @@ function DashboardContent() {
           const removedCount = prevSnapshot.filter(m => !apiIds.has(m.id)).length;
 
           if (newApiMoviles.length === 0 && removedCount === 0) {
-            // Sin altas/bajas: solo updates de posición (camino antiguo, barato)
+            // Sin altas/bajas: updates de posición + propagación de estadoNro.
+            // El endpoint /api/all-positions devuelve `estado` (= estado_nro
+            // fresco de la tabla moviles). Sin esto, un cambio de estado
+            // (ej. 0→5 vía importer o SQL directo) no se reflejaba en el
+            // colapsable hasta el próximo enrich/F5.
             setMoviles(prevMoviles => prevMoviles.map(movil => {
               const updatedData = result.data.find((item: any) => Number(item.movilId) === movil.id);
-              return updatedData
-                ? { ...movil, currentPosition: updatedData.position }
-                : movil;
+              if (!updatedData) return movil;
+              const nextEstado = updatedData.estado;
+              return {
+                ...movil,
+                currentPosition: updatedData.position,
+                estadoNro: nextEstado != null ? nextEstado : movil.estadoNro,
+              };
             }));
-            console.log('🔄 Posiciones GPS actualizadas (sin altas/bajas de móviles)');
+            console.log('🔄 Posiciones GPS + estadoNro actualizados (sin altas/bajas)');
           } else {
             // Hay altas o bajas: reconstruir lista preservando estado existente
             // (history, pedidosAsignados, tamanoLote, etc.) y enriquecer los
@@ -1070,8 +1078,30 @@ function DashboardContent() {
       const existingMovil = prevMoviles.find(m => m.id === movilId);
 
       if (existingMovil) {
-        console.log(`ℹ️ Móvil ${movilId} ya existe, ignorando evento`);
-        return prevMoviles;
+        // El payload del realtime trae estado_nro y empresa_fletera_id frescos
+        // de la tabla moviles. Mergearlos para que un UPDATE (cambio de estado,
+        // por ejemplo 0→5) se refleje al instante en el filtro client-side
+        // del colapsable, sin esperar al próximo enrich.
+        const nextEstado = (latestMovil as any).estado_nro;
+        if (
+          nextEstado === existingMovil.estadoNro &&
+          movilEmpresaId === existingMovil.empresaFleteraId
+        ) {
+          console.log(`ℹ️ Móvil ${movilId} sin cambios relevantes, ignorando`);
+          return prevMoviles;
+        }
+        console.log(
+          `🔄 Móvil ${movilId} ya existe — mergeando estadoNro=${nextEstado}, empresa=${movilEmpresaId}`,
+        );
+        return prevMoviles.map(m =>
+          m.id === movilId
+            ? {
+                ...m,
+                estadoNro: nextEstado != null ? nextEstado : m.estadoNro,
+                empresaFleteraId: movilEmpresaId ?? m.empresaFleteraId,
+              }
+            : m,
+        );
       }
 
       // Agregar el nuevo móvil a la lista. Llevamos empresaFleteraId para que
@@ -1084,6 +1114,7 @@ function DashboardContent() {
         empresaFleteraId: movilEmpresaId,
         currentPosition: undefined, // Se actualizará con el primer GPS
         history: undefined,
+        estadoNro: (latestMovil as any).estado_nro ?? undefined,
       };
 
       console.log(`✅ Agregando móvil ${movilId} (empresa ${movilEmpresaId}) a la lista`);

@@ -176,7 +176,7 @@ describe('AC5 — contrato onMovilEvent en RealtimeProvider', () => {
 
   it('AC7 — al deregistrar (setear null), eventos posteriores no llaman al callback', () => {
     const callback = vi.fn();
-    const onMovilEventRef = { current: callback };
+    const onMovilEventRef: { current: typeof callback | null } = { current: callback };
 
     simulateOnMovilChange(onMovilEventRef); // llama
     expect(callback).toHaveBeenCalledTimes(1);
