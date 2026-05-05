@@ -57,6 +57,10 @@ interface ServicesTableModalProps {
   preFilterMovil?: number;
   preFilterZona?: number;
   hideUnassigned?: boolean;
+  /** True cuando el usuario está en modo "Todos" — todas las empresas
+   *  seleccionadas Y todos los móviles operativos seleccionados. Habilita la
+   *  visibilidad de services sin asignar y de móviles ocultos-pero-operativos. */
+  allMovilesSelected?: boolean;
   onClearPreFilter?: () => void;
   onInnerFiltersChange?: (f: Filters) => void;
   externalResetToken?: number;
@@ -85,7 +89,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, onInnerFiltersChange, externalResetToken, scope }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, onInnerFiltersChange, externalResetToken, scope }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -173,11 +177,15 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
       result = result.filter(s => {
         if (!s.movil || Number(s.movil) === 0) {
-          return !isFinalizados && filters.asignacion === 'todos' && !hideUnassigned;
+          // Sin asignar (pendientes): solo en modo "Todos" — con subset
+          // seleccionado, los sin-asignar corresponden a otra cosa.
+          return !isFinalizados && filters.asignacion === 'todos' && !hideUnassigned && allMovilesSelected;
         }
-        // Services de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
-        if (hiddenMovilIds && hiddenMovilIds.has(Number(s.movil))) return true;
-        return selectedMoviles.some(id => Number(id) === Number(s.movil));
+        // Móviles seleccionados pasan
+        if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
+        // Móviles ocultos-pero-operativos: SOLO en modo "Todos".
+        if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(s.movil))) return true;
+        return false;
       });
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción: ocultar sin asignar
@@ -200,7 +208,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles, hiddenMovilIds, scope]);
+  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, moviles, hiddenMovilIds, scope]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
   // Respetamos scope: un distribuidor solo ve sus móviles/zonas/defectos en los dropdowns.

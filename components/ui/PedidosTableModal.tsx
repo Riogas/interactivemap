@@ -62,6 +62,11 @@ interface PedidosTableModalProps {
   onClearPreFilter?: () => void;
   initialAsignacion?: 'todos' | 'con_movil' | 'sin_movil';
   hideUnassigned?: boolean;
+  /** True cuando el usuario está en modo "Todos" — todas las empresas
+   *  seleccionadas Y todos los móviles operativos seleccionados. Habilita la
+   *  visibilidad de pedidos sin asignar y de móviles ocultos-pero-operativos.
+   *  Sin esto, un subset deja pasar sin-asignar y huérfanos en el listado. */
+  allMovilesSelected?: boolean;
   onInnerFiltersChange?: (f: Filters) => void;
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
@@ -89,7 +94,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, onInnerFiltersChange, externalResetToken, scope }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, onInnerFiltersChange, externalResetToken, scope }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -211,12 +216,17 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
         if (!p.movil || Number(p.movil) === 0) {
           // Finalizados sin móvil (huérfanos, p. ej. ENTR. SIN 1710): pasan siempre.
           if (isFinalizados) return true;
-          // Pendientes sin móvil: solo pasan en asignacion='todos' sin restricción.
-          return filters.asignacion === 'todos' && !hideUnassigned;
+          // Pendientes sin móvil: solo en modo "Todos" — si el usuario tiene
+          // un subset, los sin-asignar corresponden a otra cosa y no aplican.
+          return filters.asignacion === 'todos' && !hideUnassigned && allMovilesSelected;
         }
-        // Pedidos de móviles ocultos-pero-operativos pasan aunque no estén seleccionados
-        if (hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
-        return selectedMoviles.some(id => Number(id) === Number(p.movil));
+        // Móviles seleccionados pasan
+        if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
+        // Móviles ocultos-pero-operativos: SOLO en modo "Todos". Con subset
+        // seleccionado, no pasan — corresponden a un segmento que el usuario
+        // no eligió ver.
+        if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
+        return false;
       });
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción: ocultar sin asignar
@@ -239,7 +249,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, moviles, hiddenMovilIds, scope]);
+  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, moviles, hiddenMovilIds, scope]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
