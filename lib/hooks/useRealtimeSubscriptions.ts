@@ -10,44 +10,6 @@ import type {
   EmpresaFleteraSupabase
 } from '@/types';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { sendAuditBatch } from '@/lib/audit-client';
-
-/**
- * Registra un cambio de estado de un canal Realtime en el audit_log.
- * Se llama desde el callback del .subscribe() de cada hook.
- *
- * Mapeo de status de Supabase → event_type semántico del audit:
- *   SUBSCRIBED    → connected
- *   CLOSED        → disconnected
- *   CHANNEL_ERROR → error
- *   TIMED_OUT     → timeout
- */
-function logRealtimeStatus(
-  channelName: string,
-  tableName: string,
-  status: string,
-  extra?: Record<string, unknown>,
-) {
-  const semantic =
-    status === 'SUBSCRIBED' ? 'connected'
-    : status === 'CLOSED' ? 'disconnected'
-    : status === 'CHANNEL_ERROR' ? 'error'
-    : status === 'TIMED_OUT' ? 'timeout'
-    : status;
-
-  sendAuditBatch([{
-    event_type: 'realtime',
-    endpoint: `realtime://${tableName}`,
-    error: semantic === 'error' || semantic === 'timeout' ? status : undefined,
-    extra: {
-      channel: channelName,
-      table: tableName,
-      status,
-      semantic,
-      ...extra,
-    },
-  }]);
-}
 
 // Activar solo en desarrollo para no serializar objetos en cada update de GPS
 const DEBUG_REALTIME = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
@@ -88,14 +50,16 @@ export function useGPSTracking(
     const RETRY_DELAY = 5000;
 
     const setupChannel = () => {
-      // Limpiar canal anterior si existe
+      // Limpiar canal anterior si existe — unsubscribe primero para que el
+      // phx_leave llegue al server antes de cerrar el socket, liberando el slot
+      // del tenant (max_channels_per_client) sin tener que esperar al timeout.
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
         channel = null;
       }
 
-      // Crear canal único con timestamp para evitar conflictos
-      const channelName = `gps-latest-${escenarioId}-${Date.now()}`;
+      const channelName = `gps-latest-${escenarioId}`;
 
       // Crear canal de Realtime — suscrito a gps_latest_positions (1 fila por móvil)
       // Los eventos INSERT ocurren cuando un móvil aparece por primera vez
@@ -166,7 +130,6 @@ export function useGPSTracking(
           if (!isComponentMounted) return;
 
           dbg('📡 GPS status:', status);
-          logRealtimeStatus(channelName, 'gps_latest_positions', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -213,6 +176,7 @@ export function useGPSTracking(
       }
 
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
       }
     };
@@ -253,11 +217,12 @@ export function useMoviles(
 
     const setupChannel = () => {
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
         channel = null;
       }
 
-      const channelName = `moviles-changes-${escenarioId}-${Date.now()}`;
+      const channelName = `moviles-changes-${escenarioId}`;
 
       channel = supabase
         .channel(channelName, {
@@ -300,7 +265,6 @@ export function useMoviles(
         .subscribe((status) => {
           if (!isComponentMounted) return;
           dbg('📡 Moviles status:', status);
-          logRealtimeStatus(channelName, 'moviles', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -336,7 +300,10 @@ export function useMoviles(
     return () => {
       isComponentMounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        channel.unsubscribe();
+        supabase.removeChannel(channel);
+      }
     };
   }, [escenarioId, empresaIds?.join(',')]);
 
@@ -397,11 +364,11 @@ export function usePedidos(
       )
       .subscribe((status) => {
         dbg('📡 Pedidos status:', status);
-        logRealtimeStatus('pedidos-changes', 'pedidos', status, { escenarioId, movilId });
         setIsConnected(status === 'SUBSCRIBED');
       });
 
     return () => {
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [escenarioId, movilId]);
@@ -453,11 +420,11 @@ export function useEmpresasFleteras(
       )
       .subscribe((status) => {
         console.log('📡 Estado de suscripción empresas:', status);
-        logRealtimeStatus('empresas-changes', 'empresas_fleteras', status, { escenarioId });
         setIsConnected(status === 'SUBSCRIBED');
       });
 
     return () => {
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [escenarioId]);
@@ -496,11 +463,12 @@ export function usePedidosRealtime(
 
     const setupChannel = () => {
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
         channel = null;
       }
 
-      const channelName = `pedidos-realtime-${escenarioId}-${Date.now()}`;
+      const channelName = `pedidos-realtime-${escenarioId}`;
 
       channel = supabase
         .channel(channelName, {
@@ -578,7 +546,6 @@ export function usePedidosRealtime(
         )
         .subscribe((status) => {
           if (!isComponentMounted) return;
-          logRealtimeStatus(channelName, 'pedidos', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -616,7 +583,10 @@ export function usePedidosRealtime(
     return () => {
       isComponentMounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        channel.unsubscribe();
+        supabase.removeChannel(channel);
+      }
     };
   }, [escenarioId, movilIds?.join(',')]); // Recrear si cambian los móviles
 
@@ -656,10 +626,11 @@ export function useServicesRealtime(
 
     const setupChannel = () => {
       if (channel) {
+        channel.unsubscribe();
         supabase.removeChannel(channel);
         channel = null;
       }
-      const channelName = `services-realtime-${escenarioId}-${Date.now()}`;
+      const channelName = `services-realtime-${escenarioId}`;
 
       channel = supabase
         .channel(channelName, {
@@ -734,7 +705,6 @@ export function useServicesRealtime(
         )
         .subscribe((status) => {
           if (!isComponentMounted) return;
-          logRealtimeStatus(channelName, 'services', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -768,7 +738,10 @@ export function useServicesRealtime(
     return () => {
       isComponentMounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        channel.unsubscribe();
+        supabase.removeChannel(channel);
+      }
     };
   }, [escenarioId, movilIds?.join(',')]);
 

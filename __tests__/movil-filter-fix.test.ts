@@ -75,7 +75,10 @@ function filterServicesByMovil(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Réplica exacta de allSelected (MovilSelector.tsx:293 post-fix)
+// Réplica de allSelected (MovilSelector.tsx) — alcance COLAPSABLE.
+// Se usa para el botón "Seleccionar/Deseleccionar todos" del panel.
+// Compara contra filteredMoviles (visibles en el colapsable después de search
+// + filtros locales).
 // ─────────────────────────────────────────────────────────────────────────────
 
 function computeAllSelected(
@@ -83,6 +86,25 @@ function computeAllSelected(
   selectedMoviles: number[]
 ): boolean {
   return filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Réplica de allMovilesSelected (MovilSelector.tsx) — alcance HEADER BADGE.
+// Compara contra TODOS los móviles operativos (prop `moviles`, ya filtrada
+// por scope/empresa desde el dashboard, excluyendo ocultos). NO aplica search
+// local. Si filtrás a 1 móvil por search y lo seleccionás, el badge muestra
+// el ID en vez de "Todos".
+// ─────────────────────────────────────────────────────────────────────────────
+
+function computeAllMovilesSelected(
+  moviles: MinMovil[],
+  selectedMoviles: number[],
+  hiddenMovilIds?: Set<number>
+): boolean {
+  const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
+    ? moviles.filter(m => !hiddenMovilIds.has(m.id))
+    : moviles;
+  return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,19 +293,12 @@ describe('AC3/AC6 - badge "Todos" con filteredMoviles', () => {
     expect(computeBadgeLabel(allSelected, selectedMoviles)).toBe('Móviles: Todos');
   });
 
-  it('300 móviles en DB pero solo 80 en colapsable — bug original: antes comparaba contra 300', () => {
-    // Antes del fix: allMovilesSelected = selectedMoviles.length === moviles.length (300)
-    // Con 80 seleccionados: 80 !== 300 → false → badge mostraba IDs.
-    // Post-fix: allSelected usa filteredMoviles (80/80) → true → badge "Todos".
+  it('todos los visibles del colapsable seleccionados → allSelected=true (botón "Deseleccionar Todos")', () => {
+    // Este test cubre el botón del colapsable (alcance "filteredMoviles").
+    // El badge del header tiene OTRA lógica — ver describe AC7 más abajo.
     const filteredMoviles: MinMovil[] = Array.from({ length: 80 }, (_, i) => ({ id: i + 1 }));
     const selectedMoviles = filteredMoviles.map(m => m.id);
-    // Simula la comparación INCORRECTA pre-fix (contra 300):
-    const allSelectedBuggy = selectedMoviles.length === 300; // false
-    // Simula la comparación CORRECTA post-fix (contra filteredMoviles):
-    const allSelectedFixed = computeAllSelected(filteredMoviles, selectedMoviles); // true
-    expect(allSelectedBuggy).toBe(false);
-    expect(allSelectedFixed).toBe(true);
-    expect(computeBadgeLabel(allSelectedFixed, selectedMoviles)).toBe('Móviles: Todos');
+    expect(computeAllSelected(filteredMoviles, selectedMoviles)).toBe(true);
   });
 
   it('solo algunos móviles del colapsable seleccionados → allSelected=false', () => {
@@ -397,6 +412,63 @@ describe('EC5 - deselect all: sin móviles seleccionados = vista sin filtro', ()
     const allSelected = computeAllSelected([{ id: 106 }], []);
     expect(allSelected).toBe(false);
     expect(computeBadgeLabel(false, [])).toBe('Móviles: Ninguno');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AC7 — badge del header usa allMovilesSelected (universo operativo, no
+// filteredMoviles). Bug reportado: deseleccionar todo, filtrar 1 móvil por
+// search y seleccionarlo hacía que el badge dijera "Todos" cuando debería
+// decir el ID del móvil seleccionado.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AC7 - badge usa universo operativo (no filteredMoviles)', () => {
+  it('search filtra a 1 móvil de 80, ese 1 seleccionado → badge muestra ID, NO "Todos"', () => {
+    const moviles: MinMovil[] = Array.from({ length: 80 }, (_, i) => ({ id: i + 1 }));
+    const selectedMoviles = [42]; // solo el móvil 42 seleccionado
+    const allMovilesSelected = computeAllMovilesSelected(moviles, selectedMoviles);
+    expect(allMovilesSelected).toBe(false);
+    expect(computeBadgeLabel(allMovilesSelected, selectedMoviles)).toBe('42');
+  });
+
+  it('los 80 móviles operativos seleccionados → badge "Todos"', () => {
+    const moviles: MinMovil[] = Array.from({ length: 80 }, (_, i) => ({ id: i + 1 }));
+    const selectedMoviles = moviles.map(m => m.id);
+    const allMovilesSelected = computeAllMovilesSelected(moviles, selectedMoviles);
+    expect(allMovilesSelected).toBe(true);
+    expect(computeBadgeLabel(allMovilesSelected, selectedMoviles)).toBe('Móviles: Todos');
+  });
+
+  it('80 visibles pero solo 1 seleccionado → badge muestra ID (caso del bug reportado)', () => {
+    const moviles: MinMovil[] = Array.from({ length: 80 }, (_, i) => ({ id: i + 1 }));
+    const selectedMoviles = [1];
+    const allMovilesSelected = computeAllMovilesSelected(moviles, selectedMoviles);
+    expect(allMovilesSelected).toBe(false);
+    expect(computeBadgeLabel(allMovilesSelected, selectedMoviles)).toBe('1');
+  });
+
+  it('hiddenMovilIds excluidos del cálculo del badge', () => {
+    // 80 móviles totales, 5 ocultos-pero-operativos. selectedMoviles cubre los 75
+    // visibles → debe ser allMovilesSelected=true (los hidden no cuentan).
+    const moviles: MinMovil[] = Array.from({ length: 80 }, (_, i) => ({ id: i + 1 }));
+    const hiddenMovilIds = new Set<number>([76, 77, 78, 79, 80]);
+    const selectedMoviles = moviles.filter(m => !hiddenMovilIds.has(m.id)).map(m => m.id);
+    const allMovilesSelected = computeAllMovilesSelected(moviles, selectedMoviles, hiddenMovilIds);
+    expect(allMovilesSelected).toBe(true);
+  });
+
+  it('moviles vacío → allMovilesSelected=false (no hay nada que llamar "Todos")', () => {
+    expect(computeAllMovilesSelected([], [])).toBe(false);
+    expect(computeAllMovilesSelected([], [106])).toBe(false);
+  });
+
+  it('selectedMoviles incluye IDs huérfanos que no están en moviles → no afecta', () => {
+    // Un ID seleccionado que ya no existe en moviles (móvil dado de baja).
+    // El badge debe basarse solo en si todos los moviles actuales están seleccionados.
+    const moviles: MinMovil[] = [{ id: 1 }, { id: 2 }];
+    const selectedMoviles = [1, 2, 99]; // 99 ya no existe
+    const allMovilesSelected = computeAllMovilesSelected(moviles, selectedMoviles);
+    expect(allMovilesSelected).toBe(true);
   });
 });
 
