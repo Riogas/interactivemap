@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { PROXY_BASE_URL } from './config';
+import { authStorage } from '@/lib/auth-storage';
 
 // URL base de la API - Ahora usa el proxy de Next.js para evitar CORS
 const API_BASE_URL = PROXY_BASE_URL;
@@ -56,7 +57,7 @@ const apiClient: AxiosInstance = axios.create({
 // Interceptor para agregar el token a las peticiones si existe
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('trackmovil_token');
+    const token = authStorage.getItem('trackmovil_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -73,8 +74,8 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Token expirado o inválido
-      localStorage.removeItem('trackmovil_token');
-      localStorage.removeItem('trackmovil_user');
+      authStorage.removeItem('trackmovil_token');
+      authStorage.removeItem('trackmovil_user');
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -114,8 +115,8 @@ export const authService = {
       // Solo guardar si hay usuario válido
       if (parsedResponse.user && parsedResponse.user.id && parsedResponse.user.username) {
         // Guardar token y datos de usuario en localStorage
-        localStorage.setItem('trackmovil_token', parsedResponse.token);
-        localStorage.setItem('trackmovil_user', JSON.stringify(parsedResponse.user));
+        authStorage.setItem('trackmovil_token', parsedResponse.token);
+        authStorage.setItem('trackmovil_user', JSON.stringify(parsedResponse.user));
       } else {
         // Si no hay usuario, no guardar nada
         console.warn('⚠️ Login success=true pero sin datos de usuario. Considerando como login inválido.');
@@ -137,15 +138,15 @@ export const authService = {
    * Logout de usuario
    */
   logout: () => {
-    localStorage.removeItem('trackmovil_token');
-    localStorage.removeItem('trackmovil_user');
+    authStorage.removeItem('trackmovil_token');
+    authStorage.removeItem('trackmovil_user');
   },
 
   /**
    * Obtener usuario actual del localStorage
    */
   getCurrentUser: (): ParsedLoginResponse['user'] | null => {
-    const userJson = localStorage.getItem('trackmovil_user');
+    const userJson = authStorage.getItem('trackmovil_user');
     if (!userJson) return null;
     
     try {
@@ -159,14 +160,14 @@ export const authService = {
    * Obtener token actual del localStorage
    */
   getToken: (): string | null => {
-    return localStorage.getItem('trackmovil_token');
+    return authStorage.getItem('trackmovil_token');
   },
 
   /**
    * Verificar si el usuario está autenticado
    */
   isAuthenticated: (): boolean => {
-    return !!localStorage.getItem('trackmovil_token');
+    return !!authStorage.getItem('trackmovil_token');
   },
 };
 
