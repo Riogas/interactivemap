@@ -196,6 +196,16 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
         if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(s.movil))) return true;
         return false;
       });
+    } else if (
+      selectedMoviles.length === 0 &&
+      privilegedUser &&
+      !hideUnassigned &&
+      filters.asignacion === 'todos' &&
+      !isFinalizados
+    ) {
+      // Privilegiado SIN móviles seleccionados, empresas completas, vista
+      // pendientes: mostramos exclusivamente services sin móvil.
+      result = result.filter(s => !s.movil || Number(s.movil) === 0);
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción: ocultar sin asignar
       // y restringir a móviles del usuario. Incluir los IDs ocultos-pero-operativos

@@ -374,6 +374,11 @@ export default function MovilSelector({
         if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
+    } else if (privilegedUser && !isPartialEmpresa) {
+      // Privilegiado SIN móviles seleccionados (handleClearAll) y empresas
+      // completas: vista "solo sin asignar". Mostramos exclusivamente pedidos
+      // sin móvil — los asignados quedan ocultos hasta que el usuario seleccione.
+      result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
     } else if (isPartialEmpresa && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
       // y también los pedidos (incl. entregados) que NO pertenezcan a los
@@ -502,6 +507,10 @@ export default function MovilSelector({
         if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
+    } else if (privilegedUser && !isPartialEmpresaSvc) {
+      // Privilegiado SIN móviles seleccionados y empresas completas: vista
+      // "solo sin asignar". Mostramos exclusivamente services sin móvil.
+      result = result.filter(service => !service.movil || Number(service.movil) === 0);
     } else if (isPartialEmpresaSvc && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: restringir también a los
       // services (incl. finalizados) cuyos móviles estén dentro del set del user.

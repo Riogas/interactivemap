@@ -624,17 +624,22 @@ interface MapFilterCtx {
   allMovilesSelected: boolean;
 }
 
-function passesMapFilterPedido(p: MinPedido, ctx: MapFilterCtx): boolean {
+function passesMapFilterPedido(p: MinPedido, ctx: MapFilterCtx & { isPrivilegedUser?: boolean }): boolean {
   const targetEstado = ctx.isPendientes ? 1 : 2;
   if (Number(p.estado_nro) !== targetEstado) return false;
+  const isPrivilegedUser = ctx.isPrivilegedUser ?? false;
   if (!p.movil || Number(p.movil) === 0) {
-    return ctx.isPendientes && !ctx.isEmpresaPartial && ctx.allMovilesSelected;
+    if (!ctx.isPendientes || ctx.isEmpresaPartial) return false;
+    if (ctx.allMovilesSelected) return true;
+    if (ctx.selectedMoviles.length === 0 && isPrivilegedUser) return true;
+    return false;
   }
   if (ctx.selectedMoviles.length > 0) {
     if (ctx.selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
     if (ctx.allMovilesSelected && ctx.hiddenMovilIds.has(Number(p.movil))) return true;
     return false;
   }
+  if (isPrivilegedUser) return false;
   if (ctx.isEmpresaPartial) {
     return ctx.validMovilIds.has(Number(p.movil));
   }
@@ -860,6 +865,83 @@ describe('AC10 - vista finalizados sin móvil: solo "Todos" + privilegiado', () 
       filtersAsignacion: 'todos',
       hideUnassigned: false,
     }))).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AC11 — vista "solo sin asignar" para privilegiados con selectedMoviles=[].
+// Comportamiento solicitado:
+//   - selectedMoviles=[] + privilegiado + empresas completas → solo sin-asignar
+//   - selectedMoviles=[N moviles] (subset) → solo de esos moviles
+//   - selectedMoviles=all (allMovilesSelected) → todo (asignados + sin-asignar)
+//   - distribuidor: comportamiento legacy (sin sin-asignar)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AC11 - vista "solo sin asignar" para privilegiados (selectedMoviles=[])', () => {
+  const baseCtx = (overrides: Partial<MapFilterCtx & { isPrivilegedUser: boolean }>) => ({
+    isPendientes: true,
+    isEmpresaPartial: false,
+    validMovilIds: new Set<number>(),
+    selectedMoviles: [] as number[],
+    hiddenMovilIds: new Set<number>(),
+    allMovilesSelected: false,
+    isPrivilegedUser: false,
+    ...overrides,
+  });
+
+  const pedidoSinMovil: MinPedido = { id: 1, movil: null, estado_nro: 1 };
+  const pedidoConMovil: MinPedido = { id: 2, movil: 106, estado_nro: 1 };
+
+  it('selectedMoviles=[] + privilegiado: pasa el sin-asignar', () => {
+    expect(passesMapFilterPedido(pedidoSinMovil, baseCtx({ isPrivilegedUser: true }))).toBe(true);
+  });
+
+  it('selectedMoviles=[] + privilegiado: NO pasa los con móvil', () => {
+    expect(passesMapFilterPedido(pedidoConMovil, baseCtx({ isPrivilegedUser: true }))).toBe(false);
+  });
+
+  it('selectedMoviles=[] + distribuidor (no privilegiado): NO pasa sin-asignar', () => {
+    expect(passesMapFilterPedido(pedidoSinMovil, baseCtx({ isPrivilegedUser: false }))).toBe(false);
+  });
+
+  it('subset (selectedMoviles>0) + privilegiado: NO pasa sin-asignar (no es modo Todos)', () => {
+    expect(passesMapFilterPedido(pedidoSinMovil, baseCtx({
+      selectedMoviles: [106],
+      isPrivilegedUser: true,
+      allMovilesSelected: false,
+    }))).toBe(false);
+  });
+
+  it('subset + privilegiado: pasa el del móvil seleccionado', () => {
+    expect(passesMapFilterPedido(pedidoConMovil, baseCtx({
+      selectedMoviles: [106],
+      isPrivilegedUser: true,
+    }))).toBe(true);
+  });
+
+  it('"Todos" (allMovilesSelected) + privilegiado: pasa AMBOS — sin-asignar y con-móvil', () => {
+    const ctxTodos = baseCtx({
+      selectedMoviles: [106, 252],
+      allMovilesSelected: true,
+      isPrivilegedUser: true,
+    });
+    expect(passesMapFilterPedido(pedidoSinMovil, ctxTodos)).toBe(true);
+    expect(passesMapFilterPedido(pedidoConMovil, ctxTodos)).toBe(true);
+  });
+
+  it('selectedMoviles=[] + privilegiado + vista finalizados: NO pasa sin-asignar (regla de pendientes)', () => {
+    const finalizadoSinMovil: MinPedido = { id: 1, movil: null, estado_nro: 2 };
+    expect(passesMapFilterPedido(finalizadoSinMovil, baseCtx({
+      isPendientes: false,
+      isPrivilegedUser: true,
+    }))).toBe(false);
+  });
+
+  it('selectedMoviles=[] + privilegiado + empresa parcial: NO pasa sin-asignar', () => {
+    expect(passesMapFilterPedido(pedidoSinMovil, baseCtx({
+      isPrivilegedUser: true,
+      isEmpresaPartial: true,
+    }))).toBe(false);
   });
 });
 

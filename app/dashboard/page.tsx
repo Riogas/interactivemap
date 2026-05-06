@@ -2746,13 +2746,16 @@ function DashboardContent() {
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = pedidosCompletos.filter(p => {
                     if (Number(p.estado_nro) !== targetEstado) return false;
-                    // Sin asignar: solo cuando estamos en modo "Todos" — todas las
-                    // empresas + todos los moviles operativos seleccionados — y la
-                    // vista es pendientes y no hay empresa parcial. En subset
-                    // (selectedMoviles parcial) NO aparecen — corresponderian a
-                    // móviles fuera del filtro del usuario.
+                    // Sin asignar (movil null/0): pasa en 2 escenarios distintos:
+                    //   (a) modo "Todos" — todas empresas + todos moviles seleccionados,
+                    //       vista pendientes y empresas completas;
+                    //   (b) vista "solo sin asignar" — privilegiado con
+                    //       selectedMoviles=[] (handleClearAll) y empresas completas.
                     if (!p.movil || Number(p.movil) === 0) {
-                      return isPendientes && !isEmpresaPartial && allMovilesSelected;
+                      if (!isPendientes || isEmpresaPartial) return false;
+                      if (allMovilesSelected) return true;
+                      if (selectedMoviles.length === 0 && isPrivilegedUser) return true;
+                      return false;
                     }
                     if (selectedMoviles.length > 0) {
                       // Subset de móviles: solo pasan los explicitamente
@@ -2763,6 +2766,9 @@ function DashboardContent() {
                       if (allMovilesSelected && hiddenMovilIds.has(Number(p.movil))) return true;
                       return false;
                     }
+                    // selectedMoviles = []: privilegiado solo ve sin-asignar
+                    // (manejado arriba). Aquí los pedidos CON móvil no pasan.
+                    if (isPrivilegedUser) return false;
                     if (isEmpresaPartial) {
                       return validMovilIds.has(Number(p.movil));
                     }
@@ -2796,11 +2802,15 @@ function DashboardContent() {
                   const targetEstado = isPendientes ? 1 : 2;
                   let base = servicesCompletos.filter(s => {
                     if (Number(s.estado_nro) !== targetEstado) return false;
-                    // Sin asignar: solo en modo "Todos" (todas empresas + todos
-                    // moviles seleccionados) y vista pendientes. Mismo criterio
-                    // que el colapsable y el filtro de pedidos.
+                    // Sin asignar: pasa en 2 escenarios distintos:
+                    //   (a) modo "Todos" (todas empresas + todos moviles seleccionados);
+                    //   (b) vista "solo sin asignar" — privilegiado con selectedMoviles=[]
+                    //       (handleClearAll) y empresas completas.
                     if (!s.movil || Number(s.movil) === 0) {
-                      return isPendientes && !isEmpresaPartial && allMovilesSelected;
+                      if (!isPendientes || isEmpresaPartial) return false;
+                      if (allMovilesSelected) return true;
+                      if (selectedMoviles.length === 0 && isPrivilegedUser) return true;
+                      return false;
                     }
                     if (selectedMoviles.length > 0) {
                       // Subset: solo pasan los seleccionados. Los de móviles
@@ -2809,6 +2819,8 @@ function DashboardContent() {
                       if (allMovilesSelected && hiddenMovilIds.has(Number(s.movil))) return true;
                       return false;
                     }
+                    // selectedMoviles = []: privilegiado solo ve sin-asignar.
+                    if (isPrivilegedUser) return false;
                     if (isEmpresaPartial) {
                       return validMovilIds.has(Number(s.movil));
                     }
