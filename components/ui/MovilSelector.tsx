@@ -295,8 +295,10 @@ export default function MovilSelector({
               return capacidadRestante > 0;
             
             case 'sin_capacidad':
-              // Móviles sin capacidad (0% disponible)
-              return capacidadRestante === 0;
+              // Móviles sin capacidad: lote completo (4/4) o sobrepasado (6/4).
+              // Mismo criterio que loteCompleto en el item del colapsable y el
+              // color negro del marker en el mapa.
+              return (movil.tamanoLote ?? 0) > 0 && (movil.pedidosAsignados ?? 0) >= (movil.tamanoLote ?? 0);
             
             default:
               return true;
