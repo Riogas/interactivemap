@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { authStorage } from '@/lib/auth-storage';
 import * as XLSX from 'xlsx';
 
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'star';
@@ -137,9 +138,9 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
       let token = '';
       let isRootHeader = 'N';
       if (typeof window !== 'undefined') {
-        token = localStorage.getItem('trackmovil_token') ?? '';
+        token = authStorage.getItem('trackmovil_token') ?? '';
         try {
-          const raw = localStorage.getItem('trackmovil_user');
+          const raw = authStorage.getItem('trackmovil_user');
           if (raw) {
             const u = JSON.parse(raw) as { isRoot?: string };
             isRootHeader = u.isRoot ?? 'N';

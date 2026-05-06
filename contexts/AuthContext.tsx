@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authService, ParsedLoginResponse } from '@/lib/api/auth';
+import { authStorage } from '@/lib/auth-storage';
 
 interface User {
   id: string;
@@ -139,11 +140,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /** Limpiar sesión expirada de localStorage */
   const clearExpiredSession = () => {
     console.log('⏰ Sesión expirada (>8h) — cerrando sesión automáticamente');
-    localStorage.removeItem('trackmovil_user');
-    localStorage.removeItem('trackmovil_token');
-    localStorage.removeItem('trackmovil_allowed_empresas');
-    localStorage.removeItem('trackmovil_allowed_escenarios');
-    localStorage.removeItem('trackmovil_permisos');
+    authStorage.removeItem('trackmovil_user');
+    authStorage.removeItem('trackmovil_token');
+    authStorage.removeItem('trackmovil_allowed_empresas');
+    authStorage.removeItem('trackmovil_allowed_escenarios');
+    authStorage.removeItem('trackmovil_permisos');
     setUser(null);
     setPermisos(new Set());
   };
@@ -165,8 +166,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Cargar sesión desde localStorage al iniciar
   useEffect(() => {
-    const savedUser = localStorage.getItem('trackmovil_user');
-    const savedToken = localStorage.getItem('trackmovil_token');
+    const savedUser = authStorage.getItem('trackmovil_user');
+    const savedToken = authStorage.getItem('trackmovil_token');
     
     if (savedUser && savedToken) {
       try {
@@ -190,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         
         // Cargar empresas permitidas desde localStorage
-        const savedEmpresas = localStorage.getItem('trackmovil_allowed_empresas');
+        const savedEmpresas = authStorage.getItem('trackmovil_allowed_empresas');
         let allowedEmpresas: number[] | null = null;
         if (savedEmpresas) {
           try {
@@ -201,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Cargar escenarios permitidos desde localStorage
-        const savedEscenarios = localStorage.getItem('trackmovil_allowed_escenarios');
+        const savedEscenarios = authStorage.getItem('trackmovil_allowed_escenarios');
         let allowedEscenarios: number[] | null = null;
         if (savedEscenarios) {
           try {
@@ -212,11 +213,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Cargar escenario persistido
-        const savedEscenario = localStorage.getItem('trackmovil_escenario_id');
+        const savedEscenario = authStorage.getItem('trackmovil_escenario_id');
         if (savedEscenario) setEscenarioId(parseInt(savedEscenario, 10));
 
         // Cargar permisos persistidos
-        const savedPermisos = localStorage.getItem('trackmovil_permisos');
+        const savedPermisos = authStorage.getItem('trackmovil_permisos');
         if (savedPermisos) {
           try {
             const arr: string[] = JSON.parse(savedPermisos);
@@ -235,8 +236,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.error('Error al cargar sesión, limpiando localStorage:', e);
         // Limpiar datos corruptos
-        localStorage.removeItem('trackmovil_user');
-        localStorage.removeItem('trackmovil_token');
+        authStorage.removeItem('trackmovil_user');
+        authStorage.removeItem('trackmovil_token');
       }
     }
     setIsLoading(false);
@@ -295,8 +296,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ? '👑 Usuario root - acceso a todas las empresas y escenarios'
               : '🚪 Rol Despacho - acceso completo (mismo trato que root)',
           );
-          localStorage.removeItem('trackmovil_allowed_empresas');
-          localStorage.removeItem('trackmovil_allowed_escenarios');
+          authStorage.removeItem('trackmovil_allowed_empresas');
+          authStorage.removeItem('trackmovil_allowed_escenarios');
         } else {
           // Validar escenarios: debe tener al menos uno y el del login debe matchear
           if (escenarios.length === 0) {
@@ -319,8 +320,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           allowedEmpresas = empFleteras.map((e) => e.valor);
           console.log(`✅ Empresas permitidas: ${allowedEmpresas.join(', ') || '(ninguna)'}`);
           console.log(`✅ Escenarios permitidos: ${allowedEscenarios.join(', ')}`);
-          localStorage.setItem('trackmovil_allowed_empresas', JSON.stringify(allowedEmpresas));
-          localStorage.setItem('trackmovil_allowed_escenarios', JSON.stringify(allowedEscenarios));
+          authStorage.setItem('trackmovil_allowed_empresas', JSON.stringify(allowedEmpresas));
+          authStorage.setItem('trackmovil_allowed_escenarios', JSON.stringify(allowedEscenarios));
         }
 
         // Mapear roles del shape nuevo (rolId, rolNombre, aplicacionId, funcionalidades)
@@ -346,14 +347,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
 
         // Guardar en localStorage el newUser completo (incluye loginTime para validar expiración en F5)
-        localStorage.setItem('trackmovil_user', JSON.stringify(newUser));
-        localStorage.setItem('trackmovil_token', newUser.token);
-        localStorage.setItem('trackmovil_escenario_id', String(selectedEscenarioId));
+        authStorage.setItem('trackmovil_user', JSON.stringify(newUser));
+        authStorage.setItem('trackmovil_token', newUser.token);
+        authStorage.setItem('trackmovil_escenario_id', String(selectedEscenarioId));
 
         // Cargar permisos del Security Suite
         const grantedPermisos = await fetchPermisos(newUser.token);
         setPermisos(grantedPermisos);
-        localStorage.setItem('trackmovil_permisos', JSON.stringify([...grantedPermisos]));
+        authStorage.setItem('trackmovil_permisos', JSON.stringify([...grantedPermisos]));
 
         setUser(newUser);
         setEscenarioId(selectedEscenarioId);
@@ -397,10 +398,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setPermisos(new Set());
     authService.logout();
-    localStorage.removeItem('trackmovil_allowed_empresas');
-    localStorage.removeItem('trackmovil_allowed_escenarios');
-    localStorage.removeItem('trackmovil_escenario_id');
-    localStorage.removeItem('trackmovil_permisos');
+    authStorage.removeItem('trackmovil_allowed_empresas');
+    authStorage.removeItem('trackmovil_allowed_escenarios');
+    authStorage.removeItem('trackmovil_escenario_id');
+    authStorage.removeItem('trackmovil_permisos');
     // Limpiar fecha seleccionada de sessionStorage — al relogi debe arrancar en hoy.
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('trackmovil:selectedDate');

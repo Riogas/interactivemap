@@ -143,7 +143,8 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
 
         // Verde activa, rojo inactiva, gris sin dato
         const fillColor = activa === true ? '#22c55e' : activa === false ? '#ef4444' : '#9ca3af';
-        const borderColor = activa === true ? '#16a34a' : activa === false ? '#dc2626' : '#6b7280';
+        // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
+        const borderColor = '#000000';
 
         return (
           <Polygon

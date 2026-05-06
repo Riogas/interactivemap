@@ -36,7 +36,10 @@ interface TrackUserBlob {
 function readLocalUser(): TrackUserBlob {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = localStorage.getItem('trackmovil_user');
+    // sessionStorage primero (sesión activa); fallback a localStorage por
+    // migración suave de sesiones pre-deploy.
+    const raw = window.sessionStorage.getItem('trackmovil_user')
+      ?? window.localStorage.getItem('trackmovil_user');
     if (!raw) return {};
     const parsed = JSON.parse(raw) as TrackUserBlob;
     return { id: parsed.id, username: parsed.username };

@@ -265,7 +265,8 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
           <Polygon
             positions={positions}
             pathOptions={{
-              color,
+              // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
+              color: '#000000',
               fillColor: color,
               fillOpacity: adjustOpacity(fillOpacity, zonaOpacity),
               weight: 2,

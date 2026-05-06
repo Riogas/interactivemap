@@ -230,7 +230,9 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
           <Polygon
             positions={positions}
             pathOptions={{
-              color: isDotted ? '#94a3b8' : fillColor,
+              // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
+              // Las zonas isDotted conservan el dashArray para diferenciar.
+              color: '#000000',
               fillColor: fillColor,
               fillOpacity: adjustOpacity(fillOpacity, zonaOpacity),
               weight: isDotted ? 2 : 2,

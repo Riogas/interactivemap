@@ -8,6 +8,7 @@ import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { filterPuntosInteresByScope } from '@/lib/puntos-interes-scope';
 import { isRoot, isDespacho, getScopedEmpresas } from '@/lib/auth-scope';
+import { authStorage } from '@/lib/auth-storage';
 import { MarkerShape } from '@/components/ui/PreferencesModal';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
@@ -692,7 +693,7 @@ const MapView = memo(function MapView({
   useEffect(() => {
     const loadMarkers = async () => {
       // Obtener email del usuario desde localStorage (trackmovil_user)
-      const userStr = localStorage.getItem('trackmovil_user');
+      const userStr = authStorage.getItem('trackmovil_user');
       if (!userStr) {
         console.warn('⚠️ No hay usuario logueado, cargando desde localStorage');
         const savedMarkers = localStorage.getItem('customMarkers');
@@ -820,7 +821,7 @@ const MapView = memo(function MapView({
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
-      const userStr = localStorage.getItem('trackmovil_user');
+      const userStr = authStorage.getItem('trackmovil_user');
       let usuario_email = 'anonimo@trackmovil.com'; // Default
 
       if (userStr) {
@@ -895,7 +896,7 @@ const MapView = memo(function MapView({
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
-      const userStr = localStorage.getItem('trackmovil_user');
+      const userStr = authStorage.getItem('trackmovil_user');
       let usuario_email = 'anonimo@trackmovil.com';
 
       if (userStr) {
@@ -940,7 +941,7 @@ const MapView = memo(function MapView({
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
-      const userStr = localStorage.getItem('trackmovil_user');
+      const userStr = authStorage.getItem('trackmovil_user');
       let usuario_email = 'anonimo@trackmovil.com';
 
       if (userStr) {
