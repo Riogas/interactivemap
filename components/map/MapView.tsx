@@ -1175,24 +1175,26 @@ const MapView = memo(function MapView({
       return '#8B5CF6'; // Violeta (BAJA MOMENTÁNEA)
     }
 
-    const tamanoLote = movil.tamanoLote || 6;
-    const pedidosAsignados = movil.pedidosAsignados || 0;
-    
-    // Calcular capacidad restante
-    const capacidadRestante = tamanoLote - pedidosAsignados;
-    const porcentajeDisponible = (capacidadRestante / tamanoLote) * 100;
-    
-    // Determinar color según reglas:
-    // Negro - Capacidad = 0 (lote completo)
-    if (capacidadRestante === 0) {
+    // Lote completo o SOBREPASADO (ej. 6/4): negro. Mismo criterio que el
+    // colapsable (MovilSelector.loteCompleto): tamanoLote definido > 0 y
+    // pedidosAsignados >= tamanoLote. El check anterior (capacidadRestante === 0)
+    // fallaba con valores negativos y dejaba pasar al amarillo.
+    const tamanoLoteReal = movil.tamanoLote ?? 0;
+    const pedidosAsignados = movil.pedidosAsignados ?? 0;
+    if (tamanoLoteReal > 0 && pedidosAsignados >= tamanoLoteReal) {
       return '#1F2937'; // Negro/Gris oscuro
     }
-    
+
+    // Si no hay lote definido, usar default 6 para el cálculo de %.
+    const tamanoForPct = tamanoLoteReal || 6;
+    const capacidadRestante = tamanoForPct - pedidosAsignados;
+    const porcentajeDisponible = (capacidadRestante / tamanoForPct) * 100;
+
     // Amarillo - Capacidad < 50% (poco espacio)
     if (porcentajeDisponible < 50) {
       return '#F59E0B'; // Amarillo/Ámbar
     }
-    
+
     // Verde - Capacidad >= 50% (buen espacio)
     return '#22C55E'; // Verde
   }, []);

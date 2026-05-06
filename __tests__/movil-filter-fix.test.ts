@@ -946,6 +946,91 @@ describe('AC11 - vista "solo sin asignar" para privilegiados (selectedMoviles=[]
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AC12 — color del móvil + filtro "sin_capacidad" cuando se sobrepasa el lote
+// (ej. 6/4). El bug era que getMovilColor del MapView usaba capacidadRestante
+// === 0 para asignar negro, pero con valores negativos caía al amarillo. El
+// colapsable ya tenía la lógica correcta (`>=`); ahora ambos usan el mismo
+// criterio.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MovilCapacityInput {
+  tamanoLote?: number | null;
+  pedidosAsignados?: number | null;
+  estadoNro?: number;
+}
+
+// Réplica del cálculo de color del marker del mapa post-fix.
+function computeMovilColor(m: MovilCapacityInput): string {
+  if (m.estadoNro === 3) return '#9CA3AF';
+  if (m.estadoNro === 4) return '#8B5CF6';
+  const tamanoLoteReal = m.tamanoLote ?? 0;
+  const pedidosAsignados = m.pedidosAsignados ?? 0;
+  if (tamanoLoteReal > 0 && pedidosAsignados >= tamanoLoteReal) {
+    return '#1F2937'; // negro
+  }
+  const tamanoForPct = tamanoLoteReal || 6;
+  const capacidadRestante = tamanoForPct - pedidosAsignados;
+  const pct = (capacidadRestante / tamanoForPct) * 100;
+  if (pct < 50) return '#F59E0B';
+  return '#22C55E';
+}
+
+// Réplica del filtro 'sin_capacidad' del MovilSelector post-fix.
+function passesSinCapacidad(m: MovilCapacityInput): boolean {
+  return (m.tamanoLote ?? 0) > 0 && (m.pedidosAsignados ?? 0) >= (m.tamanoLote ?? 0);
+}
+
+describe('AC12 - color y filtro de capacidad cuando se sobrepasa el lote', () => {
+  it('lote completo exacto (4/4): NEGRO', () => {
+    expect(computeMovilColor({ tamanoLote: 4, pedidosAsignados: 4 })).toBe('#1F2937');
+  });
+
+  it('lote sobrepasado (6/4): NEGRO (bug reportado)', () => {
+    expect(computeMovilColor({ tamanoLote: 4, pedidosAsignados: 6 })).toBe('#1F2937');
+  });
+
+  it('lote sobrepasado (10/2): NEGRO', () => {
+    expect(computeMovilColor({ tamanoLote: 2, pedidosAsignados: 10 })).toBe('#1F2937');
+  });
+
+  it('1/4 (75% libre): VERDE', () => {
+    expect(computeMovilColor({ tamanoLote: 4, pedidosAsignados: 1 })).toBe('#22C55E');
+  });
+
+  it('3/4 (25% libre, < 50%): AMARILLO', () => {
+    expect(computeMovilColor({ tamanoLote: 4, pedidosAsignados: 3 })).toBe('#F59E0B');
+  });
+
+  it('lote sin definir (tamanoLote=0) + asignados=0: VERDE (default)', () => {
+    expect(computeMovilColor({ tamanoLote: 0, pedidosAsignados: 0 })).toBe('#22C55E');
+  });
+
+  it('estado 3 (NO ACTIVO): GRIS aunque esté lleno', () => {
+    expect(computeMovilColor({ tamanoLote: 4, pedidosAsignados: 6, estadoNro: 3 })).toBe('#9CA3AF');
+  });
+
+  it('estado 4 (BAJA MOMENTÁNEA): VIOLETA aunque esté lleno', () => {
+    expect(computeMovilColor({ tamanoLote: 4, pedidosAsignados: 6, estadoNro: 4 })).toBe('#8B5CF6');
+  });
+
+  it('filtro sin_capacidad: lote completo exacto (4/4) → true', () => {
+    expect(passesSinCapacidad({ tamanoLote: 4, pedidosAsignados: 4 })).toBe(true);
+  });
+
+  it('filtro sin_capacidad: lote sobrepasado (6/4) → true (bug reportado)', () => {
+    expect(passesSinCapacidad({ tamanoLote: 4, pedidosAsignados: 6 })).toBe(true);
+  });
+
+  it('filtro sin_capacidad: con capacidad libre (1/4) → false', () => {
+    expect(passesSinCapacidad({ tamanoLote: 4, pedidosAsignados: 1 })).toBe(false);
+  });
+
+  it('filtro sin_capacidad: lote sin definir (tamanoLote=0) → false (no aplica)', () => {
+    expect(passesSinCapacidad({ tamanoLote: 0, pedidosAsignados: 5 })).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EC1 — empresa fletera con 0 móviles disponibles
 // ─────────────────────────────────────────────────────────────────────────────
 
