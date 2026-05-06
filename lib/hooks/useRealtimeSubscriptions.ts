@@ -10,48 +10,42 @@ import type {
   EmpresaFleteraSupabase
 } from '@/types';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { sendAuditBatch } from '@/lib/audit-client';
-
-/**
- * Registra un cambio de estado de un canal Realtime en el audit_log.
- * Se llama desde el callback del .subscribe() de cada hook.
- *
- * Mapeo de status de Supabase → event_type semántico del audit:
- *   SUBSCRIBED    → connected
- *   CLOSED        → disconnected
- *   CHANNEL_ERROR → error
- *   TIMED_OUT     → timeout
- */
-function logRealtimeStatus(
-  channelName: string,
-  tableName: string,
-  status: string,
-  extra?: Record<string, unknown>,
-) {
-  const semantic =
-    status === 'SUBSCRIBED' ? 'connected'
-    : status === 'CLOSED' ? 'disconnected'
-    : status === 'CHANNEL_ERROR' ? 'error'
-    : status === 'TIMED_OUT' ? 'timeout'
-    : status;
-
-  sendAuditBatch([{
-    event_type: 'realtime',
-    endpoint: `realtime://${tableName}`,
-    error: semantic === 'error' || semantic === 'timeout' ? status : undefined,
-    extra: {
-      channel: channelName,
-      table: tableName,
-      status,
-      semantic,
-      ...extra,
-    },
-  }]);
-}
 
 // Activar solo en desarrollo para no serializar objetos en cada update de GPS
 const DEBUG_REALTIME = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
 const dbg = (...args: any[]) => { if (DEBUG_REALTIME) console.log(...args); };
+
+/**
+ * Programa una reconexión del canal Realtime respetando la visibilidad del
+ * tab. Si el tab está oculto, NO reintenta inmediatamente — algunos
+ * navegadores (Chrome/Edge con "Tab Freezing") suspenden los WebSockets en
+ * tabs en background, y un setTimeout cada 5s genera un loop infinito de
+ * CLOSED → reconnect → CLOSED. En ese caso, registramos un listener
+ * `visibilitychange` y reconectamos UNA sola vez al volver visible.
+ *
+ * Cuando el tab está visible, comportamiento normal con setTimeout(retryMs).
+ *
+ * @returns un objeto con un `cancel()` para limpiar timers/listeners.
+ */
+function scheduleReconnect(
+  retryMs: number,
+  fire: () => void,
+): { cancel: () => void } {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        document.removeEventListener('visibilitychange', onVisible);
+        fire();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return {
+      cancel: () => document.removeEventListener('visibilitychange', onVisible),
+    };
+  }
+  const t = setTimeout(fire, retryMs);
+  return { cancel: () => clearTimeout(t) };
+}
 
 /**
  * Hook para suscribirse a cambios en tiempo real de GPS tracking
@@ -83,7 +77,7 @@ export function useGPSTracking(
   useEffect(() => {
     console.log('🔄 Iniciando suscripción GPS Tracking...');
     let channel: RealtimeChannel | null = null;
-    let reconnectTimer: NodeJS.Timeout | null = null;
+    let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
 
@@ -166,7 +160,6 @@ export function useGPSTracking(
           if (!isComponentMounted) return;
 
           dbg('📡 GPS status:', status);
-          logRealtimeStatus(channelName, 'gps_latest_positions', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -183,19 +176,19 @@ export function useGPSTracking(
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
             setError(`Error de conexión con Realtime GPS: ${status}`);
-            console.warn(`⚠️ Error en suscripción GPS: ${status}. Reconectando en ${RETRY_DELAY / 1000}s...`);
-            reconnectTimer = setTimeout(() => {
+            console.warn(`⚠️ Error en suscripción GPS: ${status}. Reconectando...`);
+            reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) {
                 console.log('🔄 Reconectando GPS realtime...');
                 setupChannel();
               }
-            }, RETRY_DELAY);
+            });
           } else if (status === 'CLOSED') {
             setIsConnected(false);
-            console.log('🔌 Suscripción GPS cerrada. Reconectando...');
-            reconnectTimer = setTimeout(() => {
+            console.log('🔌 Suscripción GPS cerrada. Reconectando cuando vuelva visible...');
+            reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
-            }, RETRY_DELAY);
+            });
           }
         });
     };
@@ -208,8 +201,8 @@ export function useGPSTracking(
       console.log('🧹 Limpiando suscripción GPS...');
       isComponentMounted = false;
 
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
+      if (reconnectHandle) {
+        reconnectHandle.cancel();
       }
 
       if (channel) {
@@ -247,7 +240,7 @@ export function useMoviles(
   useEffect(() => {
     console.log('🔄 Iniciando suscripción a móviles...');
     let channel: RealtimeChannel | null = null;
-    let reconnectTimer: NodeJS.Timeout | null = null;
+    let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
 
@@ -300,7 +293,6 @@ export function useMoviles(
         .subscribe((status) => {
           if (!isComponentMounted) return;
           dbg('📡 Moviles status:', status);
-          logRealtimeStatus(channelName, 'moviles', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -314,19 +306,19 @@ export function useMoviles(
             wasConnectedRef.current = true;
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
-            console.warn(`⚠️ Error en suscripción de móviles: ${status}. Reconectando en ${RETRY_DELAY / 1000}s...`);
-            reconnectTimer = setTimeout(() => {
+            console.warn(`⚠️ Error en suscripción de móviles: ${status}. Reconectando...`);
+            reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) {
                 console.log('🔄 Reconectando móviles realtime...');
                 setupChannel();
               }
-            }, RETRY_DELAY);
+            });
           } else if (status === 'CLOSED') {
             setIsConnected(false);
-            console.log('🔌 Suscripción móviles cerrada. Reconectando...');
-            reconnectTimer = setTimeout(() => {
+            console.log('🔌 Suscripción móviles cerrada. Reconectando cuando vuelva visible...');
+            reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
-            }, RETRY_DELAY);
+            });
           }
         });
     };
@@ -335,7 +327,7 @@ export function useMoviles(
 
     return () => {
       isComponentMounted = false;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
     };
   }, [escenarioId, empresaIds?.join(',')]);
@@ -397,7 +389,6 @@ export function usePedidos(
       )
       .subscribe((status) => {
         dbg('📡 Pedidos status:', status);
-        logRealtimeStatus('pedidos-changes', 'pedidos', status, { escenarioId, movilId });
         setIsConnected(status === 'SUBSCRIBED');
       });
 
@@ -453,7 +444,6 @@ export function useEmpresasFleteras(
       )
       .subscribe((status) => {
         console.log('📡 Estado de suscripción empresas:', status);
-        logRealtimeStatus('empresas-changes', 'empresas_fleteras', status, { escenarioId });
         setIsConnected(status === 'SUBSCRIBED');
       });
 
@@ -490,7 +480,7 @@ export function usePedidosRealtime(
   useEffect(() => {
     console.log('🔄 Suscripción pedidos realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
-    let reconnectTimer: NodeJS.Timeout | null = null;
+    let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
 
@@ -578,7 +568,6 @@ export function usePedidosRealtime(
         )
         .subscribe((status) => {
           if (!isComponentMounted) return;
-          logRealtimeStatus(channelName, 'pedidos', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -594,19 +583,19 @@ export function usePedidosRealtime(
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
             setError(`Error de conexión con Realtime Pedidos: ${status}`);
-            console.warn(`⚠️ Error en suscripción de pedidos: ${status}. Reconectando en ${RETRY_DELAY / 1000}s...`);
-            reconnectTimer = setTimeout(() => {
+            console.warn(`⚠️ Error en suscripción de pedidos: ${status}. Reconectando...`);
+            reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) {
                 console.log('🔄 Reconectando pedidos realtime...');
                 setupChannel();
               }
-            }, RETRY_DELAY);
+            });
           } else if (status === 'CLOSED') {
             setIsConnected(false);
-            console.log('🔌 Suscripción pedidos cerrada. Reconectando...');
-            reconnectTimer = setTimeout(() => {
+            console.log('🔌 Suscripción pedidos cerrada. Reconectando cuando vuelva visible...');
+            reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
-            }, RETRY_DELAY);
+            });
           }
         });
     };
@@ -615,7 +604,7 @@ export function usePedidosRealtime(
 
     return () => {
       isComponentMounted = false;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
     };
   }, [escenarioId, movilIds?.join(',')]); // Recrear si cambian los móviles
@@ -650,7 +639,7 @@ export function useServicesRealtime(
   useEffect(() => {
     console.log('🔄 Suscripción services realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
-    let reconnectTimer: NodeJS.Timeout | null = null;
+    let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
 
@@ -734,7 +723,6 @@ export function useServicesRealtime(
         )
         .subscribe((status) => {
           if (!isComponentMounted) return;
-          logRealtimeStatus(channelName, 'services', status, { escenarioId });
 
           if (status === 'SUBSCRIBED') {
             setIsConnected(true);
@@ -749,16 +737,16 @@ export function useServicesRealtime(
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
             setError(`Error de conexión con Realtime Services: ${status}`);
-            console.warn(`⚠️ Error en suscripción de services: ${status}. Reconectando en ${RETRY_DELAY / 1000}s...`);
-            reconnectTimer = setTimeout(() => {
+            console.warn(`⚠️ Error en suscripción de services: ${status}. Reconectando...`);
+            reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
-            }, RETRY_DELAY);
+            });
           } else if (status === 'CLOSED') {
             setIsConnected(false);
-            console.log('🔌 Suscripción services cerrada. Reconectando...');
-            reconnectTimer = setTimeout(() => {
+            console.log('🔌 Suscripción services cerrada. Reconectando cuando vuelva visible...');
+            reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
-            }, RETRY_DELAY);
+            });
           }
         });
     };
@@ -767,7 +755,7 @@ export function useServicesRealtime(
 
     return () => {
       isComponentMounted = false;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
     };
   }, [escenarioId, movilIds?.join(',')]);
