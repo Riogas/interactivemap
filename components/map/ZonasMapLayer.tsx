@@ -52,7 +52,8 @@ const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50 }: Z
             key={zona.zona_id}
             positions={positions}
             pathOptions={{
-              color: fillColor,
+              // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
+              color: '#000000',
               fillColor: fillColor,
               fillOpacity: adjustOpacity(0.20, zonaOpacity),
               weight: 2,

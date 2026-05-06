@@ -109,7 +109,8 @@ const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas, zon
           <Polygon
             positions={positions}
             pathOptions={{
-              color: fillColor,
+              // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
+              color: '#000000',
               fillColor: fillColor,
               fillOpacity: adjustOpacity(0.35, zonaOpacity),
               weight: 2,
