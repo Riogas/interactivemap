@@ -1,0 +1,24 @@
+{
+  "runId": "20260505-220000-doc",
+  "state": "completed",
+  "current_stage": "documenter",
+  "current_iteration": 1,
+  "started_at": "2026-05-05T22:00:00Z",
+  "updated_at": "2026-05-05T22:18:00Z",
+  "completed_stages": [
+    { "name": "triage", "verdict": "docs-only", "duration_seconds": 2 },
+    { "name": "documenter", "verdict": "ok", "duration_seconds": 900 }
+  ],
+  "stages_planned": ["triage", "documenter"],
+  "stages_skipped": [
+    { "name": "analyst", "reason": "docs-only run, no code involved" },
+    { "name": "architect", "reason": "docs-only run" },
+    { "name": "implementer", "reason": "docs-only run" },
+    { "name": "code-reviewer", "reason": "docs-only run" },
+    { "name": "qa-tester", "reason": "docs-only run" },
+    { "name": "ux-validator", "reason": "docs-only run" }
+  ],
+  "estimated_cost_so_far_usd": 0.08,
+  "verdict_final": "MERGE_READY",
+  "multi_intent": false
+}

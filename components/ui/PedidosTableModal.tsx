@@ -237,6 +237,17 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
         if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
         return false;
       });
+    } else if (
+      selectedMoviles.length === 0 &&
+      privilegedUser &&
+      !hideUnassigned &&
+      filters.asignacion === 'todos' &&
+      !isFinalizados
+    ) {
+      // Privilegiado SIN móviles seleccionados (handleClearAll) y empresas
+      // completas, vista pendientes con asignación 'todos': mostramos
+      // exclusivamente pedidos sin móvil ("solo sin asignar").
+      result = result.filter(p => !p.movil || Number(p.movil) === 0);
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción: ocultar sin asignar
       // y restringir a los móviles que el usuario puede ver (los que vienen
