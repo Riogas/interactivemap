@@ -88,9 +88,9 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   poiMarkerSize: 2,
   poiDefaultIcon: '🏢',
   dataViewMode: 'normal',
-  demorasPollingSeconds: 30,
-  movilesZonasPollingSeconds: 30,
-  lightMode: false,
+  demorasPollingSeconds: 120,
+  movilesZonasPollingSeconds: 90,
+  lightMode: true, // Por defecto activado para todos. Para root se sobreescribe a false al aplicar defaults (ver mergeWithDefaults).
   // Realtime avanzado — defaults conservadores.
   realtimePollingReconcileSeconds: 60,
   realtimeSilenceTimeoutSeconds: 45,
@@ -293,17 +293,22 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
       .catch(() => { /* silencioso */ });
   }, [user?.isRoot, isOpen, auditEnabled]);
 
-  // Cargar preferencias desde localStorage al montar (cache local de lo que ya se cargó de DB)
+  // Cargar preferencias desde localStorage al montar (cache local de lo que ya se cargó de DB).
+  // Override de rol: para root lightMode=false, resto true (a menos que el usuario lo haya guardado).
   useEffect(() => {
+    const isRoot = user?.isRoot === 'S';
     const saved = localStorage.getItem('userPreferences');
     if (saved) {
       try {
-        setPreferences({ ...DEFAULT_PREFERENCES, ...JSON.parse(saved) });
+        setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRoot, ...JSON.parse(saved) });
       } catch (e) {
         console.error('Error al cargar preferencias:', e);
+        setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRoot });
       }
+    } else {
+      setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRoot });
     }
-  }, []);
+  }, [user?.isRoot]);
 
   const handleSave = () => {
     localStorage.setItem('userPreferences', JSON.stringify(preferences));
@@ -660,25 +665,8 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 </div>
               </label>
 
-              {/* Toggle: Etiquetas de Demoras */}
-              <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 text-lg">⏱️</div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-700">Etiquetas de Demoras</div>
-                    <p className="text-xs text-gray-500">Mostrar minutos de demora en cada zona</p>
-                  </div>
-                </div>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={preferences.showDemoraLabels}
-                    onChange={(e) => setPreferences({ ...preferences, showDemoraLabels: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </div>
-              </label>
+              {/* Toggle "Etiquetas de Demoras" — UI oculta para todos los perfiles.
+                  El valor (showDemoraLabels) sigue su default y se aplica internamente. */}
 
               {/* Horario Nocturno / Diurno — UI oculta para todos los perfiles.
                   Los valores se mantienen por defecto (20:30 / 06:00) y se usan internamente. */}
@@ -1090,10 +1078,14 @@ export function useUserPreferences() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestPrefsRef = useRef<UserPreferences>(DEFAULT_PREFERENCES);
 
-  // Función auxiliar para mergear con defaults (en caso de campos nuevos)
+  // Función auxiliar para mergear con defaults (en caso de campos nuevos).
+  // Aplica override de rol: usuarios root tienen lightMode=false por defecto;
+  // resto de perfiles lightMode=true. Si el usuario guardó explícitamente un
+  // valor, ese valor (en `saved`) gana sobre el default.
   const mergeWithDefaults = useCallback((saved: Partial<UserPreferences>): UserPreferences => {
-    return { ...DEFAULT_PREFERENCES, ...saved };
-  }, []);
+    const isRoot = user?.isRoot === 'S';
+    return { ...DEFAULT_PREFERENCES, lightMode: !isRoot, ...saved };
+  }, [user?.isRoot]);
 
   // Cargar preferencias: primero intenta DB, fallback a localStorage
   useEffect(() => {
@@ -1121,18 +1113,23 @@ export function useUserPreferences() {
         }
       }
 
-      // Fallback: localStorage
+      // Fallback: localStorage. Si no hay nada guardado, igual aplicamos
+      // mergeWithDefaults({}) para que el override por rol (lightMode) tome efecto.
       if (!cancelled) {
         const saved = localStorage.getItem('userPreferences');
+        let merged: UserPreferences;
         if (saved) {
           try {
-            const merged = mergeWithDefaults(JSON.parse(saved));
-            setPreferences(merged);
-            latestPrefsRef.current = merged;
+            merged = mergeWithDefaults(JSON.parse(saved));
           } catch (e) {
             console.error('Error al cargar preferencias de localStorage:', e);
+            merged = mergeWithDefaults({});
           }
+        } else {
+          merged = mergeWithDefaults({});
         }
+        setPreferences(merged);
+        latestPrefsRef.current = merged;
         setLoaded(true);
       }
     }
