@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
@@ -44,6 +44,15 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
   // Stable keys para useEffect deps
   const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '';
   const scopedZonasKey = scopedZonaIds ? Array.from(scopedZonaIds).sort((a, b) => a - b).join(',') : '';
+  const escenariosKey = escenarioIds.join(',');
+
+  // Refs sincronizadas con los props "vivos". Permite leer el último valor en
+  // el fetch sin disparar un re-fetch cada vez que cambian (lo que hacía que el
+  // modal se recargara constantemente al llegar updates de realtime).
+  const allMovilEstadosRef = useRef(allMovilEstados);
+  const allHiddenMovilIdsRef = useRef(allHiddenMovilIds);
+  allMovilEstadosRef.current = allMovilEstados;
+  allHiddenMovilIdsRef.current = allHiddenMovilIds;
 
   useEffect(() => {
     if (!isOpen || escenarioIds.length === 0) return;
@@ -86,12 +95,15 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
             (scopedZonaIds == null || scopedZonaIds.has(mz.zona_id))
         );
 
-        // Excluir móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos
-        if (allMovilEstados && allMovilEstados.size > 0) {
+        // Snapshot al momento del fetch — los refs traen el último valor sin
+        // forzar re-render del effect cuando el dashboard recibe realtime.
+        const movilEstadosSnap = allMovilEstadosRef.current;
+        const hiddenMovilIdsSnap = allHiddenMovilIdsRef.current;
+        if (movilEstadosSnap && movilEstadosSnap.size > 0) {
           movilesZonas = movilesZonas.filter((mz: any) => {
             const key = String(mz.movil_id);
-            if (allHiddenMovilIds && allHiddenMovilIds.has(key)) return false;
-            const estado = allMovilEstados.get(key);
+            if (hiddenMovilIdsSnap && hiddenMovilIdsSnap.has(key)) return false;
+            const estado = movilEstadosSnap.get(key);
             return estado === undefined || isMovilActiveForUI(estado);
           });
         }
@@ -138,8 +150,11 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
 
     fetchData();
     return () => { cancelled = true; };
+  // Solo re-fetch cuando: el modal se abre, cambia el combo de servicio, o cambia
+  // el scope (escenarios/empresas/zonas permitidas). Los estados de móviles y los
+  // IDs ocultos se leen vía refs para no recargar en cada update de realtime.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, escenarioIds, allMovilEstados, allHiddenMovilIds, serviceFilter, scopedEmpresasKey, scopedZonasKey]);
+  }, [isOpen, escenariosKey, serviceFilter, scopedEmpresasKey, scopedZonasKey]);
 
   if (!isOpen) return null;
 
