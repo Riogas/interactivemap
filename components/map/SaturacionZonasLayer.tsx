@@ -10,14 +10,23 @@ import type { LatLngExpression } from 'leaflet';
 export interface SaturacionZonaStats {
   /** Pedidos pendientes sin asignar en la zona */
   sinAsignar: number;
-  /** Suma PRORRATEADA de tamanoLote (capacidad total / nZones por móvil compartido) */
+  /** Suma PRORRATEADA de tamanoLote (capacidad total / nZones por móvil compartido).
+      Display value — usa Math.ceil para evitar decimales en la card. */
   capacidadTotal: number;
-  /** Suma PRORRATEADA de espacios libres (max(0, lote-asignados) / nZones) */
+  /** Suma PRORRATEADA de espacios libres (max(0, lote-asignados) / nZones).
+      Display value — usa Math.ceil. */
   capacidadDisponible: number;
   /** Cantidad total de móviles con prioridad en esta zona */
   movilesEnZona: number;
   /** Cuántos de esos móviles tienen prioridad en más de una zona */
   movilesCompartidos: number;
+  /** Suma fraccionaria SIN ceil de (asignados/nZones) — para cálculo del %.
+      Si Math.ceil aplica al display, ceil(2/4)=1 hace que ocupados=capTotal-capDisp=0
+      y la saturación siempre dé 0%. Con el peso real preservado, sat refleja
+      la carga del móvil aunque el prorrateo dé fracción. */
+  asignadosWeight: number;
+  /** Suma fraccionaria SIN ceil de (tamanoLote/nZones) — denominador del %. */
+  totalWeight: number;
 }
 
 export interface SaturacionZonaData {
@@ -81,7 +90,7 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
  *  - sin pedidos + sin móviles → gris (inactiva)
  */
 function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label: string; pct: number } {
-  const { sinAsignar, capacidadDisponible, capacidadTotal, movilesEnZona } = stats;
+  const { sinAsignar, capacidadTotal, movilesEnZona, asignadosWeight, totalWeight } = stats;
 
   if (movilesEnZona === 0 && sinAsignar > 0) {
     return { color: '#7f1d1d', label: 'Sin C.', pct: 999 }; // crítico
@@ -91,16 +100,18 @@ function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label:
   }
 
   // Saturación = % de la capacidad TOTAL de la zona ya consumida
-  // (lote ocupado de los móviles + pendientes sin asignar) sobre el lote total.
-  // Esto refleja el problema de capacidad ANTES de que aparezca un sin asignar:
-  // si los móviles ya están al tope, la zona se ve roja aunque no haya pendientes
-  // — apenas llegue uno, ya se sabe que no se puede cubrir.
-  // capacidadTotal - capacidadDisponible = pedidos+services ya asignados a los
-  // móviles de la zona (prorrateados).
-  const ocupados = capacidadTotal - capacidadDisponible;
-  const rawPct = capacidadTotal === 0
-    ? (sinAsignar > 0 ? 999 : 0)
-    : ((ocupados + sinAsignar) / capacidadTotal) * 100;
+  // (lote ocupado prorrateado + pendientes sin asignar) sobre el lote total prorrateado.
+  // Refleja el problema ANTES de que aparezca un sin asignar: si los móviles ya
+  // están al tope, la zona se ve roja aunque no haya pendientes.
+  //
+  // Usamos los pesos REALES (sin Math.ceil) para que el cálculo del % no se
+  // distorsione cuando la card muestra cap.total=cap.libre=1 por redondeo.
+  // Ej: movil 4/4 cubriendo 4 zonas → asignadosWeight=0.5, totalWeight=1 →
+  // 50% de saturación latente, en vez de 0% que daría capTotal-capDisp con
+  // los valores ceiled.
+  const rawPct = totalWeight <= 0
+    ? (sinAsignar > 0 ? (capacidadTotal === 0 ? 999 : 998) : 0)
+    : ((asignadosWeight + sinAsignar) / totalWeight) * 100;
   const pct = !isFinite(rawPct) || rawPct < 0 ? 998 : rawPct;
 
   if (pct === 0)  return { color: '#86efac', label: '0%', pct: 0 };                       // verde claro sobrante
@@ -231,7 +242,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
 
       const stats = saturacionData.get(zona.zona_id);
       // Zona sin ningún registro: grey
-      const defaultStats: SaturacionZonaStats = { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+      const defaultStats: SaturacionZonaStats = { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
       const s = stats ?? defaultStats;
       const { color, label, pct } = getSaturacionColor(s);
       const fillOpacity = getSaturacionOpacity(pct);
