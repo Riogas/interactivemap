@@ -78,7 +78,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   serviceShape: 'triangle',
   showDemoraLabels: false, // Por defecto ocultas
   zonaOpacity: 50, // 50% por defecto
-  nightStartHour: 20, // 20:00 hs por defecto
+  nightStartHour: 20.5, // 20:30 hs por defecto
   dayStartHour: 6, // 06:00 hs por defecto
   movilesVisible: true,
   pedidosVisible: true,
@@ -680,54 +680,8 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 </div>
               </label>
 
-              {/* Horario Nocturno / Diurno */}
-              <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 text-lg">🌙</div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-700">Horario Nocturno / Diurno</div>
-                    <p className="text-xs text-gray-500">Define cuándo comienza la noche y el día</p>
-                  </div>
-                </div>
-              </label>
-              <div className="pl-14 pr-3 -mt-2 pb-2 space-y-3">
-                {/* Inicio nocturno */}
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600 min-w-[120px]">Inicio nocturno:</span>
-                  <select
-                    value={preferences.nightStartHour}
-                    onChange={(e) => setPreferences({ ...preferences, nightStartHour: parseFloat(e.target.value) })}
-                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                  >
-                    {Array.from({ length: 48 }, (_, i) => {
-                      const value = i * 0.5;
-                      const h = Math.floor(value);
-                      const m = value % 1 === 0 ? '00' : '30';
-                      return <option key={i} value={value}>{String(h).padStart(2, '0')}:{m}</option>;
-                    })}
-                  </select>
-                  <span className="text-xs text-gray-400">🌙 Comienza la noche</span>
-                </div>
-                {/* Inicio diurno */}
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600 min-w-[120px]">Inicio diurno:</span>
-                  <select
-                    value={preferences.dayStartHour}
-                    onChange={(e) => setPreferences({ ...preferences, dayStartHour: parseFloat(e.target.value) })}
-                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-                  >
-                    {Array.from({ length: 48 }, (_, i) => {
-                      const value = i * 0.5;
-                      const h = Math.floor(value);
-                      const m = value % 1 === 0 ? '00' : '30';
-                      return <option key={i} value={value}>{String(h).padStart(2, '0')}:{m}</option>;
-                    })}
-                  </select>
-                  <span className="text-xs text-gray-400">☀️ Comienza el día</span>
-                </div>
-              </div>
-
-              <hr className="border-gray-100" />
+              {/* Horario Nocturno / Diurno — UI oculta para todos los perfiles.
+                  Los valores se mantienen por defecto (20:30 / 06:00) y se usan internamente. */}
 
               {/* ═══════════════════════════════════════════════════════════
                   SECCIÓN 3: Configuración Avanzada (Sliders)
