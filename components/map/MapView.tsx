@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
@@ -114,6 +114,8 @@ interface MapViewProps {
   onToggleDemoraLabels?: (next: boolean) => void; // Callback para togglear etiquetas desde la leyenda del mapa
   showCapEntregaLabels?: boolean; // Mostrar etiquetas de Cap. Entrega en el mapa
   onToggleCapEntregaLabels?: (next: boolean) => void; // Callback para togglear etiquetas de Cap. Entrega
+  showPedidosZonaLabels?: boolean; // Mostrar etiquetas de Pedidos en Zona en el mapa
+  onTogglePedidosZonaLabels?: (next: boolean) => void; // Callback para togglear etiquetas de Pedidos en Zona
   zonaOpacity?: number; // Opacidad de las capas de zonas (0-100)
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
@@ -554,6 +556,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.saturacionData?.size === next.saturacionData?.size &&
     prev.showDemoraLabels === next.showDemoraLabels &&
     prev.showCapEntregaLabels === next.showCapEntregaLabels &&
+    prev.showPedidosZonaLabels === next.showPedidosZonaLabels &&
     prev.zonaOpacity === next.zonaOpacity &&
     prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
     prev.poisHidden === next.poisHidden &&
@@ -629,6 +632,8 @@ const MapView = memo(function MapView({
   onToggleDemoraLabels,
   showCapEntregaLabels = false,
   onToggleCapEntregaLabels,
+  showPedidosZonaLabels = false,
+  onTogglePedidosZonaLabels,
   zonaOpacity = 50,
   reloadMarkersTrigger = 0,
   poisHidden = false,
@@ -2175,7 +2180,7 @@ const MapView = memo(function MapView({
           <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} />
         )}
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}

@@ -33,6 +33,10 @@ interface PedidosZonasLayerProps {
   /** Mapa zona_id → demora info. activa===false → zona transparente con borde
       negro punteado (request 2026-05-07). */
   demoras?: Map<number, { minutos: number; activa: boolean }>;
+  /** Mostrar etiquetas de Pedidos en Zona en los marcadores. Por defecto false */
+  showLabels?: boolean;
+  /** Callback para togglear las etiquetas desde la leyenda del mapa */
+  onToggleLabels?: (next: boolean) => void;
 }
 
 /**
@@ -130,13 +134,25 @@ function PedidosZonaFilterControl({ filter, onFilterChange, hideSinAsignarOption
 }
 
 /** Leyenda de pedidos por zona como control Leaflet (esquina inferior izquierda) */
-function PedidosZonasLegend({ filter }: { filter: PedidosZonaFilter }) {
+function PedidosZonasLegend({ filter, showLabels, onToggleLabels }: { filter: PedidosZonaFilter; showLabels: boolean; onToggleLabels?: (next: boolean) => void }) {
   const map = useMap();
   const label = filter === 'sin_asignar' ? 'Sin asignar / zona' : filter === 'atrasados' ? 'Atrasados / zona' : 'Pendientes / zona';
   useEffect(() => {
+    const showToggle = typeof onToggleLabels === 'function';
     const LegendControl = L.Control.extend({
       onAdd() {
         const div = L.DomUtil.create('div', 'demora-legend');
+        const toggleHtml = showToggle
+          ? `
+            <div class="demora-legend-divider"></div>
+            <label class="demora-legend-toggle">
+              <span class="demora-legend-toggle-label">Ver etiqueta</span>
+              <span class="demora-legend-switch ${showLabels ? 'is-on' : ''}" data-pedidos-toggle role="switch" aria-checked="${showLabels ? 'true' : 'false'}" tabindex="0">
+                <span class="demora-legend-switch-thumb"></span>
+              </span>
+            </label>
+          `
+          : '';
         div.innerHTML = `
           <div class="demora-legend-title">${label}</div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#bbf7d0"></span><span class="demora-legend-label">0</span></div>
@@ -144,19 +160,35 @@ function PedidosZonasLegend({ filter }: { filter: PedidosZonaFilter }) {
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">4 – 7</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">8 – 11</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">12+</span></div>
+          ${toggleHtml}
         `;
         L.DomEvent.disableClickPropagation(div);
+        if (showToggle) {
+          const toggleEl = div.querySelector<HTMLElement>('[data-pedidos-toggle]');
+          if (toggleEl) {
+            const handler = (e: Event) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleLabels!(!showLabels);
+            };
+            toggleEl.addEventListener('click', handler);
+            toggleEl.addEventListener('keydown', (e) => {
+              const ke = e as KeyboardEvent;
+              if (ke.key === ' ' || ke.key === 'Enter') handler(e);
+            });
+          }
+        }
         return div;
       },
     });
     const legend = new LegendControl({ position: 'bottomleft' });
     legend.addTo(map);
     return () => { legend.remove(); };
-  }, [map, label]);
+  }, [map, label, showLabels, onToggleLabels]);
   return null;
 }
 
-const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick, hideSinAsignarOption = false, demoras }: PedidosZonasLayerProps) {
+const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick, hideSinAsignarOption = false, demoras, showLabels = false, onToggleLabels }: PedidosZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -204,7 +236,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
   return (
     <>
       <PedidosZonaFilterControl filter={filter} onFilterChange={onFilterChange} hideSinAsignarOption={hideSinAsignarOption} />
-      <PedidosZonasLegend filter={filter} />
+      <PedidosZonasLegend filter={filter} showLabels={showLabels} onToggleLabels={onToggleLabels} />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => {
         const isInactive = demoras?.get(zona.zona_id)?.activa === false || zona.activa === false;
         return (
@@ -229,7 +261,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
               html: `
                 <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
-                  ${count > 0 ? `<span class="demora-label-time">${count}</span>` : ''}
+                  ${showLabels && count > 0 ? `<span class="demora-label-time">${count}</span>` : ''}
                 </div>
               `,
               iconSize: [60, 36],

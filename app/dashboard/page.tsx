@@ -2971,6 +2971,8 @@ function DashboardContent() {
                 onToggleDemoraLabels={(next) => updatePreference('showDemoraLabels', next)}
                 showCapEntregaLabels={preferences.showCapEntregaLabels ?? false}
                 onToggleCapEntregaLabels={(next) => updatePreference('showCapEntregaLabels', next)}
+                showPedidosZonaLabels={preferences.showPedidosZonaLabels ?? false}
+                onTogglePedidosZonaLabels={(next) => updatePreference('showPedidosZonaLabels', next)}
                 zonaOpacity={preferences.zonaOpacity ?? 50}
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
