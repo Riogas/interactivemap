@@ -10,6 +10,7 @@ import type {
   EmpresaFleteraSupabase
 } from '@/types';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { recordRealtimeFailure } from '@/lib/realtime-health';
 
 // Activar solo en desarrollo para no serializar objetos en cada update de GPS
 const DEBUG_REALTIME = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
@@ -32,15 +33,24 @@ function scheduleReconnect(
   fire: () => void,
 ): { cancel: () => void } {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    let staggerTimer: ReturnType<typeof setTimeout> | null = null;
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         document.removeEventListener('visibilitychange', onVisible);
-        fire();
+        // Stagger con jitter aleatorio 0-1500ms para que las 4 suscripciones
+        // (GPS / Móviles / Pedidos / Services) NO reabran al unísono al volver
+        // la visibilidad. Sin esto, el burst de 4 reconexiones simultáneas
+        // dispara un death-loop con CLOSED inmediato.
+        const jitter = Math.floor(Math.random() * 1500);
+        staggerTimer = setTimeout(fire, jitter);
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return {
-      cancel: () => document.removeEventListener('visibilitychange', onVisible),
+      cancel: () => {
+        document.removeEventListener('visibilitychange', onVisible);
+        if (staggerTimer) clearTimeout(staggerTimer);
+      },
     };
   }
   const t = setTimeout(fire, retryMs);
@@ -177,6 +187,7 @@ export function useGPSTracking(
             setIsConnected(false);
             setError(`Error de conexión con Realtime GPS: ${status}`);
             console.warn(`⚠️ Error en suscripción GPS: ${status}. Reconectando...`);
+            recordRealtimeFailure(`GPS:${status}`);
             reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) {
                 console.log('🔄 Reconectando GPS realtime...');
@@ -186,6 +197,7 @@ export function useGPSTracking(
           } else if (status === 'CLOSED') {
             setIsConnected(false);
             console.log('🔌 Suscripción GPS cerrada. Reconectando cuando vuelva visible...');
+            recordRealtimeFailure('GPS:CLOSED');
             reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
             });
@@ -307,6 +319,7 @@ export function useMoviles(
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setIsConnected(false);
             console.warn(`⚠️ Error en suscripción de móviles: ${status}. Reconectando...`);
+            recordRealtimeFailure(`Moviles:${status}`);
             reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) {
                 console.log('🔄 Reconectando móviles realtime...');
@@ -316,6 +329,7 @@ export function useMoviles(
           } else if (status === 'CLOSED') {
             setIsConnected(false);
             console.log('🔌 Suscripción móviles cerrada. Reconectando cuando vuelva visible...');
+            recordRealtimeFailure('Moviles:CLOSED');
             reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
             });
@@ -584,6 +598,7 @@ export function usePedidosRealtime(
             setIsConnected(false);
             setError(`Error de conexión con Realtime Pedidos: ${status}`);
             console.warn(`⚠️ Error en suscripción de pedidos: ${status}. Reconectando...`);
+            recordRealtimeFailure(`Pedidos:${status}`);
             reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) {
                 console.log('🔄 Reconectando pedidos realtime...');
@@ -593,6 +608,7 @@ export function usePedidosRealtime(
           } else if (status === 'CLOSED') {
             setIsConnected(false);
             console.log('🔌 Suscripción pedidos cerrada. Reconectando cuando vuelva visible...');
+            recordRealtimeFailure('Pedidos:CLOSED');
             reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
             });
@@ -738,12 +754,14 @@ export function useServicesRealtime(
             setIsConnected(false);
             setError(`Error de conexión con Realtime Services: ${status}`);
             console.warn(`⚠️ Error en suscripción de services: ${status}. Reconectando...`);
+            recordRealtimeFailure(`Services:${status}`);
             reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
             });
           } else if (status === 'CLOSED') {
             setIsConnected(false);
             console.log('🔌 Suscripción services cerrada. Reconectando cuando vuelva visible...');
+            recordRealtimeFailure('Services:CLOSED');
             reconnectHandle = scheduleReconnect(RETRY_DELAY, () => {
               if (isComponentMounted) setupChannel();
             });
