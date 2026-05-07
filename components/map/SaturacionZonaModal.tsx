@@ -77,13 +77,12 @@ interface SaturacionZonaModalProps {
 // ──────────────────────── helpers ────────────────────────────────────────
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
-function pctColor(pct: number): string {
-  if (pct === 999 || pct === 998) return 'text-red-700';
-  if (pct >= 100) return 'text-red-600';
-  if (pct >= 75)  return 'text-red-500';
-  if (pct >= 50)  return 'text-orange-500';
-  if (pct >= 25)  return 'text-yellow-600';
-  if (pct > 0)    return 'text-green-600';
+/** Color Tailwind para la métrica Cap. Entrega (entero) */
+function capEntregaColor(capEntrega: number): string {
+  if (capEntrega < 0)   return 'text-amber-900';   // marrón
+  if (capEntrega === 0) return 'text-red-600';
+  if (capEntrega === 1) return 'text-orange-500';
+  if (capEntrega <= 3)  return 'text-yellow-600';
   return 'text-green-700';
 }
 
@@ -145,7 +144,7 @@ function MovilCard({
                   style={{ width: `${Math.min(100, pct)}%` }}
                 />
               </div>
-              <span className={`text-xs font-semibold ${pctColor(pct)}`}>
+              <span className="text-xs font-semibold text-gray-700">
                 {asignados}/{tamano} ({pct}%)
               </span>
               {libres > 0 && (
@@ -269,27 +268,29 @@ export default function SaturacionZonaModal({
       });
   }, [moviles, movilIdsEnZona, movilZoneMap, zonaId, zonaMap]);
 
-  // Resumen de capacidad
+  // Cap. Entrega = capacidadDisponible (prorrateada, ceil) - sinAsignar
   const capTotal = satStats?.capacidadTotal ?? 0;
   const capLibre = satStats?.capacidadDisponible ?? 0;
   const isServiceMode = tipoServicio.toUpperCase() === 'SERVICE';
   const sinAsignarTitle = isServiceMode ? 'Services sin asignar' : `Pedidos sin asignar (${tipoServicio})`;
   const sinAsignar = pedidosSinAsignar.length;
-  // Saturación = (carga real prorrateada + pendientes sin asignar) / capacidad
-  // total prorrateada. Usa los pesos REALES (sin ceil) que vienen en satStats
-  // — los valores capTotal/capLibre que mostramos en la card pasan por Math.ceil
-  // y enmascaran la fracción del lote ocupado (ej: ceil(2/4)=1 == ceil(4/4)=1
-  // → ocupados=0, sat=0%). Con asignadosWeight/totalWeight el % refleja la
-  // carga latente del móvil aunque cada zona individual tenga cap.libre==cap.total.
-  const asignadosWeight = satStats?.asignadosWeight ?? 0;
-  const totalWeight = satStats?.totalWeight ?? 0;
-  const satPct = totalWeight > 0
-    ? Math.round(((asignadosWeight + sinAsignar) / totalWeight) * 100)
-    : sinAsignar > 0 ? 999 : 0;
+
+  // Cap. Entrega entero: cap disponible prorrateada (ceil, display value) - pendientes
+  const capEntrega = satStats ? (satStats.capacidadDisponible - sinAsignar) : (sinAsignar > 0 ? -sinAsignar : null);
 
   // Defensa en profundidad: si el caller pasó scope y la zona no está, no renderizar.
   // Se chequea después de los hooks para no romper rules-of-hooks.
   if (scopedZonaIds && !scopedZonaIds.has(zonaId)) return null;
+
+  const capEntregaDisplay = capEntrega === null
+    ? '—'
+    : capEntrega < 0
+      ? `${capEntrega} (sin cap.)`
+      : String(capEntrega);
+
+  const capEntregaColorClass = capEntrega === null
+    ? 'text-gray-400'
+    : capEntregaColor(capEntrega);
 
   return (
     <div
@@ -302,14 +303,14 @@ export default function SaturacionZonaModal({
         <div className="flex items-center justify-between px-5 py-4 border-b bg-gray-50 rounded-t-2xl flex-shrink-0">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-2xl">🟥</span>
+              <span className="text-2xl">📦</span>
               <h2 className="text-lg font-bold text-gray-900">{zonaNombre}</h2>
               <span className="text-sm text-gray-400">#{zonaId}</span>
             </div>
             <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
-              <span>Saturación:</span>
-              <span className={`font-bold ${pctColor(satPct)}`}>
-                {satPct === 999 ? '∞% (sin cobertura)' : satPct === 998 ? 'Sin C.' : `${satPct}%`}
+              <span>Cap. Entrega:</span>
+              <span className={`font-bold ${capEntregaColorClass}`}>
+                {capEntregaDisplay}
               </span>
               <span className="text-gray-400">·</span>
               <span>Cap. libre: <b>{capLibre.toFixed(1)}</b></span>

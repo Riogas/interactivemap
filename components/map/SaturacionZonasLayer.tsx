@@ -20,12 +20,10 @@ export interface SaturacionZonaStats {
   movilesEnZona: number;
   /** Cuántos de esos móviles tienen prioridad en más de una zona */
   movilesCompartidos: number;
-  /** Suma fraccionaria SIN ceil de (asignados/nZones) — para cálculo del %.
-      Si Math.ceil aplica al display, ceil(2/4)=1 hace que ocupados=capTotal-capDisp=0
-      y la saturación siempre dé 0%. Con el peso real preservado, sat refleja
-      la carga del móvil aunque el prorrateo dé fracción. */
+  /** Suma fraccionaria SIN ceil de (asignados/nZones) — para cálculo interno.
+      Mantenido para compatibilidad con modal y cálculos de peso real. */
   asignadosWeight: number;
-  /** Suma fraccionaria SIN ceil de (tamanoLote/nZones) — denominador del %. */
+  /** Suma fraccionaria SIN ceil de (tamanoLote/nZones) — denominador del peso real. */
   totalWeight: number;
 }
 
@@ -77,62 +75,50 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
 }
 
 /**
- * Calcula el porcentaje de saturación y devuelve color + texto de etiqueta.
+ * Calcula la Cap. Entrega = capacidadDisponible - sinAsignar y devuelve
+ * color + texto de etiqueta según bandas numéricas.
  *
- * Criterios:
- *  - Sin móviles + pedidos sin asignar > 0  → "Sin cobertura" (rojo oscuro crítico)
- *  - sat > 100%   → rojo fuerte (sobresaturado)
- *  - sat 75-100%  → rojo
- *  - sat 50-75%   → naranja
- *  - sat 25-50%   → amarillo
- *  - sat 1-25%    → verde claro (casi libre)
- *  - sat = 0 + hay móviles → verde (sobrante)
- *  - sin pedidos + sin móviles → gris (inactiva)
+ * Bandas:
+ *  - Sin móviles + pedidos > 0   → marrón "Sin Cap." (sin cobertura)
+ *  - Sin móviles + sin pedidos   → gris "—" (sin datos)
+ *  - capEntrega < 0              → marrón "Sin Cap." (pendientes superan capacidad libre)
+ *  - capEntrega = 0              → rojo (capacidad máxima — exactamente cubierto o lleno)
+ *  - capEntrega = 1              → naranja
+ *  - capEntrega = 2 o 3          → amarillo
+ *  - capEntrega > 3              → verde claro (sobrante saludable)
+ *
+ * capEntrega = sum(ceil(libres_i / nZones_i)) - sinAsignar  (entero)
  */
-function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label: string; pct: number } {
-  const { sinAsignar, capacidadTotal, movilesEnZona, asignadosWeight, totalWeight } = stats;
+function getCapEntregaColor(stats: SaturacionZonaStats): { color: string; label: string; capEntrega: number } {
+  const { sinAsignar, capacidadDisponible, movilesEnZona } = stats;
 
   if (movilesEnZona === 0 && sinAsignar > 0) {
-    return { color: '#7f1d1d', label: 'Sin C.', pct: 999 }; // crítico
+    // Sin móviles pero hay pendientes → sin capacidad de entrega
+    return { color: '#92400e', label: 'Sin Cap.', capEntrega: -999 };
   }
   if (movilesEnZona === 0 && sinAsignar === 0) {
-    return { color: '#d1d5db', label: '—', pct: -1 }; // zona sin datos
+    // Sin datos
+    return { color: '#d1d5db', label: '—', capEntrega: -1000 };
   }
 
-  // Saturación = % de la capacidad TOTAL de la zona ya consumida
-  // (lote ocupado prorrateado + pendientes sin asignar) sobre el lote total prorrateado.
-  // Refleja el problema ANTES de que aparezca un sin asignar: si los móviles ya
-  // están al tope, la zona se ve roja aunque no haya pendientes.
-  //
-  // Usamos los pesos REALES (sin Math.ceil) para que el cálculo del % no se
-  // distorsione cuando la card muestra cap.total=cap.libre=1 por redondeo.
-  // Ej: movil 4/4 cubriendo 4 zonas → asignadosWeight=0.5, totalWeight=1 →
-  // 50% de saturación latente, en vez de 0% que daría capTotal-capDisp con
-  // los valores ceiled.
-  const rawPct = totalWeight <= 0
-    ? (sinAsignar > 0 ? (capacidadTotal === 0 ? 999 : 998) : 0)
-    : ((asignadosWeight + sinAsignar) / totalWeight) * 100;
-  const pct = !isFinite(rawPct) || rawPct < 0 ? 998 : rawPct;
+  // capEntrega = capacidad disponible prorrateada (ceil) - pendientes sin asignar
+  const capEntrega = capacidadDisponible - sinAsignar;
 
-  if (pct === 0)  return { color: '#86efac', label: '0%', pct: 0 };                       // verde claro sobrante
-  if (pct <= 25)  return { color: '#22c55e', label: `${Math.round(pct)}%`, pct };         // verde oscuro 1–25%
-  if (pct <= 50)  return { color: '#eab308', label: `${Math.round(pct)}%`, pct };         // amarillo
-  if (pct <= 75)  return { color: '#f97316', label: `${Math.round(pct)}%`, pct };         // naranja
-  if (pct <= 100) return { color: '#ef4444', label: `${Math.round(pct)}%`, pct };         // rojo
-  if (pct === 998) return { color: '#7f1d1d', label: 'Sin C.', pct: 998 };              // sin capacidad de entrega
-  return { color: '#7f1d1d', label: 'Sin C.', pct };                                      // >100% → sin capacidad
+  if (capEntrega < 0)    return { color: '#92400e', label: 'Sin Cap.', capEntrega };  // marrón
+  if (capEntrega === 0)  return { color: '#ef4444', label: '0', capEntrega };          // rojo
+  if (capEntrega === 1)  return { color: '#f97316', label: '1', capEntrega };          // naranja
+  if (capEntrega <= 3)   return { color: '#eab308', label: String(capEntrega), capEntrega }; // amarillo (2-3)
+  return { color: '#86efac', label: String(capEntrega), capEntrega };                  // verde claro >3
 }
 
-function getSaturacionOpacity(pct: number): number {
-  if (pct === 999) return 0.70;
-  if (pct === 998) return 0.70;
-  if (pct > 100)   return 0.65;
-  if (pct > 75)    return 0.60;
-  if (pct > 50)    return 0.55;
-  if (pct > 25)    return 0.50;
-  if (pct > 0)     return 0.45;
-  if (pct === 0)   return 0.35;
-  return 0.15; // gris
+function getCapEntregaOpacity(capEntrega: number): number {
+  if (capEntrega === -999) return 0.70; // sin cobertura
+  if (capEntrega === -1000) return 0.15; // gris sin datos
+  if (capEntrega < 0)  return 0.70;
+  if (capEntrega === 0) return 0.65;
+  if (capEntrega === 1) return 0.55;
+  if (capEntrega <= 3)  return 0.50;
+  return 0.40; // >3 verde claro
 }
 
 function adjustOpacity(base: number, zonaOpacity: number): number {
@@ -150,13 +136,12 @@ function SaturacionLegend() {
       onAdd() {
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
-          <div class="demora-legend-title">Saturación</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#7f1d1d"></span><span class="demora-legend-label">Sin C.</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">75 – 100%</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">50 – 75%</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">25 – 50% (sin etiqueta)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">1 – 25% (sin etiqueta)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">Sobrante (sin etiqueta)</span></div>
+          <div class="demora-legend-title">Cap. Entrega</div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#92400e"></span><span class="demora-legend-label">Sin Cap. (&lt; 0)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">0 (capacidad máx.)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">1</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">2 – 3</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">&gt; 3 (sobrante)</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#d1d5db"></span><span class="demora-legend-label">Sin datos</span></div>
         `;
         L.DomEvent.disableClickPropagation(div);
@@ -172,7 +157,7 @@ function SaturacionLegend() {
 
 const TIPOS_SERVICIO_SAT = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;
 
-/** Control Leaflet para filtro por tipo de servicio en saturación */
+/** Control Leaflet para filtro por tipo de servicio en Cap. Entrega */
 function SaturacionFilterControl({ serviceFilter, onServiceFilterChange }: { serviceFilter: string; onServiceFilterChange: (f: string) => void }) {
   const map = useMap();
   useEffect(() => {
@@ -241,28 +226,26 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       const center: [number, number] = polygonCentroid(validGeo);
 
       const stats = saturacionData.get(zona.zona_id);
-      // Zona sin ningún registro: grey
       const defaultStats: SaturacionZonaStats = { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
       const s = stats ?? defaultStats;
-      const { color, label, pct } = getSaturacionColor(s);
-      const fillOpacity = getSaturacionOpacity(pct);
+      const { color, label, capEntrega } = getCapEntregaColor(s);
+      const fillOpacity = getCapEntregaOpacity(capEntrega);
 
       // Tooltip detallado
-      const satPct = s.capacidadDisponible > 0 ? Math.round((s.sinAsignar / s.capacidadDisponible) * 100) : 0;
       const tooltipLines = [
         `<b>Zona ${zona.zona_id}${zona.nombre ? ` — ${zona.nombre}` : ''}</b>`,
         `Pedidos sin asignar: <b>${s.sinAsignar}</b>`,
         `Móviles en zona: <b>${s.movilesEnZona}</b>${s.movilesCompartidos > 0 ? ` (${s.movilesCompartidos} compartidos)` : ''}`,
         `Cap. total (prorat.): <b>${s.capacidadTotal.toFixed(1)}</b>`,
-        `Espacios libres (prorat.): <b>${s.capacidadDisponible.toFixed(1)}</b>`,
-        pct === 999 ? '⚠️ Sin cobertura (0 móviles)'
-          : pct === 998 ? '⚠️ Sin C. — móviles saturados (cap. disponible = 0)'
-          : `Saturación: <b>${satPct}%</b>`,
+        `Cap. libre (prorat.): <b>${s.capacidadDisponible.toFixed(1)}</b>`,
+        capEntrega === -999 ? '⚠️ Sin cobertura (0 móviles)'
+          : capEntrega === -1000 ? '— Sin datos'
+          : `Cap. Entrega: <b>${capEntrega < 0 ? capEntrega : capEntrega}</b>`,
         s.movilesCompartidos > 0 ? '<i style="color:#6b7280;font-size:10px">Capacidad con prorrateo por zonas compartidas</i>' : '',
       ].filter(Boolean);
 
-      // Only show label for pct >= 50 (or critical 999 = sin cobertura)
-      const showLabel = pct === 999 || pct === 998 || pct >= 50;
+      // Mostrar label siempre excepto para casos sin datos y valores muy positivos (>3 solo número)
+      const showLabel = capEntrega !== -1000;
 
       return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity, tooltipHTML: tooltipLines.join('<br/>') };
     }).filter(Boolean) as Array<{

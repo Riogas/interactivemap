@@ -83,7 +83,7 @@ export default function DataViewControl({ value, onChange, isToday = true }: Dat
             </label>
             <label class="dv-option">
               <input type="radio" name="dv-mode" value="saturacion" />
-              <span class="dv-icon">🟥</span> Saturación
+              <span class="dv-icon">📦</span> Cap. Entrega
             </label>
 
           </div>
