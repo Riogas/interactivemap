@@ -275,13 +275,16 @@ export default function SaturacionZonaModal({
   const isServiceMode = tipoServicio.toUpperCase() === 'SERVICE';
   const sinAsignarTitle = isServiceMode ? 'Services sin asignar' : `Pedidos sin asignar (${tipoServicio})`;
   const sinAsignar = pedidosSinAsignar.length;
-  // Saturación = (lote ya ocupado + pendientes sin asignar) / lote total.
-  // Mismo cálculo que getSaturacionColor en SaturacionZonasLayer — el % refleja
-  // la carga total de la zona, no solo los pendientes. Permite ver el problema
-  // de capacidad antes de que aparezca un sin asignar.
-  const ocupados = Math.max(0, capTotal - capLibre);
-  const satPct = capTotal > 0
-    ? Math.round(((ocupados + sinAsignar) / capTotal) * 100)
+  // Saturación = (carga real prorrateada + pendientes sin asignar) / capacidad
+  // total prorrateada. Usa los pesos REALES (sin ceil) que vienen en satStats
+  // — los valores capTotal/capLibre que mostramos en la card pasan por Math.ceil
+  // y enmascaran la fracción del lote ocupado (ej: ceil(2/4)=1 == ceil(4/4)=1
+  // → ocupados=0, sat=0%). Con asignadosWeight/totalWeight el % refleja la
+  // carga latente del móvil aunque cada zona individual tenga cap.libre==cap.total.
+  const asignadosWeight = satStats?.asignadosWeight ?? 0;
+  const totalWeight = satStats?.totalWeight ?? 0;
+  const satPct = totalWeight > 0
+    ? Math.round(((asignadosWeight + sinAsignar) / totalWeight) * 100)
     : sinAsignar > 0 ? 999 : 0;
 
   // Defensa en profundidad: si el caller pasó scope y la zona no está, no renderizar.

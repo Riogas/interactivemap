@@ -1852,7 +1852,7 @@ function DashboardContent() {
   //   Los móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos se excluyen de la capacidad.
   const saturacionData = useMemo(() => {
     const isService = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
-    const stats = new Map<number, { sinAsignar: number; capacidadTotal: number; capacidadDisponible: number; movilesEnZona: number; movilesCompartidos: number }>();
+    const stats = new Map<number, { sinAsignar: number; capacidadTotal: number; capacidadDisponible: number; movilesEnZona: number; movilesCompartidos: number; asignadosWeight: number; totalWeight: number }>();
 
     // 1. Registros de prioridad activos filtrados por tipo de servicio
     const priorityRecs = movilesZonasData.filter(
@@ -1890,18 +1890,23 @@ function DashboardContent() {
       if (allHiddenMovilIds && allHiddenMovilIds.has(String(r.movil_id))) return;
       const nZones = isService ? 1 : (movilZoneCount.get(r.movil_id) ?? 1);
       const available = Math.max(0, md.tamanoLote - md.pedidosAsignados);
-      const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+      const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
       // El aporte prorrateado por móvil se redondea HACIA ARRIBA al entero
       // siguiente (request 2026-05-07): un móvil que cubre 3 zonas con 4
       // libres aporta ceil(4/3)=2 a cada zona en vez de 1.33. Más realista
       // visualmente y evita decimales en cap. libre / cap. total.
       // Math.ceil(0)=0 → móviles llenos siguen aportando 0 a capacidadDisponible.
+      // Pesos sin ceil — para el cálculo exacto del % de saturación.
+      const asignadosShare = md.pedidosAsignados / nZones;
+      const totalShare = md.tamanoLote / nZones;
       stats.set(r.zona_id, {
         ...existing,
         capacidadTotal: existing.capacidadTotal + Math.ceil(md.tamanoLote / nZones),
         capacidadDisponible: existing.capacidadDisponible + Math.ceil(available / nZones),
         movilesEnZona: existing.movilesEnZona + 1,
         movilesCompartidos: existing.movilesCompartidos + (nZones > 1 ? 1 : 0),
+        asignadosWeight: existing.asignadosWeight + asignadosShare,
+        totalWeight: existing.totalWeight + totalShare,
       });
     });
 
@@ -1919,7 +1924,7 @@ function DashboardContent() {
         const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
         if (!zona || zona === 0) return;
         if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
-        const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+        const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
         stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
       });
     } else {
@@ -1929,7 +1934,7 @@ function DashboardContent() {
         const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
         if (!zona || zona === 0) return;
         if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
-        const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+        const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
         stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
       });
     }
