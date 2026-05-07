@@ -13,7 +13,10 @@ interface DataViewControlProps {
   isToday?: boolean;
 }
 
-const DATE_DEPENDENT_MODES: DataViewMode[] = ['distribucion', 'demoras', 'moviles-zonas', 'pedidos-zona', 'saturacion'];
+// Modos que requieren datos del día actual (live data). En fechas pasadas
+// quedan deshabilitados. Se permiten solo 'normal' (sin zona) y 'distribucion'
+// (la división geográfica no depende de la fecha) — request 2026-05-07.
+const DATE_DEPENDENT_MODES: DataViewMode[] = ['demoras', 'moviles-zonas', 'zonas-activas', 'pedidos-zona', 'saturacion'];
 
 /**
  * Control del mapa estilo Leaflet para seleccionar la Capas de Información:

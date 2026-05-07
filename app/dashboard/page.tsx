@@ -101,6 +101,16 @@ function DashboardContent() {
   const focusTriggerRef = useRef(0); // Trigger para forzar re-centrar el mismo pedido/service
   const [focusTrigger, setFocusTrigger] = useState(0);
   const [focusedPuntoId, setFocusedPuntoId] = useState<string | undefined>(); // Punto a centralizar
+  // selectionVersion: contador que solo se incrementa por acciones EXPLICITAS del usuario
+  // sobre la selección de móviles (toggle, select-all, clear-all, filtro de actividad).
+  // El MapView re-centra/re-ajusta bounds SOLO cuando esta versión cambia, evitando que
+  // updates de realtime (móvil que aparece/desaparece, GPS) muevan el centrado actual.
+  const selectionVersionRef = useRef(0);
+  const [selectionVersion, setSelectionVersion] = useState(0);
+  const bumpSelectionVersion = useCallback(() => {
+    selectionVersionRef.current += 1;
+    setSelectionVersion(selectionVersionRef.current);
+  }, []);
   const [showPendientes, setShowPendientes] = useState(false); // Mostrar marcadores de pedidos
   const [showCompletados, setShowCompletados] = useState(false); // Mostrar marcadores de completados
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -1328,6 +1338,7 @@ function DashboardContent() {
   // auto-agregue. Si quedan algunos sin marcar, modo "custom" (flag=true)
   // y los nuevos NO se auto-agregan.
   const handleToggleMovil = useCallback((movilId: number) => {
+    bumpSelectionVersion();
     setSelectedMoviles(prev => {
       const newSelection = prev.includes(movilId)
         ? prev.filter(id => id !== movilId) // Deseleccionar
@@ -1359,16 +1370,18 @@ function DashboardContent() {
     userExplicitlyCleared.current = false;
     const hidden = hiddenMovilIdsRef.current;
     const filteredIds = movilesFiltered.filter(m => !hidden.has(m.id)).map(m => m.id);
+    bumpSelectionVersion();
     setSelectedMoviles(filteredIds);
     setFocusedMovil(undefined);
-  }, [movilesFiltered]);
+  }, [movilesFiltered, bumpSelectionVersion]);
 
   // Handler para deseleccionar todos los móviles
   const handleClearAll = useCallback(() => {
     userExplicitlyCleared.current = true;
+    bumpSelectionVersion();
     setSelectedMoviles([]);
     setFocusedMovil(undefined);
-  }, []);
+  }, [bumpSelectionVersion]);
 
   // 🆕 Cuando cambia el filtro de actividad, re-seleccionar solo móviles que cumplen el filtro
   useEffect(() => {
@@ -1377,6 +1390,7 @@ function DashboardContent() {
     const filteredIds = applyActivityFilter(movilesFiltered)
       .filter(m => !hidden.has(m.id))
       .map(m => m.id);
+    bumpSelectionVersion();
     setSelectedMoviles(filteredIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movilesFilters.actividad]); // Solo cuando cambia el filtro de actividad
@@ -1463,12 +1477,14 @@ function DashboardContent() {
     
     // Si el móvil no está en selectedMoviles, agregarlo y limpiar los demás
     if (!selectedMoviles.includes(movilId)) {
+      bumpSelectionVersion();
       setSelectedMoviles([movilId]);
     } else if (selectedMoviles.length > 1) {
       // Si hay múltiples seleccionados, dejar solo este
+      bumpSelectionVersion();
       setSelectedMoviles([movilId]);
     }
-    
+
     setPopupMovil(undefined); // Cierra el popup
     setShowPendientes(false); // Oculta pendientes
     setShowCompletados(false); // Oculta completados
@@ -1550,11 +1566,13 @@ function DashboardContent() {
     
     // Seleccionar solo este móvil
     if (!selectedMoviles.includes(movilId)) {
+      bumpSelectionVersion();
       setSelectedMoviles([movilId]);
     } else if (selectedMoviles.length > 1) {
+      bumpSelectionVersion();
       setSelectedMoviles([movilId]);
     }
-    
+
     setPopupMovil(undefined);
     setShowPendientes(false);
     setShowCompletados(false);
@@ -2788,6 +2806,7 @@ function DashboardContent() {
                 showPendientes={showPendientes}
                 showCompletados={showCompletados}
                 selectedMovilesCount={selectedMoviles.length}
+                selectionVersion={selectionVersion}
                 defaultMapLayer={preferences.defaultMapLayer}
                 onMovilClick={handleMovilClick}
                 onShowAnimation={handleShowAnimation}
