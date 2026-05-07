@@ -64,6 +64,9 @@ interface MovilesZonasLayerProps {
   hiddenMovilIds?: Set<string>;
   /** Callback al hacer click en una zona */
   onZonaClick?: (zonaId: number) => void;
+  /** Mapa zona_id → demora info. activa===false → zona transparente con borde
+      negro punteado (request 2026-05-07). */
+  demoras?: Map<number, { minutos: number; activa: boolean }>;
 }
 
 /**
@@ -203,6 +206,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   movilEstados,
   hiddenMovilIds,
   onZonaClick,
+  demoras,
 }: MovilesZonasLayerProps) {
   // Filtrar registros de moviles_zonas según tipo de servicio seleccionado.
   // Excluir móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos.
@@ -295,7 +299,9 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
         onShowCountLabelsChange={onShowCountLabelsChange ?? (() => {})}
       />
       <MovilesZonasLegend />
-      {items.map(({ zona, positions, center, fillColor, fillOpacity, counts, total }) => (
+      {items.map(({ zona, positions, center, fillColor, fillOpacity, counts, total }) => {
+        const isInactive = demoras?.get(zona.zona_id)?.activa === false;
+        return (
         <React.Fragment key={zona.zona_id}>
           <Polygon
             positions={positions}
@@ -303,9 +309,10 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
               // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
               color: '#000000',
               fillColor: fillColor,
-              fillOpacity: adjustOpacity(fillOpacity, zonaOpacity),
+              fillOpacity: isInactive ? 0 : adjustOpacity(fillOpacity, zonaOpacity),
               weight: 2,
               opacity: adjustOpacity(0.8, zonaOpacity),
+              dashArray: isInactive ? '8, 6' : undefined,
             }}
             eventHandlers={onZonaClick ? {
               click: () => onZonaClick(zona.zona_id),
@@ -327,7 +334,8 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
             interactive={false}
           />
         </React.Fragment>
-      ))}
+        );
+      })}
     </>
   );
 });

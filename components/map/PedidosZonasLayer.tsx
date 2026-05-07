@@ -30,6 +30,9 @@ interface PedidosZonasLayerProps {
   onZonaClick?: (zonaId: number) => void;
   /** Si true, oculta la opción "Sin asignar" del select (distribuidor). */
   hideSinAsignarOption?: boolean;
+  /** Mapa zona_id → demora info. activa===false → zona transparente con borde
+      negro punteado (request 2026-05-07). */
+  demoras?: Map<number, { minutos: number; activa: boolean }>;
 }
 
 /**
@@ -153,7 +156,7 @@ function PedidosZonasLegend({ filter }: { filter: PedidosZonaFilter }) {
   return null;
 }
 
-const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick, hideSinAsignarOption = false }: PedidosZonasLayerProps) {
+const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick, hideSinAsignarOption = false, demoras }: PedidosZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -202,7 +205,9 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
     <>
       <PedidosZonaFilterControl filter={filter} onFilterChange={onFilterChange} hideSinAsignarOption={hideSinAsignarOption} />
       <PedidosZonasLegend filter={filter} />
-      {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => (
+      {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => {
+        const isInactive = demoras?.get(zona.zona_id)?.activa === false || zona.activa === false;
+        return (
         <React.Fragment key={zona.zona_id}>
           <Polygon
             positions={positions}
@@ -210,9 +215,10 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
               // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
               color: '#000000',
               fillColor: fillColor,
-              fillOpacity: adjustOpacity(fillOpacity, zonaOpacity),
+              fillOpacity: isInactive ? 0 : adjustOpacity(fillOpacity, zonaOpacity),
               weight: 2,
               opacity: adjustOpacity(0.8, zonaOpacity),
+              dashArray: isInactive ? '8, 6' : undefined,
             }}
             eventHandlers={onZonaClick ? { click: () => onZonaClick(zona.zona_id) } : {}}
           />
@@ -233,7 +239,8 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
             eventHandlers={onZonaClick ? { click: () => onZonaClick(zona.zona_id) } : {}}
           />
         </React.Fragment>
-      ))}
+        );
+      })}
     </>
   );
 });
