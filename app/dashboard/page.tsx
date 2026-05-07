@@ -1844,6 +1844,23 @@ function DashboardContent() {
       estadoNro: (m as any).estadoNro ?? undefined,
     }));
 
+    // 3b. Asignaciones reales por móvil contadas client-side: pedidos + services
+    //     con estado_nro=1, sin filtrar por tipo_de_servicio. La capacidad fisica
+    //     del movil es la misma para urgente/nocturno/service (request 2026-05-07).
+    const asignadosByMovil = new Map<string, number>();
+    pedidosCompletos.forEach(p => {
+      if (p.movil && Number(p.movil) !== 0 && Number(p.estado_nro) === 1) {
+        const k = String(p.movil);
+        asignadosByMovil.set(k, (asignadosByMovil.get(k) ?? 0) + 1);
+      }
+    });
+    servicesCompletos.forEach(s => {
+      if (s.movil && Number(s.movil) !== 0 && Number(s.estado_nro) === 1) {
+        const k = String(s.movil);
+        asignadosByMovil.set(k, (asignadosByMovil.get(k) ?? 0) + 1);
+      }
+    });
+
     // 4. Acumular capacidad por zona (excluye inactivos)
     // Para SERVICE no se proratea: un móvil libre puede atender cualquiera de sus zonas
     // Para URGENTE/NOCTURNO se divide entre la cantidad de zonas que cubre (prorrateo)
@@ -1855,7 +1872,11 @@ function DashboardContent() {
       if (md.estadoNro !== undefined && !isMovilActiveForUI(md.estadoNro)) return;
       if (allHiddenMovilIds && allHiddenMovilIds.has(String(r.movil_id))) return;
       const nZones = isService ? 1 : (movilZoneCount.get(r.movil_id) ?? 1);
-      const available = Math.max(0, md.tamanoLote - md.pedidosAsignados);
+      // Usar el conteo client-side (pedidos + services del dia) en lugar del
+      // valor que viene de la API. Si ese conteo no esta disponible para un
+      // movil, fallback al valor del API.
+      const asignadosTotales = asignadosByMovil.get(r.movil_id) ?? md.pedidosAsignados;
+      const available = Math.max(0, md.tamanoLote - asignadosTotales);
       const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
       // El aporte prorrateado por móvil se redondea HACIA ARRIBA al entero
       // siguiente (request 2026-05-07): un móvil que cubre 3 zonas con 4
