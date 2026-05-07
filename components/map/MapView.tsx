@@ -160,6 +160,7 @@ function MapUpdater({
   const lastFocusedMovil = useRef<number | undefined>(undefined);
   const lastSelectedMovilesCount = useRef<number>(0);
   const lastFocusTrigger = useRef<number>(0);
+  const lastFocusTriggerPoi = useRef<number>(0);
   const lastFocusedPuntoId = useRef<string | undefined>(undefined);
   const userHasInteracted = useRef(false);
 
@@ -205,22 +206,41 @@ function MapUpdater({
     }
   }, [map, focusTrigger, focusedPedidoId, focusedServiceId, pedidos, services, allPedidos, allServices]);
 
-  // ✅ NUEVO: Efecto para centrar el mapa en un punto de interés
+  // ✅ Efecto para centrar el mapa en un punto de interés y abrir su popup.
+  // Re-corre cuando focusedPuntoId cambia O cuando focusTrigger se incrementa
+  // (permite re-abrir el mismo POI clickeando varias veces en la sidebar).
   useEffect(() => {
-    if (focusedPuntoId !== lastFocusedPuntoId.current) {
+    if (!focusedPuntoId || !customMarkers || customMarkers.length === 0) {
       lastFocusedPuntoId.current = focusedPuntoId;
-      
-      if (focusedPuntoId && customMarkers && customMarkers.length > 0) {
-        const punto = customMarkers.find(p => p.id === focusedPuntoId);
-        if (punto) {
-          console.log('📍 Centrando mapa en punto de interés:', punto.nombre);
-          map.setView([punto.latitud, punto.longitud], 16, {
-            animate: true,
-          });
-        }
-      }
+      return;
     }
-  }, [map, focusedPuntoId, customMarkers]);
+    const sameId = focusedPuntoId === lastFocusedPuntoId.current;
+    lastFocusedPuntoId.current = focusedPuntoId;
+    // Si es el mismo id, solo re-disparamos cuando focusTrigger cambió
+    // (lastFocusTriggerPoi es exclusivo de este efecto — no comparte estado
+    // con el efecto de pedidos/services que mira otra ref).
+    if (sameId && focusTrigger === lastFocusTriggerPoi.current) return;
+    lastFocusTriggerPoi.current = focusTrigger ?? 0;
+
+    const punto = customMarkers.find(p => p.id === focusedPuntoId);
+    if (!punto) return;
+
+    map.setView([punto.latitud, punto.longitud], 16, { animate: true });
+
+    // Buscar el marker del POI en las layers del mapa y abrir su popup.
+    // Filtramos por className 'custom-marker-icon' (solo los POIs lo usan)
+    // y hacemos match por lat/lng del POI focusado.
+    map.eachLayer((layer: any) => {
+      if (!(layer instanceof L.Marker)) return;
+      const ll = layer.getLatLng();
+      if (Math.abs(ll.lat - punto.latitud) > 1e-9) return;
+      if (Math.abs(ll.lng - punto.longitud) > 1e-9) return;
+      const icon: any = layer.getIcon();
+      if (icon?.options?.className !== 'custom-marker-icon') return;
+      // Pequeño delay para que el setView termine y autoPan no compita
+      setTimeout(() => layer.openPopup(), 250);
+    });
+  }, [map, focusedPuntoId, focusTrigger, customMarkers]);
 
   // Efecto para centrar el mapa SOLO la primera vez que se cargan datos
   useEffect(() => {
