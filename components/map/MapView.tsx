@@ -2128,7 +2128,7 @@ const MapView = memo(function MapView({
         )}
 
         {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}
-        {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} zonaOpacity={zonaOpacity} />}
+        {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} zonaOpacity={zonaOpacity} demoras={demorasData} />}
 
         {/* 🏘️ Capa de Distribución (polígonos con color de tabla + identificador de zona) */}
         {dataViewMode === 'distribucion' && (allZonas.length > 0 || zonas.length > 0) && (
@@ -2140,12 +2140,12 @@ const MapView = memo(function MapView({
           <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} />
         )}
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} />
         )}
 
         {/* ✅ Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}
@@ -2155,7 +2155,7 @@ const MapView = memo(function MapView({
 
         {/* 🟥 Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
         {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <SaturacionZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} />
+          <SaturacionZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (

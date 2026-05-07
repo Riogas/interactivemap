@@ -16,6 +16,9 @@ export interface ZonaMapData {
 interface ZonasMapLayerProps {
   zonas: ZonaMapData[];
   zonaOpacity?: number; // 0-100, default 50
+  /** Mapa zona_id → demora info. Si activa===false la zona se renderiza
+      transparente con borde negro punteado (request 2026-05-07). */
+  demoras?: Map<number, { minutos: number; activa: boolean }>;
 }
 
 /**
@@ -29,7 +32,7 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50 }: ZonasMapLayerProps) {
+const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50, demoras }: ZonasMapLayerProps) {
   if (!zonas || zonas.length === 0) return null;
 
   return (
@@ -46,6 +49,7 @@ const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50 }: Z
 
         const positions: LatLngExpression[] = geo.map((p: any) => [p.lat, p.lng]);
         const fillColor = zona.color || '#3b82f6';
+        const isInactive = demoras?.get(zona.zona_id)?.activa === false;
 
         return (
           <Polygon
@@ -55,10 +59,11 @@ const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50 }: Z
               // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
               color: '#000000',
               fillColor: fillColor,
-              fillOpacity: adjustOpacity(0.20, zonaOpacity),
+              fillOpacity: isInactive ? 0 : adjustOpacity(0.20, zonaOpacity),
               weight: 2,
               opacity: adjustOpacity(0.7, zonaOpacity),
-              dashArray: '5, 5',
+              // Inactiva: trazo punteado bien marcado. Activa: el ligero punteado original.
+              dashArray: isInactive ? '8, 6' : '5, 5',
             }}
           >
             <Tooltip sticky direction="top" offset={[0, -20]} className="zona-tooltip">

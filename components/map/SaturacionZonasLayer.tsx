@@ -40,6 +40,9 @@ interface SaturacionZonasLayerProps {
   zonaOpacity?: number;
   /** Callback al hacer click en una zona */
   onZonaClick?: (zonaId: number) => void;
+  /** Mapa zona_id → demora info. activa===false → zona transparente con borde
+      negro punteado (request 2026-05-07). */
+  demoras?: Map<number, { minutos: number; activa: boolean }>;
 }
 
 // ──────────────────────────── helpers ────────────────────────────────────
@@ -189,6 +192,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   onServiceFilterChange,
   zonaOpacity = 50,
   onZonaClick,
+  demoras,
 }: SaturacionZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
@@ -260,7 +264,9 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       {onServiceFilterChange && (
         <SaturacionFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
       )}
-      {items.map(({ zona, positions, center, color, label, fillOpacity, tooltipHTML }) => (
+      {items.map(({ zona, positions, center, color, label, fillOpacity, tooltipHTML }) => {
+        const isInactive = demoras?.get(zona.zona_id)?.activa === false;
+        return (
         <React.Fragment key={zona.zona_id}>
           <Polygon
             positions={positions}
@@ -268,9 +274,10 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
               // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
               color: '#000000',
               fillColor: color,
-              fillOpacity: adjustOpacity(fillOpacity, zonaOpacity),
+              fillOpacity: isInactive ? 0 : adjustOpacity(fillOpacity, zonaOpacity),
               weight: 2,
               opacity: adjustOpacity(0.85, zonaOpacity),
+              dashArray: isInactive ? '8, 6' : undefined,
             }}
             eventHandlers={onZonaClick ? { click: () => onZonaClick(zona.zona_id) } : {}}
           >
@@ -292,7 +299,8 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
             eventHandlers={onZonaClick ? { click: () => onZonaClick(zona.zona_id) } : {}}
           />
         </React.Fragment>
-      ))}
+        );
+      })}
     </>
   );
 });
