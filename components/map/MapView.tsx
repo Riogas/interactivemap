@@ -112,6 +112,8 @@ interface MapViewProps {
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
   onToggleDemoraLabels?: (next: boolean) => void; // Callback para togglear etiquetas desde la leyenda del mapa
+  showCapEntregaLabels?: boolean; // Mostrar etiquetas de Cap. Entrega en el mapa
+  onToggleCapEntregaLabels?: (next: boolean) => void; // Callback para togglear etiquetas de Cap. Entrega
   zonaOpacity?: number; // Opacidad de las capas de zonas (0-100)
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
@@ -551,6 +553,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
     prev.saturacionData?.size === next.saturacionData?.size &&
     prev.showDemoraLabels === next.showDemoraLabels &&
+    prev.showCapEntregaLabels === next.showCapEntregaLabels &&
     prev.zonaOpacity === next.zonaOpacity &&
     prev.reloadMarkersTrigger === next.reloadMarkersTrigger &&
     prev.poisHidden === next.poisHidden &&
@@ -624,6 +627,8 @@ const MapView = memo(function MapView({
   allZonas = [],
   showDemoraLabels = false,
   onToggleDemoraLabels,
+  showCapEntregaLabels = false,
+  onToggleCapEntregaLabels,
   zonaOpacity = 50,
   reloadMarkersTrigger = 0,
   poisHidden = false,
@@ -2185,7 +2190,7 @@ const MapView = memo(function MapView({
 
         {/* 🟥 Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
         {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <SaturacionZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} />
+          <SaturacionZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (

@@ -17,7 +17,7 @@ interface ZonasMapLayerProps {
   zonas: ZonaMapData[];
   zonaOpacity?: number; // 0-100, default 50
   /** Mapa zona_id → demora info. Si activa===false la zona se renderiza
-      transparente con borde negro punteado (request 2026-05-07). */
+      transparente con borde rojo punteado (request 2026-05-07). */
   demoras?: Map<number, { minutos: number; activa: boolean }>;
 }
 
@@ -56,8 +56,8 @@ const ZonasMapLayer = memo(function ZonasMapLayer({ zonas, zonaOpacity = 50, dem
             key={zona.zona_id}
             positions={positions}
             pathOptions={{
-              // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
-              color: '#000000',
+              // Inactiva: borde rojo punteado (request 2026-05-07). Activa: borde negro.
+              color: isInactive ? '#dc2626' : '#000000',
               fillColor: fillColor,
               fillOpacity: isInactive ? 0 : adjustOpacity(0.20, zonaOpacity),
               weight: 2,
