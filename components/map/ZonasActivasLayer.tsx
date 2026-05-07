@@ -140,12 +140,13 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
         const positions: LatLngExpression[] = geo.map((p) => [p.lat, p.lng]);
         const info = demoras.get(zona.zona_id);
         const activa = info?.activa ?? null;
-        const isInactive = activa === false;
 
-        // Verde activa, gris sin dato. Inactivas se renderizan transparentes
-        // con borde negro punteado (request 2026-05-07) — el color de fondo
-        // queda como fallback por si fillOpacity se sobreescribe.
-        const fillColor = activa === true ? '#22c55e' : isInactive ? '#ef4444' : '#9ca3af';
+        // Verde activa, rojo inactiva, gris sin dato. La capa "Zonas Activas"
+        // mantiene siempre relleno solido — su proposito es justamente
+        // visualizar el estado activa/inactiva con color (legenda Activa/No
+        // Activa/Sin dato), no aplicar el tratamiento transparente+punteado
+        // que sí aplica al resto de capas (request 2026-05-07).
+        const fillColor = activa === true ? '#22c55e' : activa === false ? '#ef4444' : '#9ca3af';
         // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
         const borderColor = '#000000';
 
@@ -156,10 +157,9 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
             pathOptions={{
               color: borderColor,
               fillColor,
-              fillOpacity: isInactive ? 0 : adjustOpacity(0.35, zonaOpacity),
+              fillOpacity: adjustOpacity(0.35, zonaOpacity),
               weight: 2,
               opacity: adjustOpacity(0.8, zonaOpacity),
-              dashArray: isInactive ? '8, 6' : undefined,
             }}
           />
         );
