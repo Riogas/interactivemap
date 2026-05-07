@@ -7,6 +7,11 @@
  *   - Otros usuarios (típicamente "distribuidor"): se limitan al set de zonas
  *     que cubre el conjunto allowedEmpresas configurado en sus preferencias
  *     (fail-closed si allowedEmpresas es null o vacío).
+ *
+ * RolId conocidos del Security Suite:
+ *   48 = Dashboard
+ *   49 = Despacho
+ *   50 = Supervisor
  */
 
 interface UserRole {
@@ -47,6 +52,25 @@ export function getScopedEmpresas(user: ScopedUser | null | undefined): number[]
   const allowed = user?.allowedEmpresas;
   if (!Array.isArray(allowed)) return [];
   return allowed;
+}
+
+/**
+ * True si el usuario tiene privilegios para ver y contar "pedidos sin asignar"
+ * en la capa Cap. Entrega del mapa.
+ *
+ * Roles privilegiados:
+ *   - Root        (isRoot === 'S')
+ *   - Despacho    (RolId === '49')
+ *   - Dashboard   (RolId === '48')
+ *   - Supervisor  (RolId === '50')
+ *
+ * Para todos los demás roles (distribuidores, etc.), sinAsignar = 0 en el
+ * cálculo de saturación y en el modal de zona.
+ */
+export function isPrivilegedForCapEntrega(user: ScopedUser | null | undefined): boolean {
+  if (isRoot(user)) return true;
+  const PRIVILEGED_ROL_IDS = new Set(['48', '49', '50']);
+  return user?.roles?.some((r) => PRIVILEGED_ROL_IDS.has(String(r.RolId))) ?? false;
 }
 
 /**

@@ -22,7 +22,7 @@ import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
-import { getScopedEmpresas, shouldScopeByEmpresa } from '@/lib/auth-scope';
+import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForCapEntrega } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
@@ -1676,6 +1676,14 @@ function DashboardContent() {
     [user],
   );
 
+  // Gating de capa Cap. Entrega: solo root/despacho/dashboard/supervisor ven y
+  // cuentan los pedidos sin asignar. Para otros roles sinAsignar=0 (no afecta
+  // calc, no se lista en modal). Derivado de isPrivilegedForCapEntrega().
+  const canSeeUnassignedInCapEntrega = useMemo(
+    () => isPrivilegedForCapEntrega(user),
+    [user],
+  );
+
   // `userHasEmpresaRestriction` mira solo allowedEmpresas — se usa para filtrar
   // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
   // `isScopeRestricted` además exige que el user no sea root/despacho — es la
@@ -1884,6 +1892,8 @@ function DashboardContent() {
     priorityRecs.forEach(r => {
       // Scope: zonas fuera del set permitido se ignoran
       if (scopedZonaIds && !scopedZonaIds.has(r.zona_id)) return;
+      // Zonas inactivas (demoras.activa===false): no calcular Cap. Entrega (todos los roles)
+      if (demorasData.get(r.zona_id)?.activa === false) return;
       const md = movilDataMap.get(r.movil_id);
       if (!md) return;
       if (md.estadoNro !== undefined && !isMovilActiveForUI(md.estadoNro)) return;
@@ -1911,36 +1921,39 @@ function DashboardContent() {
     });
 
     // 5. Contar trabajos sin asignar por zona según tipo de servicio.
-    // Si hideUnassigned=true (distribuidor con allowedEmpresas o deselección
-    // parcial), los items sin asignar no se cuentan: el modal tampoco los
-    // muestra (sinAsignarList=[]) y el color del mapa debe ser consistente
-    // con la card.
-    if (hideUnassigned) {
-      // No-op: sinAsignar queda en 0 para esas zonas.
-    } else if (isService) {
-      servicesCompletos.forEach(s => {
-        if (Number(s.estado_nro) !== 1) return;
-        if (s.movil != null && Number(s.movil) !== 0) return;
-        const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
-        if (!zona || zona === 0) return;
-        if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
-        const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
-        stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
-      });
-    } else {
-      pedidosCompletos.forEach(p => {
-        if (Number(p.estado_nro) !== 1) return;
-        if (p.movil != null && Number(p.movil) !== 0) return;
-        const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
-        if (!zona || zona === 0) return;
-        if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
-        const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
-        stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
-      });
+    // Solo para roles privilegiados (root/despacho/dashboard/supervisor).
+    // Zonas inactivas siempre se saltean (todos los roles).
+    if (canSeeUnassignedInCapEntrega) {
+      if (isService) {
+        servicesCompletos.forEach(s => {
+          if (Number(s.estado_nro) !== 1) return;
+          if (s.movil != null && Number(s.movil) !== 0) return;
+          const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
+          if (!zona || zona === 0) return;
+          if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
+          // Zona inactiva: no contar sin asignar
+          if (demorasData.get(zona)?.activa === false) return;
+          const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
+          stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
+        });
+      } else {
+        pedidosCompletos.forEach(p => {
+          if (Number(p.estado_nro) !== 1) return;
+          if (p.movil != null && Number(p.movil) !== 0) return;
+          const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
+          if (!zona || zona === 0) return;
+          if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
+          // Zona inactiva: no contar sin asignar
+          if (demorasData.get(zona)?.activa === false) return;
+          const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
+          stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
+        });
+      }
     }
+    // No-op si !canSeeUnassignedInCapEntrega: sinAsignar queda en 0 (no privilegiado)
 
     return stats;
-  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds]);
+  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds, canSeeUnassignedInCapEntrega, demorasData]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
   // para el mapa. Sin esto, cada llamada inline crea un nuevo array → downstream re-renders.
 
@@ -2490,11 +2503,11 @@ function DashboardContent() {
       />
 
       {/* Modal de Saturación: click en zona del mapa */}
-      {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && (() => {
+      {/* No abrir si zona inactiva (demoras.activa===false) — sin métricas relevantes */}
+      {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && demorasData.get(saturacionModalZonaId)?.activa !== false && (() => {
         const isServiceMode = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
-        // Si el user tiene restricción de empresas o deseleccionó algunas,
-        // no mostramos los pedidos sin asignar en la lista de saturación.
-        const sinAsignarList = hideUnassigned
+        // Solo roles privilegiados (root/despacho/dashboard/supervisor) ven sin asignar.
+        const sinAsignarList = !canSeeUnassignedInCapEntrega
           ? []
           : isServiceMode
           ? servicesCompletos
