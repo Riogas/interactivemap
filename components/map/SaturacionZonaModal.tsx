@@ -158,7 +158,7 @@ function MovilCard({
               <div className="text-xs text-amber-700 mt-0.5 flex items-center gap-1">
                 <span>⚠️</span>
                 <span>
-                  Cubre {nZones} zonas — libres disponibles aquí: ~{(libres / nZones).toFixed(1)}
+                  Cubre {nZones} zonas — libres disponibles aquí: {Math.ceil(libres / nZones)}
                 </span>
               </div>
             )}
