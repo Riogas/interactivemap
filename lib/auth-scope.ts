@@ -42,6 +42,25 @@ export function shouldScopeByEmpresa(user: ScopedUser | null | undefined): boole
 }
 
 /**
+ * True si el usuario tiene privilegios para el scope de zonas visibles en el mapa.
+ * Estos roles ven TODAS las zonas sin importar la selección de empresas en el header.
+ *
+ * Roles privilegiados:
+ *   - Root        (isRoot === 'S')
+ *   - Despacho    (RolId === '49')
+ *   - Dashboard   (RolId === '48')
+ *   - Supervisor  (RolId === '50')
+ *
+ * Para todos los demás roles (distribuidores, etc.), las zonas visibles se
+ * restringen a las empresas actualmente seleccionadas en el selector del header.
+ */
+export function isPrivilegedForZonaScope(user: ScopedUser | null | undefined): boolean {
+  if (isRoot(user)) return true;
+  const PRIVILEGED_ROL_IDS = new Set(['48', '49', '50']);
+  return user?.roles?.some((r) => PRIVILEGED_ROL_IDS.has(String(r.RolId))) ?? false;
+}
+
+/**
  * Devuelve las empresas a usar para scoping, o null si no hay restricción.
  *   - null  → sin scope (root o despacho).
  *   - []    → fail-closed (allowedEmpresas null/undefined o vacío).
