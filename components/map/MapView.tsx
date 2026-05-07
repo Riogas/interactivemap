@@ -110,6 +110,7 @@ interface MapViewProps {
   tiposServicioDisponibles?: string[]; // Valores distintos de servicio_nombre
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
+  onToggleDemoraLabels?: (next: boolean) => void; // Callback para togglear etiquetas desde la leyenda del mapa
   zonaOpacity?: number; // Opacidad de las capas de zonas (0-100)
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
@@ -592,6 +593,7 @@ const MapView = memo(function MapView({
   saturacionData,
   allZonas = [],
   showDemoraLabels = false,
+  onToggleDemoraLabels,
   zonaOpacity = 50,
   reloadMarkersTrigger = 0,
   poisHidden = false,
@@ -2135,7 +2137,7 @@ const MapView = memo(function MapView({
 
         {/* ⏱️ Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} zonaOpacity={zonaOpacity} />
+          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
           <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} />

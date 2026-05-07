@@ -2883,6 +2883,7 @@ function DashboardContent() {
                 allZonas={allZonasData}
                 saturacionData={saturacionData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
+                onToggleDemoraLabels={(next) => updatePreference('showDemoraLabels', next)}
                 zonaOpacity={preferences.zonaOpacity ?? 50}
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
