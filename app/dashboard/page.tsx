@@ -1590,6 +1590,7 @@ function DashboardContent() {
     setPopupService(undefined);
     setPopupPedido(pedidoId);
     setFocusedServiceId(undefined);
+    setFocusedPuntoId(undefined); // limpiar focus de POI para que el bump de focusTrigger no re-dispare el efecto de POI
     setFocusedPedidoId(pedidoId);
     focusTriggerRef.current += 1;
     setFocusTrigger(focusTriggerRef.current);
@@ -1600,6 +1601,7 @@ function DashboardContent() {
     setPopupPedido(undefined);
     setPopupService(serviceId);
     setFocusedPedidoId(undefined);
+    setFocusedPuntoId(undefined); // ver comentario en handlePedidoClick
     setFocusedServiceId(serviceId);
     focusTriggerRef.current += 1;
     setFocusTrigger(focusTriggerRef.current);
@@ -2847,6 +2849,7 @@ function DashboardContent() {
                 popupPedido={popupPedido}
                 focusedPedidoId={focusedPedidoId}
                 focusedServiceId={focusedServiceId}
+                focusedPuntoId={focusedPuntoId}
                 focusTrigger={focusTrigger}
                 services={servicesHidden ? [] : (() => {
                   const isPendientes = servicesFilters.vista !== 'finalizados';
