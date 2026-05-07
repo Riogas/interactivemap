@@ -306,8 +306,8 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
           <Polygon
             positions={positions}
             pathOptions={{
-              // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
-              color: '#000000',
+              // Inactiva: borde rojo punteado (request 2026-05-07). Activa: borde negro.
+              color: isInactive ? '#dc2626' : '#000000',
               fillColor: fillColor,
               fillOpacity: isInactive ? 0 : adjustOpacity(fillOpacity, zonaOpacity),
               weight: 2,

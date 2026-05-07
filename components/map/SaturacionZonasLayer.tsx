@@ -48,8 +48,12 @@ interface SaturacionZonasLayerProps {
   /** Callback al hacer click en una zona */
   onZonaClick?: (zonaId: number) => void;
   /** Mapa zona_id → demora info. activa===false → zona transparente con borde
-      negro punteado (request 2026-05-07). */
+      rojo punteado (request 2026-05-07). */
   demoras?: Map<number, { minutos: number; activa: boolean }>;
+  /** Mostrar etiquetas de Cap. Entrega en los marcadores. Por defecto false */
+  showLabels?: boolean;
+  /** Callback para togglear las etiquetas desde la leyenda del mapa */
+  onToggleLabels?: (next: boolean) => void;
 }
 
 // ──────────────────────────── helpers ────────────────────────────────────
@@ -129,12 +133,25 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
 
 // ──────────────────────── leyenda (control Leaflet) ──────────────────────
 
-function SaturacionLegend() {
+/** Leyenda de Cap. Entrega con toggle opcional "Ver etiqueta" (espejo de DemorasLegend) */
+function SaturacionLegend({ showLabels, onToggleLabels }: { showLabels: boolean; onToggleLabels?: (next: boolean) => void }) {
   const map = useMap();
   useEffect(() => {
+    const showToggle = typeof onToggleLabels === 'function';
     const LegendCtrl = L.Control.extend({
       onAdd() {
         const div = L.DomUtil.create('div', 'demora-legend');
+        const toggleHtml = showToggle
+          ? `
+            <div class="demora-legend-divider"></div>
+            <label class="demora-legend-toggle">
+              <span class="demora-legend-toggle-label">Ver etiqueta</span>
+              <span class="demora-legend-switch ${showLabels ? 'is-on' : ''}" data-sat-toggle role="switch" aria-checked="${showLabels ? 'true' : 'false'}" tabindex="0">
+                <span class="demora-legend-switch-thumb"></span>
+              </span>
+            </label>
+          `
+          : '';
         div.innerHTML = `
           <div class="demora-legend-title">Cap. Entrega</div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#92400e"></span><span class="demora-legend-label">Sin Cap. (&lt; 0)</span></div>
@@ -143,15 +160,31 @@ function SaturacionLegend() {
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">2 – 3</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">&gt; 3 (sobrante)</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#d1d5db"></span><span class="demora-legend-label">Sin datos</span></div>
+          ${toggleHtml}
         `;
         L.DomEvent.disableClickPropagation(div);
+        if (showToggle) {
+          const toggleEl = div.querySelector<HTMLElement>('[data-sat-toggle]');
+          if (toggleEl) {
+            const handler = (e: Event) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleLabels!(!showLabels);
+            };
+            toggleEl.addEventListener('click', handler);
+            toggleEl.addEventListener('keydown', (e) => {
+              const ke = e as KeyboardEvent;
+              if (ke.key === ' ' || ke.key === 'Enter') handler(e);
+            });
+          }
+        }
         return div;
       },
     });
     const legend = new LegendCtrl({ position: 'bottomleft' });
     legend.addTo(map);
     return () => { legend.remove(); };
-  }, [map]);
+  }, [map, showLabels, onToggleLabels]);
   return null;
 }
 
@@ -198,6 +231,8 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   zonaOpacity = 50,
   onZonaClick,
   demoras,
+  showLabels = false,
+  onToggleLabels,
 }: SaturacionZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
@@ -263,7 +298,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
 
   return (
     <>
-      <SaturacionLegend />
+      <SaturacionLegend showLabels={showLabels} onToggleLabels={onToggleLabels} />
       {onServiceFilterChange && (
         <SaturacionFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
       )}
@@ -274,8 +309,8 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
           <Polygon
             positions={positions}
             pathOptions={{
-              // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
-              color: '#000000',
+              // Inactiva: borde rojo punteado (request 2026-05-07). Activa: borde negro.
+              color: isInactive ? '#dc2626' : '#000000',
               fillColor: color,
               fillOpacity: isInactive ? 0 : adjustOpacity(fillOpacity, zonaOpacity),
               weight: 2,
@@ -292,7 +327,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
               html: `
                 <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}" title="${tooltipHTML.replace(/<[^>]+>/g, '')}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
-                  ${label ? `<span class="demora-label-time" style="font-size:9px">${label}</span>` : ''}
+                  ${showLabels && label ? `<span class="demora-label-time" style="font-size:9px">${label}</span>` : ''}
                 </div>
               `,
               iconSize: [64, 36],

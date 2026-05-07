@@ -2956,6 +2956,8 @@ function DashboardContent() {
                 saturacionData={saturacionData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
                 onToggleDemoraLabels={(next) => updatePreference('showDemoraLabels', next)}
+                showCapEntregaLabels={preferences.showCapEntregaLabels ?? false}
+                onToggleCapEntregaLabels={(next) => updatePreference('showCapEntregaLabels', next)}
                 zonaOpacity={preferences.zonaOpacity ?? 50}
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
