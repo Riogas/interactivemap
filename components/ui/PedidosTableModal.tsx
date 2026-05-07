@@ -1009,7 +1009,8 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                             atraso < 15 ? 'text-yellow-400' : 'text-red-400';
                           const atrasoLabel =
                             atraso == null ? '—' :
-                            atraso <= 0 ? `${Math.abs(atraso)}' antes` : `${atraso}'`;
+                            atraso === 0 ? `0'` :
+                            atraso < 0 ? `${Math.abs(atraso)}' antes` : `${atraso}'`;
                           return (
                             <>
                               <td className="px-4 py-2.5 text-gray-300 text-xs whitespace-nowrap font-mono" onClick={() => onPedidoClick?.(p.id)}>

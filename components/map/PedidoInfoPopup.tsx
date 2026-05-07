@@ -309,7 +309,10 @@ export const PedidoInfoPopup: React.FC<PedidoInfoPopupProps> = ({
               const mostrarAtraso = tieneMovil && pedido.atraso_cump_mins != null;
               const atraso = mostrarAtraso ? Number(pedido.atraso_cump_mins) : null;
               const atrasoColor = atraso == null ? '#6B7280' : atraso <= 0 ? '#22C55E' : atraso < 15 ? '#EAB308' : '#EF4444';
-              const atrasoLabel = atraso == null ? '—' : atraso <= 0 ? `${Math.abs(atraso)} min antes` : `${atraso} min atrasado`;
+              const atrasoLabel =
+                atraso == null ? '—' :
+                atraso === 0 ? `0 min` :
+                atraso < 0 ? `${Math.abs(atraso)} min antes` : `${atraso} min atrasado`;
               return (
                 <div>
                   <h4 className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cumplido</h4>
