@@ -79,6 +79,12 @@ function DashboardContent() {
   // handleToggleMovil puedan calcular "modo Todos" sin re-crearse en cada
   // cambio de filtros. Se asigna más abajo después de calcular movilesFiltered.
   const movilesFilteredRef = useRef<MovilData[]>([]);
+  // Refs a las listas completas de pedidos/services del día. Se asignan más abajo
+  // (después de calcular pedidosCompletos/servicesCompletos) para que callbacks
+  // definidos antes (ej. handleShowPendientes) puedan leer la fuente de verdad
+  // sin meter pedidosCompletos en el dep array (TDZ).
+  const pedidosCompletosRef = useRef<PedidoSupabase[]>([]);
+  const servicesCompletosRef = useRef<ServiceSupabase[]>([]);
   
   // 🚀 Optimización: Detectar visibilidad de tab para pausar updates
   const isTabVisible = useTabVisibility();
@@ -1487,18 +1493,26 @@ function DashboardContent() {
     
     if (popupMovil) {
       setPreFilterMovil(popupMovil);
-      
-      // Determinar qué tabla abrir según los pendientes del móvil
-      const movilData = movilesRef.current.find(m => m.id === popupMovil);
-      const hasPedidos = (movilData?.pedidosPendientes ?? 0) > 0;
-      const hasServices = (movilData?.serviciosPendientes ?? 0) > 0;
-      
-      if (hasPedidos && !hasServices) {
+
+      // Determinar qué tabla abrir según los pendientes reales del móvil.
+      // Fuente de verdad: pedidosCompletos/servicesCompletos (mismos datos que
+      // el popup ya muestra), porque la API /pedidos-servicios-pendientes
+      // hardcodea serviciosPendientes:0 y no podemos confiar en movilData.
+      // Regla: pedidos > 0 → pedidos extended (incluso si hay services);
+      // solo services → services extended.
+      const hasPedidos = pedidosCompletosRef.current.some(
+        (p) => Number(p.movil) === Number(popupMovil) && Number(p.estado_nro) === 1,
+      );
+      const hasServices = servicesCompletosRef.current.some(
+        (s) => Number(s.movil) === Number(popupMovil) && Number(s.estado_nro) === 1,
+      );
+
+      if (hasPedidos) {
         setIsPedidosTableOpen(true);
-      } else if (hasServices && !hasPedidos) {
+      } else if (hasServices) {
         setIsServicesTableOpen(true);
       } else {
-        // Ambos o ninguno: abrir pedidos por defecto
+        // Sin pendientes (caso defensivo, el botón no debería estar visible).
         setIsPedidosTableOpen(true);
       }
     } else {
@@ -1716,6 +1730,11 @@ function DashboardContent() {
     dbg(`🔧 DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
   }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds]);
+
+  // Mantener refs sincronizadas con las listas memoizadas para acceso sincrónico
+  // desde callbacks definidos antes en el render.
+  pedidosCompletosRef.current = pedidosCompletos;
+  servicesCompletosRef.current = servicesCompletos;
 
   // Set de IDs de móviles "ocultos pero operativos": tienen estadoNro fuera del
   // conjunto de activos ([0,1,2,4]) pero igual tienen pedidos/services asignados

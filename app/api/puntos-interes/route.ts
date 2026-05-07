@@ -159,9 +159,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validar formato email: rechazar valores con caracteres que puedan
+    // Validar identificador: rechazar valores con caracteres que puedan
     // alterar el filtro PostgREST .or() (`,`, `(`, `)`, `"`, espacios).
-    if (!/^[^\s,()"]+@[^\s,()"]+\.[^\s,()"]+$/.test(usuario_email)) {
+    // Acepta tanto emails (foo@bar.com) como usernames simples (DEMO) — el
+    // cliente cae a `user.username` cuando `user.email` está vacío.
+    if (!/^[^\s,()"]+$/.test(usuario_email)) {
       return NextResponse.json(
         { error: 'usuario_email inválido' },
         { status: 400 }
