@@ -62,6 +62,7 @@ interface MapViewProps {
   showPendientes?: boolean; // Mostrar marcadores de pendientes
   showCompletados?: boolean; // Mostrar solo marcadores de completados (sin animación)
   selectedMovilesCount?: number; // Número de móviles seleccionados en la lista
+  selectionVersion?: number; // Solo bumpea por acciones explícitas del usuario sobre la selección
   defaultMapLayer?: 'streets' | 'satellite' | 'terrain' | 'cartodb' | 'dark' | 'light'; // Capa por defecto del mapa
   onMovilClick?: (movilId: number | undefined) => void;
   onShowAnimation?: (movilId: number) => void;
@@ -125,11 +126,12 @@ interface MapViewProps {
   allHiddenMovilIds?: Set<string>; // IDs de móviles ocultos-pero-operativos (capa móviles-zonas los excluye)
 }
 
-function MapUpdater({ 
-  moviles, 
-  focusedMovil, 
-  selectedMovil, 
+function MapUpdater({
+  moviles,
+  focusedMovil,
+  selectedMovil,
   selectedMovilesCount,
+  selectionVersion,
   focusedPedidoId,
   focusedServiceId,
   focusTrigger,
@@ -139,11 +141,16 @@ function MapUpdater({
   allPedidos,
   allServices,
   customMarkers
-}: { 
-  moviles: MovilData[]; 
-  focusedMovil?: number; 
+}: {
+  moviles: MovilData[];
+  focusedMovil?: number;
   selectedMovil?: number;
   selectedMovilesCount?: number;
+  /** Versión que solo se incrementa por acciones explícitas del usuario sobre la
+      selección de móviles (toggle, select-all, clear-all, filtro). El re-fit de
+      bounds ocurre SOLO cuando esta versión cambia, no cuando cambia el count
+      por updates de realtime. */
+  selectionVersion?: number;
   focusedPedidoId?: number;
   focusedServiceId?: number;
   focusTrigger?: number;
@@ -158,7 +165,7 @@ function MapUpdater({
   const hasInitialized = useRef(false);
   const lastSelectedMovil = useRef<number | undefined>(undefined);
   const lastFocusedMovil = useRef<number | undefined>(undefined);
-  const lastSelectedMovilesCount = useRef<number>(0);
+  const lastSelectionVersion = useRef<number>(0);
   const lastFocusTrigger = useRef<number>(0);
   const lastFocusTriggerPoi = useRef<number>(0);
   const lastFocusedPuntoId = useRef<string | undefined>(undefined);
@@ -275,17 +282,15 @@ function MapUpdater({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, moviles.length, pedidos, customMarkers]);
 
-  // Efecto para centrar el mapa SOLO cuando cambia la selección (no por actualizaciones GPS)
+  // Efecto para centrar el mapa SOLO cuando el usuario cambió la selección
+  // explícitamente (toggle, select-all, clear-all, filtro de actividad).
+  // Updates de realtime que modifican selectedMoviles (móvil que aparece/desaparece
+  // por cambio de estado) NO disparan este efecto: solo los cambios explícitos
+  // bumpean selectionVersion en el dashboard.
   useEffect(() => {
-    // Solo ajustar si cambió la cantidad de móviles seleccionados
-    const selectionChanged = selectedMovilesCount !== lastSelectedMovilesCount.current;
-    
-    if (!selectionChanged) {
-      return; // No hacer nada si es solo actualización de coordenadas GPS
-    }
-
-    // Actualizar la referencia
-    lastSelectedMovilesCount.current = selectedMovilesCount || 0;
+    if (selectionVersion === undefined) return;
+    if (selectionVersion === lastSelectionVersion.current) return;
+    lastSelectionVersion.current = selectionVersion;
 
     // Resetear flag de interacción del usuario cuando cambia la selección
     userHasInteracted.current = false;
@@ -335,7 +340,10 @@ function MapUpdater({
         map.fitBounds(allBounds, { padding: [80, 80], maxZoom: 13 });
       }
     }
-  }, [map, selectedMovilesCount, moviles, selectedMovil, pedidos, customMarkers]);
+  // Solo dep de selectionVersion. moviles/pedidos/customMarkers se leen al
+  // momento del fire (snapshot) — no debería re-disparar cuando llega data.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, selectionVersion]);
 
   // Efecto para centrar el mapa cuando se enfoca un móvil desde la lista
   useEffect(() => {
@@ -513,6 +521,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.popupService === next.popupService &&
     prev.defaultMapLayer === next.defaultMapLayer &&
     prev.selectedMovilesCount === next.selectedMovilesCount &&
+    prev.selectionVersion === next.selectionVersion &&
     prev.isPlacingMarker === next.isPlacingMarker &&
     prev.focusedPedidoId === next.focusedPedidoId &&
     prev.focusedServiceId === next.focusedServiceId &&
@@ -564,8 +573,9 @@ const MapView = memo(function MapView({
   popupMovil, 
   showPendientes, 
   showCompletados, 
-  selectedMovilesCount = 0, 
-  defaultMapLayer = 'streets', 
+  selectedMovilesCount = 0,
+  selectionVersion = 0,
+  defaultMapLayer = 'streets',
   onMovilClick, 
   onShowAnimation, 
   onCloseAnimation, 
@@ -2921,11 +2931,12 @@ const MapView = memo(function MapView({
             : <>{serviceMarkers}</>;
         })()}
         
-        <MapUpdater 
-          moviles={moviles} 
-          focusedMovil={focusedMovil} 
+        <MapUpdater
+          moviles={moviles}
+          focusedMovil={focusedMovil}
           selectedMovil={selectedMovil}
           selectedMovilesCount={selectedMovilesCount}
+          selectionVersion={selectionVersion}
           focusedPedidoId={focusedPedidoId}
           focusedServiceId={focusedServiceId}
           focusTrigger={focusTrigger}
