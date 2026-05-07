@@ -275,12 +275,14 @@ export default function SaturacionZonaModal({
   const isServiceMode = tipoServicio.toUpperCase() === 'SERVICE';
   const sinAsignarTitle = isServiceMode ? 'Services sin asignar' : `Pedidos sin asignar (${tipoServicio})`;
   const sinAsignar = pedidosSinAsignar.length;
-  // 998 = Sin C. (móviles existen pero cap. disponible = 0), 999 = sin cobertura (sin móviles)
-  const satPct = capLibre > 0
-    ? Math.round((sinAsignar / capLibre) * 100)
-    : sinAsignar > 0
-      ? (capTotal > 0 ? 998 : 999)
-      : 0;
+  // Saturación = (lote ya ocupado + pendientes sin asignar) / lote total.
+  // Mismo cálculo que getSaturacionColor en SaturacionZonasLayer — el % refleja
+  // la carga total de la zona, no solo los pendientes. Permite ver el problema
+  // de capacidad antes de que aparezca un sin asignar.
+  const ocupados = Math.max(0, capTotal - capLibre);
+  const satPct = capTotal > 0
+    ? Math.round(((ocupados + sinAsignar) / capTotal) * 100)
+    : sinAsignar > 0 ? 999 : 0;
 
   // Defensa en profundidad: si el caller pasó scope y la zona no está, no renderizar.
   // Se chequea después de los hooks para no romper rules-of-hooks.

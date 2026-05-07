@@ -1905,8 +1905,14 @@ function DashboardContent() {
       });
     });
 
-    // 5. Contar trabajos sin asignar por zona según tipo de servicio
-    if (isService) {
+    // 5. Contar trabajos sin asignar por zona según tipo de servicio.
+    // Si hideUnassigned=true (distribuidor con allowedEmpresas o deselección
+    // parcial), los items sin asignar no se cuentan: el modal tampoco los
+    // muestra (sinAsignarList=[]) y el color del mapa debe ser consistente
+    // con la card.
+    if (hideUnassigned) {
+      // No-op: sinAsignar queda en 0 para esas zonas.
+    } else if (isService) {
       servicesCompletos.forEach(s => {
         if (Number(s.estado_nro) !== 1) return;
         if (s.movil != null && Number(s.movil) !== 0) return;

@@ -90,11 +90,20 @@ function getSaturacionColor(stats: SaturacionZonaStats): { color: string; label:
     return { color: '#d1d5db', label: '—', pct: -1 }; // zona sin datos
   }
 
-  const rawPct = capacidadTotal === 0 ? (sinAsignar > 0 ? 999 : 0) : (sinAsignar / capacidadDisponible) * 100;
-  // capacidadDisponible <= 0 con pedidos pendientes → sin capacidad de entrega
+  // Saturación = % de la capacidad TOTAL de la zona ya consumida
+  // (lote ocupado de los móviles + pendientes sin asignar) sobre el lote total.
+  // Esto refleja el problema de capacidad ANTES de que aparezca un sin asignar:
+  // si los móviles ya están al tope, la zona se ve roja aunque no haya pendientes
+  // — apenas llegue uno, ya se sabe que no se puede cubrir.
+  // capacidadTotal - capacidadDisponible = pedidos+services ya asignados a los
+  // móviles de la zona (prorrateados).
+  const ocupados = capacidadTotal - capacidadDisponible;
+  const rawPct = capacidadTotal === 0
+    ? (sinAsignar > 0 ? 999 : 0)
+    : ((ocupados + sinAsignar) / capacidadTotal) * 100;
   const pct = !isFinite(rawPct) || rawPct < 0 ? 998 : rawPct;
 
-  if (pct === 0 || sinAsignar === 0) return { color: '#86efac', label: '0%', pct: 0 };   // verde claro sobrante
+  if (pct === 0)  return { color: '#86efac', label: '0%', pct: 0 };                       // verde claro sobrante
   if (pct <= 25)  return { color: '#22c55e', label: `${Math.round(pct)}%`, pct };         // verde oscuro 1–25%
   if (pct <= 50)  return { color: '#eab308', label: `${Math.round(pct)}%`, pct };         // amarillo
   if (pct <= 75)  return { color: '#f97316', label: `${Math.round(pct)}%`, pct };         // naranja
