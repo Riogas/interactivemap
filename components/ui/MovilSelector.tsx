@@ -1489,6 +1489,7 @@ export default function MovilSelector({
                               renderItem={(service, _index) => {
                                 if (!service) return null;
                                 const isFinalizados = servicesFilters.vista === 'finalizados';
+                                const isSinAsignar = !service.movil || Number(service.movil) === 0;
                                 const delayMins = !isFinalizados ? computeDelayMinutes(service.fch_hora_max_ent_comp) : null;
                                 const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
 
@@ -1500,7 +1501,9 @@ export default function MovilSelector({
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
                                       isFinalizados
                                         ? 'bg-green-50 border-green-200 hover:bg-green-100'
-                                        : delayInfo?.bgClass
+                                        : isSinAsignar
+                                          ? 'bg-gray-100 border-gray-300 hover:bg-gray-200'
+                                          : delayInfo?.bgClass
                                     )}
                                   >
                                     <div className="flex items-center gap-2 text-xs">
@@ -1510,12 +1513,16 @@ export default function MovilSelector({
                                           📍❌
                                         </span>
                                       )}
-                                      <span className="text-gray-700">🚗{service.movil}</span>
+                                      {isSinAsignar ? (
+                                        <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Sin asignar</span>
+                                      ) : (
+                                        <span className="text-gray-700">🚗{service.movil}</span>
+                                      )}
                                       {service.defecto && (
                                         <span className="text-gray-600 truncate flex-1">🔧{service.defecto}</span>
                                       )}
                                       {isFinalizados ? (
-                                        <span 
+                                        <span
                                           className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
                                           style={{ backgroundColor: '#22c55e22' }}
                                           title="Finalizado"
@@ -1523,13 +1530,13 @@ export default function MovilSelector({
                                           ✔ Finalizado
                                         </span>
                                       ) : (
-                                        <span 
+                                        <span
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
-                                            delayInfo?.textColor
+                                            isSinAsignar ? 'text-gray-500' : delayInfo?.textColor
                                           )}
-                                          style={{ backgroundColor: `${delayInfo?.color}22` }}
-                                          title={delayInfo?.label}
+                                          style={{ backgroundColor: isSinAsignar ? '#9CA3AF22' : `${delayInfo?.color}22` }}
+                                          title={isSinAsignar ? 'Sin asignar' : delayInfo?.label}
                                         >
                                           ⏱{delayInfo?.badgeText}
                                         </span>

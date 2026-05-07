@@ -2859,13 +2859,16 @@ const MapView = memo(function MapView({
           if (!servicesFiltrados?.length) return null;
           
           const serviceMarkers = servicesFiltrados.map(service => {
+            const isSinAsignar = !service.movil || Number(service.movil) === 0;
             const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
             const delayInfo = getDelayInfo(delayMins);
+            // Sin asignar: forzar fchHora=null para obtener icono gris (mismo patron que pedidos)
+            const iconFchHora = isSinAsignar ? null : service.fch_hora_max_ent_comp;
             return (
               <OptimizedMarker
                 key={`service-tabla-${service.id}`}
                 position={[service.latitud!, service.longitud!]}
-                icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(service.fch_hora_max_ent_comp)}
+                icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(iconFchHora)}
                 eventHandlers={{
                   click: () => {
                     onServiceClick && onServiceClick(service.id);
@@ -2877,10 +2880,13 @@ const MapView = memo(function MapView({
                     <div className="font-bold">Service #{service.id}</div>
                     <div>{service.cliente_nombre}</div>
                     <div className="text-gray-600">{service.defecto}</div>
+                    {isSinAsignar && (
+                      <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
+                    )}
                     {servicesVista === 'finalizados' ? (
                       <div style={{ color: '#2563eb', fontWeight: 'bold' }}>✓ Finalizado</div>
                     ) : (
-                      <div style={{ color: delayInfo.color, fontWeight: 'bold' }}>
+                      <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
                         {delayInfo.label}: {delayInfo.badgeText}
                       </div>
                     )}
