@@ -1857,10 +1857,15 @@ function DashboardContent() {
       const nZones = isService ? 1 : (movilZoneCount.get(r.movil_id) ?? 1);
       const available = Math.max(0, md.tamanoLote - md.pedidosAsignados);
       const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0 };
+      // El aporte prorrateado por móvil se redondea HACIA ARRIBA al entero
+      // siguiente (request 2026-05-07): un móvil que cubre 3 zonas con 4
+      // libres aporta ceil(4/3)=2 a cada zona en vez de 1.33. Más realista
+      // visualmente y evita decimales en cap. libre / cap. total.
+      // Math.ceil(0)=0 → móviles llenos siguen aportando 0 a capacidadDisponible.
       stats.set(r.zona_id, {
         ...existing,
-        capacidadTotal: existing.capacidadTotal + md.tamanoLote / nZones,
-        capacidadDisponible: existing.capacidadDisponible + available / nZones,
+        capacidadTotal: existing.capacidadTotal + Math.ceil(md.tamanoLote / nZones),
+        capacidadDisponible: existing.capacidadDisponible + Math.ceil(available / nZones),
         movilesEnZona: existing.movilesEnZona + 1,
         movilesCompartidos: existing.movilesCompartidos + (nZones > 1 ? 1 : 0),
       });
