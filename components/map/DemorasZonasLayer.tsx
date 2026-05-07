@@ -21,6 +21,8 @@ interface DemorasZonasLayerProps {
   demoras: Map<number, { minutos: number; activa: boolean }>;
   /** Mostrar etiquetas de demora (minutos). Por defecto false */
   showLabels?: boolean;
+  /** Callback para togglear las etiquetas desde la leyenda del mapa. */
+  onToggleLabels?: (next: boolean) => void;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
 }
@@ -124,12 +126,24 @@ function useDottedPattern() {
 }
 
 /** Leyenda de colores de demoras como control Leaflet (esquina inferior izquierda) */
-function DemorasLegend() {
+function DemorasLegend({ showLabels, onToggleLabels }: { showLabels: boolean; onToggleLabels?: (next: boolean) => void }) {
   const map = useMap();
   useEffect(() => {
+    const showToggle = typeof onToggleLabels === 'function';
     const LegendControl = L.Control.extend({
       onAdd() {
         const div = L.DomUtil.create('div', 'demora-legend');
+        const toggleHtml = showToggle
+          ? `
+            <div class="demora-legend-divider"></div>
+            <label class="demora-legend-toggle">
+              <span class="demora-legend-toggle-label">Mostrar etiquetas</span>
+              <span class="demora-legend-switch ${showLabels ? 'is-on' : ''}" data-demora-toggle role="switch" aria-checked="${showLabels ? 'true' : 'false'}" tabindex="0">
+                <span class="demora-legend-switch-thumb"></span>
+              </span>
+            </label>
+          `
+          : '';
         div.innerHTML = `
           <div class="demora-legend-title">Demoras (min)</div>
           <div class="demora-legend-row"><span class="demora-legend-swatch dotted"></span><span class="demora-legend-label">0</span></div>
@@ -139,15 +153,31 @@ function DemorasLegend() {
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">61 – 90</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">91 – 150</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">151+</span></div>
+          ${toggleHtml}
         `;
         L.DomEvent.disableClickPropagation(div);
+        if (showToggle) {
+          const toggleEl = div.querySelector<HTMLElement>('[data-demora-toggle]');
+          if (toggleEl) {
+            const handler = (e: Event) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleLabels!(!showLabels);
+            };
+            toggleEl.addEventListener('click', handler);
+            toggleEl.addEventListener('keydown', (e) => {
+              const ke = e as KeyboardEvent;
+              if (ke.key === ' ' || ke.key === 'Enter') handler(e);
+            });
+          }
+        }
         return div;
       },
     });
     const legend = new LegendControl({ position: 'bottomleft' });
     legend.addTo(map);
     return () => { legend.remove(); };
-  }, [map]);
+  }, [map, showLabels, onToggleLabels]);
   return null;
 }
 
@@ -162,7 +192,7 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false, zonaOpacity = 50 }: DemorasZonasLayerProps) {
+const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false, onToggleLabels, zonaOpacity = 50 }: DemorasZonasLayerProps) {
   // Inyectar patrón SVG para zonas con 0 minutos
   useDottedPattern();
   const items = useMemo(() => {
@@ -224,7 +254,7 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
 
   return (
     <>
-      <DemorasLegend />
+      <DemorasLegend showLabels={showLabels} onToggleLabels={onToggleLabels} />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, minutos, demoraActiva, isDotted }) => (
         <React.Fragment key={zona.zona_id}>
           <Polygon
