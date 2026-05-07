@@ -51,3 +51,19 @@ export function todayInTimezone(tz: string, now: Date = new Date()): string {
     day: '2-digit',
   }).format(now);
 }
+
+/**
+ * Devuelve la fecha de hace `days` días en formato `YYYY-MM-DD` según hora Montevideo.
+ * Util para fijar `min` en inputs `type="date"` y limitar cuánto hacia atrás se puede ir.
+ *
+ * @param days - Cantidad de días hacia atrás (debe ser >= 0).
+ * @param now - Opcional. Inyección de fecha para tests.
+ *
+ * @example
+ * // Hoy es 2026-05-07 en Montevideo
+ * daysAgoMontevideo(10) // → '2026-04-27'
+ */
+export function daysAgoMontevideo(days: number, now: Date = new Date()): string {
+  const past = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  return fmt.format(past);
+}

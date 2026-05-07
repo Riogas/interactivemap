@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { todayMontevideo, todayInTimezone } from '@/lib/date-utils';
+import { todayMontevideo, todayInTimezone, daysAgoMontevideo } from '@/lib/date-utils';
 
 describe('todayMontevideo()', () => {
   it('AC3-1: 21:40 Montevideo (=00:40 UTC del día siguiente) → devuelve día local Montevideo', () => {
@@ -68,6 +68,36 @@ describe('todayMontevideo()', () => {
     // Fix: todayMontevideo() devuelve el día correcto
     const fixedResult = todayMontevideo(utcMoment);
     expect(fixedResult).toBe('2026-05-02'); // Correcto
+  });
+});
+
+describe('daysAgoMontevideo()', () => {
+  it('0 días → mismo resultado que todayMontevideo', () => {
+    const now = new Date('2026-05-07T15:00:00Z');
+    expect(daysAgoMontevideo(0, now)).toBe(todayMontevideo(now));
+  });
+
+  it('10 días → 10 días calendario hacia atrás en hora Montevideo', () => {
+    // 2026-05-07 15:00 UTC = 2026-05-07 12:00 -03 → hoy '2026-05-07'
+    // 10 días antes: '2026-04-27'
+    const now = new Date('2026-05-07T15:00:00Z');
+    expect(daysAgoMontevideo(10, now)).toBe('2026-04-27');
+  });
+
+  it('respeta el timezone Montevideo en horario nocturno', () => {
+    // 2026-05-07 23:30 -03 = 2026-05-08 02:30 UTC. Hoy en Montevideo es '2026-05-07'.
+    // 10 días antes desde ese instante = '2026-04-27'
+    const utcMoment = new Date('2026-05-08T02:30:00Z');
+    expect(daysAgoMontevideo(10, utcMoment)).toBe('2026-04-27');
+  });
+
+  it('cruce de mes: 5 días antes del 03/05 → 28/04', () => {
+    const now = new Date('2026-05-03T15:00:00Z');
+    expect(daysAgoMontevideo(5, now)).toBe('2026-04-28');
+  });
+
+  it('formato siempre YYYY-MM-DD', () => {
+    expect(daysAgoMontevideo(10)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 
