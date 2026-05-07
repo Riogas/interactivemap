@@ -175,8 +175,10 @@ export function useMapDataView({
       try {
         console.log(`📊 Polling "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
 
-        // Demoras o Zonas Activas
-        if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
+        // Demoras: requerido por TODAS las capas que muestran zonas inactivas
+        // como transparente+punteado (todas excepto 'distribucion'). Sin esto,
+        // al pasar de normal → saturación las zonas inactivas se ven rellenas.
+        if (dataViewMode !== 'distribucion') {
           const demorasRes = await fetch(`/api/demoras${empresaIdsParam}`);
           const demorasResult = await demorasRes.json();
           if (demorasResult.success && demorasResult.data) {
