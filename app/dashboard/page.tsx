@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -22,7 +22,7 @@ import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
-import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForCapEntrega } from '@/lib/auth-scope';
+import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForCapEntrega, isPrivilegedForZonaScope } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
@@ -232,7 +232,7 @@ function DashboardContent() {
     () => (user ? getScopedEmpresas(user) : null),
     [user]
   );
-  const { scopedZonaIds } = useScopedZonaIds(user, selectedEscenarioIds);
+  const { scopedZonaIds } = useScopedZonaIds(user, selectedEscenarioIds, selectedEmpresas);
 
   // 🔧 Map data view state + effects (extracted to useMapDataView hook)
   const {
@@ -1686,12 +1686,12 @@ function DashboardContent() {
 
   // `userHasEmpresaRestriction` mira solo allowedEmpresas — se usa para filtrar
   // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
-  // `isScopeRestricted` además exige que el user no sea root/despacho — es la
+  // `isScopeRestricted` además exige que el user no sea privilegiado (root/despacho/dashboard/supervisor) — es la
   // condición correcta para los filtros de zona en Vista Extendida, indicadores
   // y estadísticas. Coexisten porque su semántica es sutilmente distinta y el
   // refactor a una sola variable está fuera del alcance de este cambio.
   const isScopeRestricted = useMemo(
-    () => shouldScopeByEmpresa(user) && (user?.allowedEmpresas?.length ?? 0) > 0,
+    () => !isPrivilegedForZonaScope(user) && (user?.allowedEmpresas?.length ?? 0) > 0,
     [user],
   );
 
