@@ -62,6 +62,8 @@ export function useScopedZonaIds(
     const params = new URLSearchParams();
     for (const id of empresas) params.append('empresa_fletera_id', String(id));
     for (const id of escenarioIds) params.append('escenario_id', String(id));
+    // Solo considerar zonas de servicio URGENTE — las NOCTURNAS quedan excluidas del scope.
+    params.append('tipo_de_servicio', 'URGENTE');
 
     fetch(`/api/fleteras-zonas?${params.toString()}`)
       .then((r) => r.json())
