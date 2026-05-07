@@ -35,6 +35,7 @@ export interface UserPreferences {
   serviceShape: MarkerShape; // Forma del marcador de services (compact/mini)
   showDemoraLabels: boolean; // Mostrar etiquetas de demora (minutos) en mapa
   showCapEntregaLabels: boolean; // Mostrar etiquetas de Cap. Entrega en mapa
+  showPedidosZonaLabels: boolean; // Mostrar etiquetas de Pedidos en Zona en mapa
   zonaOpacity: number; // Opacidad de las capas de zonas (0-100)
   nightStartHour: number; // Hora de inicio del horario nocturno (0-23.5, intervalos de 0.5 = 30 min)
   dayStartHour: number; // Hora de inicio del horario diurno (0-23.5, intervalos de 0.5 = 30 min)
@@ -79,6 +80,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   serviceShape: 'triangle',
   showDemoraLabels: false, // Por defecto ocultas
   showCapEntregaLabels: false, // Por defecto ocultas
+  showPedidosZonaLabels: false, // Por defecto ocultas
   zonaOpacity: 50, // 50% por defecto
   nightStartHour: 20.5, // 20:30 hs por defecto
   dayStartHour: 6, // 06:00 hs por defecto
