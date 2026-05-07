@@ -1604,9 +1604,16 @@ function DashboardContent() {
     setFocusTrigger(focusTriggerRef.current);
   }, []);
 
-  // Handler para click en punto de interés
+  // Handler para click en punto de interés (sidebar): centra mapa, abre popup
+  // y permite re-disparar para el mismo POI mediante focusTrigger.
   const handlePuntoInteresClick = useCallback((puntoId: string) => {
+    setPopupPedido(undefined);
+    setPopupService(undefined);
+    setFocusedPedidoId(undefined);
+    setFocusedServiceId(undefined);
     setFocusedPuntoId(puntoId);
+    focusTriggerRef.current += 1;
+    setFocusTrigger(focusTriggerRef.current);
   }, []);
 
   const handleTogglePoi = useCallback((id: string) => {
