@@ -22,7 +22,8 @@ import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
-import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForCapEntrega, isPrivilegedForZonaScope } from '@/lib/auth-scope';
+import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForZonaScope } from '@/lib/auth-scope';
+import { getPermisosSA } from '@/lib/permisos-sa';
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
@@ -251,19 +252,29 @@ function DashboardContent() {
     scopedEmpresas,
   });
 
+  // Permisos granulares de "sin asignar" — ver lib/permisos-sa.ts.
+  // Se computan una vez aqui y se propagan a los componentes que los necesitan.
+  // Con permisos_sa=null en DB, la derivacion por rol replica el comportamiento anterior.
+  const permisosSA = useMemo(
+    () => getPermisosSA(user, { isRestricted: !isPrivilegedForZonaScope(user) && (user?.allowedEmpresas?.length ?? 0) > 0 }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user],
+  );
+
   // Determina si hay que ocultar pedidos/services "sin asignar" (sin móvil).
   // Motivo: un user no-root nunca tiene contexto para decidir sobre pedidos
   // sin asignar — esos pedidos no pertenecen a ninguna empresa fletera todavía.
   // Solo root/despacho (sin restricciones) ven los sin asignar.
   //
   // Se activa cuando:
-  //   a) el usuario tiene restricción de empresas (no-root con allowedEmpresas), o
-  //   b) el usuario deseleccionó manualmente alguna empresa del selector.
+  //   a) el usuario tiene restriccion de empresas (no-root con allowedEmpresas), o
+  //   b) el usuario deselecciono manualmente alguna empresa del selector, o
+  //   c) el permiso unitarios esta denegado explicitamente (permisos_sa.unitarios=false).
   const hideUnassigned = useMemo(() => {
     const userHasRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
     const userDeselectedSome = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
-    return userHasRestriction || userDeselectedSome;
-  }, [user?.allowedEmpresas, selectedEmpresas, empresas.length]);
+    return userHasRestriction || userDeselectedSome || !permisosSA.unitarios;
+  }, [user?.allowedEmpresas, selectedEmpresas, empresas.length, permisosSA.unitarios]);
 
   // allEmpresasSelected: true cuando NO hay multi-empresa parcial. Refleja el
   // mismo concepto que MovilSelector.allEmpresasSelected.
@@ -1676,12 +1687,12 @@ function DashboardContent() {
     [user],
   );
 
-  // Gating de capa Cap. Entrega: solo root/despacho/dashboard/supervisor ven y
+  // Gating de capa Cap. Entrega: solo usuarios con permiso x_zona ven y
   // cuentan los pedidos sin asignar. Para otros roles sinAsignar=0 (no afecta
-  // calc, no se lista en modal). Derivado de isPrivilegedForCapEntrega().
+  // calc, no se lista en modal). Controlado por permisosSA.x_zona.
   const canSeeUnassignedInCapEntrega = useMemo(
-    () => isPrivilegedForCapEntrega(user),
-    [user],
+    () => permisosSA.x_zona,
+    [permisosSA.x_zona],
   );
 
   // `userHasEmpresaRestriction` mira solo allowedEmpresas — se usa para filtrar
@@ -1843,13 +1854,13 @@ function DashboardContent() {
     return map;
   }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted]);
 
-  // Distribuidor: si por alguna razón el filtro pedidos/zona quedó en 'sin_asignar'
-  // (ej. estado persistido), forzarlo a 'pendientes' — ese filtro no aplica.
+  // Distribuidor o usuario sin permiso x_zona: si el filtro pedidos/zona quedo en
+  // 'sin_asignar' (ej. estado persistido), forzarlo a 'pendientes'.
   useEffect(() => {
-    if (isScopeRestricted && pedidosZonaFilter === 'sin_asignar') {
+    if ((isScopeRestricted || !permisosSA.x_zona) && pedidosZonaFilter === 'sin_asignar') {
       setPedidosZonaFilter('pendientes');
     }
-  }, [isScopeRestricted, pedidosZonaFilter]);
+  }, [isScopeRestricted, permisosSA.x_zona, pedidosZonaFilter]);
 
   // � Cálculo de saturación por zona:
   //   Para cada móvil con prioridad activa en zonas, su capacidad disponible se proratea
@@ -2243,6 +2254,7 @@ function DashboardContent() {
             scopedZonaIds={scopedZonaIds}
             scopedEmpresas={scopedEmpresas}
             scope={scope}
+            showSinAsignar={permisosSA.acumulados}
             onSinAsignarClick={onSinAsignarClick}
             onEntregadosClick={onEntregadosClick}
             onPorcentajeClick={onPorcentajeClick}
@@ -2618,6 +2630,7 @@ function DashboardContent() {
         scopedZonaIds={scopedZonaIds}
         scopedEmpresas={scopedEmpresas}
         scope={scope}
+        forceHideSinAsignar={!permisosSA.x_zona}
         onZonaClick={(zonaId, svcFilter) => {
           setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);
@@ -2958,7 +2971,7 @@ function DashboardContent() {
                 pedidosZonaData={pedidosZonaData}
                 pedidosZonaFilter={pedidosZonaFilter}
                 onPedidosZonaFilterChange={setPedidosZonaFilter}
-                hideSinAsignarOption={isScopeRestricted}
+                hideSinAsignarOption={!permisosSA.x_zona}
                 allMovilEstados={allMovilEstados}
                 allHiddenMovilIds={allHiddenMovilIds}
                 movilesZonasData={movilesZonasData}
