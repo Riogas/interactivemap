@@ -1,6 +1,8 @@
 ﻿'use client';
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { isPrivilegedForZonaScope, isPrivilegedForUnassignedVisibility } from '@/lib/auth-scope';
 import { useSearchParams } from 'next/navigation';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
@@ -220,6 +222,9 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
 function StatsContent() {
   const searchParams = useSearchParams();
   const date = searchParams.get('date') ?? todayMontevideo();
+  const { user } = useAuth();
+  const canSeeUnassigned = isPrivilegedForUnassignedVisibility(user);
+  const isPrivilegedScope = isPrivilegedForZonaScope(user);
 
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -359,46 +364,116 @@ function StatsContent() {
   }, [refreshTick]);
 
   // ─── Opciones de empresa (para el filtro) ──────────────────────────────────
-  // Opciones del combo Empresa → vienen de empresas_fleteras (estado=1), no de pedidos del día
+  // Opciones del combo Empresa:
+  //   - Privilegiados (root/despacho/dashboard/supervisor) → todas las empresas.
+  //   - Distribuidores → solo las empresas en allowedEmpresas.
   const empresaOptions = useMemo(() => {
-    return Array.from(empresas.values()).sort();
-  }, [empresas]);
+    const allNombres = Array.from(empresas.entries()); // [id, nombre][]
+    if (isPrivilegedScope) {
+      return allNombres.map(([, nombre]) => nombre).sort();
+    }
+    // Distribuidor: filtrar por allowedEmpresas
+    const allowed = new Set(user?.allowedEmpresas ?? []);
+    return allNombres
+      .filter(([id]) => allowed.has(id))
+      .map(([, nombre]) => nombre)
+      .sort();
+  }, [empresas, isPrivilegedScope, user?.allowedEmpresas]);
 
   // ─── Pedidos filtrados por empresa y producto ─────────────────────────────
+  // Distribuidores: cuando selectedEmpresa='Todas' solo ven sus allowedEmpresas.
   const filteredPedidos = useMemo(() => {
     let result = pedidos;
-    if (selectedEmpresa !== 'Todas')
+    if (selectedEmpresa !== 'Todas') {
+      // Filtro por empresa seleccionada explícitamente
       result = result.filter(p => getEmpresaNombre(p, movilEmpresa, empresas) === selectedEmpresa);
+    } else if (!isPrivilegedScope) {
+      // Distribuidor con "Todas" → limitar a allowedEmpresas
+      const allowedIds = new Set(user?.allowedEmpresas ?? []);
+      const allowedNombres = new Set(
+        Array.from(empresas.entries())
+          .filter(([id]) => allowedIds.has(id))
+          .map(([, nombre]) => nombre)
+      );
+      result = result.filter(p => {
+        const nombre = getEmpresaNombre(p, movilEmpresa, empresas);
+        return allowedNombres.has(nombre);
+      });
+    }
     if (selectedProducto !== 'Todos')
       result = result.filter(p => String(p.producto_cod ?? '') === selectedProducto);
+    // Distribuidores no ven pedidos sin asignar (movil=0)
+    if (!canSeeUnassigned)
+      result = result.filter(p => !(Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0)));
     return result;
-  }, [pedidos, selectedEmpresa, selectedProducto, movilEmpresa, empresas]);
+  }, [pedidos, selectedEmpresa, selectedProducto, movilEmpresa, empresas, isPrivilegedScope, canSeeUnassigned, user?.allowedEmpresas]);
+
+  // ─── Services filtrados por empresa ────────────────────────────────────────
+  // Misma lógica de scope que filteredPedidos pero sin filtro de producto.
+  const filteredServices = useMemo(() => {
+    if (selectedEmpresa !== 'Todas') {
+      return services.filter(s => {
+        const empId = s.empresa_fletera_id != null ? Number(s.empresa_fletera_id) : null;
+        const movilNro = s.movil != null ? Number(s.movil) : null;
+        const nombre = (movilNro && movilNro !== 0 && movilEmpresa.has(movilNro))
+          ? movilEmpresa.get(movilNro)!
+          : (empId && empId !== 0 && empresas.has(empId) ? empresas.get(empId)! : 'Sin empresa');
+        return nombre === selectedEmpresa;
+      });
+    }
+    if (!isPrivilegedScope) {
+      // Distribuidor con "Todas" → limitar a allowedEmpresas
+      const allowedIds = new Set(user?.allowedEmpresas ?? []);
+      const allowedNombres = new Set(
+        Array.from(empresas.entries())
+          .filter(([id]) => allowedIds.has(id))
+          .map(([, nombre]) => nombre)
+      );
+      return services.filter(s => {
+        const empId = s.empresa_fletera_id != null ? Number(s.empresa_fletera_id) : null;
+        const movilNro = s.movil != null ? Number(s.movil) : null;
+        const nombre = (movilNro && movilNro !== 0 && movilEmpresa.has(movilNro))
+          ? movilEmpresa.get(movilNro)!
+          : (empId && empId !== 0 && empresas.has(empId) ? empresas.get(empId)! : 'Sin empresa');
+        return allowedNombres.has(nombre);
+      });
+    }
+    // Distribuidores no ven services sin asignar
+    if (!canSeeUnassigned) {
+      return services.filter(s => !(Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0)));
+    }
+    return services;
+  }, [services, selectedEmpresa, movilEmpresa, empresas, isPrivilegedScope, canSeeUnassigned, user?.allowedEmpresas]);
 
   // ─── KPIs Pedidos ──────────────────────────────────────────────────────────
   const pedidosStats = useMemo(() => {
+    // filteredPedidos ya excluye sinAsignar para distribuidores (canSeeUnassigned=false)
     const total = filteredPedidos.length;
     const finalizados = filteredPedidos.filter(p => Number(p.estado_nro) === 2);
     // Excluir pedidos hijo (re-entregas) del % entregados
     const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
     const entregados = finalizadosSinHijo.filter(p => isPedidoEntregado(p));
     const noEntregados = finalizadosSinHijo.filter(p => !isPedidoEntregado(p));
+    // sinAsignar solo visible para privilegiados (distribuidor ya los tiene excluidos)
     const sinAsignar = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0);
     const totalPendientes = sinAsignar.length + pendientes.length; // todos los estado 1
     const pct = finalizadosSinHijo.length > 0 ? Math.round((entregados.length / finalizadosSinHijo.length) * 100) : 0;
     return { total, finalizados: finalizados.length, finalizadosSinHijo: finalizadosSinHijo.length, entregados: entregados.length, noEntregados: noEntregados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, totalPendientes, pct };
-  }, [filteredPedidos]);
+  }, [filteredPedidos, canSeeUnassigned]);
 
   // ─── KPIs Services ─────────────────────────────────────────────────────────
   const servicesStats = useMemo(() => {
-    const total = services.length;
-    const finalizados = services.filter(s => Number(s.estado_nro) === 2);
+    // filteredServices ya excluye sinAsignar para distribuidores
+    const total = filteredServices.length;
+    const finalizados = filteredServices.filter(s => Number(s.estado_nro) === 2);
     const realizados = finalizados.filter(s => isServiceEntregado(s));
     const noRealizados = finalizados.filter(s => !isServiceEntregado(s));
-    const sinAsignar = services.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0));
-    const pendientes = services.filter(s => Number(s.estado_nro) === 1 && s.movil && Number(s.movil) !== 0);
-    // % Con atraso (pendientes con delay < 0)
-    const pendientesList = services.filter(s => Number(s.estado_nro) === 1);
+    // sinAsignar solo visible para privilegiados
+    const sinAsignar = filteredServices.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0));
+    const pendientes = filteredServices.filter(s => Number(s.estado_nro) === 1 && s.movil && Number(s.movil) !== 0);
+    // % Con atraso sobre todos los pendientes (filteredServices ya maneja el scope)
+    const pendientesList = filteredServices.filter(s => Number(s.estado_nro) === 1);
     const conAtraso = pendientesList.filter(s => {
       const d = computeDelayMinutes(s.fch_hora_max_ent_comp ?? null);
       return d !== null && d < 0;
@@ -407,11 +482,11 @@ function StatsContent() {
     const pctNoRealizados = finalizados.length > 0 ? Math.round((noRealizados.length / finalizados.length) * 100) : 0;
     const totalPendientes = sinAsignar.length + pendientes.length; // todos los estado 1
     return { total, finalizados: finalizados.length, realizados: realizados.length, noRealizados: noRealizados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, totalPendientes, conAtraso, pctAtraso, pctNoRealizados };
-  }, [services]);
+  }, [filteredServices]);
 
   // ─── % Realizados en hora (services) ────────────────────────────────────────
   const pctRealizadosEnHora = useMemo(() => {
-    const realizados = services.filter(s => isServiceEntregado(s));
+    const realizados = filteredServices.filter(s => isServiceEntregado(s));
     if (realizados.length === 0) return null;
     const conAmbas = realizados.filter(s => s.fch_hora_max_ent_comp && s.fch_hora_finalizacion);
     if (conAmbas.length < 3) return null;
@@ -421,7 +496,7 @@ function StatsContent() {
       return fin <= lim;
     });
     return Math.round((enHora.length / conAmbas.length) * 100);
-  }, [services]);
+  }, [filteredServices]);
 
   // ─── Pedidos por hora ──────────────────────────────────────────────────────
   const pedidosPorHora = useMemo(() => {
@@ -562,6 +637,7 @@ function StatsContent() {
 
   // ─── Atrasos de pedidos pendientes ─────────────────────────────────────────
   const atrasosStats = useMemo(() => {
+    // filteredPedidos ya excluye sinAsignar para distribuidores
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1);
     let muyAtrasado = 0, atrasado = 0, limiteCercana = 0, enHora = 0, sinHora = 0;
     pendientes.forEach(p => {
@@ -606,21 +682,27 @@ function StatsContent() {
   const movilesStats = useMemo(() => {
     // Solo móviles con GPS vigente (INNER JOIN gps_latest_positions)
     const conGps = movilesRaw.filter(m => movilesConGps.has(String(m.nro)));
-    // Filtrar por empresa si corresponde
-    const list = selectedEmpresa === 'Todas'
-      ? conGps
-      : conGps.filter(m => {
-          const nombre = empresas.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`;
-          return nombre === selectedEmpresa;
-        });
+    // Filtrar por empresa seleccionada o por allowedEmpresas (distribuidores)
+    let list: typeof conGps;
+    if (selectedEmpresa !== 'Todas') {
+      list = conGps.filter(m => {
+        const nombre = empresas.get(m.empresa_fletera_id) ?? `Empresa ${m.empresa_fletera_id}`;
+        return nombre === selectedEmpresa;
+      });
+    } else if (!isPrivilegedScope) {
+      const allowedIds = new Set(user?.allowedEmpresas ?? []);
+      list = conGps.filter(m => allowedIds.has(m.empresa_fletera_id));
+    } else {
+      list = conGps;
+    }
     // Móviles "ocultos pero operativos": no-activos con pedidos o services asignados.
     // Se excluyen de TODO conteo de móviles (activos, conPedidos, totalLote, etc.).
     const hiddenMovilIds = new Set<number>();
     for (const m of list) {
       if (isMovilActiveForUI(m.estadoNro)) continue;
-      const hasPedido = pedidos.some(p => p.movil != null && Number(p.movil) === m.nro);
+      const hasPedido = filteredPedidos.some(p => p.movil != null && Number(p.movil) === m.nro);
       if (hasPedido) { hiddenMovilIds.add(m.nro); continue; }
-      const hasService = services.some(s => s.movil != null && Number(s.movil) === m.nro);
+      const hasService = filteredServices.some(s => s.movil != null && Number(s.movil) === m.nro);
       if (hasService) hiddenMovilIds.add(m.nro);
     }
     // Activos: mismo criterio que sidebar — solo estadoNro null/undefined/0/1/2,
@@ -636,7 +718,7 @@ function StatsContent() {
     const disponible = activos.reduce((s, m) => s + Math.max(0, (m.tamanoLote ?? 0) - m.pedidosAsignados), 0);
     const pctDisponibilidad = totalLote > 0 ? Math.round((disponible / totalLote) * 100) : null;
     return { totalActivos, conPedidos, sinPedidos, pctConPedidos, pctSinPedidos, totalLote, disponible, pctDisponibilidad };
-  }, [movilesRaw, movilesConGps, selectedEmpresa, empresas, pedidos, services]);
+  }, [movilesRaw, movilesConGps, selectedEmpresa, empresas, filteredPedidos, filteredServices, isPrivilegedScope, user?.allowedEmpresas]);
 
   // ─── % Entregados en hora ───────────────────────────────────────────────────
   const pctEntregadosEnHora = useMemo(() => {
@@ -804,15 +886,18 @@ function StatsContent() {
               {/* Columna Pedidos Pendientes */}
               <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
                 <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Pedidos Pendientes</h2>
-                <div className="grid grid-cols-3 gap-2">
-                  <KpiCard
-                    label="Sin asignar"
-                    value={pedidosStats.sinAsignar}
-                    color={pedidosStats.sinAsignar > 0 ? 'orange' : 'gray'}
-                  />
+                <div className={`grid gap-2 ${canSeeUnassigned ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  {canSeeUnassigned && (
+                    <KpiCard
+                      label="Sin asignar"
+                      value={pedidosStats.sinAsignar}
+                      color={pedidosStats.sinAsignar > 0 ? 'orange' : 'gray'}
+                    />
+                  )}
                   <KpiCard
                     label="Total pendientes"
-                    value={pedidosStats.totalPendientes}
+                    value={canSeeUnassigned ? pedidosStats.totalPendientes : pedidosStats.pendientes}
+                    sub={!canSeeUnassigned ? 'asignados' : undefined}
                     color="blue"
                   />
                   <KpiCard
@@ -856,15 +941,18 @@ function StatsContent() {
               {/* Columna Services Pendientes */}
               <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
                 <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Services Pendientes</h2>
-                <div className="grid grid-cols-3 gap-2">
-                  <KpiCard
-                    label="Sin asignar"
-                    value={servicesStats.sinAsignar}
-                    color={servicesStats.sinAsignar > 0 ? 'orange' : 'gray'}
-                  />
+                <div className={`grid gap-2 ${canSeeUnassigned ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  {canSeeUnassigned && (
+                    <KpiCard
+                      label="Sin asignar"
+                      value={servicesStats.sinAsignar}
+                      color={servicesStats.sinAsignar > 0 ? 'orange' : 'gray'}
+                    />
+                  )}
                   <KpiCard
                     label="Total pendientes"
-                    value={servicesStats.totalPendientes}
+                    value={canSeeUnassigned ? servicesStats.totalPendientes : servicesStats.pendientes}
+                    sub={!canSeeUnassigned ? 'asignados' : undefined}
                     color="blue"
                   />
                   <KpiCard

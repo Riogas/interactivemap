@@ -16,9 +16,7 @@
  */
 
 import {
-  isRoot,
-  isDespacho,
-  shouldScopeByEmpresa,
+  isPrivilegedForZonaScope,
   getScopedEmpresas,
 } from './auth-scope';
 
@@ -38,8 +36,7 @@ export function isPuntoInteresInScope(
   user: ScopedUser | null | undefined
 ): boolean {
   if (!user) return false;
-  if (isRoot(user) || isDespacho(user)) return true;
-  if (!shouldScopeByEmpresa(user)) return true;
+  if (isPrivilegedForZonaScope(user)) return true;
 
   const tipo = String(pi.tipo || '').toLowerCase();
   if (tipo === 'publico' || tipo === 'osm') return true;
