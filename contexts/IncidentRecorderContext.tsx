@@ -59,6 +59,58 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Parsea defensivamente la respuesta del endpoint de incidencias.
+ *
+ * Problema: si nginx upstream devuelve HTML (502/504/413 con body HTML),
+ * llamar `res.json()` directamente lanza SyntaxError que el catch muestra
+ * crudo al usuario como "Unexpected token '<'".
+ *
+ * Solución: leer como texto, intentar parsear JSON, y si falla o el status
+ * no es 2xx, devolver un error legible según el código HTTP.
+ */
+async function parseIncidentResponse(res: Response): Promise<{ success: boolean; id?: string | number; error?: string }> {
+  const text = await res.text();
+
+  if (!res.ok) {
+    // Loggear el body original para debug
+    console.error('[IncidentRecorder] respuesta no-ok del servidor:', res.status, text.slice(0, 500));
+
+    // Mensajes específicos por código HTTP
+    if (res.status === 413) {
+      return { success: false, error: 'El video es demasiado grande. Intentá una grabación más corta.' };
+    }
+    if (res.status === 502 || res.status === 504) {
+      return { success: false, error: 'El servidor tardó demasiado en responder. Reintentá en unos segundos.' };
+    }
+    if (res.status >= 500) {
+      return { success: false, error: 'Error del servidor. Reintentá en unos segundos.' };
+    }
+
+    // 4xx: intentar extraer el campo `error` del JSON si está disponible
+    try {
+      const data = JSON.parse(text) as { success?: boolean; error?: string };
+      return { success: false, error: data.error ?? 'Error en la solicitud.' };
+    } catch {
+      return { success: false, error: 'Error en la solicitud.' };
+    }
+  }
+
+  // Status 2xx: parsear JSON normalmente
+  try {
+    const data = JSON.parse(text) as { success?: boolean; id?: string | number; error?: string };
+    return {
+      success: data.success ?? true,
+      id: data.id,
+      error: data.error,
+    };
+  } catch {
+    // 2xx pero body no es JSON: tratar como éxito sin ID
+    console.error('[IncidentRecorder] respuesta 2xx con body no-JSON:', text.slice(0, 200));
+    return { success: true };
+  }
+}
+
 export function IncidentRecorderProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [state, setState] = useState<RecorderState>('idle');
@@ -176,6 +228,13 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
       setToast({ type: 'err', msg: 'Tu navegador no soporta grabación de pantalla.' });
       return;
     }
+
+    // Verificar contexto seguro: la API de captura de pantalla requiere HTTPS.
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setToast({ type: 'err', msg: 'La grabación de pantalla requiere una conexión segura (HTTPS).' });
+      return;
+    }
+
     try {
       const videoConstraints: MediaTrackConstraints = {
         frameRate: { ideal: 15, max: 30 },
@@ -190,6 +249,18 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
       };
 
       let stream: MediaStream;
+
+      // Bug Firefox: getDisplayMedia con constraints de audio lanza NotAllowedError
+      // incluso cuando el usuario NO canceló — Firefox en muchos contextos
+      // (Windows/Linux) no soporta captura de audio de display y reporta el mismo
+      // error que cuando el usuario deniega el permiso.
+      //
+      // Solución: intentar primero con audio; si falla con NotAllowedError,
+      // reintentar SIN audio antes de concluir que el usuario canceló.
+      // Solo si el segundo intento también falla con NotAllowedError o AbortError
+      // se trata como denegación real del usuario (no mostrar toast).
+      let firstAttemptFailedWithNotAllowed = false;
+
       try {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: videoConstraints,
@@ -197,13 +268,29 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
         });
       } catch (err) {
         const name = (err as DOMException).name;
-        // Si el usuario canceló o denegó, no reintentar.
-        if (name === 'NotAllowedError' || name === 'AbortError') throw err;
-        // Firefox / navegadores que no soportan audio de display: reintentar sin audio.
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: videoConstraints,
-        });
+
+        if (name === 'NotAllowedError') {
+          // Puede ser denegación real del usuario O incompatibilidad del navegador
+          // con audio de display. Reintentar sin audio para diferenciar.
+          firstAttemptFailedWithNotAllowed = true;
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: videoConstraints,
+          });
+          // Si llegamos acá: el primer fallo fue por audio no soportado, no por
+          // denegación real. La grabación arranca sin audio.
+        } else if (name === 'AbortError') {
+          // AbortError siempre es cancelación real del usuario → no reintentar.
+          throw err;
+        } else {
+          // Otro error (NotFoundError, NotSupportedError, etc.) → reintentar sin audio.
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: videoConstraints,
+          });
+        }
       }
+
+      // Silenciar advertencia de variable no usada en el path sin audio
+      void firstAttemptFailedWithNotAllowed;
 
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
         doStop();
@@ -256,13 +343,16 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
         });
       }, 1000);
     } catch (e) {
-      const msg = (e as Error).message.toLowerCase();
-      if (msg.includes('permission') || msg.includes('denied')) {
+      const name = (e as DOMException).name;
+      // NotAllowedError o AbortError en ambos intentos = denegación real del usuario.
+      // No mostrar toast (el navegador ya mostró su propio mensaje de denegación).
+      if (name === 'NotAllowedError' || name === 'AbortError') {
         setState('idle');
-      } else {
-        setToast({ type: 'err', msg: `Error: ${(e as Error).message}` });
-        setState('idle');
+        return;
       }
+      // Otros errores: mostrar mensaje al usuario.
+      setToast({ type: 'err', msg: `Error al iniciar la grabación: ${(e as Error).message}` });
+      setState('idle');
     }
   }, [state, available, doStop, finalize]);
 
@@ -287,9 +377,13 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
           'x-track-userid': user?.id ?? '',
         },
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setToast({ type: 'err', msg: data.error ?? 'Error subiendo el video' });
+
+      // Bug Chrome: res.json() lanza SyntaxError si nginx devuelve HTML (502/504/413).
+      // parseIncidentResponse() lee como texto y parsea defensivamente.
+      const data = await parseIncidentResponse(res);
+
+      if (!data.success) {
+        setToast({ type: 'err', msg: data.error ?? 'Error subiendo el video.' });
         setState('confirming');
         return;
       }
