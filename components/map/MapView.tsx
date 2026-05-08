@@ -7,7 +7,7 @@ import { MovilData, PedidoServicio, PedidoSupabase, ServiceSupabase, CustomMarke
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { filterPuntosInteresByScope } from '@/lib/puntos-interes-scope';
-import { isRoot, isDespacho, getScopedEmpresas } from '@/lib/auth-scope';
+import { isRoot, isDespacho, getScopedEmpresas, isPrivilegedForZonaScope } from '@/lib/auth-scope';
 import { authStorage } from '@/lib/auth-storage';
 import { MarkerShape } from '@/components/ui/PreferencesModal';
 import RouteAnimationControl from './RouteAnimationControl';
@@ -770,12 +770,13 @@ const MapView = memo(function MapView({
         }
 
         // Determinar scope para enviar al server (server-side filter primario).
-        let scopeRole: 'root' | 'despacho' | 'distribuidor' = 'distribuidor';
-        if (isRoot(user)) scopeRole = 'root';
-        else if (isDespacho(user)) scopeRole = 'despacho';
-        const scopeEmpresas = scopeRole === 'distribuidor'
-          ? (getScopedEmpresas(user) || [])
-          : [];
+        // Los 4 roles privilegiados (root/despacho/dashboard/supervisor) ven todos los POIs:
+        // se envia scope_role='root' que el server interpreta como 'sin filtro de empresa'.
+        const privileged = isPrivilegedForZonaScope(user);
+        const scopeRole: 'root' | 'distribuidor' = privileged ? 'root' : 'distribuidor';
+        const scopeEmpresas = privileged
+          ? []
+          : (getScopedEmpresas(user) || []);
 
         const params = new URLSearchParams({
           usuario_email,

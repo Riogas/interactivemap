@@ -93,6 +93,28 @@ export function isPrivilegedForCapEntrega(user: ScopedUser | null | undefined): 
 }
 
 /**
+ * True si el usuario tiene privilegios para ver métricas de "sin asignar"
+ * (pedidos/services sin móvil asignado) en la pantalla de estadísticas.
+ *
+ * Comparte los mismos 4 roles que isPrivilegedForZonaScope e isPrivilegedForCapEntrega,
+ * pero se declara separado para permitir evolución independiente de la regla de negocio.
+ *
+ * Roles privilegiados:
+ *   - Root        (isRoot === 'S')
+ *   - Despacho    (RolId === '49')
+ *   - Dashboard   (RolId === '48')
+ *   - Supervisor  (RolId === '50')
+ *
+ * Para todos los demás roles (distribuidores), sinAsignar NO se muestra ni se
+ * contabiliza en ninguna card, indicador ni gráfico de la pantalla de stats.
+ */
+export function isPrivilegedForUnassignedVisibility(user: ScopedUser | null | undefined): boolean {
+  if (isRoot(user)) return true;
+  const PRIVILEGED_ROL_IDS = new Set(['48', '49', '50']);
+  return user?.roles?.some((r) => PRIVILEGED_ROL_IDS.has(String(r.RolId))) ?? false;
+}
+
+/**
  * Parsea el campo JSONB `zonas` de fleteras_zonas, que puede venir como array
  * de números, strings o mixto (incluyendo nulls). Filtra NaN y duplicados.
  */
