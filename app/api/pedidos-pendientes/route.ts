@@ -55,9 +55,7 @@ export async function GET(request: NextRequest) {
       .eq('escenario', escenarioId)
       .eq('fch_para', fecha) // ✅ FILTRAR POR FECHA EXACTA
       .in('estado_nro', [1, 2]) // Solo pedidos pendientes (Asignado y En camino)
-      .eq('sub_estado_desc', '5') // sub_estado_desc=5 = asignados (tiene movil asignado).
-                                     // Este endpoint sirve pedidos POR MOVIL, no los sin asignar.
-                                     // No necesita gate de permiso ped_sa_acumulados.
+      .eq('sub_estado_desc', '5') // Solo pedidos asignados (sub_estado_desc=5)
       .not('latitud', 'is', null) // Solo pedidos con coordenadas
       .not('longitud', 'is', null)
       .order('prioridad', { ascending: false })

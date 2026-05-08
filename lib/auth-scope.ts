@@ -14,8 +14,6 @@
  *   50 = Supervisor
  */
 
-import { getPermisosSA } from './permisos-sa';
-
 interface UserRole {
   RolId: string;
   RolNombre: string;
@@ -26,11 +24,6 @@ interface ScopedUser {
   isRoot?: string;
   roles?: UserRole[];
   allowedEmpresas?: number[] | null;
-  permisos_sa?: {
-    acumulados?: boolean;
-    x_zona?: boolean;
-    unitarios?: boolean;
-  } | null;
 }
 
 /** True si el usuario es root (sin restricción). */
@@ -82,26 +75,43 @@ export function getScopedEmpresas(user: ScopedUser | null | undefined): number[]
 
 /**
  * True si el usuario tiene privilegios para ver y contar "pedidos sin asignar"
- * en la capa Cap. Entrega del mapa (permiso x_zona).
+ * en la capa Cap. Entrega del mapa.
  *
- * Wrapper sobre getPermisosSA — usa el permiso `x_zona`.
- * El comportamiento backward-compatible se preserva: cuando permisos_sa es null,
- * la derivación por rol replica la lógica anterior (root/48/49/50 → true, resto → false).
+ * Roles privilegiados:
+ *   - Root        (isRoot === 'S')
+ *   - Despacho    (RolId === '49')
+ *   - Dashboard   (RolId === '48')
+ *   - Supervisor  (RolId === '50')
+ *
+ * Para todos los demás roles (distribuidores, etc.), sinAsignar = 0 en el
+ * cálculo de saturación y en el modal de zona.
  */
 export function isPrivilegedForCapEntrega(user: ScopedUser | null | undefined): boolean {
-  return getPermisosSA(user).x_zona;
+  if (isRoot(user)) return true;
+  const PRIVILEGED_ROL_IDS = new Set(['48', '49', '50']);
+  return user?.roles?.some((r) => PRIVILEGED_ROL_IDS.has(String(r.RolId))) ?? false;
 }
 
 /**
  * True si el usuario tiene privilegios para ver métricas de "sin asignar"
- * (pedidos/services sin móvil asignado) en la pantalla de estadísticas (permiso acumulados).
+ * (pedidos/services sin móvil asignado) en la pantalla de estadísticas.
  *
- * Wrapper sobre getPermisosSA — usa el permiso `acumulados`.
- * El comportamiento backward-compatible se preserva: cuando permisos_sa es null,
- * la derivación por rol replica la lógica anterior (root/48/49/50 → true, resto → false).
+ * Comparte los mismos 4 roles que isPrivilegedForZonaScope e isPrivilegedForCapEntrega,
+ * pero se declara separado para permitir evolución independiente de la regla de negocio.
+ *
+ * Roles privilegiados:
+ *   - Root        (isRoot === 'S')
+ *   - Despacho    (RolId === '49')
+ *   - Dashboard   (RolId === '48')
+ *   - Supervisor  (RolId === '50')
+ *
+ * Para todos los demás roles (distribuidores), sinAsignar NO se muestra ni se
+ * contabiliza en ninguna card, indicador ni gráfico de la pantalla de stats.
  */
 export function isPrivilegedForUnassignedVisibility(user: ScopedUser | null | undefined): boolean {
-  return getPermisosSA(user).acumulados;
+  if (isRoot(user)) return true;
+  const PRIVILEGED_ROL_IDS = new Set(['48', '49', '50']);
+  return user?.roles?.some((r) => PRIVILEGED_ROL_IDS.has(String(r.RolId))) ?? false;
 }
 
 /**

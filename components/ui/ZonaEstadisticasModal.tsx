@@ -38,9 +38,6 @@ interface ZonaEstadisticasModalProps {
   scopedEmpresas?: number[] | null;
   /** Scope (móviles + zonas) para filtrar pedidos/services cuando el user es distribuidor. */
   scope?: ScopeFilter;
-  /** Override: si true, fuerza ocultar la columna sin asignar independientemente del scope.
-   *  Controlado por permiso x_zona (desde el parent via permisosSA.x_zona). */
-  forceHideSinAsignar?: boolean;
 }
 
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
@@ -64,7 +61,6 @@ export default function ZonaEstadisticasModal({
   scopedZonaIds = null,
   scopedEmpresas = null,
   scope,
-  forceHideSinAsignar = false,
 }: ZonaEstadisticasModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
@@ -74,7 +70,7 @@ export default function ZonaEstadisticasModal({
 
   // Distribuidor: oculta columna/summary/filtro de "Sin Asignar" y excluye los
   // pedidos sin móvil del cómputo de pendientes.
-  const hideSinAsignar = (scope?.isRestricted ?? false) || forceHideSinAsignar;
+  const hideSinAsignar = scope?.isRestricted ?? false;
 
   // Si la columna sinAsignar queda oculta y el sort estaba en esa key, volver a 'zona'.
   useEffect(() => {

@@ -31,10 +31,6 @@ interface DashboardIndicatorsProps {
   scopedEmpresas?: number[] | null;
   /** Scope (móviles + zonas) para filtrar pedidos en sinAsignar / entregados / % cuando el user es distribuidor. */
   scope?: ScopeFilter;
-  /** Controla visibilidad del indicador "Ped. sin Asig." y su count combinado (pedidos+services).
-   *  Cuando false, el badge se oculta (permiso acumulados=false).
-   *  Default true para retrocompat. */
-  showSinAsignar?: boolean;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
@@ -43,7 +39,7 @@ interface DashboardIndicatorsProps {
   onZonasNoActivasClick?: () => void;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, showSinAsignar = true, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
   
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -91,11 +87,6 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       porcentajeEntregados,
     };
   }, [pedidos, selectedMoviles, hiddenMovilIds, scope]);
-
-  // ============= SERVICES SIN ASIGNAR (para badge combinado navbar) =============
-  const servicesSinAsignarCount = useMemo(() => {
-    return services.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0)).length;
-  }, [services]);
 
   // ============= MÓVILES SIN REPORTAR GPS =============
   // Excluir estadoNro 3 ("No Activo") — esos están fuera de servicio, no es un problema de GPS
@@ -329,14 +320,14 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       {/* Contenedor scrollable de indicadores */}
       <div ref={scrollRef} className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar min-w-0 flex-1">
       <div className="flex items-center gap-1.5">
-        {/* Pedidos Sin Asignar — controlado por permiso acumulados (showSinAsignar=false lo oculta) */}
-        {showSinAsignar && (
+        {/* Pedidos Sin Asignar — oculto para distribuidor (no ve sin asignar) */}
+        {!scope?.isRestricted && (
           <>
             <Indicator
               icon="📦"
               label="Ped. sin Asig."
-              value={pedidosStats.sinAsignar + servicesSinAsignarCount}
-              color={(pedidosStats.sinAsignar + servicesSinAsignarCount) > 0 ? 'orange' : 'gray'}
+              value={pedidosStats.sinAsignar}
+              color={pedidosStats.sinAsignar > 0 ? 'orange' : 'gray'}
               onClick={onSinAsignarClick}
             />
 
