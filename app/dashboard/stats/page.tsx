@@ -297,10 +297,31 @@ function StatsContent() {
   useEffect(() => {
     const loadZoneData = async () => {
       try {
+        // ── Calcular empresaIds efectivos para el scope del usuario ──
+        // Misma lógica que effectiveEmpresas en useScopedZonaIds.
+        //   - Privilegiado + "Todas"          → null (sin filtro)
+        //   - Privilegiado + empresa concreta → [id de esa empresa]
+        //   - No privilegiado + "Todas"       → allowedEmpresas
+        //   - No privilegiado + empresa concreta → [id de esa empresa]
+        let empresaIds: number[] | null = null;
+        if (selectedEmpresa !== 'Todas') {
+          // Empresa concreta seleccionada: buscar su ID en el mapa nombre→id
+          const empresaId = Array.from(empresas.entries())
+            .find(([, nombre]) => nombre === selectedEmpresa)?.[0] ?? null;
+          empresaIds = empresaId !== null ? [empresaId] : [];
+        } else if (!isPrivilegedScope) {
+          // No privilegiado con "Todas": limitar a sus allowedEmpresas
+          empresaIds = user?.allowedEmpresas ?? [];
+        }
+        // Construir query param (omitir si null = sin filtro)
+        const empresaParam = empresaIds !== null && empresaIds.length > 0
+          ? `?empresaIds=${empresaIds.join(',')}`
+          : '';
+
         const [demorasRes, zonasRes, mzRes] = await Promise.all([
-          fetch('/api/demoras'),
-          fetch('/api/zonas'),
-          fetch('/api/moviles-zonas'),
+          fetch(`/api/demoras${empresaParam}`),
+          fetch(`/api/zonas${empresaParam}`),
+          fetch(`/api/moviles-zonas${empresaParam}`),
         ]);
         const [demorasData, zonasData, mzData] = await Promise.all([
           demorasRes.json(),
@@ -361,7 +382,7 @@ function StatsContent() {
       }
     };
     loadZoneData();
-  }, [refreshTick]);
+  }, [refreshTick, selectedEmpresa, isPrivilegedScope, user?.allowedEmpresas, empresas]);
 
   // ─── Opciones de empresa (para el filtro) ──────────────────────────────────
   // Opciones del combo Empresa:
