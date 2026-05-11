@@ -3009,6 +3009,7 @@ function DashboardContent() {
                 onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : dataViewMode === 'saturacion' ? setSaturacionModalZonaId : undefined}
                 serverNow={serverNow}
                 minutosAntesSa={minutosAntesSa}
+                user={user}
               />
             </motion.div>
           </>

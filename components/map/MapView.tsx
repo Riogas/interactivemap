@@ -133,6 +133,8 @@ interface MapViewProps {
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
   allMovilEstados?: Map<string, number>; // Mapa completo movil_nro → estadoNro (todos los moviles)
   allHiddenMovilIds?: Set<string>; // IDs de móviles ocultos-pero-operativos (capa móviles-zonas los excluye)
+  /** Usuario autenticado — usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
+  user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>; allowedEmpresas?: number[] | null } | null;
 }
 
 function MapUpdater({
@@ -651,6 +653,7 @@ const MapView = memo(function MapView({
   onZonaClick,
   allMovilEstados = new Map(),
   allHiddenMovilIds,
+  user,
   serverNow = new Date(),
   minutosAntesSa = null,
 }: MapViewProps) {
@@ -2203,7 +2206,7 @@ const MapView = memo(function MapView({
 
         {/* 🟥 Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
         {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <SaturacionZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} />
+          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
