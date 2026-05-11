@@ -759,6 +759,70 @@ export interface Database {
           updated_at?: string
         }
       }
+      login_attempts: {
+        Row: {
+          id: number
+          ts: string
+          escenario_id: number | null
+          username: string
+          ip: string
+          user_agent: string | null
+          estado: 'success' | 'fail' | 'blocked_user' | 'blocked_ip' | 'user_eq_pass'
+          blocked_until: string | null
+          whitelisted: boolean
+          extra: Json | null
+        }
+        Insert: {
+          id?: never
+          ts?: string
+          escenario_id?: number | null
+          username: string
+          ip: string
+          user_agent?: string | null
+          estado: 'success' | 'fail' | 'blocked_user' | 'blocked_ip' | 'user_eq_pass'
+          blocked_until?: string | null
+          whitelisted?: boolean
+          extra?: Json | null
+        }
+        Update: {
+          id?: never
+          ts?: string
+          escenario_id?: number | null
+          username?: string
+          ip?: string
+          user_agent?: string | null
+          estado?: 'success' | 'fail' | 'blocked_user' | 'blocked_ip' | 'user_eq_pass'
+          blocked_until?: string | null
+          whitelisted?: boolean
+          extra?: Json | null
+        }
+      }
+      login_blocks: {
+        Row: {
+          id: number
+          block_type: 'user' | 'ip'
+          key: string
+          blocked_until: string
+          created_at: string
+          reason: string | null
+        }
+        Insert: {
+          id?: never
+          block_type: 'user' | 'ip'
+          key: string
+          blocked_until: string
+          created_at?: string
+          reason?: string | null
+        }
+        Update: {
+          id?: never
+          block_type?: 'user' | 'ip'
+          key?: string
+          blocked_until?: string
+          created_at?: string
+          reason?: string | null
+        }
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { runLoginSecurity } from '@/lib/login-security';
 
 const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
 const SISTEMA = process.env.LOGIN_SISTEMA || 'GOYA';
@@ -6,17 +7,8 @@ const SISTEMA = process.env.LOGIN_SISTEMA || 'GOYA';
 export async function POST(request: NextRequest) {
   console.log('🔐 [/api/auth/login] Iniciando login...');
 
-  try {
-    const body = await request.json();
+  return runLoginSecurity(request, async (body) => {
     const { UserName, Password } = body;
-
-    if (!UserName || !Password) {
-      return NextResponse.json(
-        { success: false, message: 'UserName y Password son requeridos' },
-        { status: 400 }
-      );
-    }
-
     console.log(`🔐 [/api/auth/login] Usuario: ${UserName}`);
 
     const res = await fetch(`${SECURITY_SUITE_URL}/api/db/login`, {
@@ -32,12 +24,6 @@ export async function POST(request: NextRequest) {
       (data.verifiedBy ? ` (via ${data.verifiedBy})` : '')
     );
 
-    return NextResponse.json(data, { status: res.status });
-  } catch (error) {
-    console.error('❌ [/api/auth/login] Error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Error al conectar con el servidor de autenticación' },
-      { status: 500 }
-    );
-  }
+    return { success: data.success, ...data };
+  });
 }

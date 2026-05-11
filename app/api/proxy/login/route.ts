@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
 import { fetchExternalAPI } from '@/lib/fetch-with-timeout';
+import { runLoginSecurity } from '@/lib/login-security';
 import https from 'https';
 
 // Agente HTTPS que ignora errores de certificado SSL
@@ -10,14 +11,11 @@ const httpsAgent = new https.Agent({
 });
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
+  console.log('🔐 [/api/proxy/login] Iniciando login...');
 
-    console.log('🔐 Login Request');
-    // No loguear body — contiene credenciales
-
+  return runLoginSecurity(request, async (body) => {
     const loginUrl = `${API_BASE_URL}/gestion/login`;
-    
+
     // 🔧 TIMEOUT + REINTENTOS: fetchExternalAPI usa 30s timeout y 2 reintentos
     const response = await fetchExternalAPI(loginUrl, {
       method: 'POST',
@@ -26,25 +24,22 @@ export async function POST(request: NextRequest) {
         'Accept': 'application/json',
       },
       body: JSON.stringify(body),
-      credentials: 'include', // Importante para cookies
+      credentials: 'include',
       // @ts-expect-error - Node.js fetch acepta agent
       agent: loginUrl.startsWith('https:') ? httpsAgent : undefined,
     });
 
     console.log('📥 Login Response Status:', response.status);
 
-    // Intentar parsear como JSON
     let data;
     const contentType = response.headers.get('content-type');
-    
+
     if (contentType && contentType.includes('application/json')) {
       data = await response.json();
-      
+
       // 🔧 FIX: GeneXus devuelve JSON anidado como string
-      // Si viene "RespuestaLogin" como string, parsearlo
       if (data.RespuestaLogin && typeof data.RespuestaLogin === 'string') {
         try {
-          // GeneXus agrega texto basura después del JSON - truncar en el último '}'
           let rawLogin = data.RespuestaLogin;
           const lastBrace = rawLogin.lastIndexOf('}');
           if (lastBrace !== -1 && lastBrace < rawLogin.length - 1) {
@@ -52,42 +47,17 @@ export async function POST(request: NextRequest) {
             rawLogin = rawLogin.substring(0, lastBrace + 1);
           }
           const parsedLogin = JSON.parse(rawLogin);
-          data = parsedLogin; // Reemplazar con el objeto parseado
+          data = parsedLogin;
         } catch (e) {
           console.error('❌ Error al parsear RespuestaLogin:', e);
         }
       }
-      
-      // No loguear data de login — puede contener tokens
     } else {
       const text = await response.text();
       console.log('📥 Login Response Text:', text);
       data = { response: text };
     }
 
-    // Copiar cookies de la respuesta si existen
-    const setCookieHeader = response.headers.get('set-cookie');
-    const responseHeaders: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (setCookieHeader) {
-      console.log('🍪 Set-Cookie:', setCookieHeader);
-      responseHeaders['Set-Cookie'] = setCookieHeader;
-    }
-
-    return NextResponse.json(data, { 
-      status: response.status,
-      headers: responseHeaders,
-    });
-  } catch (error) {
-    console.error('❌ Error en proxy de login:', error);
-    return NextResponse.json(
-      { 
-        error: 'Error al conectar con el servidor',
-        details: error instanceof Error ? error.message : 'Error desconocido'
-      },
-      { status: 500 }
-    );
-  }
+    return { success: response.ok, ...data };
+  });
 }

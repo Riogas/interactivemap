@@ -27,13 +27,36 @@ export default function LoginPage() {
 
     try {
       const result = await login(username, password, escenarioId);
-      
+
       if (result.success) {
         // Animación de éxito antes de redirigir
         await new Promise(resolve => setTimeout(resolve, 500));
         router.push('/dashboard');
       } else {
-        setError(result.error || 'Usuario o contraseña inválidos');
+        // Type assertion para campos adicionales del endpoint de seguridad
+        const errorResult = result as {
+          success: boolean;
+          error?: string;
+          message?: string;
+          code?: string;
+          retryAfterSeconds?: number;
+        };
+
+        const message = errorResult.message || errorResult.error || '';
+        const code = errorResult.code || '';
+
+        if (code === 'USER_EQ_PASS') {
+          setError('El nombre de usuario y la contraseña no pueden coincidir.');
+        } else if (code === 'BLOCKED_USER') {
+          const mins = errorResult.retryAfterSeconds ? Math.ceil(errorResult.retryAfterSeconds / 60) : 10;
+          setError(`Usuario bloqueado temporalmente. Intentá de nuevo en ${mins} minutos.`);
+        } else if (code === 'BLOCKED_IP') {
+          const mins = errorResult.retryAfterSeconds ? Math.ceil(errorResult.retryAfterSeconds / 60) : 15;
+          setError(`Demasiados intentos desde esta IP. Probá de nuevo en ${mins} minutos.`);
+        } else {
+          // Fallback: mensaje genérico o del backend
+          setError(message || 'Usuario o contraseña inválidos');
+        }
       }
     } catch (err) {
       setError('Error al iniciar sesión');
