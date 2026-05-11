@@ -23,7 +23,11 @@ export async function GET(request: NextRequest) {
 
   const supabase = getServerSupabaseClient();
 
-  type Row = { escenario_id: number; pedidos_sa_minutos_antes: number | null };
+  type Row = {
+    escenario_id: number;
+    pedidos_sa_minutos_antes: number | null;
+    aplica_serv_nocturno: boolean | null;
+  };
   const { data, error } = await (
     supabase.from('escenario_settings') as unknown as {
       select: (cols: string) => {
@@ -33,7 +37,7 @@ export async function GET(request: NextRequest) {
       };
     }
   )
-    .select('escenario_id, pedidos_sa_minutos_antes')
+    .select('escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno')
     .eq('escenario_id', escenarioId)
     .maybeSingle();
 
@@ -45,7 +49,11 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     success: true,
     data: data
-      ? { escenarioId: data.escenario_id, pedidosSaMinutosAntes: data.pedidos_sa_minutos_antes }
-      : { escenarioId, pedidosSaMinutosAntes: null },
+      ? {
+          escenarioId: data.escenario_id,
+          pedidosSaMinutosAntes: data.pedidos_sa_minutos_antes,
+          aplicaServNocturno: data.aplica_serv_nocturno ?? true,
+        }
+      : { escenarioId, pedidosSaMinutosAntes: null, aplicaServNocturno: true },
   });
 }

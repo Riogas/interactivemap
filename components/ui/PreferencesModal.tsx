@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { authStorage } from '@/lib/auth-storage';
 import * as XLSX from 'xlsx';
+import { NIGHT_START_HOUR, DAY_START_HOUR } from '@/lib/horario-servicio';
 
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'star';
 
@@ -82,8 +83,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   showCapEntregaLabels: false, // Por defecto ocultas
   showPedidosZonaLabels: false, // Por defecto ocultas
   zonaOpacity: 50, // 50% por defecto
-  nightStartHour: 20.5, // 20:30 hs por defecto
-  dayStartHour: 6, // 06:00 hs por defecto
+  nightStartHour: NIGHT_START_HOUR, // 20:30 hs por defecto — de lib/horario-servicio.ts
+  dayStartHour: DAY_START_HOUR, // 06:00 hs por defecto — de lib/horario-servicio.ts
   movilesVisible: true,
   pedidosVisible: true,
   servicesVisible: true,

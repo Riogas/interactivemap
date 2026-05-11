@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 export type EscenarioSettings = {
   escenarioId: number;
   pedidosSaMinutosAntes: number | null;
+  /** Si el escenario cubre servicio nocturno. Default true (conservativo). */
+  aplicaServNocturno: boolean;
 };
 
 const CACHE_TTL_MS = 60_000; // 60 segundos
@@ -17,11 +19,13 @@ type ApiResponse = {
  * Hook que lee los settings de un escenario desde la API y los cachea 60 segundos.
  *
  * Si escenarioId es null, no hace fetch y retorna settings=null.
- * Si no existe configuracion para el escenario, retorna { pedidosSaMinutosAntes: null }.
+ * Si no existe configuracion para el escenario, retorna defaults seguros
+ * ({ pedidosSaMinutosAntes: null, aplicaServNocturno: true }).
  *
  * Uso:
  *   const { settings } = useEscenarioSettings(escenarioId);
  *   const minutosAntes = settings?.pedidosSaMinutosAntes ?? null;
+ *   const aplicaNocturno = settings?.aplicaServNocturno ?? true;
  */
 export function useEscenarioSettings(escenarioId: number | null): {
   settings: EscenarioSettings | null;

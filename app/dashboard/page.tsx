@@ -66,6 +66,8 @@ function DashboardContent() {
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
   const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
+  // Si el escenario cubre servicio nocturno. Default true (conservativo mientras cargan los settings).
+  const aplicaNocturno = escenarioSettings?.aplicaServNocturno ?? true;
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
   const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect, setOnMovilEvent } = useRealtime();
@@ -255,6 +257,8 @@ function DashboardContent() {
     updatePreference,
     scopedZonaIds,
     scopedEmpresas,
+    serverNow,
+    aplicaNocturno,
   });
 
   // Determina si hay que ocultar pedidos/services "sin asignar" (sin móvil).

@@ -31,11 +31,12 @@ type EscenarioRow = {
 type SettingsRow = {
   escenario_id: number;
   pedidos_sa_minutos_antes: number | null;
+  aplica_serv_nocturno: boolean | null;
 };
 
 /**
  * Retorna la lista de escenarios con sus settings actuales.
- * Si un escenario no tiene row en escenario_settings, pedidosSaMinutosAntes = null.
+ * Si un escenario no tiene row en escenario_settings, los campos usan sus defaults.
  */
 export async function GET(request: NextRequest) {
   const gate = requireRoot(request);
@@ -70,23 +71,27 @@ export async function GET(request: NextRequest) {
     supabase.from('escenario_settings') as unknown as {
       select: (cols: string) => Promise<{ data: SettingsRow[] | null; error: { message: string } | null }>;
     }
-  ).select('escenario_id, pedidos_sa_minutos_antes');
+  ).select('escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno');
 
   if (settingsError) {
     console.error('[admin/escenario-settings] GET settings error:', settingsError.message);
     return NextResponse.json({ success: false, error: 'Error al leer configuracion' }, { status: 500 });
   }
 
-  const settingsMap = new Map<number, number | null>();
+  const settingsMap = new Map<number, SettingsRow>();
   for (const s of settings ?? []) {
-    settingsMap.set(s.escenario_id, s.pedidos_sa_minutos_antes);
+    settingsMap.set(s.escenario_id, s);
   }
 
-  const result = escenarioIds.map(id => ({
-    escenarioId: id,
-    nombre: escenarioMap.get(id) ?? null,
-    pedidosSaMinutosAntes: settingsMap.has(id) ? settingsMap.get(id) : null,
-  }));
+  const result = escenarioIds.map(id => {
+    const s = settingsMap.get(id);
+    return {
+      escenarioId: id,
+      nombre: escenarioMap.get(id) ?? null,
+      pedidosSaMinutosAntes: s ? s.pedidos_sa_minutos_antes : null,
+      aplicaServNocturno: s ? (s.aplica_serv_nocturno ?? true) : true,
+    };
+  });
 
   result.sort((a, b) => a.escenarioId - b.escenarioId);
 
@@ -98,6 +103,7 @@ export async function GET(request: NextRequest) {
 type PutBody = {
   escenarioId: unknown;
   pedidosSaMinutosAntes: unknown;
+  aplica_serv_nocturno: unknown;
 };
 
 export async function PUT(request: NextRequest) {
@@ -111,7 +117,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Body invalido' }, { status: 400 });
   }
 
-  const { escenarioId, pedidosSaMinutosAntes } = body;
+  const { escenarioId, pedidosSaMinutosAntes, aplica_serv_nocturno } = body;
 
   // Validar escenarioId
   if (typeof escenarioId !== 'number' || !Number.isInteger(escenarioId) || escenarioId <= 0) {
@@ -119,7 +125,7 @@ export async function PUT(request: NextRequest) {
   }
 
   // Validar pedidosSaMinutosAntes: null o entero >= 0
-  if (pedidosSaMinutosAntes !== null) {
+  if (pedidosSaMinutosAntes !== null && pedidosSaMinutosAntes !== undefined) {
     if (typeof pedidosSaMinutosAntes !== 'number' || !Number.isInteger(pedidosSaMinutosAntes) || pedidosSaMinutosAntes < 0) {
       return NextResponse.json(
         { success: false, error: 'pedidosSaMinutosAntes debe ser null o un entero >= 0' },
@@ -128,17 +134,33 @@ export async function PUT(request: NextRequest) {
     }
   }
 
+  // Validar aplica_serv_nocturno: boolean obligatorio si viene en el body
+  if (aplica_serv_nocturno !== undefined && typeof aplica_serv_nocturno !== 'boolean') {
+    return NextResponse.json(
+      { success: false, error: 'aplica_serv_nocturno debe ser un boolean' },
+      { status: 400 }
+    );
+  }
+
   const supabase = getServerSupabaseClient();
+
+  const upsertData: Record<string, unknown> = {
+    escenario_id: escenarioId,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (pedidosSaMinutosAntes !== undefined) {
+    upsertData.pedidos_sa_minutos_antes = pedidosSaMinutosAntes as number | null;
+  }
+  if (aplica_serv_nocturno !== undefined) {
+    upsertData.aplica_serv_nocturno = aplica_serv_nocturno as boolean;
+  }
 
   const { error } = await (
     supabase.from('escenario_settings') as unknown as {
-      upsert: (data: SettingsRow) => Promise<{ error: { message: string } | null }>;
+      upsert: (data: Record<string, unknown>, options?: { onConflict: string }) => Promise<{ error: { message: string } | null }>;
     }
-  ).upsert({
-    escenario_id: escenarioId,
-    pedidos_sa_minutos_antes: pedidosSaMinutosAntes as number | null,
-    updated_at: new Date().toISOString(),
-  } as unknown as SettingsRow);
+  ).upsert(upsertData, { onConflict: 'escenario_id' });
 
   if (error) {
     console.error('[admin/escenario-settings] PUT error:', error.message);
@@ -152,7 +174,7 @@ export async function PUT(request: NextRequest) {
     event_type: 'custom',
     method: 'PUT',
     endpoint: '/api/admin/escenario-settings',
-    request_body: { escenarioId, pedidosSaMinutosAntes },
+    request_body: { escenarioId, pedidosSaMinutosAntes, aplica_serv_nocturno },
     response_status: 200,
     source: 'server',
   });
