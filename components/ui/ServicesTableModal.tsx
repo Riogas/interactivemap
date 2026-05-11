@@ -6,6 +6,7 @@ import { ServiceSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
 import { isServiceEntregado } from '@/utils/estadoPedido';
 import { isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -69,6 +70,10 @@ interface ServicesTableModalProps {
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
   scope?: ScopeFilter;
+  /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
+  serverNow?: Date;
+  /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
+  minutosAntesSa?: number | null;
 }
 
 // ========== Row bg colors ==========
@@ -92,7 +97,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, onInnerFiltersChange, externalResetToken, scope }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -157,7 +162,12 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       }
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
-      result = services.filter(s => Number(s.estado_nro) === 1);
+      result = services
+        .filter(s => Number(s.estado_nro) === 1)
+        .filter(s =>
+          (s.movil && Number(s.movil) !== 0) ||
+          isWithinSaWindow(s.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null)
+        );
 
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {

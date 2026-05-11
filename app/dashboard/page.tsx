@@ -39,6 +39,9 @@ import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
 import { todayMontevideo } from '@/lib/date-utils';
+import { useServerTime } from '@/hooks/useServerTime';
+import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import { reportDrift, LastSyncState } from '@/lib/realtime-drift';
 
 const DEBUG = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1';
@@ -60,6 +63,9 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
 function DashboardContent() {
   // Hook de autenticación (para obtener empresas permitidas y escenario)
   const { user, escenarioId, hasPermiso } = useAuth();
+  const { serverNow } = useServerTime();
+  const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
+  const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
   const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect, setOnMovilEvent } = useRealtime();
@@ -1928,6 +1934,7 @@ function DashboardContent() {
         servicesCompletos.forEach(s => {
           if (Number(s.estado_nro) !== 1) return;
           if (s.movil != null && Number(s.movil) !== 0) return;
+          if (!isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)) return;
           const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
           if (!zona || zona === 0) return;
           if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
@@ -1940,6 +1947,7 @@ function DashboardContent() {
         pedidosCompletos.forEach(p => {
           if (Number(p.estado_nro) !== 1) return;
           if (p.movil != null && Number(p.movil) !== 0) return;
+          if (!isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)) return;
           const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
           if (!zona || zona === 0) return;
           if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
@@ -1953,7 +1961,7 @@ function DashboardContent() {
     // No-op si !canSeeUnassignedInCapEntrega: sinAsignar queda en 0 (no privilegiado)
 
     return stats;
-  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds, canSeeUnassignedInCapEntrega, demorasData]);
+  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds, canSeeUnassignedInCapEntrega, demorasData, serverNow, minutosAntesSa]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
   // para el mapa. Sin esto, cada llamada inline crea un nuevo array → downstream re-renders.
 
@@ -2251,6 +2259,8 @@ function DashboardContent() {
             onZonasSinMovilClick={onZonasSinMovilClick}
             onMovilesSinReportarClick={onMovilesSinReportarClick}
             onZonasNoActivasClick={onZonasNoActivasClick}
+            serverNow={serverNow}
+            minutosAntesSa={minutosAntesSa}
           />
         </NavbarSimple>
       </div>
@@ -2435,6 +2445,8 @@ function DashboardContent() {
         privilegedUser={isPrivilegedUser}
         onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[], tipoServicio: f.tipoServicio }))}
         externalResetToken={pedidosResetToken}
+        serverNow={serverNow}
+        minutosAntesSa={minutosAntesSa}
       />
 
       {/* Modal de Vista Extendida de Services */}
@@ -2461,6 +2473,8 @@ function DashboardContent() {
         privilegedUser={isPrivilegedUser}
         onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, defecto: f.defecto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
         externalResetToken={servicesResetToken}
+        serverNow={serverNow}
+        minutosAntesSa={minutosAntesSa}
       />
       <OsmImportModal
         isOpen={isOsmImportOpen}
@@ -2763,6 +2777,8 @@ function DashboardContent() {
                         ? 60
                         : preferences.realtimePollingReconcileSeconds
                   }
+                  serverNow={serverNow}
+                  minutosAntesSa={minutosAntesSa}
                 />
               </div>
             </motion.div>
@@ -2983,6 +2999,8 @@ function DashboardContent() {
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
                 onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : dataViewMode === 'saturacion' ? setSaturacionModalZonaId : undefined}
+                serverNow={serverNow}
+                minutosAntesSa={minutosAntesSa}
               />
             </motion.div>
           </>

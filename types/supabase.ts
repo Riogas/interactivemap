@@ -1,4 +1,4 @@
-// Tipos generados automáticamente basados en las tablas de Supabase
+﻿// Tipos generados automÃ¡ticamente basados en las tablas de Supabase
 
 export type Json =
   | string
@@ -737,6 +737,26 @@ export interface Database {
           fecha_hora?: string
           created_at?: string | null
           updated_at?: string | null
+        }
+      }
+      escenario_settings: {
+        Row: {
+          escenario_id: number
+          pedidos_sa_minutos_antes: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          escenario_id: number
+          pedidos_sa_minutos_antes?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          escenario_id?: number
+          pedidos_sa_minutos_antes?: number | null
+          created_at?: string
+          updated_at?: string
         }
       }
     }

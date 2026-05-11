@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { PedidoSupabase } from '@/types';
@@ -7,6 +7,7 @@ import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { todayMontevideo } from '@/lib/date-utils';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
 interface DashboardIndicatorsProps {
   moviles: any[];
@@ -37,17 +38,24 @@ interface DashboardIndicatorsProps {
   onZonasSinMovilClick?: () => void;
   onMovilesSinReportarClick?: () => void;
   onZonasNoActivasClick?: () => void;
+  /** Hora del servidor (sincronizada). Usada para el filtro de ventana SA. */
+  serverNow?: Date;
+  /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
+  minutosAntesSa?: number | null;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick }: DashboardIndicatorsProps) {
-  
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick, serverNow = new Date(), minutosAntesSa = null }: DashboardIndicatorsProps) {
+
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
     const scopeRestricted = scope?.isRestricted ?? false;
 
     // Sin asignar: pendientes (estado 1) sin móvil o móvil === 0.
+    // Aplicar ventana temporal: solo los SA cuya FchHoraPara está dentro de la ventana.
     // Para distribuidor: solo cuentan los sin asignar cuya zona está en su scope.
-    let sinAsignar: PedidoSupabase[] = pedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
+    let sinAsignar: PedidoSupabase[] = pedidos
+      .filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0))
+      .filter(p => isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa));
     if (scopeRestricted && scope) {
       sinAsignar = sinAsignar.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: false }));
     }
@@ -86,7 +94,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       entregados,
       porcentajeEntregados,
     };
-  }, [pedidos, selectedMoviles, hiddenMovilIds, scope]);
+  }, [pedidos, selectedMoviles, hiddenMovilIds, scope, serverNow, minutosAntesSa]);
 
   // ============= MÓVILES SIN REPORTAR GPS =============
   // Excluir estadoNro 3 ("No Activo") — esos están fuera de servicio, no es un problema de GPS
@@ -165,7 +173,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
           );
         }
       } catch (err) {
-        console.error('❌ Error loading zonas data for indicators:', err);
+        console.error('Error loading zonas data for indicators:', err);
       }
     };
 

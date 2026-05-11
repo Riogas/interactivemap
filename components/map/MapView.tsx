@@ -31,6 +31,7 @@ import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from '.
 import ZonasActivasLayer from './ZonasActivasLayer';
 import SaturacionZonasLayer, { SaturacionZonaData, SaturacionZonaStats } from './SaturacionZonasLayer';
 import dynamic from 'next/dynamic';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import './DataViewControl.css';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
@@ -103,6 +104,10 @@ interface MapViewProps {
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
   pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
   onPedidosZonaFilterChange?: (f: PedidosZonaFilter) => void;
+  /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
+  serverNow?: Date;
+  /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
+  minutosAntesSa?: number | null;
   hideSinAsignarOption?: boolean; // Si true, oculta opción "Sin asignar" del select pedidos/zona (distribuidor)
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
@@ -646,6 +651,8 @@ const MapView = memo(function MapView({
   onZonaClick,
   allMovilEstados = new Map(),
   allHiddenMovilIds,
+  serverNow = new Date(),
+  minutosAntesSa = null,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2845,7 +2852,11 @@ const MapView = memo(function MapView({
         
         {/* Marcadores de Pedidos desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
         {(() => {
-          const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud);
+          const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud).filter(p =>
+            (!p.movil || Number(p.movil) === 0)
+              ? isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)
+              : true
+          );
           if (!pedidosFiltrados?.length) return null;
           
           const pedidoMarkers = pedidosFiltrados.map(pedido => {
@@ -2896,7 +2907,11 @@ const MapView = memo(function MapView({
 
         {/* Marcadores de Services desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
         {(() => {
-          const servicesFiltrados = services && services.filter(s => s.latitud && s.longitud);
+          const servicesFiltrados = services && services.filter(s => s.latitud && s.longitud).filter(s =>
+            (!s.movil || Number(s.movil) === 0)
+              ? isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)
+              : true
+          );
           if (!servicesFiltrados?.length) return null;
           
           const serviceMarkers = servicesFiltrados.map(service => {

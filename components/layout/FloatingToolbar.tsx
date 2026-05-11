@@ -182,6 +182,20 @@ export default function FloatingToolbar({
                   </svg>
                 </button>
                 <button
+                  onClick={() => { window.open("/admin/configuracion", "_blank"); setIsOpen(false); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 border-2 border-green-200 hover:border-green-300 transition-all duration-200 group"
+                >
+                  <svg className="w-5 h-5 text-green-600 group-hover:text-green-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                  </svg>
+                  <span className="font-semibold text-green-700 group-hover:text-green-800 transition-colors flex-1 text-left">
+                    Configuracion
+                  </span>
+                  <svg className="w-4 h-4 text-green-400 group-hover:text-green-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </button>
+                <button
                   onClick={() => { window.open("/admin/auditoria", "_blank"); setIsOpen(false); }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 hover:from-slate-100 hover:to-slate-200 border-2 border-slate-200 hover:border-slate-300 transition-all duration-200 group"
                 >

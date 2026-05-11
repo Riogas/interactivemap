@@ -7,6 +7,7 @@ import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDela
 import { getEstadoDescripcion, isPedidoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -75,6 +76,10 @@ interface PedidosTableModalProps {
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
   scope?: ScopeFilter;
+  /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
+  serverNow?: Date;
+  /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
+  minutosAntesSa?: number | null;
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -98,7 +103,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, onInnerFiltersChange, externalResetToken, scope }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -193,7 +198,12 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       }
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
-      result = pedidos.filter(p => Number(p.estado_nro) === 1);
+      result = pedidos
+        .filter(p => Number(p.estado_nro) === 1)
+        .filter(p =>
+          (p.movil && Number(p.movil) !== 0) ||
+          isWithinSaWindow(p.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null)
+        );
 
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {

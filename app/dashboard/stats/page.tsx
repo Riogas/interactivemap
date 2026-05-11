@@ -9,6 +9,9 @@ import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { todayMontevideo } from '@/lib/date-utils';
+import { useServerTime } from '@/hooks/useServerTime';
+import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
 interface Pedido {
@@ -222,9 +225,12 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
 function StatsContent() {
   const searchParams = useSearchParams();
   const date = searchParams.get('date') ?? todayMontevideo();
-  const { user } = useAuth();
+  const { user, escenarioId } = useAuth();
   const canSeeUnassigned = isPrivilegedForUnassignedVisibility(user);
   const isPrivilegedScope = isPrivilegedForZonaScope(user);
+  const { serverNow } = useServerTime();
+  const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
+  const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
 
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -476,12 +482,16 @@ function StatsContent() {
     const entregados = finalizadosSinHijo.filter(p => isPedidoEntregado(p));
     const noEntregados = finalizadosSinHijo.filter(p => !isPedidoEntregado(p));
     // sinAsignar solo visible para privilegiados (distribuidor ya los tiene excluidos)
-    const sinAsignar = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0));
+    const sinAsignar = filteredPedidos.filter(p =>
+      Number(p.estado_nro) === 1 &&
+      (!p.movil || Number(p.movil) === 0) &&
+      isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)
+    );
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1 && p.movil && Number(p.movil) !== 0);
     const totalPendientes = sinAsignar.length + pendientes.length; // todos los estado 1
     const pct = finalizadosSinHijo.length > 0 ? Math.round((entregados.length / finalizadosSinHijo.length) * 100) : 0;
     return { total, finalizados: finalizados.length, finalizadosSinHijo: finalizadosSinHijo.length, entregados: entregados.length, noEntregados: noEntregados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, totalPendientes, pct };
-  }, [filteredPedidos, canSeeUnassigned]);
+  }, [filteredPedidos, canSeeUnassigned, serverNow, minutosAntesSa]);
 
   // ─── KPIs Services ─────────────────────────────────────────────────────────
   const servicesStats = useMemo(() => {
@@ -491,7 +501,11 @@ function StatsContent() {
     const realizados = finalizados.filter(s => isServiceEntregado(s));
     const noRealizados = finalizados.filter(s => !isServiceEntregado(s));
     // sinAsignar solo visible para privilegiados
-    const sinAsignar = filteredServices.filter(s => Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0));
+    const sinAsignar = filteredServices.filter(s =>
+      Number(s.estado_nro) === 1 &&
+      (!s.movil || Number(s.movil) === 0) &&
+      isWithinSaWindow(s.fch_hora_para ?? null, serverNow, minutosAntesSa)
+    );
     const pendientes = filteredServices.filter(s => Number(s.estado_nro) === 1 && s.movil && Number(s.movil) !== 0);
     // % Con atraso sobre todos los pendientes (filteredServices ya maneja el scope)
     const pendientesList = filteredServices.filter(s => Number(s.estado_nro) === 1);
@@ -503,7 +517,7 @@ function StatsContent() {
     const pctNoRealizados = finalizados.length > 0 ? Math.round((noRealizados.length / finalizados.length) * 100) : 0;
     const totalPendientes = sinAsignar.length + pendientes.length; // todos los estado 1
     return { total, finalizados: finalizados.length, realizados: realizados.length, noRealizados: noRealizados.length, sinAsignar: sinAsignar.length, pendientes: pendientes.length, totalPendientes, conAtraso, pctAtraso, pctNoRealizados };
-  }, [filteredServices]);
+  }, [filteredServices, serverNow, minutosAntesSa]);
 
   // ─── % Realizados en hora (services) ────────────────────────────────────────
   const pctRealizadosEnHora = useMemo(() => {
