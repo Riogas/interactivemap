@@ -8,6 +8,7 @@ import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import { isPedidoInScope, isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
 // ============= Types =============
 
@@ -38,6 +39,10 @@ interface ZonaEstadisticasModalProps {
   scopedEmpresas?: number[] | null;
   /** Scope (móviles + zonas) para filtrar pedidos/services cuando el user es distribuidor. */
   scope?: ScopeFilter;
+  /** Hora actual del servidor - para filtrar SA por ventana temporal (isWithinSaWindow). */
+  serverNow?: Date;
+  /** Minutos de anticipacion del escenario. null = sin filtro (backwards-compat). */
+  minutosAntesSa?: number | null;
 }
 
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
@@ -61,6 +66,8 @@ export default function ZonaEstadisticasModal({
   scopedZonaIds = null,
   scopedEmpresas = null,
   scope,
+  serverNow,
+  minutosAntesSa = null,
 }: ZonaEstadisticasModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
@@ -253,7 +260,10 @@ export default function ZonaEstadisticasModal({
       // columna pendientes refleja solo los pedidos asignados a sus móviles.
       const pendientesList = pedidosZona.filter(p => {
         if (Number(p.estado_nro) !== 1) return false;
-        if (hideSinAsignar && (!p.movil || Number(p.movil) === 0)) return false;
+        const isSinAsignar = !p.movil || Number(p.movil) === 0;
+        if (hideSinAsignar && isSinAsignar) return false;
+        // SA fuera de ventana temporal: excluir de TODO computo (no solo visibilidad).
+        if (isSinAsignar && serverNow && !isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)) return false;
         return true;
       });
       const pendientes = pendientesList.length;
@@ -315,7 +325,7 @@ export default function ZonaEstadisticasModal({
     }
 
     return result;
-  }, [filteredPedidos, zonas, filteredMovilesZonas, demorasData, hideSinAsignar]);
+  }, [filteredPedidos, zonas, filteredMovilesZonas, demorasData, hideSinAsignar, serverNow, minutosAntesSa]);
 
   // Filter rows
   const filteredStats = useMemo(() => {

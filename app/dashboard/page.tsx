@@ -1834,6 +1834,8 @@ function DashboardContent() {
       if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
       // sin asignar = estado 1 sin movil asignado
       if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
+      // SA fuera de ventana temporal: excluir de todo computo (no solo visibilidad).
+      if (pedidosZonaFilter === 'sin_asignar' && serverNow && !isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)) return;
       // atrasados = estado 1 con atraso confirmado (muy atrasado + atrasado)
       if (pedidosZonaFilter === 'atrasados') {
         if (estado !== 1) return;
@@ -1847,7 +1849,7 @@ function DashboardContent() {
       map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted, serverNow, minutosAntesSa]);
 
   // Distribuidor: si por alguna razón el filtro pedidos/zona quedó en 'sin_asignar'
   // (ej. estado persistido), forzarlo a 'pendientes' — ese filtro no aplica.
@@ -2528,7 +2530,9 @@ function DashboardContent() {
               .filter(s =>
                 Number(s.estado_nro) === 1 &&
                 (s.movil == null || Number(s.movil) === 0) &&
-                Number(s.zona_nro) === saturacionModalZonaId,
+                Number(s.zona_nro) === saturacionModalZonaId &&
+                // SA fuera de ventana temporal: excluir de TODO computo.
+                (!serverNow || isWithinSaWindow(s.fch_hora_para ?? null, serverNow, minutosAntesSa)),
               )
               .map(s => ({
                 id: s.id,
@@ -2543,7 +2547,9 @@ function DashboardContent() {
               .filter(p =>
                 Number(p.estado_nro) === 1 &&
                 (p.movil == null || Number(p.movil) === 0) &&
-                Number(p.zona_nro) === saturacionModalZonaId,
+                Number(p.zona_nro) === saturacionModalZonaId &&
+                // SA fuera de ventana temporal: excluir de TODO computo.
+                (!serverNow || isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)),
               )
               .map(p => ({
                 id: p.id,
@@ -2632,6 +2638,8 @@ function DashboardContent() {
         scopedZonaIds={scopedZonaIds}
         scopedEmpresas={scopedEmpresas}
         scope={scope}
+        serverNow={serverNow}
+        minutosAntesSa={minutosAntesSa}
         onZonaClick={(zonaId, svcFilter) => {
           setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);
