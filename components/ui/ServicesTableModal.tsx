@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ServiceSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
 import { isServiceEntregado } from '@/utils/estadoPedido';
+import { matchesSearchService } from '@/utils/tableSearch';
 import { isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
@@ -282,17 +283,10 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const filtered = useMemo(() => {
     let result = [...servicesWithDelay];
 
+    // Text search — covers all visible columns (see matchesSearchService for full list)
     const search = filters.search.toLowerCase().trim();
     if (search) {
-      result = result.filter(({ service: s }) =>
-        s.id.toString().includes(search) ||
-        (s.cliente_nombre?.toLowerCase().includes(search)) ||
-        (s.cliente_direccion?.toLowerCase().includes(search)) ||
-        (s.cliente_tel?.includes(search)) ||
-        (s.defecto?.toLowerCase().includes(search)) ||
-        (s.servicio_nombre?.toLowerCase().includes(search)) ||
-        (s.movil?.toString().includes(search))
-      );
+      result = result.filter(({ service: s }) => matchesSearchService(s, search));
     }
 
     if (filters.atraso.length > 0) {

@@ -6,6 +6,7 @@ import { PedidoSupabase, MovilData } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion, isPedidoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
+import { matchesSearchPedido } from '@/utils/tableSearch';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
@@ -332,18 +333,10 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
   const filtered = useMemo(() => {
     let result = [...pedidosWithDelay];
 
-    // Text search
+    // Text search — covers all visible columns (see matchesSearchPedido for full list)
     const search = filters.search.toLowerCase().trim();
     if (search) {
-      result = result.filter(({ pedido: p }) =>
-        p.id.toString().includes(search) ||
-        (p.cliente_nombre?.toLowerCase().includes(search)) ||
-        (p.cliente_direccion?.toLowerCase().includes(search)) ||
-        (p.cliente_tel?.includes(search)) ||
-        (p.producto_nom?.toLowerCase().includes(search)) ||
-        (p.servicio_nombre?.toLowerCase().includes(search)) ||
-        (p.movil?.toString().includes(search))
-      );
+      result = result.filter(({ pedido: p }) => matchesSearchPedido(p, search));
     }
 
     // Atraso filter
