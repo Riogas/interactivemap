@@ -554,6 +554,7 @@ function DashboardContent() {
           descripcion: string;
           estadoDesc: string;
           estadoNro: number | null;
+          capacidad: number;
         }
 
         // Mapear por ID (que es TEXT), no por nro
@@ -584,6 +585,7 @@ function DashboardContent() {
               matricula: extendedData.matricula,
               estadoDesc: extendedData.estadoDesc,
               estadoNro: extendedData.estadoNro ?? undefined,
+              capacidad: extendedData.capacidad ?? 0,
               color: calculatedColor,
             };
           }
@@ -1244,15 +1246,17 @@ function DashboardContent() {
         // por ejemplo 0→5) se refleje al instante en el filtro client-side
         // del colapsable, sin esperar al próximo enrich.
         const nextEstado = (latestMovil as any).estado_nro;
+        const nextCapacidad = (latestMovil as any).capacidad;
         if (
           nextEstado === existingMovil.estadoNro &&
-          movilEmpresaId === existingMovil.empresaFleteraId
+          movilEmpresaId === existingMovil.empresaFleteraId &&
+          (nextCapacidad == null || nextCapacidad === existingMovil.capacidad)
         ) {
           console.log(`ℹ️ Móvil ${movilId} sin cambios relevantes, ignorando`);
           return prevMoviles;
         }
         console.log(
-          `🔄 Móvil ${movilId} ya existe — mergeando estadoNro=${nextEstado}, empresa=${movilEmpresaId}`,
+          `🔄 Móvil ${movilId} ya existe — mergeando estadoNro=${nextEstado}, empresa=${movilEmpresaId}, capacidad=${nextCapacidad}`,
         );
         return prevMoviles.map(m =>
           m.id === movilId
@@ -1260,6 +1264,7 @@ function DashboardContent() {
                 ...m,
                 estadoNro: nextEstado != null ? nextEstado : m.estadoNro,
                 empresaFleteraId: movilEmpresaId ?? m.empresaFleteraId,
+                ...(nextCapacidad != null ? { capacidad: nextCapacidad } : {}),
               }
             : m,
         );

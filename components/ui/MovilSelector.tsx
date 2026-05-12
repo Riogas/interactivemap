@@ -1365,7 +1365,7 @@ export default function MovilSelector({
                                     <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
                                       {movil.id}
                                       {' – '}
-                                      {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}
+                                      {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0} - {movil.capacidad ?? 0}
                                       {isNoActivo && (
                                         <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
                                           No activo
