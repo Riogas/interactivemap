@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
+import { recomputeMovilCounters } from '@/lib/movil-counters';
 
 /**
  * Lee el body del request respetando el charset del Content-Type.
@@ -222,6 +223,25 @@ function transformServiceToSupabase(service: any) {
 }
 
 /**
+ * Helper: extrae movil nros únicos y no nulos de un array de registros,
+ * luego recomputa los contadores para cada uno (best-effort).
+ */
+async function recomputeCountersForMoviles(records: any[], label: string): Promise<void> {
+  if (!records || records.length === 0) return;
+  const movilNros = [...new Set(
+    records.map((r: any) => r.movil).filter((m: any) => m != null && m !== 0)
+  )];
+  for (const nro of movilNros) {
+    try {
+      await recomputeMovilCounters(supabase as any, nro);
+    } catch (err) {
+      console.error(`⚠️ [movil-counters] ${label} falló recompute para movil ${nro}:`, err);
+      // best-effort: no aborta el response
+    }
+  }
+}
+
+/**
  * POST /api/import/services
  * Importar o actualizar services desde fuente externa (UPSERT)
  * Si el service existe (mismo id), lo actualiza. Si no existe, lo inserta.
@@ -274,6 +294,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Services procesados: ${data?.length || 0}`);
+
+    // Recomputar contadores cant_ped/cant_serv/capacidad para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'POST import/services');
 
     return NextResponse.json({
       success: true,
@@ -339,6 +362,9 @@ export async function PUT(request: NextRequest) {
 
     console.log(`✅ Services actualizados: ${data?.length || 0}`);
 
+    // Recomputar contadores cant_ped/cant_serv/capacidad para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'PUT import/services');
+
     return NextResponse.json({
       success: true,
       message: `${data?.length || 0} services actualizados correctamente`,
@@ -389,6 +415,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     console.log(`✅ ${data?.length || 0} services eliminados`);
+
+    // Recomputar contadores para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'DELETE import/services');
 
     return NextResponse.json({
       success: true,

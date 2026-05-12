@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
+import { recomputeMovilCounters } from '@/lib/movil-counters';
 
 /**
  * Lee el body del request respetando el charset del Content-Type.
@@ -12,11 +13,11 @@ async function readRequestBody(request: NextRequest): Promise<string> {
   const charsetMatch = contentType.match(/charset=([\w-]+)/i);
   // GeneXus/AS400 raramente especifica charset — asumir iso-8859-1 por defecto
   const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'iso-8859-1';
-  
+
   if (charset === 'utf-8' || charset === 'utf8') {
     return await request.text();
   }
-  
+
   // Latin-1, ISO-8859-1, Windows-1252, etc.
   const buffer = await request.arrayBuffer();
   const decoder = new TextDecoder(charset);
@@ -27,8 +28,8 @@ async function readRequestBody(request: NextRequest): Promise<string> {
 
 /**
  * Intenta reparar JSON con comillas sin escapar dentro de valores string.
- * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS"" 
- * 
+ * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS""
+ *
  * Estrategia: usa la posición del error para encontrar la comilla
  * interna que rompió el parseo, la escapa, y reintenta.
  */
@@ -51,7 +52,7 @@ function safeParseJSON(rawBody: string): any {
 
     let text = sanitized;
     const maxAttempts = 50;
-    
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const result = JSON.parse(text);
@@ -60,9 +61,9 @@ function safeParseJSON(rawBody: string): any {
       } catch (err: any) {
         const posMatch = err.message.match(/position\s+(\d+)/);
         if (!posMatch) throw firstError;
-        
+
         const errorPos = parseInt(posMatch[1], 10);
-        
+
         let fixPos = -1;
         for (let i = errorPos - 1; i >= 0; i--) {
           if (text[i] === '"' && (i === 0 || text[i - 1] !== '\\')) {
@@ -70,14 +71,14 @@ function safeParseJSON(rawBody: string): any {
             break;
           }
         }
-        
+
         if (fixPos < 0) throw firstError;
-        
+
         console.log(`🔧 Escapando comilla en posición ${fixPos} (intento ${attempt + 1})`);
         text = text.substring(0, fixPos) + '\\' + text.substring(fixPos);
       }
     }
-    
+
     throw firstError;
   }
 }
@@ -114,7 +115,7 @@ function transformPedidoToSupabase(pedido: any) {
    * Convierte fecha en formato YYYYMMDD (sin ceros a la izquierda) a ISO 8601
    * Ejemplos:
    *   "202624"   -> "2026-02-04" (4 de febrero)
-   *   "2026214"  -> "2026-02-14" (14 de febrero) 
+   *   "2026214"  -> "2026-02-14" (14 de febrero)
    *   "20261231" -> "2026-12-31" (31 de diciembre)
    */
   const parseDateYYYYMMDD = (dateStr: string) => {
@@ -124,7 +125,7 @@ function transformPedidoToSupabase(pedido: any) {
 
     try {
       const str = dateStr.toString().trim();
-      
+
       // Si ya está en formato ISO (YYYY-MM-DD), devolver tal cual
       if (str.includes('-') || str.includes('T')) {
         return parseDate(str);
@@ -133,15 +134,15 @@ function transformPedidoToSupabase(pedido: any) {
       // Parsear formato YYYYMMDD (sin ceros a la izquierda)
       // Extraer año (primeros 4 dígitos)
       const year = str.substring(0, 4);
-      
+
       // El resto son mes y día sin ceros
       const monthDay = str.substring(4);
-      
+
       // Determinar dónde termina el mes y empieza el día
       // Si quedan 3+ dígitos: mes es 1 dígito, día son los últimos 2
       // Si quedan 4 dígitos: mes son 2 dígitos, día son los últimos 2
       let month, day;
-      
+
       if (monthDay.length <= 2) {
         // Solo día (mes implícito = 01)
         month = '01';
@@ -157,7 +158,7 @@ function transformPedidoToSupabase(pedido: any) {
       }
 
       const isoDate = `${year}-${month}-${day}`;
-      
+
       // Validar que sea fecha válida
       const testDate = new Date(isoDate);
       if (isNaN(testDate.getTime())) {
@@ -167,7 +168,7 @@ function transformPedidoToSupabase(pedido: any) {
 
       console.log(`📅 Fecha parseada: ${dateStr} -> ${isoDate}`);
       return isoDate;
-      
+
     } catch (error) {
       console.error(`❌ Error parseando fecha YYYYMMDD: ${dateStr}`, error);
       return null;
@@ -177,7 +178,7 @@ function transformPedidoToSupabase(pedido: any) {
   return {
     id: pedido.id,
     escenario: pedido.escenario,
-    
+
     // Datos del cliente
     cliente_ciudad: pedido.ClienteCiudad?.trim() || pedido.cliente_ciudad,
     cliente_direccion: pedido.ClienteDireccion?.trim() || pedido.cliente_direccion,
@@ -187,7 +188,7 @@ function transformPedidoToSupabase(pedido: any) {
     cliente_nro: pedido.ClienteNro ?? pedido.cliente_nro,
     cliente_obs: pedido.ClienteObs?.trim() || pedido.cliente_obs,
     cliente_tel: pedido.ClienteTel?.trim() || pedido.cliente_tel,
-    
+
     // Info del pedido
     demora_informada: pedido.DemoraInformada ?? pedido.demora_informada ?? 0,
     detalle_html: pedido.DetalleHTML || pedido.detalle_html || '',
@@ -195,20 +196,20 @@ function transformPedidoToSupabase(pedido: any) {
     empresa_fletera_nom: pedido.EFleteraNom?.trim() || pedido.empresa_fletera_nom,
     estado_nro: pedido.EstadoNro ?? pedido.estado_nro,
     fpago_obs1: pedido.FPagoObs1?.trim() || pedido.fpago_obs1,
-    
+
     // Fechas
     fch_hora_max_ent_comp: parseDate(pedido.FchHoraMaxEntComp || pedido.fch_hora_max_ent_comp),
     fch_hora_mov: parseDate(pedido.FchHoraMov || pedido.fch_hora_mov),
     fch_hora_finalizacion: parseDate(pedido.FchHoraCump || pedido.fch_hora_finalizacion),
     fch_hora_para: parseDate(pedido.FchHoraPara || pedido.fch_hora_para),
     fch_hora_upd_firestore: parseDate(pedido.FchHoraUPDFireStore || pedido.fch_hora_upd_firestore),
-    fch_para: parseDateYYYYMMDD(pedido.FchPara || pedido.fch_para), // 🔧 Formato especial YYYYMMDD
-    
+    fch_para: parseDateYYYYMMDD(pedido.FchPara || pedido.fch_para), // Formato especial YYYYMMDD
+
     // URLs y precios
     google_maps_url: pedido.GoogleMapsURL || pedido.google_maps_url || '',
     imp_bruto: pedido.ImpBruto ? parseFloat(pedido.ImpBruto) : pedido.imp_bruto,
     imp_flete: pedido.ImpFlete ? parseFloat(pedido.ImpFlete) : pedido.imp_flete,
-    
+
     // Asignación y estado
     movil: pedido.Movil ?? pedido.movil,
     orden_cancelacion: pedido.OrdenCancelacion || pedido.orden_cancelacion || 'N',
@@ -216,26 +217,26 @@ function transformPedidoToSupabase(pedido: any) {
     pedido_obs: pedido.PedidoObs?.trim() || pedido.pedido_obs,
     precio: pedido.Precio ? parseFloat(pedido.Precio) : pedido.precio,
     prioridad: pedido.Prioridad ?? pedido.prioridad ?? 0,
-    
+
     // Producto
     producto_cant: pedido.ProductoCant ? parseFloat(pedido.ProductoCant) : pedido.producto_cant,
     producto_cod: pedido.ProductoCod?.trim() || pedido.producto_cod,
     producto_nom: pedido.ProductoNom?.trim() || pedido.producto_nom,
     servicio_nombre: pedido.ServicioNombre?.trim() || pedido.servicio_nombre,
-    
+
     // Sub estado
     sub_estado_desc: pedido.SubEstadoDesc?.trim() || pedido.sub_estado_desc,
     sub_estado_nro: pedido.SubEstadoNro ?? pedido.sub_estado_nro,
     pedido_hijo: pedido.PedidoHijo ?? pedido.pedido_hijo ?? null,
     pedido_padre: pedido.PedidoPadre ?? pedido.pedido_padre ?? null,
-    
+
     // Otros
     tipo: pedido.Tipo || pedido.tipo || '',
     visible_en_app: pedido.VisibleEnApp || pedido.visible_en_app || 'S',
     waze_url: pedido.WazeURL || pedido.waze_url || '',
     zona_nro: pedido.ZonaNro ?? pedido.zona_nro,
     ubicacion: pedido.ubicacion || '',
-    
+
     // Coordenadas geográficas
     latitud: pedido.Latitud ?? pedido.latitud ?? null,
     longitud: pedido.Longitud ?? pedido.longitud ?? null,
@@ -255,6 +256,25 @@ function transformPedidoToSupabase(pedido: any) {
 }
 
 /**
+ * Helper: extrae movil nros únicos y no nulos de un array de registros,
+ * luego recomputa los contadores para cada uno (best-effort).
+ */
+async function recomputeCountersForMoviles(records: any[], label: string): Promise<void> {
+  if (!records || records.length === 0) return;
+  const movilNros = [...new Set(
+    records.map((r: any) => r.movil).filter((m: any) => m != null && m !== 0)
+  )];
+  for (const nro of movilNros) {
+    try {
+      await recomputeMovilCounters(supabase as any, nro);
+    } catch (err) {
+      console.error(`⚠️ [movil-counters] ${label} falló recompute para movil ${nro}:`, err);
+      // best-effort: no aborta el response
+    }
+  }
+}
+
+/**
  * POST /api/import/pedidos
  * Importar o actualizar pedidos desde fuente externa (UPSERT)
  * Si el pedido existe (mismo id), lo actualiza. Si no existe, lo inserta.
@@ -268,7 +288,7 @@ export async function POST(request: NextRequest) {
   console.log('\n' + '═'.repeat(100));
   console.log(`📦 INICIO IMPORTACIÓN DE PEDIDOS [${timestamp}]`);
   console.log('═'.repeat(100));
-  
+
   try {
     console.log('📥 1. Leyendo body del request...');
     let rawBody = '';
@@ -288,7 +308,7 @@ export async function POST(request: NextRequest) {
       );
     }
     console.log('📊 Claves del body:', Object.keys(body));
-    
+
     console.log('\n🔍 2. Normalizando estructura...');
     let { pedidos } = body;
 
@@ -301,7 +321,6 @@ export async function POST(request: NextRequest) {
     // Normalizar a array si es un solo objeto
     const pedidosArray = Array.isArray(pedidos) ? pedidos : [pedidos];
     console.log(`✅ Estructura normalizada: ${pedidosArray.length} pedido(s)`);
-    console.log(`📊 ¿Es array?: ${Array.isArray(pedidos)}`);
 
     if (pedidosArray.length === 0) {
       console.error('❌ Array de pedidos está vacío');
@@ -318,7 +337,7 @@ export async function POST(request: NextRequest) {
 
     // Transformar campos a formato Supabase
     const transformedPedidos = pedidosArray.map(transformPedidoToSupabase);
-    
+
     console.log('\n📄 Pedido #1 (transformado):');
     console.log(JSON.stringify(transformedPedidos[0], null, 2));
     console.log('─'.repeat(100) + '\n');
@@ -350,6 +369,9 @@ export async function POST(request: NextRequest) {
     console.log(`🎉 IMPORTACIÓN/ACTUALIZACIÓN EXITOSA [${finalTimestamp}]`);
     console.log(`📊 5. Pedidos procesados (insertados o actualizados): ${data?.length || 0}`);
     console.log('✅'.repeat(50) + '\n');
+
+    // Recomputar contadores cant_ped/cant_serv/capacidad para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'POST import/pedidos');
 
     return NextResponse.json({
       success: true,
@@ -385,7 +407,7 @@ export async function PUT(request: NextRequest) {
   console.log('\n' + '═'.repeat(100));
   console.log(`🔄 INICIO ACTUALIZACIÓN DE PEDIDOS [${timestamp}]`);
   console.log('═'.repeat(100));
-  
+
   try {
     console.log('📥 1. Leyendo body del request...');
     let rawBody = '';
@@ -404,7 +426,7 @@ export async function PUT(request: NextRequest) {
       );
     }
     console.log('📊 Claves del body:', Object.keys(body));
-    
+
     console.log('\n🔍 2. Normalizando estructura...');
     let { pedidos } = body;
 
@@ -433,7 +455,7 @@ export async function PUT(request: NextRequest) {
 
     // Transformar campos a formato Supabase
     const transformedPedidos = pedidosArray.map(transformPedidoToSupabase);
-    
+
     console.log('\n📄 Pedido #1 (transformado):');
     console.log(JSON.stringify(transformedPedidos[0], null, 2));
     console.log('─'.repeat(100) + '\n');
@@ -465,6 +487,9 @@ export async function PUT(request: NextRequest) {
     console.log(`🎉 ACTUALIZACIÓN EXITOSA [${finalTimestamp}]`);
     console.log(`📊 5. Pedidos actualizados: ${data?.length || 0}`);
     console.log('✅'.repeat(50) + '\n');
+
+    // Recomputar contadores cant_ped/cant_serv/capacidad para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'PUT import/pedidos');
 
     return NextResponse.json({
       success: true,
@@ -524,6 +549,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     console.log(`✅ ${data?.length || 0} pedidos eliminados`);
+
+    // Recomputar contadores para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'DELETE import/pedidos');
 
     return NextResponse.json({
       success: true,

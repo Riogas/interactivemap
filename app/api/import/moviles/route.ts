@@ -9,6 +9,7 @@ import {
   type MovilCandidate,
 } from '@/lib/import-helpers/gps-autocreate';
 import { importLog, importWarn, importError, importDebug } from '@/lib/logger';
+import { recomputeMovilCounters } from '@/lib/movil-counters';
 
 /**
  * Lee el body del request respetando el charset del Content-Type.
@@ -19,11 +20,11 @@ async function readRequestBody(request: NextRequest): Promise<string> {
   const contentType = request.headers.get('content-type') || '';
   const charsetMatch = contentType.match(/charset=([\w-]+)/i);
   const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'iso-8859-1'; // GeneXus/AS400 raramente especifica charset
-  
+
   if (charset === 'utf-8' || charset === 'utf8') {
     return await request.text();
   }
-  
+
   // Latin-1, ISO-8859-1, Windows-1252, etc.
   const buffer = await request.arrayBuffer();
   const decoder = new TextDecoder(charset);
@@ -34,9 +35,9 @@ async function readRequestBody(request: NextRequest): Promise<string> {
 
 /**
  * Intenta reparar JSON con comillas sin escapar dentro de valores string.
- * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS"" 
+ * GeneXus/AS400 a veces envía: "Nombre":"TEXTO "CON COMILLAS""
  * que rompe JSON.parse().
- * 
+ *
  * Estrategia: usa la posición del error para encontrar la comilla
  * interna que rompió el parseo, la escapa, y reintenta.
  */
@@ -45,10 +46,10 @@ function safeParseJSON(rawBody: string): any {
     return JSON.parse(rawBody);
   } catch (firstError) {
     importWarn('⚠️  JSON.parse falló, intentando sanitizar comillas internas...');
-    
+
     let text = rawBody;
     const maxAttempts = 50;
-    
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const result = JSON.parse(text);
@@ -58,9 +59,9 @@ function safeParseJSON(rawBody: string): any {
         // Extraer la posición del error
         const posMatch = err.message.match(/position\s+(\d+)/);
         if (!posMatch) throw firstError;
-        
+
         const errorPos = parseInt(posMatch[1], 10);
-        
+
         // Buscar la comilla sin escapar más cercana ANTES de errorPos
         let fixPos = -1;
         for (let i = errorPos - 1; i >= 0; i--) {
@@ -69,22 +70,22 @@ function safeParseJSON(rawBody: string): any {
             break;
           }
         }
-        
+
         if (fixPos < 0) throw firstError;
-        
+
         importLog(`🔧 Escapando comilla en posición ${fixPos} (intento ${attempt + 1})`);
         // Insertar \ antes de la comilla para escaparla
         text = text.substring(0, fixPos) + '\\' + text.substring(fixPos);
       }
     }
-    
+
     throw firstError;
   }
 }
 
 /**
  * Transforma campos de PascalCase a snake_case para Supabase
- * 
+ *
  * DEFAULTS:
  * - empresa_fletera_id: 999 (empresa genérica "Sin Empresa")
  * - descripcion: "Móvil {ID}"
@@ -121,7 +122,7 @@ function transformMovilToSupabase(movil: any) {
     }
     return dateStr;
   };
-  
+
   return {
     id: movil.id || movil.IdentificadorId?.toString() || movil.Nro?.toString() || movil.nro?.toString(),
     descripcion: movil.Descripcion || movil.descripcion || `Móvil ${movil.IdentificadorId || movil.Nro || movil.nro || movil.id}`,
@@ -211,7 +212,7 @@ async function maybeAutocreateGpsForToday(
 /**
  * POST /api/import/moviles
  * Importar móviles desde fuente externa (GeneXus)
- * 
+ *
  * @returns 200 - Móviles importados correctamente
  * @returns 400 - Datos de entrada inválidos
  * @returns 500 - Error del servidor o base de datos
@@ -248,7 +249,7 @@ export async function POST(request: NextRequest) {
       rawBody = await readRequestBody(request);
       importLog('Body raw (primeros 500 chars):', rawBody.substring(0, 500));
       importLog('Longitud total del body:', rawBody.length, 'caracteres');
-      
+
       body = safeParseJSON(rawBody);
       importLog('✅ JSON parseado correctamente');
       importLog('Claves en el body:', Object.keys(body));
@@ -258,7 +259,7 @@ export async function POST(request: NextRequest) {
       return errorResponse(
         'JSON inválido en el body de la petición',
         400,
-        { 
+        {
           originalError: parseError.message,
           receivedBodyLength: rawBody.length,
           receivedBodyPreview: rawBody.substring(0, 200)
@@ -293,7 +294,7 @@ export async function POST(request: NextRequest) {
       return errorResponse(
         'Se requiere al menos un móvil en el body',
         400,
-        { 
+        {
           received: body,
           movilesExtracted: moviles,
           movilesArrayLength: movilesArray.length
@@ -327,7 +328,7 @@ export async function POST(request: NextRequest) {
     importLog('----------------------------------------');
     importLog('Conectando a Supabase...');
     importLog('🔄 Usando UPSERT - Si existe actualiza, si no existe inserta');
-    
+
     const { data, error } = await supabase
       .from('moviles')
       .upsert(transformedMoviles as any, {
@@ -346,7 +347,7 @@ export async function POST(request: NextRequest) {
       importError('  - Detalles:', error.details);
       importError('  - Hint:', error.hint);
       importError('  - Error completo:', JSON.stringify(error, null, 2));
-      
+
       return errorResponse(
         'Error al insertar/actualizar móviles en la base de datos',
         500,
@@ -377,6 +378,25 @@ export async function POST(request: NextRequest) {
     const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
     importLog(`Autocreados en gps_tracking_history hoy: ${gpsAutocreatedCount}`);
 
+    // PASO 8.6: Recomputar contadores cant_ped/cant_serv/capacidad (best-effort)
+    importLog('\n📊 PASO 8.6: Recomputar contadores por movil');
+    importLog('----------------------------------------');
+    if (data && data.length > 0) {
+      const movilNros = [...new Set(
+        data.map((m: any) => m.nro).filter((nro: any) => nro != null && nro !== 0)
+      )];
+      importLog(`Moviles a recomputar: ${movilNros.length}`);
+      for (const nro of movilNros) {
+        try {
+          await recomputeMovilCounters(supabase as any, nro);
+          importLog(`✅ [movil-counters] recomputado movil ${nro}`);
+        } catch (err) {
+          importError(`⚠️ [movil-counters] falló recompute para movil ${nro}:`, err);
+          // best-effort: no aborta el response
+        }
+      }
+    }
+
     // PASO 9: Preparar respuesta exitosa
     importLog('\n📤 PASO 9: Preparando respuesta');
     importLog('----------------------------------------');
@@ -386,7 +406,7 @@ export async function POST(request: NextRequest) {
       moviles: data,
     };
     const message = `${data?.length || 0} móvil(es) importado(s)/actualizado(s) correctamente`;
-    
+
     importLog('Respuesta a enviar:');
     importLog('  - Success: true');
     importLog('  - Message:', message);
@@ -396,9 +416,9 @@ export async function POST(request: NextRequest) {
     importLog('\n' + '='.repeat(80));
     importLog(`✅ POST /api/import/moviles - ÉXITO (UPSERT)`);
     importLog('='.repeat(80) + '\n');
-    
+
     return successResponse(responseData, message, 200);
-    
+
   } catch (error: any) {
     importLog('\n' + '='.repeat(80));
     importError(`💥 POST /api/import/moviles - ERROR INESPERADO`);
@@ -408,7 +428,7 @@ export async function POST(request: NextRequest) {
     importError('Stack trace completo:');
     importError(error.stack);
     importLog('='.repeat(80) + '\n');
-    
+
     // Error al parsear JSON
     if (error instanceof SyntaxError) {
       return errorResponse(
@@ -434,7 +454,7 @@ export async function POST(request: NextRequest) {
 /**
  * PUT /api/import/moviles
  * Actualizar móviles existentes (upsert)
- * 
+ *
  * @returns 200 - Móviles actualizados correctamente
  * @returns 400 - Datos de entrada inválidos
  * @returns 500 - Error del servidor o base de datos
@@ -511,6 +531,22 @@ export async function PUT(request: NextRequest) {
     // Autocreación GPS del día a partir del punto de venta del móvil (best-effort)
     const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
 
+    // Recomputar contadores cant_ped/cant_serv/capacidad (best-effort)
+    if (data && data.length > 0) {
+      const movilNros = [...new Set(
+        data.map((m: any) => m.nro).filter((nro: any) => nro != null && nro !== 0)
+      )];
+      for (const nro of movilNros) {
+        try {
+          await recomputeMovilCounters(supabase as any, nro);
+          importLog(`✅ [movil-counters] recomputado movil ${nro}`);
+        } catch (err) {
+          importError(`⚠️ [movil-counters] falló recompute para movil ${nro}:`, err);
+          // best-effort: no aborta el response
+        }
+      }
+    }
+
     return successResponse(
       {
         count: data?.length || 0,
@@ -522,7 +558,7 @@ export async function PUT(request: NextRequest) {
     );
   } catch (error: any) {
     importError('❌ Error inesperado:', error);
-    
+
     if (error instanceof SyntaxError) {
       return errorResponse(
         'JSON inválido en el body de la petición',
@@ -545,7 +581,7 @@ export async function PUT(request: NextRequest) {
 /**
  * DELETE /api/import/moviles
  * Eliminar móviles por IDs
- * 
+ *
  * @returns 200 - Móviles eliminados correctamente
  * @returns 400 - Datos de entrada inválidos
  * @returns 500 - Error del servidor o base de datos
@@ -600,7 +636,7 @@ export async function DELETE(request: NextRequest) {
 
     // Éxito
     importLog(`✅ ${data?.length || 0} móviles eliminados exitosamente`);
-    
+
     return successResponse(
       {
         deleted_count: data?.length || 0,
@@ -611,7 +647,7 @@ export async function DELETE(request: NextRequest) {
     );
   } catch (error: any) {
     importError('❌ Error inesperado:', error);
-    
+
     if (error instanceof SyntaxError) {
       return errorResponse(
         'JSON inválido en el body de la petición',

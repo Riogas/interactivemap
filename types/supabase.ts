@@ -42,6 +42,10 @@ export interface Database {
           pto_vta_lng: number | null
           created_at: string | null
           updated_at: string | null
+          // Contadores de carga en tiempo real (migration 2026-05-12)
+          cant_ped: number
+          cant_serv: number
+          capacidad: number
         }
         Insert: {
           id: string
@@ -73,6 +77,9 @@ export interface Database {
           pto_vta_lng?: number | null
           created_at?: string | null
           updated_at?: string | null
+          cant_ped?: number
+          cant_serv?: number
+          capacidad?: number
         }
         Update: {
           id?: string
@@ -104,6 +111,9 @@ export interface Database {
           pto_vta_lng?: number | null
           created_at?: string | null
           updated_at?: string | null
+          cant_ped?: number
+          cant_serv?: number
+          capacidad?: number
         }
       }
       pedidos: {
