@@ -5,6 +5,10 @@ export type EscenarioSettings = {
   pedidosSaMinutosAntes: number | null;
   /** Si el escenario cubre servicio nocturno. Default true (conservativo). */
   aplicaServNocturno: boolean;
+  /** Hora de inicio del periodo nocturno (HH:MM:SS). NULL = usar default (20:30). */
+  horaIniNocturno: string | null;
+  /** Hora de fin del periodo nocturno / inicio diurno (HH:MM:SS). NULL = usar default (06:00). */
+  horaFinNocturno: string | null;
 };
 
 const CACHE_TTL_MS = 60_000; // 60 segundos
@@ -20,12 +24,14 @@ type ApiResponse = {
  *
  * Si escenarioId es null, no hace fetch y retorna settings=null.
  * Si no existe configuracion para el escenario, retorna defaults seguros
- * ({ pedidosSaMinutosAntes: null, aplicaServNocturno: true }).
+ * ({ pedidosSaMinutosAntes: null, aplicaServNocturno: true, horaIniNocturno: null, horaFinNocturno: null }).
  *
  * Uso:
  *   const { settings } = useEscenarioSettings(escenarioId);
  *   const minutosAntes = settings?.pedidosSaMinutosAntes ?? null;
  *   const aplicaNocturno = settings?.aplicaServNocturno ?? true;
+ *   const horaIni = settings?.horaIniNocturno ?? null;
+ *   const horaFin = settings?.horaFinNocturno ?? null;
  */
 export function useEscenarioSettings(escenarioId: number | null): {
   settings: EscenarioSettings | null;

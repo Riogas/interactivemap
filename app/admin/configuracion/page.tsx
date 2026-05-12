@@ -9,6 +9,8 @@ interface EscenarioSettingRow {
   nombre: string | null;
   pedidosSaMinutosAntes: number | null;
   aplicaServNocturno: boolean;
+  horaIniNocturno: string | null;
+  horaFinNocturno: string | null;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -19,6 +21,10 @@ interface RowState {
   dirty: boolean;
   aplicaServNocturno: boolean;
   nocturnaSaveState: SaveState;
+  horaIni: string; // '' significa null (usar default)
+  horaFin: string; // '' significa null (usar default)
+  horasSaveState: SaveState;
+  horasDirty: boolean;
 }
 
 function minutesToStr(v: number | null): string {
@@ -32,6 +38,20 @@ function strToMinutes(s: string): number | null {
   const n = parseInt(trimmed, 10);
   if (isNaN(n) || n < 0) return null;
   return n;
+}
+
+/** Convierte HH:MM:SS -> HH:MM para el input type="time" (que solo acepta HH:MM). */
+function timeToInputValue(v: string | null): string {
+  if (!v) return '';
+  // Supabase retorna "HH:MM:SS" para columnas time; recortar a "HH:MM"
+  return v.substring(0, 5);
+}
+
+/** Convierte el valor del input (HH:MM o '') a string para API o null. */
+function inputToTimeStr(v: string): string | null {
+  const trimmed = v.trim();
+  if (!trimmed) return null;
+  return trimmed;
 }
 
 export default function ConfiguracionPage() {
@@ -77,6 +97,10 @@ export default function ConfiguracionPage() {
           dirty: false,
           aplicaServNocturno: row.aplicaServNocturno,
           nocturnaSaveState: 'idle',
+          horaIni: timeToInputValue(row.horaIniNocturno),
+          horaFin: timeToInputValue(row.horaFinNocturno),
+          horasSaveState: 'idle',
+          horasDirty: false,
         });
       }
       setRowStates(states);
@@ -97,8 +121,18 @@ export default function ConfiguracionPage() {
   function handleChange(escenarioId: number, value: string) {
     setRowStates(prev => {
       const next = new Map(prev);
-      const cur = next.get(escenarioId) ?? { value: '', saveState: 'idle' as SaveState, dirty: false, aplicaServNocturno: true, nocturnaSaveState: 'idle' as SaveState };
+      const cur = next.get(escenarioId) ?? { value: '', saveState: 'idle' as SaveState, dirty: false, aplicaServNocturno: true, nocturnaSaveState: 'idle' as SaveState, horaIni: '', horaFin: '', horasSaveState: 'idle' as SaveState, horasDirty: false };
       next.set(escenarioId, { ...cur, value, dirty: true, saveState: 'idle' });
+      return next;
+    });
+  }
+
+  function handleHoraChange(escenarioId: number, field: 'horaIni' | 'horaFin', value: string) {
+    setRowStates(prev => {
+      const next = new Map(prev);
+      const cur = next.get(escenarioId);
+      if (!cur) return prev;
+      next.set(escenarioId, { ...cur, [field]: value, horasDirty: true, horasSaveState: 'idle' });
       return next;
     });
   }
@@ -153,6 +187,61 @@ export default function ConfiguracionPage() {
         return next;
       });
       console.error('[configuracion] save error:', msg);
+    }
+  }
+
+  async function handleSaveHoras(escenarioId: number) {
+    const state = rowStates.get(escenarioId);
+    if (!state || !state.horasDirty) return;
+
+    const horaIniNocturno = inputToTimeStr(state.horaIni);
+    const horaFinNocturno = inputToTimeStr(state.horaFin);
+
+    setRowStates(prev => {
+      const next = new Map(prev);
+      next.set(escenarioId, { ...state, horasSaveState: 'saving' });
+      return next;
+    });
+
+    try {
+      const res = await fetch('/api/admin/escenario-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-track-isroot': user?.isRoot ?? '',
+          'x-track-user': user?.username ?? '',
+        },
+        body: JSON.stringify({ escenarioId, horaIniNocturno, horaFinNocturno }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? 'Error al guardar');
+
+      setRowStates(prev => {
+        const next = new Map(prev);
+        const cur = next.get(escenarioId);
+        if (cur) next.set(escenarioId, { ...cur, horasSaveState: 'saved', horasDirty: false });
+        return next;
+      });
+
+      setTimeout(() => {
+        setRowStates(prev => {
+          const next = new Map(prev);
+          const cur = next.get(escenarioId);
+          if (cur && cur.horasSaveState === 'saved') {
+            next.set(escenarioId, { ...cur, horasSaveState: 'idle' });
+          }
+          return next;
+        });
+      }, 2000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error desconocido';
+      setRowStates(prev => {
+        const next = new Map(prev);
+        const cur = next.get(escenarioId);
+        if (cur) next.set(escenarioId, { ...cur, horasSaveState: 'error', horasDirty: true });
+        return next;
+      });
+      console.error('[configuracion] save horas error:', msg);
     }
   }
 
@@ -229,7 +318,7 @@ export default function ConfiguracionPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Configuracion por escenario</h1>
           <p className="text-sm text-gray-600 mt-1">
@@ -260,12 +349,28 @@ export default function ConfiguracionPage() {
                   <th className="px-4 py-3 text-left font-semibold">Nombre</th>
                   <th className="px-4 py-3 text-left font-semibold">Minutos antes</th>
                   <th className="px-4 py-3 text-left font-semibold">Cubre nocturno</th>
+                  <th className="px-4 py-3 text-left font-semibold" title="Si esta vacio se usa el default (20:30 / 06:00)">Ini nocturno</th>
+                  <th className="px-4 py-3 text-left font-semibold" title="Si esta vacio se usa el default (20:30 / 06:00)">Fin nocturno</th>
                   <th className="px-4 py-3 text-left font-semibold">Estado</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map(row => {
-                  const state = rowStates.get(row.escenarioId) ?? { value: '', saveState: 'idle' as SaveState, dirty: false, aplicaServNocturno: true, nocturnaSaveState: 'idle' as SaveState };
+                  const state = rowStates.get(row.escenarioId) ?? {
+                    value: '',
+                    saveState: 'idle' as SaveState,
+                    dirty: false,
+                    aplicaServNocturno: true,
+                    nocturnaSaveState: 'idle' as SaveState,
+                    horaIni: '',
+                    horaFin: '',
+                    horasSaveState: 'idle' as SaveState,
+                    horasDirty: false,
+                  };
+                  const anySaving = state.saveState === 'saving' || state.nocturnaSaveState === 'saving' || state.horasSaveState === 'saving';
+                  const anySaved = (state.saveState === 'saved' || state.nocturnaSaveState === 'saved' || state.horasSaveState === 'saved') && !anySaving;
+                  const anyError = (state.saveState === 'error' || state.nocturnaSaveState === 'error' || state.horasSaveState === 'error') && !anySaving;
+                  const anyDirty = (state.dirty || state.horasDirty) && !anySaving;
                   return (
                     <tr key={row.escenarioId} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 font-mono text-gray-700">{row.escenarioId}</td>
@@ -307,19 +412,40 @@ export default function ConfiguracionPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {(state.saveState === 'saving' || state.nocturnaSaveState === 'saving') && (
+                        <input
+                          type="time"
+                          placeholder="20:30"
+                          title="Hora de inicio del periodo nocturno. Si esta vacio se usa el default (20:30)."
+                          value={state.horaIni}
+                          onChange={e => handleHoraChange(row.escenarioId, 'horaIni', e.target.value)}
+                          onBlur={() => handleSaveHoras(row.escenarioId)}
+                          className="w-28 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          disabled={state.horasSaveState === 'saving'}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="time"
+                          placeholder="06:00"
+                          title="Hora de fin del periodo nocturno (inicio diurno). Si esta vacio se usa el default (06:00)."
+                          value={state.horaFin}
+                          onChange={e => handleHoraChange(row.escenarioId, 'horaFin', e.target.value)}
+                          onBlur={() => handleSaveHoras(row.escenarioId)}
+                          className="w-28 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          disabled={state.horasSaveState === 'saving'}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        {anySaving && (
                           <span className="text-blue-500 text-xs">Guardando...</span>
                         )}
-                        {state.saveState === 'saved' && state.nocturnaSaveState !== 'saving' && (
+                        {anySaved && (
                           <span className="text-green-600 text-xs font-medium">Guardado</span>
                         )}
-                        {state.nocturnaSaveState === 'saved' && state.saveState !== 'saving' && (
-                          <span className="text-green-600 text-xs font-medium">Guardado</span>
-                        )}
-                        {(state.saveState === 'error' || state.nocturnaSaveState === 'error') && (
+                        {anyError && (
                           <span className="text-red-500 text-xs">Error — intenta de nuevo</span>
                         )}
-                        {state.saveState === 'idle' && state.dirty && state.nocturnaSaveState === 'idle' && (
+                        {anyDirty && !anyError && (
                           <span className="text-orange-400 text-xs">Sin guardar</span>
                         )}
                       </td>
@@ -331,6 +457,7 @@ export default function ConfiguracionPage() {
             <p className="text-xs text-gray-400 px-4 py-3 border-t border-gray-100">
               Minutos antes: se guarda al salir del campo (on blur).
               Cubre nocturno: se guarda al cambiar el toggle.
+              Horarios nocturno: se guardan al salir del campo. Si estan vacios se usan los defaults (20:30 / 06:00).
             </p>
           </div>
         )}

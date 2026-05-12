@@ -1,4 +1,4 @@
-﻿// Tipos generados automÃ¡ticamente basados en las tablas de Supabase
+// Tipos generados automaticamente basados en las tablas de Supabase
 
 export type Json =
   | string
@@ -743,18 +743,27 @@ export interface Database {
         Row: {
           escenario_id: number
           pedidos_sa_minutos_antes: number | null
+          aplica_serv_nocturno: boolean | null
+          hora_ini_nocturno: string | null
+          hora_fin_nocturno: string | null
           created_at: string
           updated_at: string
         }
         Insert: {
           escenario_id: number
           pedidos_sa_minutos_antes?: number | null
+          aplica_serv_nocturno?: boolean | null
+          hora_ini_nocturno?: string | null
+          hora_fin_nocturno?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           escenario_id?: number
           pedidos_sa_minutos_antes?: number | null
+          aplica_serv_nocturno?: boolean | null
+          hora_ini_nocturno?: string | null
+          hora_fin_nocturno?: string | null
           created_at?: string
           updated_at?: string
         }

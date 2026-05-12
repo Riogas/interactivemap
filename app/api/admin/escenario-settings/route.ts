@@ -10,6 +10,8 @@ import { logAudit } from '@/lib/audit-log';
  * Gate: header x-track-isroot: 'S'  (mismo patron que audit/config)
  */
 
+const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+
 function requireRoot(request: NextRequest): true | NextResponse {
   const isRoot = request.headers.get('x-track-isroot');
   if (isRoot !== 'S') {
@@ -32,6 +34,8 @@ type SettingsRow = {
   escenario_id: number;
   pedidos_sa_minutos_antes: number | null;
   aplica_serv_nocturno: boolean | null;
+  hora_ini_nocturno: string | null;
+  hora_fin_nocturno: string | null;
 };
 
 /**
@@ -71,7 +75,7 @@ export async function GET(request: NextRequest) {
     supabase.from('escenario_settings') as unknown as {
       select: (cols: string) => Promise<{ data: SettingsRow[] | null; error: { message: string } | null }>;
     }
-  ).select('escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno');
+  ).select('escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno, hora_ini_nocturno, hora_fin_nocturno');
 
   if (settingsError) {
     console.error('[admin/escenario-settings] GET settings error:', settingsError.message);
@@ -90,6 +94,8 @@ export async function GET(request: NextRequest) {
       nombre: escenarioMap.get(id) ?? null,
       pedidosSaMinutosAntes: s ? s.pedidos_sa_minutos_antes : null,
       aplicaServNocturno: s ? (s.aplica_serv_nocturno ?? true) : true,
+      horaIniNocturno: s ? s.hora_ini_nocturno : null,
+      horaFinNocturno: s ? s.hora_fin_nocturno : null,
     };
   });
 
@@ -104,6 +110,8 @@ type PutBody = {
   escenarioId: unknown;
   pedidosSaMinutosAntes: unknown;
   aplica_serv_nocturno: unknown;
+  horaIniNocturno: unknown;
+  horaFinNocturno: unknown;
 };
 
 export async function PUT(request: NextRequest) {
@@ -117,7 +125,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Body invalido' }, { status: 400 });
   }
 
-  const { escenarioId, pedidosSaMinutosAntes, aplica_serv_nocturno } = body;
+  const { escenarioId, pedidosSaMinutosAntes, aplica_serv_nocturno, horaIniNocturno, horaFinNocturno } = body;
 
   // Validar escenarioId
   if (typeof escenarioId !== 'number' || !Number.isInteger(escenarioId) || escenarioId <= 0) {
@@ -142,6 +150,26 @@ export async function PUT(request: NextRequest) {
     );
   }
 
+  // Validar horaIniNocturno: null o string HH:MM o HH:MM:SS
+  if (horaIniNocturno !== undefined && horaIniNocturno !== null) {
+    if (typeof horaIniNocturno !== 'string' || !TIME_REGEX.test(horaIniNocturno)) {
+      return NextResponse.json(
+        { success: false, error: 'horaIniNocturno debe ser null o un string en formato HH:MM o HH:MM:SS' },
+        { status: 400 }
+      );
+    }
+  }
+
+  // Validar horaFinNocturno: null o string HH:MM o HH:MM:SS
+  if (horaFinNocturno !== undefined && horaFinNocturno !== null) {
+    if (typeof horaFinNocturno !== 'string' || !TIME_REGEX.test(horaFinNocturno)) {
+      return NextResponse.json(
+        { success: false, error: 'horaFinNocturno debe ser null o un string en formato HH:MM o HH:MM:SS' },
+        { status: 400 }
+      );
+    }
+  }
+
   const supabase = getServerSupabaseClient();
 
   const upsertData: Record<string, unknown> = {
@@ -154,6 +182,12 @@ export async function PUT(request: NextRequest) {
   }
   if (aplica_serv_nocturno !== undefined) {
     upsertData.aplica_serv_nocturno = aplica_serv_nocturno as boolean;
+  }
+  if (horaIniNocturno !== undefined) {
+    upsertData.hora_ini_nocturno = horaIniNocturno as string | null;
+  }
+  if (horaFinNocturno !== undefined) {
+    upsertData.hora_fin_nocturno = horaFinNocturno as string | null;
   }
 
   const { error } = await (
@@ -174,7 +208,7 @@ export async function PUT(request: NextRequest) {
     event_type: 'custom',
     method: 'PUT',
     endpoint: '/api/admin/escenario-settings',
-    request_body: { escenarioId, pedidosSaMinutosAntes, aplica_serv_nocturno },
+    request_body: { escenarioId, pedidosSaMinutosAntes, aplica_serv_nocturno, horaIniNocturno, horaFinNocturno },
     response_status: 200,
     source: 'server',
   });

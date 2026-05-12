@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
     escenario_id: number;
     pedidos_sa_minutos_antes: number | null;
     aplica_serv_nocturno: boolean | null;
+    hora_ini_nocturno: string | null;
+    hora_fin_nocturno: string | null;
   };
   const { data, error } = await (
     supabase.from('escenario_settings') as unknown as {
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest) {
       };
     }
   )
-    .select('escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno')
+    .select('escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno, hora_ini_nocturno, hora_fin_nocturno')
     .eq('escenario_id', escenarioId)
     .maybeSingle();
 
@@ -53,7 +55,15 @@ export async function GET(request: NextRequest) {
           escenarioId: data.escenario_id,
           pedidosSaMinutosAntes: data.pedidos_sa_minutos_antes,
           aplicaServNocturno: data.aplica_serv_nocturno ?? true,
+          horaIniNocturno: data.hora_ini_nocturno,
+          horaFinNocturno: data.hora_fin_nocturno,
         }
-      : { escenarioId, pedidosSaMinutosAntes: null, aplicaServNocturno: true },
+      : {
+          escenarioId,
+          pedidosSaMinutosAntes: null,
+          aplicaServNocturno: true,
+          horaIniNocturno: null,
+          horaFinNocturno: null,
+        },
   });
 }
