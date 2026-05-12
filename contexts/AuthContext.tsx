@@ -258,7 +258,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(intervalId);
   }, [user?.loginTime]);
 
-  const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string }> => {
+  const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string }> => {
     try {
       console.log('🔐 Iniciando login en GeneXus...');
       const response: ParsedLoginResponse = await authService.login(username, password);
@@ -268,6 +268,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('✅ Login GeneXus exitoso');
 
         const isRoot = response.user.isRoot === 'S';
+
+        // 🚪 Gate de funcionalidad "PermiteLogin": un usuario no-root debe tener
+        // al menos un rol con una funcionalidad de nombre "PermiteLogin" para
+        // poder entrar. Root pasa siempre (preferencia explicita del usuario).
+        // Se chequea por NOMBRE de funcionalidad, no por id — el id puede variar
+        // entre entornos pero el nombre es canonico desde el SecuritySuite.
+        if (!isRoot) {
+          const tienePermiteLogin = (response.roles || []).some((r) =>
+            (r.funcionalidades || []).some(
+              (f) => String(f?.nombre ?? '').trim() === 'PermiteLogin',
+            ),
+          );
+          if (!tienePermiteLogin) {
+            console.log('❌ Login bloqueado: usuario sin funcionalidad PermiteLogin');
+            return {
+              success: false,
+              error: 'Usuario sin privilegios para acceder al sistema.',
+            };
+          }
+        }
 
         // 🔑 Parsear preferencias del response (nuevo formato SecuritySuite)
         const empFleteras = parsePreferencia(response.preferencias, 'EmpFletera');
@@ -358,7 +378,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(newUser);
         setEscenarioId(selectedEscenarioId);
-        return { success: true };
+        // Propagar warning del endpoint de seguridad (ej. USER_EQ_PASS) al consumidor
+        const warning = (response as { warning?: string }).warning;
+        return warning ? { success: true, warning } : { success: true };
       } else if (response.success && !response.user) {
         // Si success=true pero no hay usuario, es credencial inválida
         console.log('❌ Login falló: no hay datos de usuario');

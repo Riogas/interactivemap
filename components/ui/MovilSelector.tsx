@@ -12,6 +12,7 @@ import { VirtualList } from './VirtualList';
 import MapGuideModal from './MapGuideModal';
 import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicator';
 import type { LastSyncState } from '@/lib/realtime-drift';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
 interface MovilSelectorProps {
   moviles: MovilData[];
@@ -77,6 +78,10 @@ interface MovilSelectorProps {
   lastSync?: LastSyncState | null;
   /** Callback para el boton Resync ahora (llama fetchPositions directamente). */
   onResync?: () => void;
+  /** Hora del servidor (sincronizada). Usada para el filtro de ventana SA. */
+  serverNow?: Date;
+  /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
+  minutosAntesSa?: number | null;
   /** Segundos de polling configurados (para calcular umbrales 🟢🟡🔴). Default 60. */
   pollingSeconds?: number;
 }
@@ -138,6 +143,8 @@ export default function MovilSelector({
   isRootUser = false,
   lastSync = null,
   onResync,
+  serverNow = new Date(),
+  minutosAntesSa = null,
   pollingSeconds = 60,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
@@ -463,6 +470,14 @@ export default function MovilSelector({
       );
     }
     
+    // Aplicar ventana temporal SA (solo para pendientes, no finalizados)
+    if (pedidosFilters.vista !== "finalizados") {
+      result = result.filter(p =>
+        (p.movil && Number(p.movil) !== 0) ||
+        isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)
+      );
+    }
+
     // Ordenar: pendientes/sin_asignar por mayor atraso primero, finalizados por id desc
     if (pedidosFilters.vista !== 'finalizados') {
       result.sort((a, b) => {
@@ -478,7 +493,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -595,6 +610,14 @@ export default function MovilSelector({
       );
     }
     
+    // Aplicar ventana temporal SA (solo para pendientes, no finalizados)
+    if (servicesFilters.vista !== "finalizados") {
+      result = result.filter(s =>
+        (s.movil && Number(s.movil) !== 0) ||
+        isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)
+      );
+    }
+
     // Ordenar: pendientes/sin_asignar por delay, finalizados por id desc
     if (servicesFilters.vista !== 'finalizados') {
       result.sort((a, b) => {
@@ -610,7 +633,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
@@ -1342,7 +1365,7 @@ export default function MovilSelector({
                                     <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
                                       {movil.id}
                                       {' – '}
-                                      {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}
+                                      {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0} - {movil.capacidad ?? 0}
                                       {isNoActivo && (
                                         <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
                                           No activo

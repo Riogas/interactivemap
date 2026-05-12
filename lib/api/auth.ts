@@ -28,7 +28,10 @@ interface ParsedLoginResponse {
     rolId: number;
     rolNombre: string;
     aplicacionId: number;
-    funcionalidades: unknown[];
+    funcionalidades: Array<{
+      funcionalidadId: number;
+      nombre: string;
+    }>;
   }>;
   preferencias?: Array<{
     atributo: string;

@@ -59,6 +59,73 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Parsea defensivamente la respuesta del endpoint de incidencias.
+ *
+ * Problema: si nginx upstream devuelve HTML (502/504/413 con body HTML),
+ * llamar `res.json()` directamente lanza SyntaxError que el catch muestra
+ * crudo al usuario como "Unexpected token '<'".
+ *
+ * Solución: leer como texto, intentar parsear JSON, y si falla o el status
+ * no es 2xx, devolver un error legible según el código HTTP.
+ */
+async function parseIncidentResponse(res: Response): Promise<{ success: boolean; id?: string | number; error?: string }> {
+  const text = await res.text();
+
+  if (!res.ok) {
+    // Loggear el body original para debug
+    console.error('[IncidentRecorder] respuesta no-ok del servidor:', res.status, text.slice(0, 500));
+
+    // Mensajes específicos por código HTTP
+    if (res.status === 413) {
+      return { success: false, error: 'El video es demasiado grande. Intentá una grabación más corta.' };
+    }
+    if (res.status === 502 || res.status === 504) {
+      return { success: false, error: 'El servidor tardó demasiado en responder. Reintentá en unos segundos.' };
+    }
+    if (res.status >= 500) {
+      return { success: false, error: 'Error del servidor. Reintentá en unos segundos.' };
+    }
+
+    // 4xx: intentar extraer el campo `error` del JSON si está disponible
+    try {
+      const data = JSON.parse(text) as { success?: boolean; error?: string };
+      return { success: false, error: data.error ?? 'Error en la solicitud.' };
+    } catch {
+      return { success: false, error: 'Error en la solicitud.' };
+    }
+  }
+
+  // Status 2xx: parsear JSON normalmente
+  try {
+    const data = JSON.parse(text) as { success?: boolean; id?: string | number; error?: string };
+    return {
+      success: data.success ?? true,
+      id: data.id,
+      error: data.error,
+    };
+  } catch {
+    // 2xx pero body no es JSON: tratar como éxito sin ID
+    console.error('[IncidentRecorder] respuesta 2xx con body no-JSON:', text.slice(0, 200));
+    return { success: true };
+  }
+}
+
+/**
+ * Detecta Firefox por user-agent. Es la unica heuristica confiable cliente:
+ * Firefox es el unico navegador mayor que pone "Firefox/" en su UA (Chrome
+ * pone "Chrome/" pero no "Firefox/"; Safari/Edge tampoco).
+ *
+ * Por que se bloquea Firefox: la captura de pantalla via getDisplayMedia +
+ * MediaRecorder tiene bugs persistentes en Firefox (audio de display
+ * inconsistente, dataavailable/onstop con timing impredecible, chunks
+ * vacios en grabaciones cortas). En Chrome funciona estable.
+ */
+function isFirefoxBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Firefox\//.test(navigator.userAgent);
+}
+
 export function IncidentRecorderProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [state, setState] = useState<RecorderState>('idle');
@@ -67,6 +134,7 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingDurationS, setPendingDurationS] = useState(0);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const [browserBlocked, setBrowserBlocked] = useState(false);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -172,10 +240,26 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
 
   const start = useCallback(async () => {
     if (state !== 'idle') return;
+
+    // Firefox: bloqueado explicitamente — mostrar modal de "solo Chrome" y NO
+    // ejecutar nada (no getDisplayMedia, no MediaRecorder, no permisos).
+    // Ver isFirefoxBrowser() arriba para el porque.
+    if (isFirefoxBrowser()) {
+      setBrowserBlocked(true);
+      return;
+    }
+
     if (!available) {
       setToast({ type: 'err', msg: 'Tu navegador no soporta grabación de pantalla.' });
       return;
     }
+
+    // Verificar contexto seguro: la API de captura de pantalla requiere HTTPS.
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setToast({ type: 'err', msg: 'La grabación de pantalla requiere una conexión segura (HTTPS).' });
+      return;
+    }
+
     try {
       const videoConstraints: MediaTrackConstraints = {
         frameRate: { ideal: 15, max: 30 },
@@ -190,6 +274,18 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
       };
 
       let stream: MediaStream;
+
+      // Bug Firefox: getDisplayMedia con constraints de audio lanza NotAllowedError
+      // incluso cuando el usuario NO canceló — Firefox en muchos contextos
+      // (Windows/Linux) no soporta captura de audio de display y reporta el mismo
+      // error que cuando el usuario deniega el permiso.
+      //
+      // Solución: intentar primero con audio; si falla con NotAllowedError,
+      // reintentar SIN audio antes de concluir que el usuario canceló.
+      // Solo si el segundo intento también falla con NotAllowedError o AbortError
+      // se trata como denegación real del usuario (no mostrar toast).
+      let firstAttemptFailedWithNotAllowed = false;
+
       try {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: videoConstraints,
@@ -197,13 +293,29 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
         });
       } catch (err) {
         const name = (err as DOMException).name;
-        // Si el usuario canceló o denegó, no reintentar.
-        if (name === 'NotAllowedError' || name === 'AbortError') throw err;
-        // Firefox / navegadores que no soportan audio de display: reintentar sin audio.
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: videoConstraints,
-        });
+
+        if (name === 'NotAllowedError') {
+          // Puede ser denegación real del usuario O incompatibilidad del navegador
+          // con audio de display. Reintentar sin audio para diferenciar.
+          firstAttemptFailedWithNotAllowed = true;
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: videoConstraints,
+          });
+          // Si llegamos acá: el primer fallo fue por audio no soportado, no por
+          // denegación real. La grabación arranca sin audio.
+        } else if (name === 'AbortError') {
+          // AbortError siempre es cancelación real del usuario → no reintentar.
+          throw err;
+        } else {
+          // Otro error (NotFoundError, NotSupportedError, etc.) → reintentar sin audio.
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: videoConstraints,
+          });
+        }
       }
+
+      // Silenciar advertencia de variable no usada en el path sin audio
+      void firstAttemptFailedWithNotAllowed;
 
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
         doStop();
@@ -256,13 +368,16 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
         });
       }, 1000);
     } catch (e) {
-      const msg = (e as Error).message.toLowerCase();
-      if (msg.includes('permission') || msg.includes('denied')) {
+      const name = (e as DOMException).name;
+      // NotAllowedError o AbortError en ambos intentos = denegación real del usuario.
+      // No mostrar toast (el navegador ya mostró su propio mensaje de denegación).
+      if (name === 'NotAllowedError' || name === 'AbortError') {
         setState('idle');
-      } else {
-        setToast({ type: 'err', msg: `Error: ${(e as Error).message}` });
-        setState('idle');
+        return;
       }
+      // Otros errores: mostrar mensaje al usuario.
+      setToast({ type: 'err', msg: `Error al iniciar la grabación: ${(e as Error).message}` });
+      setState('idle');
     }
   }, [state, available, doStop, finalize]);
 
@@ -287,9 +402,13 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
           'x-track-userid': user?.id ?? '',
         },
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setToast({ type: 'err', msg: data.error ?? 'Error subiendo el video' });
+
+      // Bug Chrome: res.json() lanza SyntaxError si nginx devuelve HTML (502/504/413).
+      // parseIncidentResponse() lee como texto y parsea defensivamente.
+      const data = await parseIncidentResponse(res);
+
+      if (!data.success) {
+        setToast({ type: 'err', msg: data.error ?? 'Error subiendo el video.' });
         setState('confirming');
         return;
       }
@@ -315,6 +434,48 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
     <RecorderContext.Provider value={{ state, seconds, start, stop, available }}>
       {children}
       {/* Modales renderizados al final del body via portal implícito (el root layout ya garantiza z-index alto) */}
+      {browserBlocked && (
+        <div
+          className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="incident-browser-blocked-title"
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-amber-50 to-white flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <div>
+                <h2 id="incident-browser-blocked-title" className="text-base font-bold text-slate-800">Navegador no compatible</h2>
+                <p className="text-xs text-slate-500">Reportar incidencia</p>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-700 leading-relaxed">
+                Funcionalidad disponible únicamente en Google Chrome.
+              </p>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                La grabación de pantalla no funciona de forma confiable en Firefox. Abrí esta página en Chrome para reportar una incidencia.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+              <button
+                onClick={() => setBrowserBlocked(false)}
+                className="px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-semibold rounded-lg shadow-lg shadow-blue-500/20 transition"
+                autoFocus
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {state === 'confirming' && pendingBlob && (
         <div
           className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"

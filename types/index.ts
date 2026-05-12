@@ -27,6 +27,7 @@ export interface MovilData {
   // 🔥 NUEVO: Datos extendidos desde Supabase
   tamanoLote?: number;        // Capacidad del móvil (desde tabla moviles)
   pedidosAsignados?: number;  // Cantidad de pedidos asignados (count desde tabla pedidos)
+  capacidad?: number;         // cant_ped + cant_serv pre-computado por trigger (moviles.capacidad)
   matricula?: string;         // Matrícula del móvil
   estadoDesc?: string;        // Descripción del estado (ACTIVO, INACTIVO, etc.)
   estadoNro?: number;         // Número de estado (0,1,2=ACTIVO | 3=NO ACTIVO | 4=BAJA MOMENTÁNEA)

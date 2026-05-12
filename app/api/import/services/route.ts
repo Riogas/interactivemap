@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, getServerSupabaseClient } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
+import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
 
 /**
  * Lee el body del request respetando el charset del Content-Type.
@@ -222,6 +223,37 @@ function transformServiceToSupabase(service: any) {
 }
 
 /**
+ * Helper: extrae movil nros únicos y no nulos de un array de registros,
+ * luego recomputa los contadores y sincroniza zonas_cap_entrega (best-effort).
+ *
+ * IMPORTANTE: usa el cliente de servidor (service role) para bypassear RLS en
+ * el UPDATE de la tabla moviles. El cliente anon puede fallar silenciosamente.
+ *
+ * Llama recomputeMovilAndCapEntrega (compuesta) en lugar de recomputeMovilCounters:
+ * garantiza que zonas_cap_entrega queda sincronizada después de cada mutación.
+ */
+async function recomputeCountersForMoviles(records: any[], trigger: string): Promise<void> {
+  if (!records || records.length === 0) return;
+  const serverClient = getServerSupabaseClient();
+  const movilNros = [...new Set(
+    records.map((r: any) => r.movil).filter((m: any) => m != null && m !== 0)
+  )];
+  if (movilNros.length === 0) return;
+  console.log(`[zonas-cap-entrega] trigger=${trigger} — moviles a recomputar: ${movilNros.join(', ')}`);
+  for (const nro of movilNros) {
+    try {
+      await recomputeMovilAndCapEntrega(serverClient as any, nro);
+      console.log(
+        `[zonas-cap-entrega] trigger=${trigger} movilNro=${nro} → recompute+sync OK`,
+      );
+    } catch (err) {
+      console.error(`⚠️ [zonas-cap-entrega] trigger=${trigger} falló recompute para movil ${nro}:`, err);
+      // best-effort: no aborta el response
+    }
+  }
+}
+
+/**
  * POST /api/import/services
  * Importar o actualizar services desde fuente externa (UPSERT)
  * Si el service existe (mismo id), lo actualiza. Si no existe, lo inserta.
@@ -274,6 +306,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Services procesados: ${data?.length || 0}`);
+
+    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'POST import/services');
 
     return NextResponse.json({
       success: true,
@@ -339,6 +374,9 @@ export async function PUT(request: NextRequest) {
 
     console.log(`✅ Services actualizados: ${data?.length || 0}`);
 
+    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'PUT import/services');
+
     return NextResponse.json({
       success: true,
       message: `${data?.length || 0} services actualizados correctamente`,
@@ -389,6 +427,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     console.log(`✅ ${data?.length || 0} services eliminados`);
+
+    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (best-effort)
+    await recomputeCountersForMoviles(data || [], 'DELETE import/services');
 
     return NextResponse.json({
       success: true,

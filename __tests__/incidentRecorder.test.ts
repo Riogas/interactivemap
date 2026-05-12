@@ -16,6 +16,10 @@
  *  - Edge: doStop() idempotente cuando rec.state !== 'recording'
  *  - Edge: fallback setTimeout 1500ms llama finalize si onstop no dispara
  *  - Edge: cleanup() para tracks y clearTimeout
+ *
+ * Nuevos (bug fixes 2026-05-08):
+ *  - Bug1/Chrome: parseIncidentResponse() — respuesta HTML no lanza SyntaxError crudo
+ *  - Bug2/Firefox: start() NotAllowedError en primer intento → fallback sin audio
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -172,7 +176,51 @@ function buildRecorderLogic() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tests
+// Replica de parseIncidentResponse() para testear en aislamiento
+// (misma lógica que en IncidentRecorderContext.tsx)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function parseIncidentResponse(
+  res: { ok: boolean; status: number; text: () => Promise<string> }
+): Promise<{ success: boolean; id?: string | number; error?: string }> {
+  const text = await res.text();
+
+  if (!res.ok) {
+    console.error('[IncidentRecorder] respuesta no-ok del servidor:', res.status, text.slice(0, 500));
+
+    if (res.status === 413) {
+      return { success: false, error: 'El video es demasiado grande. Intentá una grabación más corta.' };
+    }
+    if (res.status === 502 || res.status === 504) {
+      return { success: false, error: 'El servidor tardó demasiado en responder. Reintentá en unos segundos.' };
+    }
+    if (res.status >= 500) {
+      return { success: false, error: 'Error del servidor. Reintentá en unos segundos.' };
+    }
+
+    try {
+      const data = JSON.parse(text) as { success?: boolean; error?: string };
+      return { success: false, error: data.error ?? 'Error en la solicitud.' };
+    } catch {
+      return { success: false, error: 'Error en la solicitud.' };
+    }
+  }
+
+  try {
+    const data = JSON.parse(text) as { success?: boolean; id?: string | number; error?: string };
+    return {
+      success: data.success ?? true,
+      id: data.id,
+      error: data.error,
+    };
+  } catch {
+    console.error('[IncidentRecorder] respuesta 2xx con body no-JSON:', text.slice(0, 200));
+    return { success: true };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests (existentes)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IncidentRecorderContext — lógica de finalize()', () => {
@@ -326,6 +374,7 @@ describe('IncidentRecorderContext — lógica de doStop()', () => {
 
     expect(requestDataCalledBeforeStop).toBe(true);
     expect(rec.stopCalls).toBe(1);
+    void originalStop;
   });
 
   it('doStop() setea estado "stopping" antes de parar el recorder', () => {
@@ -533,6 +582,7 @@ describe('IncidentRecorderContext — integración doStop + onstop + finalize', 
     expect(ctx.state).toBe('confirming');
     expect(ctx.pendingBlob).not.toBeNull();
     expect(ctx.pendingBlob!.type).toBe('video/webm');
+    void originalStop;
   });
 
   it('flujo Chrome: onstop dispara antes del timeout → modal abre sin esperar 1500ms', () => {
@@ -645,5 +695,295 @@ describe('IncidentRecorderContext — edge cases de la spec', () => {
     ctx.doStop();
 
     expect(rec.stopCalls).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bug 1 — Chrome: parseIncidentResponse() no lanza SyntaxError con HTML
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Bug1/Chrome — parseIncidentResponse(): respuesta HTML del backend no rompe con SyntaxError', () => {
+  it('502 con body HTML → success=false, mensaje legible de gateway timeout', async () => {
+    const res = {
+      ok: false,
+      status: 502,
+      text: async () => '<html><body><h1>502 Bad Gateway</h1></body></html>',
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('tardó demasiado');
+  });
+
+  it('504 con body HTML → success=false, mensaje legible de gateway timeout', async () => {
+    const res = {
+      ok: false,
+      status: 504,
+      text: async () => '<!DOCTYPE html><html>504 Gateway Time-out</html>',
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('tardó demasiado');
+  });
+
+  it('413 con body HTML → success=false, mensaje "video demasiado grande"', async () => {
+    const res = {
+      ok: false,
+      status: 413,
+      text: async () => '<html><body>413 Request Entity Too Large</body></html>',
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('demasiado grande');
+  });
+
+  it('500 genérico con body HTML → success=false, mensaje genérico de servidor', async () => {
+    const res = {
+      ok: false,
+      status: 500,
+      text: async () => '<html>Internal Server Error</html>',
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Error del servidor');
+  });
+
+  it('4xx con JSON válido que tiene campo error → extrae el error del JSON', async () => {
+    const res = {
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ success: false, error: 'Archivo no es video' }),
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Archivo no es video');
+  });
+
+  it('4xx con JSON sin campo error → mensaje genérico de solicitud', async () => {
+    const res = {
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ success: false }),
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Error en la solicitud');
+  });
+
+  it('4xx con body HTML (no JSON) → mensaje genérico de solicitud (no SyntaxError)', async () => {
+    const res = {
+      ok: false,
+      status: 403,
+      text: async () => '<html>Forbidden</html>',
+    };
+
+    // No debe lanzar SyntaxError
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Error en la solicitud');
+  });
+
+  it('2xx con JSON válido → success=true, incluye id', async () => {
+    const res = {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true, id: 42 }),
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(true);
+    expect(result.id).toBe(42);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('2xx con JSON success=false → propaga success=false con error', async () => {
+    const res = {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: false, error: 'Quota excedida' }),
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Quota excedida');
+  });
+
+  it('2xx con body no-JSON → success=true sin tirar SyntaxError', async () => {
+    const res = {
+      ok: true,
+      status: 200,
+      text: async () => 'OK',
+    };
+
+    const result = await parseIncidentResponse(res);
+
+    expect(result.success).toBe(true);
+    expect(result.id).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bug 2 — Firefox: NotAllowedError en primer getDisplayMedia → fallback sin audio
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Bug2/Firefox — start(): NotAllowedError en primer intento → fallback sin audio', () => {
+  /**
+   * Replica de la lógica de start() en aislamiento para testear sin React/DOM.
+   * Recibe una función getDisplayMedia mockeada.
+   */
+  async function runStartLogic(
+    getDisplayMedia: (constraints: { video: unknown; audio?: unknown }) => Promise<{ getTracks: () => unknown[] }>
+  ): Promise<{ state: RecorderState; toast: ToastPayload }> {
+    let state: RecorderState = 'idle';
+    let toast: ToastPayload = null;
+
+    const videoConstraints = { frameRate: { ideal: 15, max: 30 }, width: { max: 1280 }, height: { max: 720 } };
+    const audioConstraints = { echoCancellation: true, noiseSuppression: true };
+
+    try {
+      let stream: { getTracks: () => unknown[] };
+      let firstAttemptFailedWithNotAllowed = false;
+
+      try {
+        stream = await getDisplayMedia({ video: videoConstraints, audio: audioConstraints });
+      } catch (err) {
+        const name = (err as DOMException).name;
+
+        if (name === 'NotAllowedError') {
+          firstAttemptFailedWithNotAllowed = true;
+          // Fallback sin audio
+          stream = await getDisplayMedia({ video: videoConstraints });
+        } else if (name === 'AbortError') {
+          throw err;
+        } else {
+          stream = await getDisplayMedia({ video: videoConstraints });
+        }
+      }
+
+      void firstAttemptFailedWithNotAllowed;
+      void stream;
+      state = 'recording';
+    } catch (e) {
+      const name = (e as DOMException).name;
+      if (name === 'NotAllowedError' || name === 'AbortError') {
+        state = 'idle'; // denegación real — sin toast
+      } else {
+        toast = { type: 'err', msg: `Error al iniciar la grabación: ${(e as Error).message}` };
+        state = 'idle';
+      }
+    }
+
+    return { state, toast };
+  }
+
+  it('Firefox: primer intento con audio → NotAllowedError → fallback sin audio exitoso → recording', async () => {
+    let callCount = 0;
+    const getDisplayMedia = vi.fn(async (constraints: { video: unknown; audio?: unknown }) => {
+      callCount++;
+      if (callCount === 1) {
+        // Primer intento (con audio) falla como Firefox
+        const err = new DOMException('Permission denied', 'NotAllowedError');
+        throw err;
+      }
+      // Segundo intento (sin audio) exitoso
+      return { getTracks: () => [] };
+    });
+
+    const { state, toast } = await runStartLogic(getDisplayMedia);
+
+    expect(getDisplayMedia).toHaveBeenCalledTimes(2);
+    // Primer call con audio
+    expect(getDisplayMedia.mock.calls[0][0]).toHaveProperty('audio');
+    // Segundo call sin audio
+    expect(getDisplayMedia.mock.calls[1][0]).not.toHaveProperty('audio');
+    expect(state).toBe('recording');
+    expect(toast).toBeNull();
+  });
+
+  it('Usuario cancela diálogo (NotAllowedError en ambos intentos) → idle, sin toast', async () => {
+    const getDisplayMedia = vi.fn(async () => {
+      const err = new DOMException('Permission denied', 'NotAllowedError');
+      throw err;
+    });
+
+    const { state, toast } = await runStartLogic(getDisplayMedia);
+
+    // Se intenta 2 veces (primer con audio, segundo sin audio)
+    // Pero el segundo también falla con NotAllowedError → denegación real
+    expect(state).toBe('idle');
+    expect(toast).toBeNull(); // sin toast — el browser ya informó al usuario
+  });
+
+  it('Usuario cancela con AbortError → idle, sin toast, sin reintentar', async () => {
+    let callCount = 0;
+    const getDisplayMedia = vi.fn(async () => {
+      callCount++;
+      const err = new DOMException('Abort', 'AbortError');
+      throw err;
+    });
+
+    const { state, toast } = await runStartLogic(getDisplayMedia);
+
+    // AbortError nunca reintenta — solo 1 llamada
+    expect(callCount).toBe(1);
+    expect(state).toBe('idle');
+    expect(toast).toBeNull();
+  });
+
+  it('NotSupportedError en primer intento → fallback sin audio exitoso → recording', async () => {
+    let callCount = 0;
+    const getDisplayMedia = vi.fn(async (constraints: { video: unknown; audio?: unknown }) => {
+      callCount++;
+      if (callCount === 1) {
+        const err = new DOMException('Not supported', 'NotSupportedError');
+        throw err;
+      }
+      return { getTracks: () => [] };
+    });
+
+    const { state, toast } = await runStartLogic(getDisplayMedia);
+
+    expect(callCount).toBe(2);
+    expect(state).toBe('recording');
+    expect(toast).toBeNull();
+  });
+
+  it('Ambos intentos fallan con NotFoundError → muestra toast de error', async () => {
+    const getDisplayMedia = vi.fn(async () => {
+      const err = new DOMException('Device not found', 'NotFoundError');
+      throw err;
+    });
+
+    const { state, toast } = await runStartLogic(getDisplayMedia);
+
+    expect(state).toBe('idle');
+    expect(toast).not.toBeNull();
+    expect(toast!.type).toBe('err');
+  });
+
+  it('Primer intento exitoso (Chrome con audio) → recording sin reintentar', async () => {
+    const getDisplayMedia = vi.fn(async () => {
+      return { getTracks: () => [] };
+    });
+
+    const { state, toast } = await runStartLogic(getDisplayMedia);
+
+    expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+    expect(state).toBe('recording');
+    expect(toast).toBeNull();
   });
 });

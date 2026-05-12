@@ -4,28 +4,12 @@ import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { isPrivilegedForCapEntrega } from '@/lib/auth-scope';
+import { getCapEntregaColor } from '@/lib/cap-entrega-color';
+import type { SaturacionZonaStats } from '@/lib/cap-entrega-color';
+export type { SaturacionZonaStats } from '@/lib/cap-entrega-color';
 
 // ──────────────────────────── tipos públicos ──────────────────────────────
-
-export interface SaturacionZonaStats {
-  /** Pedidos pendientes sin asignar en la zona */
-  sinAsignar: number;
-  /** Suma PRORRATEADA de tamanoLote (capacidad total / nZones por móvil compartido).
-      Display value — usa Math.ceil para evitar decimales en la card. */
-  capacidadTotal: number;
-  /** Suma PRORRATEADA de espacios libres (max(0, lote-asignados) / nZones).
-      Display value — usa Math.ceil. */
-  capacidadDisponible: number;
-  /** Cantidad total de móviles con prioridad en esta zona */
-  movilesEnZona: number;
-  /** Cuántos de esos móviles tienen prioridad en más de una zona */
-  movilesCompartidos: number;
-  /** Suma fraccionaria SIN ceil de (asignados/nZones) — para cálculo interno.
-      Mantenido para compatibilidad con modal y cálculos de peso real. */
-  asignadosWeight: number;
-  /** Suma fraccionaria SIN ceil de (tamanoLote/nZones) — denominador del peso real. */
-  totalWeight: number;
-}
 
 export interface SaturacionZonaData {
   zona_id: number;
@@ -35,10 +19,20 @@ export interface SaturacionZonaData {
   escenario_id: number;
 }
 
+/** Subconjunto del shape de usuario que esta capa necesita para el gate de rol. */
+interface ScopedUser {
+  isRoot?: string;
+  roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>;
+  allowedEmpresas?: number[] | null;
+}
+
 interface SaturacionZonasLayerProps {
   zonas: SaturacionZonaData[];
   /** Map de zona_id → estadísticas de saturación */
   saturacionData: Map<number, SaturacionZonaStats>;
+  /** Usuario autenticado — se usa para derivar isPrivilegedForCapEntrega y mostrar
+      el valor negativo real en lugar de "Sin Cap." para roles operativos. */
+  user?: ScopedUser | null;
   /** Filtro por tipo de servicio ('URGENTE' | 'SERVICE' | 'NOCTURNO') */
   serviceFilter?: string;
   /** Callback cambio de filtro */
@@ -78,42 +72,6 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
   return [cy * f, cx * f];
 }
 
-/**
- * Calcula la Cap. Entrega = capacidadDisponible - sinAsignar y devuelve
- * color + texto de etiqueta según bandas numéricas.
- *
- * Bandas:
- *  - Sin móviles + pedidos > 0   → marrón "Sin Cap." (sin cobertura)
- *  - Sin móviles + sin pedidos   → gris "—" (sin datos)
- *  - capEntrega < 0              → marrón "Sin Cap." (pendientes superan capacidad libre)
- *  - capEntrega = 0              → rojo (capacidad máxima — exactamente cubierto o lleno)
- *  - capEntrega = 1              → naranja
- *  - capEntrega = 2 o 3          → amarillo
- *  - capEntrega > 3              → verde claro (sobrante saludable)
- *
- * capEntrega = sum(ceil(libres_i / nZones_i)) - sinAsignar  (entero)
- */
-function getCapEntregaColor(stats: SaturacionZonaStats): { color: string; label: string; capEntrega: number } {
-  const { sinAsignar, capacidadDisponible, movilesEnZona } = stats;
-
-  if (movilesEnZona === 0 && sinAsignar > 0) {
-    // Sin móviles pero hay pendientes → sin capacidad de entrega
-    return { color: '#92400e', label: 'Sin Cap.', capEntrega: -999 };
-  }
-  if (movilesEnZona === 0 && sinAsignar === 0) {
-    // Sin datos
-    return { color: '#d1d5db', label: '—', capEntrega: -1000 };
-  }
-
-  // capEntrega = capacidad disponible prorrateada (ceil) - pendientes sin asignar
-  const capEntrega = capacidadDisponible - sinAsignar;
-
-  if (capEntrega < 0)    return { color: '#92400e', label: 'Sin Cap.', capEntrega };  // marrón
-  if (capEntrega === 0)  return { color: '#ef4444', label: '0', capEntrega };          // rojo
-  if (capEntrega === 1)  return { color: '#f97316', label: '1', capEntrega };          // naranja
-  if (capEntrega <= 3)   return { color: '#eab308', label: String(capEntrega), capEntrega }; // amarillo (2-3)
-  return { color: '#86efac', label: String(capEntrega), capEntrega };                  // verde claro >3
-}
 
 function getCapEntregaOpacity(capEntrega: number): number {
   if (capEntrega === -999) return 0.70; // sin cobertura
@@ -226,6 +184,7 @@ function SaturacionFilterControl({ serviceFilter, onServiceFilterChange }: { ser
 const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   zonas,
   saturacionData,
+  user,
   serviceFilter = 'URGENTE',
   onServiceFilterChange,
   zonaOpacity = 50,
@@ -234,6 +193,9 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   showLabels = false,
   onToggleLabels,
 }: SaturacionZonasLayerProps) {
+  // Derivar privilegio UNA vez por render de la capa (no por zona).
+  const isPrivileged = isPrivilegedForCapEntrega(user ?? null);
+
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
 
@@ -263,7 +225,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       const stats = saturacionData.get(zona.zona_id);
       const defaultStats: SaturacionZonaStats = { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
       const s = stats ?? defaultStats;
-      const { color, label, capEntrega } = getCapEntregaColor(s);
+      const { color, label, capEntrega } = getCapEntregaColor(s, isPrivileged);
       const fillOpacity = getCapEntregaOpacity(capEntrega);
 
       // Tooltip detallado
@@ -292,7 +254,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       fillOpacity: number;
       tooltipHTML: string;
     }>;
-  }, [zonas, saturacionData]);
+  }, [zonas, saturacionData, isPrivileged]);
 
   if (items.length === 0) return null;
 

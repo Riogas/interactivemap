@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
 import { parseZonasJsonb } from '@/lib/auth-scope';
+import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
 
 /**
  * GET /api/moviles-zonas
@@ -161,6 +162,10 @@ export async function GET(request: NextRequest) {
  *
  * Comportamiento: REEMPLAZA todas las asignaciones del escenario indicado
  * con las nuevas. Esto mantiene consistencia con el import de Genexus.
+ *
+ * Recompute: después del upsert, recomputa contadores cant_ped/cant_serv/capacidad
+ * y sincroniza zonas_cap_entrega para cada movilNro afectado (todos los movilId
+ * únicos del body) — best-effort, no aborta el response si falla.
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -240,6 +245,35 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ ${totalInserted} asignaciones guardadas (escenario: ${escenario_id})`);
+
+    // 4) Recomputar contadores + sincronizar zonas_cap_entrega para todos los
+    //    movilId únicos del body (best-effort — no aborta el response si falla).
+    //
+    //    RAZÓN: un cambio en asignaciones cambia el shape de zonas_cap_entrega
+    //    para cada móvil afectado — filas nuevas deben aparecer, stale deben
+    //    desaparecer. recomputeMovilAndCapEntrega garantiza este orden:
+    //    primero actualiza `capacidad`, luego sincroniza zonas_cap_entrega.
+    //    Usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.
+    const uniqueMovilNros = [...new Set(
+      rows
+        .map((r) => parseInt(r.movil_id, 10))
+        .filter((n) => Number.isFinite(n) && n !== 0),
+    )];
+
+    if (uniqueMovilNros.length > 0) {
+      console.log(`[zonas-cap-entrega] trigger=POST moviles-zonas — moviles a recomputar: ${uniqueMovilNros.join(', ')}`);
+      for (const nro of uniqueMovilNros) {
+        try {
+          await recomputeMovilAndCapEntrega(supabase as any, nro);
+          console.log(
+            `[zonas-cap-entrega] trigger=POST moviles-zonas movilNro=${nro} → recompute+sync OK`,
+          );
+        } catch (err) {
+          console.error(`⚠️ [zonas-cap-entrega] trigger=POST moviles-zonas falló recompute para movil ${nro}:`, err);
+          // best-effort: no aborta el response principal
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,

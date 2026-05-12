@@ -1,4 +1,4 @@
-// Tipos generados automáticamente basados en las tablas de Supabase
+// Tipos generados automaticamente basados en las tablas de Supabase
 
 export type Json =
   | string
@@ -42,6 +42,10 @@ export interface Database {
           pto_vta_lng: number | null
           created_at: string | null
           updated_at: string | null
+          // Contadores de carga en tiempo real (migration 2026-05-12)
+          cant_ped: number
+          cant_serv: number
+          capacidad: number
         }
         Insert: {
           id: string
@@ -73,6 +77,9 @@ export interface Database {
           pto_vta_lng?: number | null
           created_at?: string | null
           updated_at?: string | null
+          cant_ped?: number
+          cant_serv?: number
+          capacidad?: number
         }
         Update: {
           id?: string
@@ -104,6 +111,9 @@ export interface Database {
           pto_vta_lng?: number | null
           created_at?: string | null
           updated_at?: string | null
+          cant_ped?: number
+          cant_serv?: number
+          capacidad?: number
         }
       }
       pedidos: {
@@ -737,6 +747,128 @@ export interface Database {
           fecha_hora?: string
           created_at?: string | null
           updated_at?: string | null
+        }
+      }
+      escenario_settings: {
+        Row: {
+          escenario_id: number
+          pedidos_sa_minutos_antes: number | null
+          aplica_serv_nocturno: boolean | null
+          hora_ini_nocturno: string | null
+          hora_fin_nocturno: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          escenario_id: number
+          pedidos_sa_minutos_antes?: number | null
+          aplica_serv_nocturno?: boolean | null
+          hora_ini_nocturno?: string | null
+          hora_fin_nocturno?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          escenario_id?: number
+          pedidos_sa_minutos_antes?: number | null
+          aplica_serv_nocturno?: boolean | null
+          hora_ini_nocturno?: string | null
+          hora_fin_nocturno?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      login_attempts: {
+        Row: {
+          id: number
+          ts: string
+          escenario_id: number | null
+          username: string
+          ip: string
+          user_agent: string | null
+          estado: 'success' | 'fail' | 'blocked_user' | 'blocked_ip' | 'user_eq_pass'
+          blocked_until: string | null
+          whitelisted: boolean
+          extra: Json | null
+        }
+        Insert: {
+          id?: never
+          ts?: string
+          escenario_id?: number | null
+          username: string
+          ip: string
+          user_agent?: string | null
+          estado: 'success' | 'fail' | 'blocked_user' | 'blocked_ip' | 'user_eq_pass'
+          blocked_until?: string | null
+          whitelisted?: boolean
+          extra?: Json | null
+        }
+        Update: {
+          id?: never
+          ts?: string
+          escenario_id?: number | null
+          username?: string
+          ip?: string
+          user_agent?: string | null
+          estado?: 'success' | 'fail' | 'blocked_user' | 'blocked_ip' | 'user_eq_pass'
+          blocked_until?: string | null
+          whitelisted?: boolean
+          extra?: Json | null
+        }
+      }
+      login_blocks: {
+        Row: {
+          id: number
+          block_type: 'user' | 'ip'
+          key: string
+          blocked_until: string
+          created_at: string
+          reason: string | null
+        }
+        Insert: {
+          id?: never
+          block_type: 'user' | 'ip'
+          key: string
+          blocked_until: string
+          created_at?: string
+          reason?: string | null
+        }
+        Update: {
+          id?: never
+          block_type?: 'user' | 'ip'
+          key?: string
+          blocked_until?: string
+          created_at?: string
+          reason?: string | null
+        }
+      }
+      zonas_cap_entrega: {
+        Row: {
+          escenario: number
+          zona: number
+          tipo_servicio: string
+          movil: number
+          emp_fletera_id: number
+          lote_disponible: number
+          updated_at: string
+        }
+        Insert: {
+          escenario: number
+          zona: number
+          tipo_servicio: string
+          movil: number
+          emp_fletera_id: number
+          lote_disponible: number
+          updated_at?: string
+        }
+        Update: {
+          escenario?: number
+          zona?: number
+          tipo_servicio?: string
+          movil?: number
+          emp_fletera_id?: number
+          lote_disponible?: number
+          updated_at?: string
         }
       }
     }

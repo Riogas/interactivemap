@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
@@ -31,6 +31,7 @@ import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from '.
 import ZonasActivasLayer from './ZonasActivasLayer';
 import SaturacionZonasLayer, { SaturacionZonaData, SaturacionZonaStats } from './SaturacionZonasLayer';
 import dynamic from 'next/dynamic';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import './DataViewControl.css';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
@@ -103,6 +104,10 @@ interface MapViewProps {
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
   pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
   onPedidosZonaFilterChange?: (f: PedidosZonaFilter) => void;
+  /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
+  serverNow?: Date;
+  /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
+  minutosAntesSa?: number | null;
   hideSinAsignarOption?: boolean; // Si true, oculta opción "Sin asignar" del select pedidos/zona (distribuidor)
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
@@ -128,6 +133,40 @@ interface MapViewProps {
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
   allMovilEstados?: Map<string, number>; // Mapa completo movil_nro → estadoNro (todos los moviles)
   allHiddenMovilIds?: Set<string>; // IDs de móviles ocultos-pero-operativos (capa móviles-zonas los excluye)
+  /** Usuario autenticado — usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
+  user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>; allowedEmpresas?: number[] | null } | null;
+  /** Callback invocado en moveend/zoomend para capturar el estado del mapa (view-state). */
+  onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
+}
+
+
+// ---------------------------------------------------------------------------
+// MapStateCapture: captura center/zoom/bounds en moveend/zoomend
+// ---------------------------------------------------------------------------
+interface MapStateCaptureProps {
+  onMapStateChange: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
+}
+
+function MapStateCapture({ onMapStateChange }: MapStateCaptureProps) {
+  const cbRef = React.useRef(onMapStateChange);
+  cbRef.current = onMapStateChange;
+  useMapEvents({
+    moveend(e) {
+      const map = e.target;
+      const c = map.getCenter();
+      const z = map.getZoom();
+      const b = map.getBounds();
+      cbRef.current({ center: [c.lat, c.lng], zoom: z, bounds: [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]] });
+    },
+    zoomend(e) {
+      const map = e.target;
+      const c = map.getCenter();
+      const z = map.getZoom();
+      const b = map.getBounds();
+      cbRef.current({ center: [c.lat, c.lng], zoom: z, bounds: [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]] });
+    },
+  });
+  return null;
 }
 
 function MapUpdater({
@@ -646,6 +685,10 @@ const MapView = memo(function MapView({
   onZonaClick,
   allMovilEstados = new Map(),
   allHiddenMovilIds,
+  user,
+  serverNow = new Date(),
+  minutosAntesSa = null,
+  onMapStateChange,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2196,7 +2239,7 @@ const MapView = memo(function MapView({
 
         {/* 🟥 Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
         {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <SaturacionZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} />
+          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
@@ -2845,7 +2888,11 @@ const MapView = memo(function MapView({
         
         {/* Marcadores de Pedidos desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
         {(() => {
-          const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud);
+          const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud).filter(p =>
+            (!p.movil || Number(p.movil) === 0)
+              ? isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)
+              : true
+          );
           if (!pedidosFiltrados?.length) return null;
           
           const pedidoMarkers = pedidosFiltrados.map(pedido => {
@@ -2896,7 +2943,11 @@ const MapView = memo(function MapView({
 
         {/* Marcadores de Services desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
         {(() => {
-          const servicesFiltrados = services && services.filter(s => s.latitud && s.longitud);
+          const servicesFiltrados = services && services.filter(s => s.latitud && s.longitud).filter(s =>
+            (!s.movil || Number(s.movil) === 0)
+              ? isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)
+              : true
+          );
           if (!servicesFiltrados?.length) return null;
           
           const serviceMarkers = servicesFiltrados.map(service => {
@@ -3074,6 +3125,7 @@ const MapView = memo(function MapView({
 
         {/* Herramienta de medición de distancia (clic derecho) */}
         <DistanceMeasurement />
+        {onMapStateChange && <MapStateCapture onMapStateChange={onMapStateChange} />}
       </MapContainer>
       
       {/* Control de animación (solo visible cuando hay un móvil seleccionado con historial) */}

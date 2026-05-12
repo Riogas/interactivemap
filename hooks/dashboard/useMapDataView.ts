@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { EmpresaFleteraSupabase } from '@/types';
+import { determineServicePeriod } from '@/lib/horario-servicio';
 
 interface MapDataViewOptions {
   dataViewMode: string;
@@ -12,11 +13,23 @@ interface MapDataViewOptions {
   scopedZonaIds?: Set<number> | null;
   /** Si null → sin scope. Si array → se pasa como ?empresaIds=... a las APIs. */
   scopedEmpresas?: number[] | null;
+  /**
+   * Hora actual del servidor (de useServerTime).
+   * Se usa para calcular el periodo diurno/nocturno activo y detectar transiciones.
+   */
+  serverNow: Date;
+  /**
+   * Si el escenario cubre servicio nocturno.
+   * false = movilesZonasServiceFilter siempre arranca y se mantiene en 'URGENTE'.
+   * true = cambia automaticamente segun horario (default conservativo).
+   */
+  aplicaNocturno: boolean;
 }
 
 /**
- * Hook que maneja la Capas de Información del mapa (Normal / Demoras / Móviles en Zonas / Zonas Activas).
- * Incluye: estado de zonas, demoras, móviles-zonas, polling automático de datos.
+ * Hook que maneja la Capas de Informacion del mapa (Normal / Demoras / Moviles en Zonas / Zonas Activas).
+ * Incluye: estado de zonas, demoras, moviles-zonas, polling automatico de datos,
+ * y calculo automatico del periodo de servicio activo segun horario del servidor.
  */
 export function useMapDataView({
   dataViewMode,
@@ -27,13 +40,24 @@ export function useMapDataView({
   updatePreference,
   scopedZonaIds = null,
   scopedEmpresas = null,
+  serverNow,
+  aplicaNocturno,
 }: MapDataViewOptions) {
   const [showZonas, setShowZonas] = useState(false);
   const [zonasData, setZonasData] = useState<any[]>([]);
   const [allZonasData, setAllZonasData] = useState<any[]>([]);
   const [demorasData, setDemorasData] = useState<Map<number, { minutos: number; activa: boolean }>>(new Map());
   const [movilesZonasData, setMovilesZonasData] = useState<any[]>([]);
-  const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<string>('URGENTE');
+
+  // Inicializacion lazy: calcula el periodo correcto desde el primer render
+  // usando serverNow y aplicaNocturno (evita flicker de URGENTE -> NOCTURNO).
+  const [movilesZonasServiceFilter, setMovilesZonasServiceFilter] = useState<string>(() =>
+    determineServicePeriod(serverNow, aplicaNocturno)
+  );
+
+  // Ref para trackear el ultimo periodo conocido sin causar re-renders.
+  // Se inicializa con el mismo valor que el estado para consistencia.
+  const lastKnownPeriodRef = useRef<string>(determineServicePeriod(serverNow, aplicaNocturno));
 
   // Refs para leer los valores de polling sin reiniciar el intervalo cuando cambian
   const demorasPollingRef = useRef(demorasPollingSeconds);
@@ -41,7 +65,21 @@ export function useMapDataView({
   useEffect(() => { demorasPollingRef.current = demorasPollingSeconds; }, [demorasPollingSeconds]);
   useEffect(() => { movilesZonasPollingRef.current = movilesZonasPollingSeconds; }, [movilesZonasPollingSeconds]);
 
-  // Escenarios únicos derivados de las empresas seleccionadas
+  // Deteccion de transicion horaria.
+  // Corre cada vez que serverNow cambia (tick 1s de useServerTime).
+  // Solo actua cuando el periodo activo es diferente al ultimo conocido.
+  // La seleccion manual del usuario (ej: 'SERVICE') se respeta dentro del mismo periodo
+  // y se pisa al cruzar la transicion.
+  useEffect(() => {
+    if (!aplicaNocturno) return; // escenario sin nocturno — nada que detectar
+    const currentPeriod = determineServicePeriod(serverNow, aplicaNocturno);
+    if (currentPeriod !== lastKnownPeriodRef.current) {
+      lastKnownPeriodRef.current = currentPeriod;
+      setMovilesZonasServiceFilter(currentPeriod);
+    }
+  }, [serverNow, aplicaNocturno]);
+
+  // Escenarios unicos derivados de las empresas seleccionadas
   const uniqueEscenarios = useMemo(() => {
     return [...new Set(
       empresas
@@ -57,7 +95,7 @@ export function useMapDataView({
     }
   }, [dataViewMode]);
 
-  // Handler para cambios de Capas de Información
+  // Handler para cambios de Capas de Informacion
   const handleDataViewChange = useCallback((mode: 'normal' | 'distribucion' | 'demoras' | 'moviles-zonas' | 'zonas-activas' | 'pedidos-zona' | 'saturacion') => {
     updatePreference('dataViewMode', mode);
     if (mode !== 'normal') {
@@ -65,7 +103,7 @@ export function useMapDataView({
     } else {
       setShowZonas(false);
     }
-    // En moviles-zonas, ocultar pedidos y servicios para mostrar solo móviles
+    // En moviles-zonas, ocultar pedidos y servicios para mostrar solo moviles
     if (mode === 'moviles-zonas') {
       updatePreference('pedidosVisible', false);
       updatePreference('servicesVisible', false);
@@ -89,7 +127,7 @@ export function useMapDataView({
       setZonasData([]);
       return;
     }
-    // Fail-closed: si hay scope con set vacío, no cargar nada
+    // Fail-closed: si hay scope con set vacio, no cargar nada
     if (scopedZonaIds && scopedZonaIds.size === 0) {
       setZonasData([]);
       return;
@@ -109,11 +147,11 @@ export function useMapDataView({
               uniqueEscenarios.includes(z.escenario_id) &&
               (scopedZonaIds == null || scopedZonaIds.has(z.zona_id))
           );
-          console.log(`🗺️ ${zonasFiltradas.length} zonas activas para escenarios [${uniqueEscenarios.join(', ')}]`);
+          console.log(`${zonasFiltradas.length} zonas activas para escenarios [${uniqueEscenarios.join(', ')}]`);
           setZonasData(zonasFiltradas);
         }
       } catch (err) {
-        console.error('❌ Error loading zonas:', err);
+        console.error('Error loading zonas:', err);
       }
     };
     loadZonas();
@@ -123,7 +161,7 @@ export function useMapDataView({
   // Clave estable basada en el contenido de escenarios (evita resets del intervalo por nueva referencia de array)
   const uniqueEscenariosKey = uniqueEscenarios.join(',');
 
-  // Cargar datos de vista (demoras / móviles en zonas) con polling automático.
+  // Cargar datos de vista (demoras / moviles en zonas) con polling automatico.
   // Los valores de polling se leen via ref para no reiniciar el intervalo cuando el usuario
   // ajusta los segundos en Preferencias.
   useEffect(() => {
@@ -136,7 +174,7 @@ export function useMapDataView({
 
     if (uniqueEscenarios.length === 0) return;
 
-    // Fail-closed: si hay scope con set vacío, no cargar nada de la vista activa
+    // Fail-closed: si hay scope con set vacio, no cargar nada de la vista activa
     if (scopedZonaIds && scopedZonaIds.size === 0) {
       setAllZonasData([]);
       setDemorasData(new Map());
@@ -149,7 +187,7 @@ export function useMapDataView({
       : '';
 
     // Zonas GeoJSON se carga una sola vez al entrar a la vista (no en cada tick de polling)
-    // porque el GeoJSON de zonas casi nunca cambia en el día.
+    // porque el GeoJSON de zonas casi nunca cambia en el dia.
     const loadZonasGeojson = async () => {
       try {
         const zonasRes = await fetch(`/api/zonas${empresaIdsParam}`);
@@ -161,23 +199,23 @@ export function useMapDataView({
               z.geojson &&
               (scopedZonaIds == null || scopedZonaIds.has(z.zona_id))
           );
-          console.log(`📊 ${zonasFiltradas.length} zonas con geojson cargadas (una vez)`);
+          console.log(`${zonasFiltradas.length} zonas con geojson cargadas (una vez)`);
           setAllZonasData(zonasFiltradas);
         }
       } catch (err) {
-        console.error('❌ Error loading zonas geojson:', err);
+        console.error('Error loading zonas geojson:', err);
       }
     };
     loadZonasGeojson();
 
-    // Sólo los datos dinámicos (demoras / moviles-zonas) se recargan en cada tick
+    // Solo los datos dinamicos (demoras / moviles-zonas) se recargan en cada tick
     const loadDataView = async () => {
       try {
-        console.log(`📊 Polling "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
+        console.log(`Polling "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
 
         // Demoras: requerido por TODAS las capas que muestran zonas inactivas
         // como transparente+punteado (todas excepto 'distribucion'). Sin esto,
-        // al pasar de normal → saturación las zonas inactivas se ven rellenas.
+        // al pasar de normal → saturacion las zonas inactivas se ven rellenas.
         if (dataViewMode !== 'distribucion') {
           const demorasRes = await fetch(`/api/demoras${empresaIdsParam}`);
           const demorasResult = await demorasRes.json();
@@ -191,12 +229,12 @@ export function useMapDataView({
                 dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
               }
             }
-            console.log(`📊 ${dMap.size} demoras actualizadas`);
+            console.log(`${dMap.size} demoras actualizadas`);
             setDemorasData(dMap);
           }
         }
 
-        // Móviles en Zonas o Saturación
+        // Moviles en Zonas o Saturacion
         if (dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion') {
           const mzRes = await fetch(`/api/moviles-zonas${empresaIdsParam}`);
           const mzResult = await mzRes.json();
@@ -208,14 +246,14 @@ export function useMapDataView({
           }
         }
       } catch (err) {
-        console.error('❌ Error loading data view:', err);
+        console.error('Error loading data view:', err);
       }
     };
 
     // Carga inicial inmediata
     loadDataView();
 
-    // Polling: intervalo según vista activa, leído desde ref para no reiniciar si cambian las prefs
+    // Polling: intervalo segun vista activa, leido desde ref para no reiniciar si cambian las prefs
     const getIntervalMs = () => {
       if (dataViewMode === 'demoras' || dataViewMode === 'zonas-activas') {
         return demorasPollingRef.current * 1000;
@@ -230,14 +268,14 @@ export function useMapDataView({
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
     if (intervalMs > 0) {
-      console.log(`🔄 Polling activado para "${dataViewMode}" cada ${intervalMs / 1000}s`);
+      console.log(`Polling activado para "${dataViewMode}" cada ${intervalMs / 1000}s`);
       intervalId = setInterval(loadDataView, intervalMs);
     }
 
     // Reactivar polling al volver al foco (evita que RD/tab en segundo plano lo suspenda)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('👁️ Tab visible — refetch inmediato y reinicio de polling');
+        console.log('Tab visible — refetch inmediato y reinicio de polling');
         loadDataView();
         if (intervalId) clearInterval(intervalId);
         const ms = getIntervalMs();
@@ -248,7 +286,7 @@ export function useMapDataView({
 
     return () => {
       if (intervalId) {
-        console.log(`🔄 Polling desactivado para "${dataViewMode}"`);
+        console.log(`Polling desactivado para "${dataViewMode}"`);
         clearInterval(intervalId);
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);

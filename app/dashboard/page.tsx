@@ -6,6 +6,7 @@ import { motion, MotionConfig } from 'framer-motion';
 import { MovilData, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters, PedidoFilters, ServiceFilters } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import RealtimeHealthBanner from '@/components/ui/RealtimeHealthBanner';
+import UserEqPassBanner from '@/components/ui/UserEqPassBanner';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
 import { IncidentRecorderButton } from '@/components/IncidentRecorderButton';
@@ -39,7 +40,12 @@ import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
 import { todayMontevideo } from '@/lib/date-utils';
+import { useServerTime } from '@/hooks/useServerTime';
+import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
+import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import { reportDrift, LastSyncState } from '@/lib/realtime-drift';
+import type { ModalSnapshot } from '@/lib/view-state';
+import { useViewStateSync } from '@/hooks/dashboard/useViewStateSync';
 
 const DEBUG = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1';
 const dbg = (...args: any[]) => { if (DEBUG) console.log(...args); };
@@ -60,6 +66,11 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
 function DashboardContent() {
   // Hook de autenticación (para obtener empresas permitidas y escenario)
   const { user, escenarioId, hasPermiso } = useAuth();
+  const { serverNow } = useServerTime();
+  const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
+  const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
+  // Si el escenario cubre servicio nocturno. Default true (conservativo mientras cargan los settings).
+  const aplicaNocturno = escenarioSettings?.aplicaServNocturno ?? true;
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
   const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect, setOnMovilEvent } = useRealtime();
@@ -145,6 +156,7 @@ function DashboardContent() {
   const [isMovilesSinReportarOpen, setIsMovilesSinReportarOpen] = useState(false);
   const [isZonasNoActivasOpen, setIsZonasNoActivasOpen] = useState(false);
   const [saturacionModalZonaId, setSaturacionModalZonaId] = useState<number | null>(null);
+
 
   // Mapa completo movil_nro → estadoNro (para todos los moviles, no solo los con GPS)
   const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
@@ -249,6 +261,8 @@ function DashboardContent() {
     updatePreference,
     scopedZonaIds,
     scopedEmpresas,
+    serverNow,
+    aplicaNocturno,
   });
 
   // Determina si hay que ocultar pedidos/services "sin asignar" (sin móvil).
@@ -301,6 +315,95 @@ function DashboardContent() {
   const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'atrasados'>('pendientes');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>(defaultServicesFilters);
   const [servicesResetToken, setServicesResetToken] = useState(0);
+  // ---------------------------------------------------------------------------
+  // View-state sync — preserva y restaura el estado visual a través de auto-reloads
+  // ---------------------------------------------------------------------------
+  // La modal snapshot se construye aqui (calculada antes de llamar al hook).
+  // Como los estados modales aún no cambiaron en esta render, refleja el estado actual.
+  const modalSnapshot: ModalSnapshot = (() => {
+    if (saturacionModalZonaId !== null) return { type: 'saturacion', entityId: saturacionModalZonaId };
+    if (popupPedido !== undefined) return { type: 'pedidoPopup', entityId: popupPedido };
+    if (popupService !== undefined) return { type: 'servicePopup', entityId: popupService };
+    if (popupMovil !== undefined) return { type: 'movilPopup', entityId: popupMovil };
+    if (isPedidosTableOpen) return { type: 'pedidosTable' };
+    if (isServicesTableOpen) return { type: 'servicesTable' };
+    if (isZonaEstadisticasOpen) return { type: 'zonaEstadisticas' };
+    if (zonaViewModalOpen) return { type: 'zonaView', entityId: zonaViewModalZonaId };
+    if (isTrackingModalOpen) return { type: 'tracking' };
+    if (isLeaderboardOpen) return { type: 'leaderboard' };
+    if (isFleterasZonasOpen) return { type: 'fleterasZonas' };
+    if (isZonasSinMovilOpen) return { type: 'zonasSinMovil' };
+    if (isMovilesSinReportarOpen) return { type: 'movilesSinReportar' };
+    if (isZonasNoActivasOpen) return { type: 'zonasNoActivas' };
+    return null;
+  })();
+
+  const { hydration, mapStateRef, panelRefs } = useViewStateSync({
+    selectedMoviles,
+    selectedEmpresas,
+    showPendientes,
+    showCompletados,
+    pedidosZonaFilter,
+    movilesZonasServiceFilter,
+    modal: modalSnapshot,
+  });
+
+  // Aplicar hydration una sola vez al montar (si vinimos de un auto-reload de realtime)
+  const hydrationAppliedRef = useRef(false);
+  useEffect(() => {
+    if (hydrationAppliedRef.current) return;
+    if (!hydration) return;
+    hydrationAppliedRef.current = true;
+
+    if (hydration.selectedMoviles !== null && hydration.selectedMoviles.length > 0) {
+      setSelectedMoviles(hydration.selectedMoviles);
+      userExplicitlyCleared.current = true; // tratar como selección custom — no auto-sobreescribir
+    }
+    if (hydration.selectedEmpresas !== null && hydration.selectedEmpresas.length > 0) {
+      setSelectedEmpresas(hydration.selectedEmpresas);
+    }
+    if (hydration.showPendientes !== null) setShowPendientes(hydration.showPendientes);
+    if (hydration.showCompletados !== null) setShowCompletados(hydration.showCompletados);
+    if (hydration.pedidosZonaFilter !== null) setPedidosZonaFilter(hydration.pedidosZonaFilter);
+    if (hydration.movilesZonasServiceFilter !== null) setMovilesZonasServiceFilter(hydration.movilesZonasServiceFilter);
+
+    // Modales: abrir el modal correspondiente
+    const m = hydration.modal;
+    if (m) {
+      if (m.type === 'saturacion' && 'entityId' in m) setSaturacionModalZonaId(m.entityId);
+      else if (m.type === 'pedidoPopup' && 'entityId' in m) setPopupPedido(m.entityId);
+      else if (m.type === 'servicePopup' && 'entityId' in m) setPopupService(m.entityId);
+      else if (m.type === 'movilPopup' && 'entityId' in m) setPopupMovil(m.entityId);
+      else if (m.type === 'pedidosTable') setIsPedidosTableOpen(true);
+      else if (m.type === 'servicesTable') setIsServicesTableOpen(true);
+      else if (m.type === 'zonaEstadisticas') setIsZonaEstadisticasOpen(true);
+      else if (m.type === 'zonaView') { setZonaViewModalOpen(true); if ('entityId' in m && m.entityId !== null) openZonaView(m.entityId); }
+      else if (m.type === 'tracking') setIsTrackingModalOpen(true);
+      else if (m.type === 'leaderboard') setIsLeaderboardOpen(true);
+      else if (m.type === 'fleterasZonas') setIsFleterasZonasOpen(true);
+      else if (m.type === 'zonasSinMovil') setIsZonasSinMovilOpen(true);
+      else if (m.type === 'movilesSinReportar') setIsMovilesSinReportarOpen(true);
+      else if (m.type === 'zonasNoActivas') setIsZonasNoActivasOpen(true);
+    }
+
+    // Scrolls de paneles — aplicar después de que el DOM renderice
+    if (hydration.panelScrolls) {
+      const { pedidos: pScroll, moviles: mScroll, empresas: eScroll } = hydration.panelScrolls;
+      requestAnimationFrame(() => {
+        if (panelRefs.pedidos.current) panelRefs.pedidos.current.scrollTop = pScroll;
+        if (panelRefs.moviles.current) panelRefs.moviles.current.scrollTop = mScroll;
+        if (panelRefs.empresas.current) panelRefs.empresas.current.scrollTop = eScroll;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo al montar — hydration es estable (ref interno)
+
+  // Callback estable para capturar el estado del mapa en cada moveend/zoomend
+  const handleMapStateChange = useCallback((s: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => {
+    mapStateRef.current = s;
+  }, [mapStateRef]);
+
+
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
   
@@ -451,6 +554,7 @@ function DashboardContent() {
           descripcion: string;
           estadoDesc: string;
           estadoNro: number | null;
+          capacidad: number;
         }
 
         // Mapear por ID (que es TEXT), no por nro
@@ -481,6 +585,7 @@ function DashboardContent() {
               matricula: extendedData.matricula,
               estadoDesc: extendedData.estadoDesc,
               estadoNro: extendedData.estadoNro ?? undefined,
+              capacidad: extendedData.capacidad ?? 0,
               color: calculatedColor,
             };
           }
@@ -1141,15 +1246,17 @@ function DashboardContent() {
         // por ejemplo 0→5) se refleje al instante en el filtro client-side
         // del colapsable, sin esperar al próximo enrich.
         const nextEstado = (latestMovil as any).estado_nro;
+        const nextCapacidad = (latestMovil as any).capacidad;
         if (
           nextEstado === existingMovil.estadoNro &&
-          movilEmpresaId === existingMovil.empresaFleteraId
+          movilEmpresaId === existingMovil.empresaFleteraId &&
+          (nextCapacidad == null || nextCapacidad === existingMovil.capacidad)
         ) {
           console.log(`ℹ️ Móvil ${movilId} sin cambios relevantes, ignorando`);
           return prevMoviles;
         }
         console.log(
-          `🔄 Móvil ${movilId} ya existe — mergeando estadoNro=${nextEstado}, empresa=${movilEmpresaId}`,
+          `🔄 Móvil ${movilId} ya existe — mergeando estadoNro=${nextEstado}, empresa=${movilEmpresaId}, capacidad=${nextCapacidad}`,
         );
         return prevMoviles.map(m =>
           m.id === movilId
@@ -1157,6 +1264,7 @@ function DashboardContent() {
                 ...m,
                 estadoNro: nextEstado != null ? nextEstado : m.estadoNro,
                 empresaFleteraId: movilEmpresaId ?? m.empresaFleteraId,
+                ...(nextCapacidad != null ? { capacidad: nextCapacidad } : {}),
               }
             : m,
         );
@@ -1828,6 +1936,8 @@ function DashboardContent() {
       if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
       // sin asignar = estado 1 sin movil asignado
       if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
+      // SA fuera de ventana temporal: excluir de todo computo (no solo visibilidad).
+      if (pedidosZonaFilter === 'sin_asignar' && serverNow && !isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)) return;
       // atrasados = estado 1 con atraso confirmado (muy atrasado + atrasado)
       if (pedidosZonaFilter === 'atrasados') {
         if (estado !== 1) return;
@@ -1841,7 +1951,7 @@ function DashboardContent() {
       map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted, serverNow, minutosAntesSa]);
 
   // Distribuidor: si por alguna razón el filtro pedidos/zona quedó en 'sin_asignar'
   // (ej. estado persistido), forzarlo a 'pendientes' — ese filtro no aplica.
@@ -1928,6 +2038,7 @@ function DashboardContent() {
         servicesCompletos.forEach(s => {
           if (Number(s.estado_nro) !== 1) return;
           if (s.movil != null && Number(s.movil) !== 0) return;
+          if (!isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)) return;
           const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
           if (!zona || zona === 0) return;
           if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
@@ -1940,6 +2051,7 @@ function DashboardContent() {
         pedidosCompletos.forEach(p => {
           if (Number(p.estado_nro) !== 1) return;
           if (p.movil != null && Number(p.movil) !== 0) return;
+          if (!isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)) return;
           const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
           if (!zona || zona === 0) return;
           if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
@@ -1953,7 +2065,7 @@ function DashboardContent() {
     // No-op si !canSeeUnassignedInCapEntrega: sinAsignar queda en 0 (no privilegiado)
 
     return stats;
-  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds, canSeeUnassignedInCapEntrega, demorasData]);
+  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds, canSeeUnassignedInCapEntrega, demorasData, serverNow, minutosAntesSa]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
   // para el mapa. Sin esto, cada llamada inline crea un nuevo array → downstream re-renders.
 
@@ -2219,6 +2331,7 @@ function DashboardContent() {
   return (
     <MotionConfig reducedMotion={preferences.lightMode ? 'always' : 'user'}>
     <RealtimeHealthBanner />
+    <UserEqPassBanner />
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 relative">
       {/* Navbar Simple - Solo logo y espacio para indicadores */}
       <div className="flex-shrink-0">
@@ -2251,6 +2364,8 @@ function DashboardContent() {
             onZonasSinMovilClick={onZonasSinMovilClick}
             onMovilesSinReportarClick={onMovilesSinReportarClick}
             onZonasNoActivasClick={onZonasNoActivasClick}
+            serverNow={serverNow}
+            minutosAntesSa={minutosAntesSa}
           />
         </NavbarSimple>
       </div>
@@ -2435,6 +2550,8 @@ function DashboardContent() {
         privilegedUser={isPrivilegedUser}
         onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[], tipoServicio: f.tipoServicio }))}
         externalResetToken={pedidosResetToken}
+        serverNow={serverNow}
+        minutosAntesSa={minutosAntesSa}
       />
 
       {/* Modal de Vista Extendida de Services */}
@@ -2461,6 +2578,8 @@ function DashboardContent() {
         privilegedUser={isPrivilegedUser}
         onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, defecto: f.defecto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
         externalResetToken={servicesResetToken}
+        serverNow={serverNow}
+        minutosAntesSa={minutosAntesSa}
       />
       <OsmImportModal
         isOpen={isOsmImportOpen}
@@ -2514,7 +2633,9 @@ function DashboardContent() {
               .filter(s =>
                 Number(s.estado_nro) === 1 &&
                 (s.movil == null || Number(s.movil) === 0) &&
-                Number(s.zona_nro) === saturacionModalZonaId,
+                Number(s.zona_nro) === saturacionModalZonaId &&
+                // SA fuera de ventana temporal: excluir de TODO computo.
+                (!serverNow || isWithinSaWindow(s.fch_hora_para ?? null, serverNow, minutosAntesSa)),
               )
               .map(s => ({
                 id: s.id,
@@ -2529,7 +2650,9 @@ function DashboardContent() {
               .filter(p =>
                 Number(p.estado_nro) === 1 &&
                 (p.movil == null || Number(p.movil) === 0) &&
-                Number(p.zona_nro) === saturacionModalZonaId,
+                Number(p.zona_nro) === saturacionModalZonaId &&
+                // SA fuera de ventana temporal: excluir de TODO computo.
+                (!serverNow || isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)),
               )
               .map(p => ({
                 id: p.id,
@@ -2618,6 +2741,8 @@ function DashboardContent() {
         scopedZonaIds={scopedZonaIds}
         scopedEmpresas={scopedEmpresas}
         scope={scope}
+        serverNow={serverNow}
+        minutosAntesSa={minutosAntesSa}
         onZonaClick={(zonaId, svcFilter) => {
           setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);
@@ -2763,6 +2888,8 @@ function DashboardContent() {
                         ? 60
                         : preferences.realtimePollingReconcileSeconds
                   }
+                  serverNow={serverNow}
+                  minutosAntesSa={minutosAntesSa}
                 />
               </div>
             </motion.div>
@@ -2983,6 +3110,10 @@ function DashboardContent() {
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
                 onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : dataViewMode === 'saturacion' ? setSaturacionModalZonaId : undefined}
+                serverNow={serverNow}
+                minutosAntesSa={minutosAntesSa}
+                user={user}
+                onMapStateChange={handleMapStateChange}
               />
             </motion.div>
           </>
