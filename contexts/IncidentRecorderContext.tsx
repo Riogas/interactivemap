@@ -111,6 +111,21 @@ async function parseIncidentResponse(res: Response): Promise<{ success: boolean;
   }
 }
 
+/**
+ * Detecta Firefox por user-agent. Es la unica heuristica confiable cliente:
+ * Firefox es el unico navegador mayor que pone "Firefox/" en su UA (Chrome
+ * pone "Chrome/" pero no "Firefox/"; Safari/Edge tampoco).
+ *
+ * Por que se bloquea Firefox: la captura de pantalla via getDisplayMedia +
+ * MediaRecorder tiene bugs persistentes en Firefox (audio de display
+ * inconsistente, dataavailable/onstop con timing impredecible, chunks
+ * vacios en grabaciones cortas). En Chrome funciona estable.
+ */
+function isFirefoxBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Firefox\//.test(navigator.userAgent);
+}
+
 export function IncidentRecorderProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [state, setState] = useState<RecorderState>('idle');
@@ -119,6 +134,7 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingDurationS, setPendingDurationS] = useState(0);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const [browserBlocked, setBrowserBlocked] = useState(false);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -224,6 +240,15 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
 
   const start = useCallback(async () => {
     if (state !== 'idle') return;
+
+    // Firefox: bloqueado explicitamente — mostrar modal de "solo Chrome" y NO
+    // ejecutar nada (no getDisplayMedia, no MediaRecorder, no permisos).
+    // Ver isFirefoxBrowser() arriba para el porque.
+    if (isFirefoxBrowser()) {
+      setBrowserBlocked(true);
+      return;
+    }
+
     if (!available) {
       setToast({ type: 'err', msg: 'Tu navegador no soporta grabación de pantalla.' });
       return;
@@ -409,6 +434,48 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
     <RecorderContext.Provider value={{ state, seconds, start, stop, available }}>
       {children}
       {/* Modales renderizados al final del body via portal implícito (el root layout ya garantiza z-index alto) */}
+      {browserBlocked && (
+        <div
+          className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="incident-browser-blocked-title"
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-amber-50 to-white flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <div>
+                <h2 id="incident-browser-blocked-title" className="text-base font-bold text-slate-800">Navegador no compatible</h2>
+                <p className="text-xs text-slate-500">Reportar incidencia</p>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-700 leading-relaxed">
+                Funcionalidad disponible únicamente en Google Chrome.
+              </p>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                La grabación de pantalla no funciona de forma confiable en Firefox. Abrí esta página en Chrome para reportar una incidencia.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+              <button
+                onClick={() => setBrowserBlocked(false)}
+                className="px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-semibold rounded-lg shadow-lg shadow-blue-500/20 transition"
+                autoFocus
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {state === 'confirming' && pendingBlob && (
         <div
           className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
