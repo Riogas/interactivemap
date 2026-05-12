@@ -379,6 +379,7 @@ export async function runLoginSecurity(
       upstreamResult = await upstreamFn(body);
     } catch (error) {
       // Paso 8: Error de red/timeout
+      console.error('[login-security] upstreamFn threw:', error);
       await recordLoginAttempt({
         username: UserName,
         ip,
