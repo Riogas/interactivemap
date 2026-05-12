@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, getServerSupabaseClient } from '@/lib/supabase';
 import { successResponse, errorResponse, logRequest } from '@/lib/api-response';
 import { requireApiKey } from '@/lib/auth-middleware';
 import {
@@ -210,6 +210,38 @@ async function maybeAutocreateGpsForToday(
 }
 
 /**
+ * Recomputa contadores cant_ped/cant_serv/capacidad para los móviles de un array
+ * de registros de la tabla moviles (usa campo `nro`). Best-effort — errores no abortan.
+ *
+ * IMPORTANTE: usa el cliente de servidor (service role) para bypassear RLS en
+ * el UPDATE de la tabla moviles. El cliente anon puede fallar silenciosamente.
+ */
+async function recomputeCountersForMoviles(
+  records: any[],
+  trigger: string,
+): Promise<void> {
+  if (!records || records.length === 0) return;
+  const serverClient = getServerSupabaseClient();
+  const movilNros = [...new Set(
+    records.map((m: any) => m.nro).filter((nro: any) => nro != null && nro !== 0),
+  )];
+  importLog(`[recompute] trigger=${trigger} — moviles a recomputar: ${movilNros.join(', ')}`);
+  for (const nro of movilNros) {
+    try {
+      const result = await recomputeMovilCounters(serverClient as any, nro);
+      if (result) {
+        importLog(
+          `[recompute] trigger=${trigger} movilNro=${result.movilNro} → cant_ped=${result.cant_ped} cant_serv=${result.cant_serv} capacidad=${result.capacidad}`,
+        );
+      }
+    } catch (err) {
+      importError(`[recompute] trigger=${trigger} falló recompute para movil ${nro}:`, err);
+      // best-effort: no aborta el response
+    }
+  }
+}
+
+/**
  * POST /api/import/moviles
  * Importar móviles desde fuente externa (GeneXus)
  *
@@ -379,23 +411,10 @@ export async function POST(request: NextRequest) {
     importLog(`Autocreados en gps_tracking_history hoy: ${gpsAutocreatedCount}`);
 
     // PASO 8.6: Recomputar contadores cant_ped/cant_serv/capacidad (best-effort)
+    // NOTA: usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.
     importLog('\n📊 PASO 8.6: Recomputar contadores por movil');
     importLog('----------------------------------------');
-    if (data && data.length > 0) {
-      const movilNros = [...new Set(
-        data.map((m: any) => m.nro).filter((nro: any) => nro != null && nro !== 0)
-      )];
-      importLog(`Moviles a recomputar: ${movilNros.length}`);
-      for (const nro of movilNros) {
-        try {
-          await recomputeMovilCounters(supabase as any, nro);
-          importLog(`✅ [movil-counters] recomputado movil ${nro}`);
-        } catch (err) {
-          importError(`⚠️ [movil-counters] falló recompute para movil ${nro}:`, err);
-          // best-effort: no aborta el response
-        }
-      }
-    }
+    await recomputeCountersForMoviles(data || [], 'POST import/moviles');
 
     // PASO 9: Preparar respuesta exitosa
     importLog('\n📤 PASO 9: Preparando respuesta');
@@ -532,20 +551,8 @@ export async function PUT(request: NextRequest) {
     const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
 
     // Recomputar contadores cant_ped/cant_serv/capacidad (best-effort)
-    if (data && data.length > 0) {
-      const movilNros = [...new Set(
-        data.map((m: any) => m.nro).filter((nro: any) => nro != null && nro !== 0)
-      )];
-      for (const nro of movilNros) {
-        try {
-          await recomputeMovilCounters(supabase as any, nro);
-          importLog(`✅ [movil-counters] recomputado movil ${nro}`);
-        } catch (err) {
-          importError(`⚠️ [movil-counters] falló recompute para movil ${nro}:`, err);
-          // best-effort: no aborta el response
-        }
-      }
-    }
+    // NOTA: usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.
+    await recomputeCountersForMoviles(data || [], 'PUT import/moviles');
 
     return successResponse(
       {
@@ -615,6 +622,17 @@ export async function DELETE(request: NextRequest) {
 
     importLog(`🗑️ Eliminando ${movil_ids.length} móviles...`);
 
+    // Leer nros ANTES de borrar para poder recomputar después
+    const { data: movilesABorrar, error: errorRead } = await supabase
+      .from('moviles')
+      .select('nro')
+      .in('id', movil_ids);
+
+    if (errorRead) {
+      importError('❌ Error al leer nros de moviles antes del DELETE:', errorRead);
+      // Continuar con el delete aunque no podamos recomputar
+    }
+
     const { data, error } = await supabase
       .from('moviles')
       .delete()
@@ -636,6 +654,13 @@ export async function DELETE(request: NextRequest) {
 
     // Éxito
     importLog(`✅ ${data?.length || 0} móviles eliminados exitosamente`);
+
+    // Recomputar contadores para los móviles eliminados
+    // (los pedidos/services asignados a esos móviles aún existen — el recompute
+    //  pone capacidad=0 si no hay pedidos pendientes de hoy para ese nro)
+    // NOTA: usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.
+    const recordsToRecompute = movilesABorrar || data || [];
+    await recomputeCountersForMoviles(recordsToRecompute, 'DELETE import/moviles');
 
     return successResponse(
       {

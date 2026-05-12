@@ -2,6 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { todayMontevideo } from '@/lib/date-utils';
 
 /**
+ * Resultado del recompute — devuelto por recomputeMovilCounters para que los
+ * call-sites puedan loguear los valores resultantes sin una segunda query.
+ */
+export interface RecomputeResult {
+  movilNro: number;
+  cant_ped: number;
+  cant_serv: number;
+  capacidad: number;
+}
+
+/**
  * Recomputa cant_ped, cant_serv y capacidad de un móvil
  * a partir del estado actual de las tablas pedidos y services.
  *
@@ -28,26 +39,32 @@ import { todayMontevideo } from '@/lib/date-utils';
  *   "graba" (los campos no se consumen). Si más adelante se usan en UI,
  *   considerar un cron a las 00:01 de Montevideo que recalcule todo.
  *
+ * CLIENTE SUPABASE:
+ *   SIEMPRE pasar el cliente de servidor (getServerSupabaseClient()) en API routes.
+ *   El cliente anon puede fallar silenciosamente si RLS bloquea UPDATE en moviles.
+ *
  * USO EN CALL-SITES:
  *   try {
- *     await recomputeMovilCounters(supabase, movilNro);
+ *     const result = await recomputeMovilCounters(supabase, movilNro);
+ *     console.log(`[recompute] trigger=... movilNro=${result.movilNro} → cant_ped=${result.cant_ped} cant_serv=${result.cant_serv} capacidad=${result.capacidad}`);
  *   } catch (err) {
  *     console.error('[movil-counters] falló:', err);
  *     // best-effort: no abortar el response principal
  *   }
  *
- * @param supabase - Cliente Supabase (servidor)
+ * @param supabase - Cliente Supabase de SERVIDOR (getServerSupabaseClient())
  * @param movilNro - Valor del campo `nro` en tabla moviles
  *                   (mismo valor que campo `movil` en pedidos/services)
  * @param now      - Opcional. Permite inyectar la fecha actual (tests).
  *                   Default: new Date(). Se evalúa en zona Montevideo.
+ * @returns RecomputeResult con los valores calculados, o void si movilNro inválido
  * @throws Error si alguna query falla — el caller decide si es crítico
  */
 export async function recomputeMovilCounters(
   supabase: SupabaseClient,
   movilNro: number | string | null | undefined,
   now: Date = new Date(),
-): Promise<void> {
+): Promise<RecomputeResult | void> {
   // Guard: movil inválido → early return sin queries
   const nro = Number(movilNro);
   if (movilNro == null || !Number.isFinite(nro) || nro === 0) {
@@ -109,4 +126,6 @@ export async function recomputeMovilCounters(
     );
     throw errorUpd;
   }
+
+  return { movilNro: nro, cant_ped: ped, cant_serv: serv, capacidad: ped + serv };
 }

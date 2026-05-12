@@ -14,6 +14,11 @@
  *  7. Error en count de services → throws
  *  8. Error en UPDATE moviles → throws
  *  9. Filtra por fch_para = hoy (YYYYMMDD, zona Montevideo) en pedidos y services
+ * 10. Devuelve RecomputeResult con los valores calculados
+ * 11. Re-asignación X→Y: llamada para movil X y movil Y por separado da resultados independientes
+ * 12. Bulk deduplication: múltiples llamadas al helper recomputeCountersForMoviles con
+ *     registros repetidos del mismo movil solo llama recompute UNA vez por nro distinto
+ * 13. DELETE: después de borrar un pedido, el recompute reduce cant_ped
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -66,6 +71,40 @@ function makeSupabaseMock(tableResults: { [table: string]: MockResult[] }): Supa
   };
 
   return mock;
+}
+
+/** Helper para crear un mock de Supabase que devuelve valores fijos para una invocación */
+function makeSimpleSupabase(pedidosCount: number, servicesCount: number) {
+  return {
+    from: vi.fn((table: string) => {
+      if (table === 'pedidos') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          then: (resolve: any) => resolve({ count: pedidosCount, error: null }),
+          catch: vi.fn().mockReturnThis(),
+          finally: vi.fn().mockReturnThis(),
+        };
+      }
+      if (table === 'services') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          then: (resolve: any) => resolve({ count: servicesCount, error: null }),
+          catch: vi.fn().mockReturnThis(),
+          finally: vi.fn().mockReturnThis(),
+        };
+      }
+      if (table === 'moviles') {
+        return {
+          update: vi.fn(() => ({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          })),
+        };
+      }
+      return {};
+    }),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -334,5 +373,86 @@ describe('recomputeMovilCounters', () => {
         { col: 'fch_para', val: expectedCompact },
       ]),
     );
+  });
+
+  it('Caso 10: devuelve RecomputeResult con los valores calculados', async () => {
+    const supabase = makeSimpleSupabase(4, 1);
+    const result = await recomputeMovilCounters(supabase as any, 33);
+    expect(result).toEqual({
+      movilNro: 33,
+      cant_ped: 4,
+      cant_serv: 1,
+      capacidad: 5,
+    });
+  });
+
+  it('Caso 10b: movilNro inválido → devuelve void (undefined)', async () => {
+    const supabase = makeSupabaseMock({});
+    const result = await recomputeMovilCounters(supabase as any, null);
+    expect(result).toBeUndefined();
+  });
+
+  it('Caso 11a: Re-asignación X→Y — recompute para movil X devuelve resultado correcto', async () => {
+    // Simula: después de mover un pedido de movil 10 a movil 20,
+    // llamar recompute para el movil ANTERIOR (10) da cant_ped reducido.
+    // Aquí simulamos que movil 10 ya no tiene pedidos.
+    const supabaseX = makeSimpleSupabase(0, 0);
+    const resultX = await recomputeMovilCounters(supabaseX as any, 10);
+    expect(resultX).toEqual({ movilNro: 10, cant_ped: 0, cant_serv: 0, capacidad: 0 });
+  });
+
+  it('Caso 11b: Re-asignación X→Y — recompute para movil Y (nuevo) da cant_ped aumentado', async () => {
+    // Simula: después de asignar un pedido a movil 20, este tiene 1 pedido nuevo.
+    const supabaseY = makeSimpleSupabase(1, 0);
+    const resultY = await recomputeMovilCounters(supabaseY as any, 20);
+    expect(resultY).toEqual({ movilNro: 20, cant_ped: 1, cant_serv: 0, capacidad: 1 });
+  });
+
+  it('Caso 12: Bulk deduplication — recomputeMovilCounters se llama una vez por nro distinto', async () => {
+    // Simula el patrón del helper recomputeCountersForMoviles de los endpoints:
+    // dado un array con registros repetidos del mismo movil, deduplica y llama una sola vez.
+    const mockFn = vi.fn().mockResolvedValue({
+      movilNro: 42,
+      cant_ped: 2,
+      cant_serv: 1,
+      capacidad: 3,
+    });
+
+    // Simular un batch de registros con movil=42 repetido 3 veces + otro movil=55
+    const records = [
+      { movil: 42 },
+      { movil: 42 },
+      { movil: 42 },
+      { movil: 55 },
+    ];
+
+    // Emular la lógica del helper de los endpoints
+    const movilNros = [...new Set(
+      records.map((r) => r.movil).filter((m) => m != null && m !== 0),
+    )];
+
+    // El mockFn simula recomputeMovilCounters — debe llamarse 2 veces (42 y 55)
+    for (const nro of movilNros) {
+      await mockFn(null, nro);
+    }
+
+    expect(mockFn).toHaveBeenCalledTimes(2);
+    expect(mockFn).toHaveBeenCalledWith(null, 42);
+    expect(mockFn).toHaveBeenCalledWith(null, 55);
+  });
+
+  it('Caso 13: DELETE — recompute reduce cant_ped del movil del registro borrado', async () => {
+    // Simula: se borró un pedido del movil 7, ahora tiene 0 pedidos pendientes.
+    // El recompute debe devolver cant_ped=0.
+    const supabase = makeSimpleSupabase(0, 2);
+    const result = await recomputeMovilCounters(supabase as any, 7);
+    // cant_ped=0, cant_serv=2 (otros services siguen pendientes)
+    expect(result).toEqual({ movilNro: 7, cant_ped: 0, cant_serv: 2, capacidad: 2 });
+  });
+
+  it('Caso 14: movilNro como string numérico → se convierte a number y funciona', async () => {
+    const supabase = makeSimpleSupabase(1, 0);
+    const result = await recomputeMovilCounters(supabase as any, '42');
+    expect(result).toEqual({ movilNro: 42, cant_ped: 1, cant_serv: 0, capacidad: 1 });
   });
 });

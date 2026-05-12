@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, getServerSupabaseClient } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
 import { recomputeMovilCounters } from '@/lib/movil-counters';
 
@@ -225,17 +225,30 @@ function transformServiceToSupabase(service: any) {
 /**
  * Helper: extrae movil nros únicos y no nulos de un array de registros,
  * luego recomputa los contadores para cada uno (best-effort).
+ *
+ * IMPORTANTE: usa el cliente de servidor (service role) para bypassear RLS en
+ * el UPDATE de la tabla moviles. El cliente anon puede fallar silenciosamente.
+ *
+ * Loguea los valores resultantes (cant_ped/cant_serv/capacidad) para diagnóstico.
  */
-async function recomputeCountersForMoviles(records: any[], label: string): Promise<void> {
+async function recomputeCountersForMoviles(records: any[], trigger: string): Promise<void> {
   if (!records || records.length === 0) return;
+  const serverClient = getServerSupabaseClient();
   const movilNros = [...new Set(
     records.map((r: any) => r.movil).filter((m: any) => m != null && m !== 0)
   )];
+  if (movilNros.length === 0) return;
+  console.log(`[recompute] trigger=${trigger} — moviles a recomputar: ${movilNros.join(', ')}`);
   for (const nro of movilNros) {
     try {
-      await recomputeMovilCounters(supabase as any, nro);
+      const result = await recomputeMovilCounters(serverClient as any, nro);
+      if (result) {
+        console.log(
+          `[recompute] trigger=${trigger} movilNro=${result.movilNro} → cant_ped=${result.cant_ped} cant_serv=${result.cant_serv} capacidad=${result.capacidad}`,
+        );
+      }
     } catch (err) {
-      console.error(`⚠️ [movil-counters] ${label} falló recompute para movil ${nro}:`, err);
+      console.error(`⚠️ [recompute] trigger=${trigger} falló recompute para movil ${nro}:`, err);
       // best-effort: no aborta el response
     }
   }
