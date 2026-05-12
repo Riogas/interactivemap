@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { todayMontevideo } from '@/lib/date-utils';
 
 /**
  * Recomputa cant_ped, cant_serv y capacidad de un móvil
@@ -9,14 +10,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  *   - Después de upsert/delete en import/pedidos (Trigger 2)
  *   - Después de upsert/delete en import/services (Trigger 2)
  *
- * CRITERIO "PENDIENTE": estado_nro = 1
- *   (confirmado en app/dashboard/page.tsx líneas 1624-1627)
+ * CRITERIO "PENDIENTE DE HOY":
+ *   - estado_nro = 1
+ *   - fch_para = fecha de hoy en YYYYMMDD (zona Montevideo)
+ *   (consistente con el filtro selectedDateCompact del dashboard)
  *
  * INVARIANTE MANTENIDA: capacidad = cant_ped + cant_serv
  *
  * DECISIÓN DE DISEÑO: Opción A (TypeScript helper) sobre Opción B (DB triggers).
  *   Si en el futuro se agregan endpoints que olvidan llamar a esta función,
  *   migrar a DB triggers (Opción B) para enforcement automático.
+ *
+ * LIMITACIÓN CONOCIDA (cambio de día):
+ *   El contador solo se recalcula cuando hay una mutación. Si pasa la
+ *   medianoche en Montevideo sin que ningún pedido/service cambie, los
+ *   contadores del día anterior siguen ahí. Aceptable mientras solo se
+ *   "graba" (los campos no se consumen). Si más adelante se usan en UI,
+ *   considerar un cron a las 00:01 de Montevideo que recalcule todo.
  *
  * USO EN CALL-SITES:
  *   try {
@@ -29,11 +39,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * @param supabase - Cliente Supabase (servidor)
  * @param movilNro - Valor del campo `nro` en tabla moviles
  *                   (mismo valor que campo `movil` en pedidos/services)
+ * @param now      - Opcional. Permite inyectar la fecha actual (tests).
+ *                   Default: new Date(). Se evalúa en zona Montevideo.
  * @throws Error si alguna query falla — el caller decide si es crítico
  */
 export async function recomputeMovilCounters(
   supabase: SupabaseClient,
   movilNro: number | string | null | undefined,
+  now: Date = new Date(),
 ): Promise<void> {
   // Guard: movil inválido → early return sin queries
   const nro = Number(movilNro);
@@ -41,12 +54,16 @@ export async function recomputeMovilCounters(
     return;
   }
 
-  // Count pedidos pendientes (estado_nro = 1)
+  // Fecha de hoy en YYYYMMDD, zona Montevideo (matchea el formato de fch_para).
+  const todayCompact = todayMontevideo(now).replace(/-/g, '');
+
+  // Count pedidos pendientes de hoy
   const { count: cantPed, error: errorPed } = await supabase
     .from('pedidos')
     .select('*', { count: 'exact', head: true })
     .eq('movil', nro)
-    .eq('estado_nro', 1);
+    .eq('estado_nro', 1)
+    .eq('fch_para', todayCompact);
 
   if (errorPed) {
     console.error(
@@ -56,12 +73,13 @@ export async function recomputeMovilCounters(
     throw errorPed;
   }
 
-  // Count services pendientes (estado_nro = 1)
+  // Count services pendientes de hoy
   const { count: cantServ, error: errorServ } = await supabase
     .from('services')
     .select('*', { count: 'exact', head: true })
     .eq('movil', nro)
-    .eq('estado_nro', 1);
+    .eq('estado_nro', 1)
+    .eq('fch_para', todayCompact);
 
   if (errorServ) {
     console.error(

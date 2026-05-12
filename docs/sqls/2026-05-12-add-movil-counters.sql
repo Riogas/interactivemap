@@ -10,8 +10,10 @@
 --   pendientes (cant_ped), servicios pendientes (cant_serv) y
 --   la suma de ambos (capacidad).
 --
--- CRITERIO "PENDIENTE": estado_nro = 1
---   (confirmado en app/dashboard/page.tsx líneas 1624-1627)
+-- CRITERIO "PENDIENTE DE HOY":
+--   estado_nro = 1
+--   AND fch_para = YYYYMMDD de hoy (zona Montevideo)
+--   (consistente con el filtro selectedDateCompact del dashboard)
 --
 -- LÓGICA DE ACTUALIZACIÓN:
 --   Los campos se actualizan por código TypeScript (Opción A)
@@ -30,8 +32,10 @@ ALTER TABLE moviles
 
 -- Paso 2: Backfill — recalcular para todos los moviles existentes
 -- a partir del estado actual de pedidos y services.
--- Usa subqueries correlacionadas por m.nro (identificador numérico
--- que referencia la columna `movil` en pedidos y services).
+-- Solo cuenta pendientes (estado_nro = 1) cuya fch_para = HOY (Montevideo).
+-- to_char(NOW() AT TIME ZONE 'America/Montevideo', 'YYYYMMDD') devuelve la
+-- fecha de hoy en zona Uruguay, independientemente del timezone del servidor
+-- de Postgres (Supabase por default está en UTC).
 UPDATE moviles m
 SET
   cant_ped = COALESCE((
@@ -39,18 +43,21 @@ SET
     FROM pedidos p
     WHERE p.movil = m.nro
       AND p.estado_nro = 1
+      AND p.fch_para = to_char(NOW() AT TIME ZONE 'America/Montevideo', 'YYYYMMDD')
   ), 0),
   cant_serv = COALESCE((
     SELECT COUNT(*)::INT
     FROM services s
     WHERE s.movil = m.nro
       AND s.estado_nro = 1
+      AND s.fch_para = to_char(NOW() AT TIME ZONE 'America/Montevideo', 'YYYYMMDD')
   ), 0),
   capacidad = COALESCE((
     SELECT COUNT(*)::INT
     FROM pedidos p
     WHERE p.movil = m.nro
       AND p.estado_nro = 1
+      AND p.fch_para = to_char(NOW() AT TIME ZONE 'America/Montevideo', 'YYYYMMDD')
   ), 0)
   +
   COALESCE((
@@ -58,6 +65,7 @@ SET
     FROM services s
     WHERE s.movil = m.nro
       AND s.estado_nro = 1
+      AND s.fch_para = to_char(NOW() AT TIME ZONE 'America/Montevideo', 'YYYYMMDD')
   ), 0);
 
 -- Verificación post-backfill (ejecutar manualmente para auditar):

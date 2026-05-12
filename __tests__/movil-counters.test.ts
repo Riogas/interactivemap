@@ -13,6 +13,7 @@
  *  6. Error en count de pedidos → throws
  *  7. Error en count de services → throws
  *  8. Error en UPDATE moviles → throws
+ *  9. Filtra por fch_para = hoy (YYYYMMDD, zona Montevideo) en pedidos y services
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -270,5 +271,68 @@ describe('recomputeMovilCounters', () => {
     await expect(recomputeMovilCounters(supabase as any, 55)).rejects.toMatchObject({
       message: 'UPDATE failed',
     });
+  });
+
+  it('Caso 9: filtra por fch_para = hoy (YYYYMMDD, zona Montevideo) en pedidos y services', async () => {
+    // Inyectamos una fecha conocida (2026-05-12 19:00 UTC → 16:00 Montevideo)
+    // para asegurar que el helper formatea la fecha en zona Montevideo.
+    const fixedNow = new Date('2026-05-12T19:00:00.000Z');
+    const expectedCompact = '20260512';
+
+    const eqCallsByTable: Record<string, Array<{ col: string; val: unknown }>> = {
+      pedidos: [],
+      services: [],
+      moviles: [],
+    };
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'pedidos' || table === 'services') {
+          const chain: any = {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn((col: string, val: unknown) => {
+              eqCallsByTable[table].push({ col, val });
+              return chain;
+            }),
+            then: (resolve: any) => resolve({ count: 0, error: null }),
+            catch: vi.fn().mockReturnThis(),
+            finally: vi.fn().mockReturnThis(),
+          };
+          return chain;
+        }
+        if (table === 'moviles') {
+          return {
+            update: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ error: null }),
+            })),
+          };
+        }
+        return {};
+      }),
+    };
+
+    await recomputeMovilCounters(supabase as any, 7, fixedNow);
+
+    // Ambas tablas deben recibir el filtro de fch_para = YYYYMMDD de hoy.
+    const pedidosFchPara = eqCallsByTable.pedidos.find((c) => c.col === 'fch_para');
+    const servicesFchPara = eqCallsByTable.services.find((c) => c.col === 'fch_para');
+    expect(pedidosFchPara).toEqual({ col: 'fch_para', val: expectedCompact });
+    expect(servicesFchPara).toEqual({ col: 'fch_para', val: expectedCompact });
+
+    // Y los otros dos filtros también siguen estando (movil + estado_nro = 1).
+    expect(eqCallsByTable.pedidos).toEqual(
+      expect.arrayContaining([
+        { col: 'movil', val: 7 },
+        { col: 'estado_nro', val: 1 },
+        { col: 'fch_para', val: expectedCompact },
+      ]),
+    );
+    expect(eqCallsByTable.services).toEqual(
+      expect.arrayContaining([
+        { col: 'movil', val: 7 },
+        { col: 'estado_nro', val: 1 },
+        { col: 'fch_para', val: expectedCompact },
+      ]),
+    );
   });
 });
