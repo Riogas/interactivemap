@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, getServerSupabaseClient } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
-import { recomputeMovilCounters } from '@/lib/movil-counters';
+import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
 
 /**
  * Lee el body del request respetando el charset del Content-Type.
@@ -224,12 +224,13 @@ function transformServiceToSupabase(service: any) {
 
 /**
  * Helper: extrae movil nros únicos y no nulos de un array de registros,
- * luego recomputa los contadores para cada uno (best-effort).
+ * luego recomputa los contadores y sincroniza zonas_cap_entrega (best-effort).
  *
  * IMPORTANTE: usa el cliente de servidor (service role) para bypassear RLS en
  * el UPDATE de la tabla moviles. El cliente anon puede fallar silenciosamente.
  *
- * Loguea los valores resultantes (cant_ped/cant_serv/capacidad) para diagnóstico.
+ * Llama recomputeMovilAndCapEntrega (compuesta) en lugar de recomputeMovilCounters:
+ * garantiza que zonas_cap_entrega queda sincronizada después de cada mutación.
  */
 async function recomputeCountersForMoviles(records: any[], trigger: string): Promise<void> {
   if (!records || records.length === 0) return;
@@ -238,17 +239,15 @@ async function recomputeCountersForMoviles(records: any[], trigger: string): Pro
     records.map((r: any) => r.movil).filter((m: any) => m != null && m !== 0)
   )];
   if (movilNros.length === 0) return;
-  console.log(`[recompute] trigger=${trigger} — moviles a recomputar: ${movilNros.join(', ')}`);
+  console.log(`[zonas-cap-entrega] trigger=${trigger} — moviles a recomputar: ${movilNros.join(', ')}`);
   for (const nro of movilNros) {
     try {
-      const result = await recomputeMovilCounters(serverClient as any, nro);
-      if (result) {
-        console.log(
-          `[recompute] trigger=${trigger} movilNro=${result.movilNro} → cant_ped=${result.cant_ped} cant_serv=${result.cant_serv} capacidad=${result.capacidad}`,
-        );
-      }
+      await recomputeMovilAndCapEntrega(serverClient as any, nro);
+      console.log(
+        `[zonas-cap-entrega] trigger=${trigger} movilNro=${nro} → recompute+sync OK`,
+      );
     } catch (err) {
-      console.error(`⚠️ [recompute] trigger=${trigger} falló recompute para movil ${nro}:`, err);
+      console.error(`⚠️ [zonas-cap-entrega] trigger=${trigger} falló recompute para movil ${nro}:`, err);
       // best-effort: no aborta el response
     }
   }
@@ -308,7 +307,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Services procesados: ${data?.length || 0}`);
 
-    // Recomputar contadores cant_ped/cant_serv/capacidad para moviles afectados (best-effort)
+    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (best-effort)
     await recomputeCountersForMoviles(data || [], 'POST import/services');
 
     return NextResponse.json({
@@ -375,7 +374,7 @@ export async function PUT(request: NextRequest) {
 
     console.log(`✅ Services actualizados: ${data?.length || 0}`);
 
-    // Recomputar contadores cant_ped/cant_serv/capacidad para moviles afectados (best-effort)
+    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (best-effort)
     await recomputeCountersForMoviles(data || [], 'PUT import/services');
 
     return NextResponse.json({
@@ -429,7 +428,7 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`✅ ${data?.length || 0} services eliminados`);
 
-    // Recomputar contadores para moviles afectados (best-effort)
+    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (best-effort)
     await recomputeCountersForMoviles(data || [], 'DELETE import/services');
 
     return NextResponse.json({

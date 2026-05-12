@@ -9,7 +9,7 @@ import {
   type MovilCandidate,
 } from '@/lib/import-helpers/gps-autocreate';
 import { importLog, importWarn, importError, importDebug } from '@/lib/logger';
-import { recomputeMovilCounters } from '@/lib/movil-counters';
+import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
 
 /**
  * Lee el body del request respetando el charset del Content-Type.
@@ -210,11 +210,14 @@ async function maybeAutocreateGpsForToday(
 }
 
 /**
- * Recomputa contadores cant_ped/cant_serv/capacidad para los móviles de un array
+ * Recomputa contadores y sincroniza zonas_cap_entrega para los móviles de un array
  * de registros de la tabla moviles (usa campo `nro`). Best-effort — errores no abortan.
  *
  * IMPORTANTE: usa el cliente de servidor (service role) para bypassear RLS en
  * el UPDATE de la tabla moviles. El cliente anon puede fallar silenciosamente.
+ *
+ * Llama recomputeMovilAndCapEntrega (compuesta) en lugar de recomputeMovilCounters:
+ * garantiza que zonas_cap_entrega queda sincronizada después de cada mutación.
  */
 async function recomputeCountersForMoviles(
   records: any[],
@@ -225,17 +228,15 @@ async function recomputeCountersForMoviles(
   const movilNros = [...new Set(
     records.map((m: any) => m.nro).filter((nro: any) => nro != null && nro !== 0),
   )];
-  importLog(`[recompute] trigger=${trigger} — moviles a recomputar: ${movilNros.join(', ')}`);
+  importLog(`[zonas-cap-entrega] trigger=${trigger} — moviles a recomputar: ${movilNros.join(', ')}`);
   for (const nro of movilNros) {
     try {
-      const result = await recomputeMovilCounters(serverClient as any, nro);
-      if (result) {
-        importLog(
-          `[recompute] trigger=${trigger} movilNro=${result.movilNro} → cant_ped=${result.cant_ped} cant_serv=${result.cant_serv} capacidad=${result.capacidad}`,
-        );
-      }
+      await recomputeMovilAndCapEntrega(serverClient as any, nro);
+      importLog(
+        `[zonas-cap-entrega] trigger=${trigger} movilNro=${nro} → recompute+sync OK`,
+      );
     } catch (err) {
-      importError(`[recompute] trigger=${trigger} falló recompute para movil ${nro}:`, err);
+      importError(`[zonas-cap-entrega] trigger=${trigger} falló recompute para movil ${nro}:`, err);
       // best-effort: no aborta el response
     }
   }
@@ -410,9 +411,9 @@ export async function POST(request: NextRequest) {
     const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
     importLog(`Autocreados en gps_tracking_history hoy: ${gpsAutocreatedCount}`);
 
-    // PASO 8.6: Recomputar contadores cant_ped/cant_serv/capacidad (best-effort)
+    // PASO 8.6: Recomputar contadores + sincronizar zonas_cap_entrega (best-effort)
     // NOTA: usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.
-    importLog('\n📊 PASO 8.6: Recomputar contadores por movil');
+    importLog('\n📊 PASO 8.6: Recomputar contadores y sincronizar zonas_cap_entrega');
     importLog('----------------------------------------');
     await recomputeCountersForMoviles(data || [], 'POST import/moviles');
 
@@ -550,7 +551,7 @@ export async function PUT(request: NextRequest) {
     // Autocreación GPS del día a partir del punto de venta del móvil (best-effort)
     const gpsAutocreatedCount = await maybeAutocreateGpsForToday(transformedMoviles);
 
-    // Recomputar contadores cant_ped/cant_serv/capacidad (best-effort)
+    // Recomputar contadores + sincronizar zonas_cap_entrega (best-effort)
     // NOTA: usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.
     await recomputeCountersForMoviles(data || [], 'PUT import/moviles');
 
@@ -655,7 +656,7 @@ export async function DELETE(request: NextRequest) {
     // Éxito
     importLog(`✅ ${data?.length || 0} móviles eliminados exitosamente`);
 
-    // Recomputar contadores para los móviles eliminados
+    // Recomputar contadores + sincronizar zonas_cap_entrega para los móviles eliminados
     // (los pedidos/services asignados a esos móviles aún existen — el recompute
     //  pone capacidad=0 si no hay pedidos pendientes de hoy para ese nro)
     // NOTA: usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.

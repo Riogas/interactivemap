@@ -842,6 +842,35 @@ export interface Database {
           reason?: string | null
         }
       }
+      zonas_cap_entrega: {
+        Row: {
+          escenario: number
+          zona: number
+          tipo_servicio: string
+          movil: number
+          emp_fletera_id: number
+          lote_disponible: number
+          updated_at: string
+        }
+        Insert: {
+          escenario: number
+          zona: number
+          tipo_servicio: string
+          movil: number
+          emp_fletera_id: number
+          lote_disponible: number
+          updated_at?: string
+        }
+        Update: {
+          escenario?: number
+          zona?: number
+          tipo_servicio?: string
+          movil?: number
+          emp_fletera_id?: number
+          lote_disponible?: number
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

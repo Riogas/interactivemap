@@ -3,12 +3,13 @@
  * POST /api/moviles-zonas
  *
  * Casos cubiertos:
- *  1. POST con asignaciones → recomputeMovilCounters se llama para cada movilId único
+ *  1. POST con asignaciones → recomputeMovilAndCapEntrega se llama para cada movilId único
  *  2. POST con movilIds repetidos en varias zonas → dedup: recompute UNA vez por nro
  *  3. POST con body vacío (rows.length=0) → recompute NO se llama
- *  4. POST con movilId=0 o NaN en body → filtrado, no se intenta recompute para ese nro
+ *  4. POST con batch de 5 móviles distintos → exactamente 5 invocaciones de recompute
  *  5. Fallo en recompute → best-effort: el response sigue siendo 200 OK
- *  6. Logs [recompute] trigger=POST moviles-zonas presentes en stdout
+ *  6. Logs [zonas-cap-entrega] trigger=POST moviles-zonas presentes en stdout
+ *  7. Log de resultado con movilNro → OK visible
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -18,11 +19,15 @@ import { NextRequest } from 'next/server';
 // Mocks
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Mock de recomputeMovilCounters — registra cada llamada sin ejecutar queries reales
-const recomputeMock = vi.fn();
+// Mock de recomputeMovilAndCapEntrega (función compuesta que reemplaza recomputeMovilCounters
+// en todos los call-sites a partir del commit zonas-cap-entrega)
+const { recomputeMock } = vi.hoisted(() => ({
+  recomputeMock: vi.fn(),
+}));
 
-vi.mock('../lib/movil-counters', () => ({
-  recomputeMovilCounters: recomputeMock,
+vi.mock('../lib/zonas-cap-entrega', () => ({
+  recomputeMovilAndCapEntrega: recomputeMock,
+  syncMovilZonasCapEntrega: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock de requireAuth — siempre pasa (retorna el request, no NextResponse)
@@ -89,12 +94,7 @@ describe('POST /api/moviles-zonas — recompute wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Defaults: recompute ok (sin throw), insert devuelve 1 fila
-    recomputeMock.mockResolvedValue({
-      movilNro: 304,
-      cant_ped: 2,
-      cant_serv: 1,
-      capacidad: 3,
-    });
+    recomputeMock.mockResolvedValue(undefined);
     mockDeleteChain.eq.mockResolvedValue({ error: null });
     mockInsertChain.select.mockResolvedValue({
       data: [{ movil_id: '304', zona_id: 1, escenario_id: 1000 }],
@@ -225,17 +225,12 @@ describe('POST /api/moviles-zonas — recompute wiring', () => {
     expect(json.success).toBe(true);
   });
 
-  it('Caso 6: logs [recompute] con trigger=POST moviles-zonas están presentes', async () => {
+  it('Caso 6: logs [zonas-cap-entrega] con trigger=POST moviles-zonas están presentes', async () => {
     const { POST } = await import('../app/api/moviles-zonas/route');
 
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    recomputeMock.mockResolvedValue({
-      movilNro: 304,
-      cant_ped: 1,
-      cant_serv: 0,
-      capacidad: 1,
-    });
+    recomputeMock.mockResolvedValue(undefined);
 
     const body = {
       escenario_id: 1000,
@@ -249,24 +244,19 @@ describe('POST /api/moviles-zonas — recompute wiring', () => {
     // Verificar que al menos un log tiene el formato esperado
     const logCalls = consoleSpy.mock.calls.map((args) => args.join(' '));
     const recomputeLogs = logCalls.filter((msg) =>
-      msg.includes('[recompute]') && msg.includes('trigger=POST moviles-zonas')
+      msg.includes('[zonas-cap-entrega]') && msg.includes('trigger=POST moviles-zonas')
     );
     expect(recomputeLogs.length).toBeGreaterThan(0);
 
     consoleSpy.mockRestore();
   });
 
-  it('Caso 7: log de resultado con movilNro/cant_ped/cant_serv/capacidad visible', async () => {
+  it('Caso 7: log de resultado con movilNro → OK visible en stdout', async () => {
     const { POST } = await import('../app/api/moviles-zonas/route');
 
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    recomputeMock.mockResolvedValue({
-      movilNro: 304,
-      cant_ped: 3,
-      cant_serv: 1,
-      capacidad: 4,
-    });
+    recomputeMock.mockResolvedValue(undefined);
 
     const body = {
       escenario_id: 1000,
@@ -280,9 +270,7 @@ describe('POST /api/moviles-zonas — recompute wiring', () => {
     const logCalls = consoleSpy.mock.calls.map((args) => args.join(' '));
     const resultLog = logCalls.find((msg) =>
       msg.includes('movilNro=304') &&
-      msg.includes('cant_ped=3') &&
-      msg.includes('cant_serv=1') &&
-      msg.includes('capacidad=4')
+      msg.includes('recompute+sync OK')
     );
     expect(resultLog).toBeDefined();
 
