@@ -115,7 +115,8 @@ function getClientIp(request: NextRequest): string {
       return normalized;
     }
   }
-  return request.ip || '127.0.0.1';
+  // request.ip fue removido en Next.js 13+. El fallback usa solo los headers.
+  return '127.0.0.1';
 }
 
 // ==============================================================================
@@ -127,7 +128,10 @@ function getClientIp(request: NextRequest): string {
  */
 export async function checkLoginBlock(username: string, ip: string): Promise<CheckBlockResult> {
   try {
-    const client = getServerSupabaseClient();
+    // Cast a any: la inferencia de tipos del cliente Supabase falla para las
+    // tablas login_attempts/login_blocks (patrón consistente con otros lib/ del repo).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = getServerSupabaseClient() as any;
     const now = new Date();
 
     // Normalizar IP
@@ -183,7 +187,8 @@ export async function checkLoginBlock(username: string, ip: string): Promise<Che
  */
 export async function recordLoginAttempt(input: RecordLoginAttemptInput): Promise<void> {
   try {
-    const client = getServerSupabaseClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = getServerSupabaseClient() as any;
     const normalizedIp = normalizeIp(input.ip);
 
     await client
@@ -214,7 +219,8 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
   ipBlocked?: { until: Date };
 }> {
   try {
-    const client = getServerSupabaseClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = getServerSupabaseClient() as any;
     const now = new Date();
     const normalizedIp = normalizeIp(ip);
     const windowStart = new Date(now.getTime() - USER_FAIL_WINDOW_MINUTES * 60 * 1000);
@@ -253,7 +259,7 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
         .gte('ts', windowStart.toISOString());
 
       // Contar usernames únicos
-      const distinctUsernames = new Set(ipFails?.map(r => r.username) || []);
+      const distinctUsernames = new Set((ipFails as { username: string }[] | null)?.map(r => r.username) || []);
 
       if (distinctUsernames.size >= IP_DISTINCT_USERS_THRESHOLD) {
         const blockedUntil = new Date(now.getTime() + IP_BLOCK_MINUTES * 60 * 1000);
