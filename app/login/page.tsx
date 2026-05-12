@@ -29,6 +29,11 @@ export default function LoginPage() {
       const result = await login(username, password, escenarioId);
 
       if (result.success) {
+        // Alerta no-bloqueante: nombre de usuario y contraseña coinciden.
+        // No impide el login (es solo un aviso de seguridad).
+        if ((result as { warning?: string }).warning === 'USER_EQ_PASS') {
+          alert('Atención: tu nombre de usuario y contraseña son iguales. Por seguridad, te recomendamos cambiar tu contraseña.');
+        }
         // Animación de éxito antes de redirigir
         await new Promise(resolve => setTimeout(resolve, 500));
         router.push('/dashboard');
@@ -45,9 +50,7 @@ export default function LoginPage() {
         const message = errorResult.message || errorResult.error || '';
         const code = errorResult.code || '';
 
-        if (code === 'USER_EQ_PASS') {
-          setError('El nombre de usuario y la contraseña no pueden coincidir.');
-        } else if (code === 'BLOCKED_USER') {
+        if (code === 'BLOCKED_USER') {
           const mins = errorResult.retryAfterSeconds ? Math.ceil(errorResult.retryAfterSeconds / 60) : 10;
           setError(`Usuario bloqueado temporalmente. Intentá de nuevo en ${mins} minutos.`);
         } else if (code === 'BLOCKED_IP') {

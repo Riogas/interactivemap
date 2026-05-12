@@ -258,7 +258,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(intervalId);
   }, [user?.loginTime]);
 
-  const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string }> => {
+  const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string }> => {
     try {
       console.log('🔐 Iniciando login en GeneXus...');
       const response: ParsedLoginResponse = await authService.login(username, password);
@@ -358,7 +358,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(newUser);
         setEscenarioId(selectedEscenarioId);
-        return { success: true };
+        // Propagar warning del endpoint de seguridad (ej. USER_EQ_PASS) al consumidor
+        const warning = (response as { warning?: string }).warning;
+        return warning ? { success: true, warning } : { success: true };
       } else if (response.success && !response.user) {
         // Si success=true pero no hay usuario, es credencial inválida
         console.log('❌ Login falló: no hay datos de usuario');

@@ -339,24 +339,11 @@ export async function runLoginSecurity(
     const userAgent = req.headers.get('user-agent') || undefined;
     const escenarioId = EscenarioId ? Number(EscenarioId) : null;
 
-    // Paso 3: Check user==pass
-    if (UserName === Password) {
-      await recordLoginAttempt({
-        username: UserName,
-        ip,
-        userAgent,
-        estado: 'user_eq_pass',
-        escenarioId,
-      });
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'El nombre de usuario y la contraseña no pueden coincidir.',
-          code: 'USER_EQ_PASS',
-        },
-        { status: 400 }
-      );
-    }
+    // Paso 3: Check user==pass — NO bloquea, solo flagea warning.
+    // El doc lo pide como alerta (no impedimento) y "no se contará como
+    // inicio de sesión incorrecto", así que tampoco dispara bloqueo aunque
+    // el upstream falle. El frontend muestra la alerta post-login.
+    const userEqualsPassword = (UserName === Password);
 
     // Paso 4: Check blocks
     const blockCheck = await checkLoginBlock(UserName, ip);
@@ -414,20 +401,32 @@ export async function runLoginSecurity(
         userAgent,
         estado: 'success',
         escenarioId,
+        extra: userEqualsPassword ? { userEqualsPassword: true } : undefined,
       });
       await onSuccessfulLogin(UserName);
-      return NextResponse.json(upstreamResult, { status: 200 });
+      return NextResponse.json(
+        userEqualsPassword
+          ? { ...upstreamResult, warning: 'USER_EQ_PASS' }
+          : upstreamResult,
+        { status: 200 }
+      );
     }
 
     // Paso 7: Si upstream FAIL
+    // Si user==pass: registrar como 'user_eq_pass' (no como 'fail') y NO disparar
+    // bloqueos — el doc dice que el caso "user==pass" no cuenta como inicio de
+    // sesión incorrecto a efectos de rate-limit / lockout.
     await recordLoginAttempt({
       username: UserName,
       ip,
       userAgent,
-      estado: 'fail',
+      estado: userEqualsPassword ? 'user_eq_pass' : 'fail',
       escenarioId,
+      extra: userEqualsPassword ? { upstreamFailed: true } : undefined,
     });
-    await evaluateAndApplyBlocks(UserName, ip);
+    if (!userEqualsPassword) {
+      await evaluateAndApplyBlocks(UserName, ip);
+    }
 
     return NextResponse.json(
       {
