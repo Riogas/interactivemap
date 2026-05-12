@@ -92,7 +92,7 @@ function filterSinAsignarList(
 // ────────────────────────────────────────────────────────────────────────────
 
 const saEnVentana: PedidoLike = { estado_nro: 1, movil: null, fch_hora_para: '2026-05-11T14:15:00.000Z', zona_nro: 5 }; // dentro de ventana (now + 15min)
-const saFueraVentana: PedidoLike = { estado_nro: 1, movil: null, fch_hora_para: '2026-05-11T13:00:00.000Z', zona_nro: 5 }; // pasado, fuera de ventana
+const saAtrasado: PedidoLike = { estado_nro: 1, movil: null, fch_hora_para: '2026-05-11T13:00:00.000Z', zona_nro: 5 }; // pasado: atrasado, debe seguir visible
 const saFuturoLejano: PedidoLike = { estado_nro: 1, movil: null, fch_hora_para: '2026-05-11T18:00:00.000Z', zona_nro: 5 }; // futuro lejano, fuera de ventana
 const saConHoraNula: PedidoLike = { estado_nro: 1, movil: null, fch_hora_para: null, zona_nro: 5 };           // sin hora: siempre cuenta (backwards-compat)
 const pedidoAsignado: PedidoLike = { estado_nro: 1, movil: '42', fch_hora_para: '2026-05-11T13:00:00.000Z', zona_nro: 5 }; // asignado: no aplica filtro de ventana
@@ -109,10 +109,10 @@ describe('ZonaEstadisticasModal — pendientesList y sinAsignar con isWithinSaWi
     expect(computeSinAsignar(list)).toBe(1);
   });
 
-  it('SA fuera de ventana (pasado): excluido de pendientesList y sinAsignar', () => {
-    const list = computePendientesList([saFueraVentana], false, now, minutosAntes);
-    expect(list).toHaveLength(0);
-    expect(computeSinAsignar(list)).toBe(0);
+  it('SA atrasado (pasado): incluido en pendientesList y sinAsignar (es lo que el operador necesita ver)', () => {
+    const list = computePendientesList([saAtrasado], false, now, minutosAntes);
+    expect(list).toHaveLength(1);
+    expect(computeSinAsignar(list)).toBe(1);
   });
 
   it('SA futuro lejano (> now + minutosAntes): excluido de pendientesList y sinAsignar', () => {
@@ -137,24 +137,24 @@ describe('ZonaEstadisticasModal — pendientesList y sinAsignar con isWithinSaWi
     expect(list).toHaveLength(0);
   });
 
-  it('minutosAntes=null: sin filtro, SA fuera de ventana igual cuenta (backwards-compat)', () => {
-    const list = computePendientesList([saFueraVentana], false, now, null);
+  it('minutosAntes=null: sin filtro, SA futuro lejano igual cuenta (backwards-compat)', () => {
+    const list = computePendientesList([saFuturoLejano], false, now, null);
     expect(list).toHaveLength(1);
     expect(computeSinAsignar(list)).toBe(1);
   });
 
-  it('serverNow=undefined: sin filtro, SA fuera de ventana igual cuenta', () => {
-    const list = computePendientesList([saFueraVentana], false, undefined, minutosAntes);
+  it('serverNow=undefined: sin filtro, SA futuro lejano igual cuenta', () => {
+    const list = computePendientesList([saFuturoLejano], false, undefined, minutosAntes);
     expect(list).toHaveLength(1);
   });
 
-  it('mezcla de SA en ventana, fuera y asignados: solo cuenta correctos', () => {
-    const all = [saEnVentana, saFueraVentana, saFuturoLejano, pedidoAsignado, saConHoraNula];
+  it('mezcla de SA atrasado/en ventana/futuro lejano/asignados: cuenta atrasado + en ventana + null + asignado', () => {
+    const all = [saEnVentana, saAtrasado, saFuturoLejano, pedidoAsignado, saConHoraNula];
     const list = computePendientesList(all, false, now, minutosAntes);
-    // en ventana + con hora nula + asignado = 3
-    expect(list).toHaveLength(3);
-    // sinAsignar: en ventana + con hora nula = 2
-    expect(computeSinAsignar(list)).toBe(2);
+    // atrasado + en ventana + con hora nula + asignado = 4 (solo se filtra saFuturoLejano)
+    expect(list).toHaveLength(4);
+    // sinAsignar: atrasado + en ventana + con hora nula = 3
+    expect(computeSinAsignar(list)).toBe(3);
   });
 });
 
@@ -168,8 +168,13 @@ describe('dashboard pedidosZonaData — capa sin_asignar con isWithinSaWindow', 
     expect(result).toHaveLength(1);
   });
 
-  it('SA fuera de ventana: excluido del conteo de la capa', () => {
-    const result = filterPedidosParaZonaSinAsignar([saFueraVentana], now, minutosAntes);
+  it('SA atrasado: incluido en el conteo de la capa', () => {
+    const result = filterPedidosParaZonaSinAsignar([saAtrasado], now, minutosAntes);
+    expect(result).toHaveLength(1);
+  });
+
+  it('SA futuro lejano: excluido del conteo de la capa', () => {
+    const result = filterPedidosParaZonaSinAsignar([saFuturoLejano], now, minutosAntes);
     expect(result).toHaveLength(0);
   });
 
@@ -184,7 +189,7 @@ describe('dashboard pedidosZonaData — capa sin_asignar con isWithinSaWindow', 
   });
 
   it('minutosAntes=null: sin filtro (backwards-compat)', () => {
-    const result = filterPedidosParaZonaSinAsignar([saFueraVentana], now, null);
+    const result = filterPedidosParaZonaSinAsignar([saFuturoLejano], now, null);
     expect(result).toHaveLength(1);
   });
 });
@@ -199,8 +204,13 @@ describe('dashboard sinAsignarList para SaturacionZonaModal con isWithinSaWindow
     expect(result).toHaveLength(1);
   });
 
-  it('SA fuera de ventana: excluido de la lista del modal', () => {
-    const result = filterSinAsignarList([saFueraVentana], 5, now, minutosAntes);
+  it('SA atrasado: incluido en la lista del modal', () => {
+    const result = filterSinAsignarList([saAtrasado], 5, now, minutosAntes);
+    expect(result).toHaveLength(1);
+  });
+
+  it('SA futuro lejano: excluido de la lista del modal', () => {
+    const result = filterSinAsignarList([saFuturoLejano], 5, now, minutosAntes);
     expect(result).toHaveLength(0);
   });
 
@@ -215,8 +225,8 @@ describe('dashboard sinAsignarList para SaturacionZonaModal con isWithinSaWindow
     expect(result).toHaveLength(1);
   });
 
-  it('minutosAntes=null: sin filtro, SA fuera de ventana igual se lista', () => {
-    const result = filterSinAsignarList([saFueraVentana], 5, now, null);
+  it('minutosAntes=null: sin filtro, SA futuro lejano igual se lista', () => {
+    const result = filterSinAsignarList([saFuturoLejano], 5, now, null);
     expect(result).toHaveLength(1);
   });
 

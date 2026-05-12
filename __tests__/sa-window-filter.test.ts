@@ -29,12 +29,6 @@ describe('isWithinSaWindow', () => {
 
   // ── Casos fuera de ventana ────────────────────────────────────────────────
 
-  it('retorna false cuando fchHoraPara esta en el pasado (< now)', () => {
-    // 13:59 — 1 minuto antes de now=14:00 → ya vencio
-    const horaPara = new Date('2026-05-11T13:59:59.000Z');
-    expect(isWithinSaWindow(horaPara, now, minutosAntes)).toBe(false);
-  });
-
   it('retorna false cuando fchHoraPara es futuro lejano (> now + minutosAntes)', () => {
     // 14:31 — 31 minutos despues de now → fuera de la ventana de 30 min
     const horaPara = new Date('2026-05-11T14:31:00.000Z');
@@ -43,8 +37,20 @@ describe('isWithinSaWindow', () => {
 
   // ── Casos dentro de ventana ───────────────────────────────────────────────
 
-  it('retorna true cuando fchHoraPara === now (borde inferior)', () => {
-    // Exactamente en now → valido (now <= horaPara)
+  it('retorna true cuando fchHoraPara esta en el pasado (atrasado, incluido en la ventana)', () => {
+    // 13:59 — 1 minuto antes de now=14:00 → atrasado, debe seguir visible
+    const horaPara = new Date('2026-05-11T13:59:59.000Z');
+    expect(isWithinSaWindow(horaPara, now, minutosAntes)).toBe(true);
+  });
+
+  it('retorna true cuando fchHoraPara esta muy en el pasado (atrasado de horas)', () => {
+    // 10:00 — 4 horas antes de now → atrasado fuerte, debe seguir visible
+    const horaPara = new Date('2026-05-11T10:00:00.000Z');
+    expect(isWithinSaWindow(horaPara, now, minutosAntes)).toBe(true);
+  });
+
+  it('retorna true cuando fchHoraPara === now', () => {
+    // Exactamente en now → en hora, valido
     expect(isWithinSaWindow(now, now, minutosAntes)).toBe(true);
   });
 
@@ -70,9 +76,9 @@ describe('isWithinSaWindow', () => {
     );
   });
 
-  it('filtra correctamente con string ISO en el pasado', () => {
+  it('acepta string ISO en el pasado y lo deja visible (atrasado)', () => {
     const horaParaStr = '2026-05-11T13:00:00.000Z'; // 1 hora antes
-    expect(isWithinSaWindow(horaParaStr, now, minutosAntes)).toBe(false);
+    expect(isWithinSaWindow(horaParaStr, now, minutosAntes)).toBe(true);
   });
 
   // ── Ventana de 1 minuto ───────────────────────────────────────────────────
