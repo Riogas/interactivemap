@@ -10,16 +10,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
+import { getLoginSecurityConfig } from '@/lib/login-security-config';
 
 // ==============================================================================
 // CONSTANTES CONFIGURABLES
 // ==============================================================================
+// NOTA: USER_FAIL_THRESHOLD e IP_DISTINCT_USERS_THRESHOLD ahora se leen desde
+// la tabla login_security_config via getLoginSecurityConfig() en evaluateAndApplyBlocks.
+// Las constantes se mantienen aquí solo como referencia/documentación de los defaults.
 
-const USER_FAIL_THRESHOLD = 3;
+const USER_FAIL_THRESHOLD = 3;       // Default: ver login_security_config.max_intentos_usuario
 const USER_FAIL_WINDOW_MINUTES = 10;
 const USER_BLOCK_MINUTES = 10;
 
-const IP_DISTINCT_USERS_THRESHOLD = 5;
+const IP_DISTINCT_USERS_THRESHOLD = 5; // Default: ver login_security_config.max_intentos_ip
 const IP_FAIL_WINDOW_MINUTES = 10;
 const IP_BLOCK_MINUTES = 15;
 
@@ -225,6 +229,9 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
     const normalizedIp = normalizeIp(ip);
     const windowStart = new Date(now.getTime() - USER_FAIL_WINDOW_MINUTES * 60 * 1000);
 
+    // Leer umbrales desde la config global (con graceful degradation a defaults)
+    const config = await getLoginSecurityConfig();
+
     let userBlocked, ipBlocked;
 
     // 1. Contar fails del username en los últimos 10 min
@@ -235,7 +242,7 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
       .eq('estado', 'fail')
       .gte('ts', windowStart.toISOString());
 
-    if (userFailCount && userFailCount >= USER_FAIL_THRESHOLD) {
+    if (userFailCount && userFailCount >= config.maxIntentosUsuario) {
       const blockedUntil = new Date(now.getTime() + USER_BLOCK_MINUTES * 60 * 1000);
       await client
         .from('login_blocks')
@@ -261,7 +268,7 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
       // Contar usernames únicos
       const distinctUsernames = new Set((ipFails as { username: string }[] | null)?.map(r => r.username) || []);
 
-      if (distinctUsernames.size >= IP_DISTINCT_USERS_THRESHOLD) {
+      if (distinctUsernames.size >= config.maxIntentosIp) {
         const blockedUntil = new Date(now.getTime() + IP_BLOCK_MINUTES * 60 * 1000);
         await client
           .from('login_blocks')

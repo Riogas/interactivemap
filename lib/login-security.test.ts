@@ -39,6 +39,16 @@ vi.mock('./supabase', () => ({
   getServerSupabaseClient: () => mockSupabaseClient,
 }));
 
+// Mock de login-security-config: retorna defaults en todos los tests
+// (las pruebas de config específica van en login-security-config.test.ts)
+vi.mock('./login-security-config', () => ({
+  getLoginSecurityConfig: vi.fn().mockResolvedValue({
+    maxIntentosUsuario: 3,
+    maxIntentosIp: 5,
+  }),
+  DEFAULT_LOGIN_SECURITY_CONFIG: { maxIntentosUsuario: 3, maxIntentosIp: 5 },
+}));
+
 import { getServerSupabaseClient } from './supabase';
 
 describe('Login Security', () => {
