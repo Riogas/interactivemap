@@ -3,7 +3,7 @@
  *
  * Reglas de bloqueo:
  * - Usuario: 3 fails en 10 min → bloqueo de 10 min
- * - IP: 5 usernames distintos fallidos en 10 min → bloqueo de 15 min
+ * - IP: 5 intentos TOTALES fallidos en 10 min → bloqueo de 15 min (Opción A — total, no distincts)
  * - Username === password: rechazado sin penalty
  * - IPs whitelisted: nunca se bloquean (pero se registran)
  */
@@ -15,7 +15,7 @@ import { getLoginSecurityConfig } from '@/lib/login-security-config';
 // ==============================================================================
 // CONSTANTES CONFIGURABLES
 // ==============================================================================
-// NOTA: USER_FAIL_THRESHOLD e IP_DISTINCT_USERS_THRESHOLD ahora se leen desde
+// NOTA: USER_FAIL_THRESHOLD e IP_FAIL_THRESHOLD ahora se leen desde
 // la tabla login_security_config via getLoginSecurityConfig() en evaluateAndApplyBlocks.
 // Las constantes se mantienen aquí solo como referencia/documentación de los defaults.
 
@@ -23,7 +23,7 @@ const USER_FAIL_THRESHOLD = 3;       // Default: ver login_security_config.max_i
 const USER_FAIL_WINDOW_MINUTES = 10;
 const USER_BLOCK_MINUTES = 10;
 
-const IP_DISTINCT_USERS_THRESHOLD = 5; // Default: ver login_security_config.max_intentos_ip
+const IP_FAIL_THRESHOLD = 5;         // Default: ver login_security_config.max_intentos_ip (total intentos, no distincts)
 const IP_FAIL_WINDOW_MINUTES = 10;
 const IP_BLOCK_MINUTES = 15;
 
@@ -128,7 +128,10 @@ function getClientIp(request: NextRequest): string {
 // ==============================================================================
 
 /**
- * Verifica si username o IP están actualmente bloqueados
+ * Verifica si username o IP están actualmente bloqueados.
+ *
+ * FIX: filtra por is_active=true para respetar desbloqueos manuales.
+ * Un row con is_active=false fue desbloqueado por admin — no bloquear aunque blocked_until sea futuro.
  */
 export async function checkLoginBlock(username: string, ip: string): Promise<CheckBlockResult> {
   try {
@@ -141,17 +144,20 @@ export async function checkLoginBlock(username: string, ip: string): Promise<Che
     // Normalizar IP
     const normalizedIp = normalizeIp(ip);
 
-    // Buscar bloqueo de usuario (query 1)
+    // Buscar bloqueo de usuario activo (query 1)
+    // FIX: agregar .eq('is_active', true) para respetar desbloqueos manuales
     const { data: userBlock } = await client
       .from('login_blocks')
       .select('*')
       .eq('block_type', 'user')
       .eq('key', username)
+      .eq('is_active', true)
       .gte('blocked_until', now.toISOString())
       .maybeSingle();
 
     if (userBlock) {
       const retryAfterSeconds = Math.ceil((new Date(userBlock.blocked_until).getTime() - now.getTime()) / 1000);
+      console.log(`[login-security] user=${username} ip=${normalizedIp} → DENY (block_id=${userBlock.id}, type=user, retryAfter=${retryAfterSeconds}s)`);
       return {
         blocked: true,
         type: 'user',
@@ -160,17 +166,20 @@ export async function checkLoginBlock(username: string, ip: string): Promise<Che
       };
     }
 
-    // Buscar bloqueo de IP (query 2)
+    // Buscar bloqueo de IP activo (query 2)
+    // FIX: agregar .eq('is_active', true) para respetar desbloqueos manuales
     const { data: ipBlock } = await client
       .from('login_blocks')
       .select('*')
       .eq('block_type', 'ip')
       .eq('key', normalizedIp)
+      .eq('is_active', true)
       .gte('blocked_until', now.toISOString())
       .maybeSingle();
 
     if (ipBlock) {
       const retryAfterSeconds = Math.ceil((new Date(ipBlock.blocked_until).getTime() - now.getTime()) / 1000);
+      console.log(`[login-security] user=${username} ip=${normalizedIp} → DENY (block_id=${ipBlock.id}, type=ip, retryAfter=${retryAfterSeconds}s)`);
       return {
         blocked: true,
         type: 'ip',
@@ -179,6 +188,7 @@ export async function checkLoginBlock(username: string, ip: string): Promise<Che
       };
     }
 
+    console.log(`[login-security] user=${username} ip=${normalizedIp} is_active_blocks=0 → ALLOW`);
     return { blocked: false };
   } catch (error) {
     console.error('[login-security] Supabase error in checkLoginBlock:', error);
@@ -215,7 +225,16 @@ export async function recordLoginAttempt(input: RecordLoginAttemptInput): Promis
 }
 
 /**
- * Evalúa si hay que aplicar bloqueos y los crea si corresponde
+ * Evalúa si hay que aplicar bloqueos y los crea si corresponde.
+ *
+ * FIX (Opción A — Issue 3): el threshold de IP ahora es el TOTAL de intentos
+ * fallidos desde esa IP (no usernames distintos). Así, 5 intentos con el mismo
+ * username desde la misma IP ya disparan el bloqueo de IP.
+ *
+ * FIX (Issue 4): el upsert ahora siempre setea is_active=true explícitamente,
+ * asegurando que un bloqueo nuevo no herede un is_active=false de un row previo
+ * desbloqueado (el ON CONFLICT actualiza todos los campos especificados).
+ *
  * Retorna info de bloqueos aplicados
  */
 export async function evaluateAndApplyBlocks(username: string, ip: string): Promise<{
@@ -242,6 +261,8 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
       .eq('estado', 'fail')
       .gte('ts', windowStart.toISOString());
 
+    console.log(`[login-security] user=${username} ip=${normalizedIp} user_fails=${userFailCount ?? 0} max_user=${config.maxIntentosUsuario}`);
+
     if (userFailCount && userFailCount >= config.maxIntentosUsuario) {
       const blockedUntil = new Date(now.getTime() + USER_BLOCK_MINUTES * 60 * 1000);
       await client
@@ -251,24 +272,26 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
           key: username,
           blocked_until: blockedUntil.toISOString(),
           reason: 'too_many_failed_attempts',
+          is_active: true,  // FIX: setear explícitamente para reactivar si fue desbloqueado manualmente
         }, { onConflict: 'block_type,key' });
       userBlocked = { until: blockedUntil };
+      console.log(`[login-security] user=${username} ip=${normalizedIp} attempts=${userFailCount} max=${config.maxIntentosUsuario} → DECISION=block-user until=${blockedUntil.toISOString()}`);
     }
 
-    // 2. Contar fails desde la IP con usernames DISTINTOS en los últimos 10 min
+    // 2. Contar TOTAL de intentos fallidos desde la IP en los últimos 10 min
+    // FIX (Opción A): cambiado de "usernames distintos" a "total intentos"
     // IMPORTANTE: Solo si la IP NO está whitelisted
     if (!isWhitelistedIp(normalizedIp)) {
-      const { data: ipFails } = await client
+      const { count: ipFailCount } = await client
         .from('login_attempts')
-        .select('username')
+        .select('*', { count: 'exact', head: true })
         .eq('ip', normalizedIp)
         .eq('estado', 'fail')
         .gte('ts', windowStart.toISOString());
 
-      // Contar usernames únicos
-      const distinctUsernames = new Set((ipFails as { username: string }[] | null)?.map(r => r.username) || []);
+      console.log(`[login-security] user=${username} ip=${normalizedIp} ip_fails=${ipFailCount ?? 0} max_ip=${config.maxIntentosIp}`);
 
-      if (distinctUsernames.size >= config.maxIntentosIp) {
+      if (ipFailCount && ipFailCount >= config.maxIntentosIp) {
         const blockedUntil = new Date(now.getTime() + IP_BLOCK_MINUTES * 60 * 1000);
         await client
           .from('login_blocks')
@@ -277,9 +300,15 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
             key: normalizedIp,
             blocked_until: blockedUntil.toISOString(),
             reason: 'too_many_failed_attempts',
+            is_active: true,  // FIX: setear explícitamente para reactivar si fue desbloqueado manualmente
           }, { onConflict: 'block_type,key' });
         ipBlocked = { until: blockedUntil };
+        console.log(`[login-security] user=${username} ip=${normalizedIp} ip_attempts=${ipFailCount} max=${config.maxIntentosIp} → DECISION=block-ip until=${blockedUntil.toISOString()}`);
       }
+    }
+
+    if (!userBlocked && !ipBlocked) {
+      console.log(`[login-security] user=${username} ip=${normalizedIp} → DECISION=allow (thresholds not reached)`);
     }
 
     return { userBlocked, ipBlocked };
@@ -461,3 +490,7 @@ export async function runLoginSecurity(
     }
   }
 }
+
+// Keep unused constants referenced to avoid TS unused-variable errors
+void USER_FAIL_THRESHOLD;
+void IP_FAIL_THRESHOLD;

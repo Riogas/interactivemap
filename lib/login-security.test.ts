@@ -66,10 +66,10 @@ describe('Login Security', () => {
       expect(result.blocked).toBe(false);
     });
 
-    it('debería retornar blocked=true para un bloqueo de usuario activo', async () => {
+    it('debería retornar blocked=true para un bloqueo de usuario activo (is_active=true)', async () => {
       const blockedUntil = new Date(Date.now() + 10 * 60 * 1000); // +10 min
 
-      // Primera consulta (usuario): retorna bloqueo
+      // Primera consulta (usuario): retorna bloqueo con is_active=true
       mockSupabaseClient.__mockQuery.maybeSingle
         .mockResolvedValueOnce({
           data: {
@@ -79,6 +79,7 @@ describe('Login Security', () => {
             blocked_until: blockedUntil.toISOString(),
             reason: 'too_many_failed_attempts',
             created_at: new Date().toISOString(),
+            is_active: true,
           },
           error: null,
         });
@@ -87,6 +88,28 @@ describe('Login Security', () => {
       expect(result.blocked).toBe(true);
       expect(result.type).toBe('user');
       expect(result.retryAfterSeconds).toBeGreaterThan(0);
+    });
+
+    it('debería retornar blocked=false para un bloqueo desbloqueado manualmente (is_active=false)', async () => {
+      // FIX (Issue 2): un bloqueo con is_active=false NO debe bloquear al usuario
+      // aunque blocked_until sea futuro. El endpoint filtra is_active=true server-side.
+      // En el mock, simular que no viene ningún row (como haría Supabase con el filtro is_active=true).
+      mockSupabaseClient.__mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
+
+      const result = await checkLoginBlock('unblockeduser', '1.2.3.4');
+      expect(result.blocked).toBe(false);
+    });
+
+    it('debería verificar que la query filtra por is_active=true', async () => {
+      // Verificar que se llama a .eq('is_active', true) en la cadena de consulta
+      mockSupabaseClient.__mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
+
+      await checkLoginBlock('testuser', '1.2.3.4');
+
+      // El mock .eq debe haber sido llamado con is_active, true en algún momento
+      const eqCalls = mockSupabaseClient.__mockQuery.eq.mock.calls;
+      const hasIsActiveFilter = eqCalls.some(([field, value]) => field === 'is_active' && value === true);
+      expect(hasIsActiveFilter).toBe(true);
     });
 
     it('debería retornar blocked=true para un bloqueo de IP activo', async () => {
@@ -104,6 +127,7 @@ describe('Login Security', () => {
             blocked_until: blockedUntil.toISOString(),
             reason: 'too_many_failed_attempts',
             created_at: new Date().toISOString(),
+            is_active: true,
           },
           error: null,
         });
@@ -210,6 +234,7 @@ describe('Login Security', () => {
           block_type: 'user',
           key: 'failuser',
           reason: 'too_many_failed_attempts',
+          is_active: true,  // FIX (Issue 4): is_active=true explícito en el upsert
         }),
         { onConflict: 'block_type,key' }
       );
@@ -232,11 +257,13 @@ describe('Login Security', () => {
       expect(upsertMock).not.toHaveBeenCalled();
     });
 
-    it('debería bloquear IP tras 5 usernames distintos fallidos en <10 min', async () => {
-      const ip = '9.9.9.9';
+    it('debería bloquear IP tras 5 intentos TOTALES (Opción A) incluso con el mismo username', async () => {
+      // FIX (Issue 3 — Opción A): ahora se cuenta el total de intentos, no usernames distintos.
+      // Este test era 'NO debería bloquear IP si los fails son del MISMO username' — ahora SÍ debe bloquear.
+      const ip = '8.8.8.8';
 
-      // Primera consulta: count de fails del usuario = 0
-      // Segunda consulta: usernames desde la IP = 5 distintos
+      // Primera consulta: count de fails del usuario = 0 (para no bloquear usuario)
+      // Segunda consulta: count total de fails de IP = 5 (mismo usuario, debe bloquear IP)
       const selectMock = vi.fn()
         .mockReturnValueOnce({
           eq: vi.fn().mockReturnThis(),
@@ -244,16 +271,43 @@ describe('Login Security', () => {
         })
         .mockReturnValueOnce({
           eq: vi.fn().mockReturnThis(),
-          gte: vi.fn().mockResolvedValue({
-            data: [
-              { username: 'user0' },
-              { username: 'user1' },
-              { username: 'user2' },
-              { username: 'user3' },
-              { username: 'user4' },
-            ],
-            error: null,
-          }),
+          gte: vi.fn().mockResolvedValue({ count: 5, error: null }),  // 5 intentos totales
+        });
+
+      mockSupabaseClient.__mockQuery.select = selectMock;
+
+      const upsertMock = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseClient.__mockQuery.upsert = upsertMock;
+
+      const result = await evaluateAndApplyBlocks('sameuser', ip);
+
+      // Debe bloquear la IP (Opción A — total intentos)
+      expect(result.ipBlocked).toBeDefined();
+      expect(result.ipBlocked?.until).toBeInstanceOf(Date);
+      expect(upsertMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_type: 'ip',
+          key: ip,
+          reason: 'too_many_failed_attempts',
+          is_active: true,
+        }),
+        { onConflict: 'block_type,key' }
+      );
+    });
+
+    it('debería bloquear IP tras 5 intentos totales en <10 min (distintos usuarios)', async () => {
+      const ip = '9.9.9.9';
+
+      // Primera consulta: count de fails del usuario = 0
+      // Segunda consulta: count total de fails de IP = 5 (distintos usuarios, también bloquea)
+      const selectMock = vi.fn()
+        .mockReturnValueOnce({
+          eq: vi.fn().mockReturnThis(),
+          gte: vi.fn().mockResolvedValue({ count: 0, error: null }),
+        })
+        .mockReturnValueOnce({
+          eq: vi.fn().mockReturnThis(),
+          gte: vi.fn().mockResolvedValue({ count: 5, error: null }),
         });
 
       mockSupabaseClient.__mockQuery.select = selectMock;
@@ -270,27 +324,25 @@ describe('Login Security', () => {
           block_type: 'ip',
           key: ip,
           reason: 'too_many_failed_attempts',
+          is_active: true,
         }),
         { onConflict: 'block_type,key' }
       );
     });
 
-    it('NO debería bloquear IP si los fails son del MISMO username', async () => {
-      const ip = '8.8.8.8';
+    it('NO debería bloquear IP si los intentos totales son < 5', async () => {
+      const ip = '7.7.7.7';
 
-      // Primera consulta: count de fails del usuario = 10 (bloquea usuario)
-      // Segunda consulta: usernames desde IP = 1 único (NO bloquea IP)
+      // Primera consulta: count de fails del usuario = 0
+      // Segunda consulta: count total de fails de IP = 4 (por debajo del umbral)
       const selectMock = vi.fn()
         .mockReturnValueOnce({
           eq: vi.fn().mockReturnThis(),
-          gte: vi.fn().mockResolvedValue({ count: 10, error: null }),
+          gte: vi.fn().mockResolvedValue({ count: 0, error: null }),
         })
         .mockReturnValueOnce({
           eq: vi.fn().mockReturnThis(),
-          gte: vi.fn().mockResolvedValue({
-            data: Array(10).fill({ username: 'sameuser' }),
-            error: null,
-          }),
+          gte: vi.fn().mockResolvedValue({ count: 4, error: null }),
         });
 
       mockSupabaseClient.__mockQuery.select = selectMock;
@@ -298,19 +350,30 @@ describe('Login Security', () => {
       const upsertMock = vi.fn().mockResolvedValue({ error: null });
       mockSupabaseClient.__mockQuery.upsert = upsertMock;
 
-      const result = await evaluateAndApplyBlocks('sameuser', ip);
+      const result = await evaluateAndApplyBlocks('user0', ip);
 
-      // Debe bloquear al usuario, NO a la IP
-      expect(result.userBlocked).toBeDefined();
       expect(result.ipBlocked).toBeUndefined();
+    });
 
-      // Solo debe haberse llamado upsert una vez (para el usuario)
-      expect(upsertMock).toHaveBeenCalledTimes(1);
+    it('debería setear is_active=true en el upsert para reactivar bloqueos previos', async () => {
+      // FIX (Issue 4): si se desbloquea manualmente y el mismo user/IP vuelve a fallar,
+      // el upsert debe setear is_active=true explícitamente para reactivar el bloqueo.
+      const selectMock = vi.fn().mockReturnValueOnce({
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockResolvedValue({ count: 3, error: null }),
+      });
+      mockSupabaseClient.__mockQuery.select = selectMock;
+
+      const upsertMock = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseClient.__mockQuery.upsert = upsertMock;
+
+      await evaluateAndApplyBlocks('reoffender', '1.2.3.4');
+
       expect(upsertMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          block_type: 'user',
+          is_active: true,
         }),
-        { onConflict: 'block_type,key' }
+        expect.anything()
       );
     });
 

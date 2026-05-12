@@ -132,12 +132,10 @@ export default function LoginBlocksPage() {
   const fetchBlocks = useCallback(async () => {
     setBlocksLoading(true);
     try {
-      // El endpoint existente devuelve solo activos (blocked_until >= now).
-      // Para el panel nuevo, extendemos con el campo is_active para ver histórico.
+      // FIX: pasar showAll al endpoint para que filtre server-side por is_active
       const params = new URLSearchParams();
-      if (!blocksShowAll) {
-        // Solo activos — el endpoint ya filtra por blocked_until >= now
-        // Además filtramos client-side por is_active=true para excluir soft-unblocked
+      if (blocksShowAll) {
+        params.append('showAll', 'true');
       }
       const res = await fetch(`/api/admin/login-blocks?${params}`, {
         headers: getAuthHeaders(),
@@ -358,9 +356,8 @@ export default function LoginBlocksPage() {
       const term = blocksFilter.toLowerCase();
       if (!b.key.toLowerCase().includes(term)) return false;
     }
-    // El endpoint ya devuelve solo activos (blocked_until >= now).
-    // Si is_active está disponible, filtramos también por eso.
-    if (!blocksShowAll && b.is_active === false) return false;
+    // El endpoint ya filtra server-side: activos cuando !showAll, todos cuando showAll.
+    // Aquí solo filtramos client-side el texto de búsqueda.
     return true;
   });
 
@@ -374,7 +371,10 @@ export default function LoginBlocksPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    // FIX (Issue 1 — scroll): body tiene overflow-hidden en layout.tsx (necesario para el mapa).
+    // Para que esta página scrollee, el root div debe ser h-full overflow-y-auto,
+    // creando su propio scroll context dentro del body con overflow-hidden.
+    <div className="h-full overflow-y-auto bg-gray-50">
       {/* ─── Header ──────────────────────────────────────────────────────────── */}
       <div className="bg-gradient-to-r from-red-600 to-red-700 shadow-lg">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -447,8 +447,9 @@ export default function LoginBlocksPage() {
                 />
               </div>
               <div className="space-y-1">
+                {/* FIX (Issue 3 — label): actualizado para reflejar la semántica real (total intentos, no usuarios distintos) */}
                 <label className="block text-sm font-medium text-gray-700">
-                  Intentos desde una IP (usuarios distintos) para bloquear IP
+                  Intentos totales desde una IP para bloqueo de IP
                 </label>
                 <input
                   type="number"
@@ -483,15 +484,26 @@ export default function LoginBlocksPage() {
               <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
-              <h2 className="text-lg font-semibold text-gray-900">Bloqueos Activos</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {blocksShowAll ? 'Todos los Bloqueos' : 'Bloqueos Activos'}
+              </h2>
               {!blocksLoading && (
                 <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-orange-100 text-orange-700">
                   {filteredBlocks.length}
                 </span>
               )}
             </div>
-            {/* Filtro de texto para bloqueos */}
+            {/* Filtros de bloqueos */}
             <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={blocksShowAll}
+                  onChange={(e) => setBlocksShowAll(e.target.checked)}
+                  className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                />
+                Ver histórico
+              </label>
               <input
                 type="text"
                 value={blocksFilter}
@@ -508,7 +520,7 @@ export default function LoginBlocksPage() {
               Cargando bloqueos...
             </div>
           ) : filteredBlocks.length === 0 ? (
-            <p className="text-gray-400 text-sm py-4">No hay bloqueos activos{blocksFilter ? ' que coincidan con el filtro' : ''}.</p>
+            <p className="text-gray-400 text-sm py-4">No hay bloqueos{blocksShowAll ? '' : ' activos'}{blocksFilter ? ' que coincidan con el filtro' : ''}.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -519,6 +531,7 @@ export default function LoginBlocksPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bloqueado hasta</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Creado</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Razón</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                   </tr>
                 </thead>
@@ -543,6 +556,18 @@ export default function LoginBlocksPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                         {block.reason || '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {block.is_active === false ? (
+                          <span className="px-2 py-1 text-xs font-medium rounded border bg-gray-100 text-gray-500 border-gray-200">
+                            Desbloqueado
+                            {block.unblocked_by ? ` por ${block.unblocked_by}` : ''}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 text-xs font-medium rounded border bg-orange-100 text-orange-700 border-orange-200">
+                            Activo
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
