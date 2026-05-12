@@ -44,6 +44,8 @@ import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import { reportDrift, LastSyncState } from '@/lib/realtime-drift';
+import type { ModalSnapshot } from '@/lib/view-state';
+import { useViewStateSync } from '@/hooks/dashboard/useViewStateSync';
 
 const DEBUG = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1';
 const dbg = (...args: any[]) => { if (DEBUG) console.log(...args); };
@@ -154,6 +156,7 @@ function DashboardContent() {
   const [isMovilesSinReportarOpen, setIsMovilesSinReportarOpen] = useState(false);
   const [isZonasNoActivasOpen, setIsZonasNoActivasOpen] = useState(false);
   const [saturacionModalZonaId, setSaturacionModalZonaId] = useState<number | null>(null);
+
 
   // Mapa completo movil_nro → estadoNro (para todos los moviles, no solo los con GPS)
   const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
@@ -312,6 +315,95 @@ function DashboardContent() {
   const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'atrasados'>('pendientes');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>(defaultServicesFilters);
   const [servicesResetToken, setServicesResetToken] = useState(0);
+  // ---------------------------------------------------------------------------
+  // View-state sync — preserva y restaura el estado visual a través de auto-reloads
+  // ---------------------------------------------------------------------------
+  // La modal snapshot se construye aqui (calculada antes de llamar al hook).
+  // Como los estados modales aún no cambiaron en esta render, refleja el estado actual.
+  const modalSnapshot: ModalSnapshot = (() => {
+    if (saturacionModalZonaId !== null) return { type: 'saturacion', entityId: saturacionModalZonaId };
+    if (popupPedido !== undefined) return { type: 'pedidoPopup', entityId: popupPedido };
+    if (popupService !== undefined) return { type: 'servicePopup', entityId: popupService };
+    if (popupMovil !== undefined) return { type: 'movilPopup', entityId: popupMovil };
+    if (isPedidosTableOpen) return { type: 'pedidosTable' };
+    if (isServicesTableOpen) return { type: 'servicesTable' };
+    if (isZonaEstadisticasOpen) return { type: 'zonaEstadisticas' };
+    if (zonaViewModalOpen) return { type: 'zonaView', entityId: zonaViewModalZonaId };
+    if (isTrackingModalOpen) return { type: 'tracking' };
+    if (isLeaderboardOpen) return { type: 'leaderboard' };
+    if (isFleterasZonasOpen) return { type: 'fleterasZonas' };
+    if (isZonasSinMovilOpen) return { type: 'zonasSinMovil' };
+    if (isMovilesSinReportarOpen) return { type: 'movilesSinReportar' };
+    if (isZonasNoActivasOpen) return { type: 'zonasNoActivas' };
+    return null;
+  })();
+
+  const { hydration, mapStateRef, panelRefs } = useViewStateSync({
+    selectedMoviles,
+    selectedEmpresas,
+    showPendientes,
+    showCompletados,
+    pedidosZonaFilter,
+    movilesZonasServiceFilter,
+    modal: modalSnapshot,
+  });
+
+  // Aplicar hydration una sola vez al montar (si vinimos de un auto-reload de realtime)
+  const hydrationAppliedRef = useRef(false);
+  useEffect(() => {
+    if (hydrationAppliedRef.current) return;
+    if (!hydration) return;
+    hydrationAppliedRef.current = true;
+
+    if (hydration.selectedMoviles !== null && hydration.selectedMoviles.length > 0) {
+      setSelectedMoviles(hydration.selectedMoviles);
+      userExplicitlyCleared.current = true; // tratar como selección custom — no auto-sobreescribir
+    }
+    if (hydration.selectedEmpresas !== null && hydration.selectedEmpresas.length > 0) {
+      setSelectedEmpresas(hydration.selectedEmpresas);
+    }
+    if (hydration.showPendientes !== null) setShowPendientes(hydration.showPendientes);
+    if (hydration.showCompletados !== null) setShowCompletados(hydration.showCompletados);
+    if (hydration.pedidosZonaFilter !== null) setPedidosZonaFilter(hydration.pedidosZonaFilter);
+    if (hydration.movilesZonasServiceFilter !== null) setMovilesZonasServiceFilter(hydration.movilesZonasServiceFilter);
+
+    // Modales: abrir el modal correspondiente
+    const m = hydration.modal;
+    if (m) {
+      if (m.type === 'saturacion' && 'entityId' in m) setSaturacionModalZonaId(m.entityId);
+      else if (m.type === 'pedidoPopup' && 'entityId' in m) setPopupPedido(m.entityId);
+      else if (m.type === 'servicePopup' && 'entityId' in m) setPopupService(m.entityId);
+      else if (m.type === 'movilPopup' && 'entityId' in m) setPopupMovil(m.entityId);
+      else if (m.type === 'pedidosTable') setIsPedidosTableOpen(true);
+      else if (m.type === 'servicesTable') setIsServicesTableOpen(true);
+      else if (m.type === 'zonaEstadisticas') setIsZonaEstadisticasOpen(true);
+      else if (m.type === 'zonaView') { setZonaViewModalOpen(true); if ('entityId' in m && m.entityId !== null) openZonaView(m.entityId); }
+      else if (m.type === 'tracking') setIsTrackingModalOpen(true);
+      else if (m.type === 'leaderboard') setIsLeaderboardOpen(true);
+      else if (m.type === 'fleterasZonas') setIsFleterasZonasOpen(true);
+      else if (m.type === 'zonasSinMovil') setIsZonasSinMovilOpen(true);
+      else if (m.type === 'movilesSinReportar') setIsMovilesSinReportarOpen(true);
+      else if (m.type === 'zonasNoActivas') setIsZonasNoActivasOpen(true);
+    }
+
+    // Scrolls de paneles — aplicar después de que el DOM renderice
+    if (hydration.panelScrolls) {
+      const { pedidos: pScroll, moviles: mScroll, empresas: eScroll } = hydration.panelScrolls;
+      requestAnimationFrame(() => {
+        if (panelRefs.pedidos.current) panelRefs.pedidos.current.scrollTop = pScroll;
+        if (panelRefs.moviles.current) panelRefs.moviles.current.scrollTop = mScroll;
+        if (panelRefs.empresas.current) panelRefs.empresas.current.scrollTop = eScroll;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo al montar — hydration es estable (ref interno)
+
+  // Callback estable para capturar el estado del mapa en cada moveend/zoomend
+  const handleMapStateChange = useCallback((s: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => {
+    mapStateRef.current = s;
+  }, [mapStateRef]);
+
+
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
   
@@ -3016,6 +3108,7 @@ function DashboardContent() {
                 serverNow={serverNow}
                 minutosAntesSa={minutosAntesSa}
                 user={user}
+                onMapStateChange={handleMapStateChange}
               />
             </motion.div>
           </>

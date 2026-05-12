@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { setReloadFlag } from './view-state';
 
 /**
  * Monitor liviano de salud del Realtime: cuenta cuántos cierres/errores de
@@ -14,6 +15,8 @@ import { useEffect, useState } from 'react';
  *  - Cuando el flag se prende, queda prendido hasta que el usuario lo descarte
  *    o recargue (no se apaga automáticamente — si está mal, el usuario decide).
  *  - dismiss() apaga el flag y resetea el contador.
+ *  - Antes del reload, setea el flag `tm:view-state:caused-by-realtime-reload`
+ *    en sessionStorage para que el dashboard restaure el view-state al montar.
  *
  * Uso:
  *  - Las suscripciones llaman `recordRealtimeFailure()` en CLOSED/CHANNEL_ERROR.
@@ -94,6 +97,10 @@ export function triggerAutoReload(): void {
     ? { count: 1, firstAt: Date.now() }
     : { count: c.count + 1, firstAt: c.firstAt };
   setReloadCounter(next);
+  // Persistir el view-state flag ANTES de notificar el reload para garantizar
+  // que el snapshot ya fue escrito (el debounce de useViewStateSync habrá
+  // flusheado en los 2s de delay que preceden al reload).
+  setReloadFlag();
   notifyAutoReloadStarted();
   autoReloadTimeoutId = setTimeout(() => {
     window.location.reload();

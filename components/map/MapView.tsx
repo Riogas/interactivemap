@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
@@ -135,6 +135,38 @@ interface MapViewProps {
   allHiddenMovilIds?: Set<string>; // IDs de móviles ocultos-pero-operativos (capa móviles-zonas los excluye)
   /** Usuario autenticado — usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
   user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>; allowedEmpresas?: number[] | null } | null;
+  /** Callback invocado en moveend/zoomend para capturar el estado del mapa (view-state). */
+  onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
+}
+
+
+// ---------------------------------------------------------------------------
+// MapStateCapture: captura center/zoom/bounds en moveend/zoomend
+// ---------------------------------------------------------------------------
+interface MapStateCaptureProps {
+  onMapStateChange: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
+}
+
+function MapStateCapture({ onMapStateChange }: MapStateCaptureProps) {
+  const cbRef = React.useRef(onMapStateChange);
+  cbRef.current = onMapStateChange;
+  useMapEvents({
+    moveend(e) {
+      const map = e.target;
+      const c = map.getCenter();
+      const z = map.getZoom();
+      const b = map.getBounds();
+      cbRef.current({ center: [c.lat, c.lng], zoom: z, bounds: [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]] });
+    },
+    zoomend(e) {
+      const map = e.target;
+      const c = map.getCenter();
+      const z = map.getZoom();
+      const b = map.getBounds();
+      cbRef.current({ center: [c.lat, c.lng], zoom: z, bounds: [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]] });
+    },
+  });
+  return null;
 }
 
 function MapUpdater({
@@ -656,6 +688,7 @@ const MapView = memo(function MapView({
   user,
   serverNow = new Date(),
   minutosAntesSa = null,
+  onMapStateChange,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -3092,6 +3125,7 @@ const MapView = memo(function MapView({
 
         {/* Herramienta de medición de distancia (clic derecho) */}
         <DistanceMeasurement />
+        {onMapStateChange && <MapStateCapture onMapStateChange={onMapStateChange} />}
       </MapContainer>
       
       {/* Control de animación (solo visible cuando hay un móvil seleccionado con historial) */}
