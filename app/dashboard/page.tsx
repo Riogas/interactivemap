@@ -6,6 +6,7 @@ import { motion, MotionConfig } from 'framer-motion';
 import { MovilData, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters, PedidoFilters, ServiceFilters } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import RealtimeHealthBanner from '@/components/ui/RealtimeHealthBanner';
+import UserEqPassBanner from '@/components/ui/UserEqPassBanner';
 import NavbarSimple from '@/components/layout/NavbarSimple';
 import FloatingToolbar from '@/components/layout/FloatingToolbar';
 import { IncidentRecorderButton } from '@/components/IncidentRecorderButton';
@@ -2233,6 +2234,7 @@ function DashboardContent() {
   return (
     <MotionConfig reducedMotion={preferences.lightMode ? 'always' : 'user'}>
     <RealtimeHealthBanner />
+    <UserEqPassBanner />
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 relative">
       {/* Navbar Simple - Solo logo y espacio para indicadores */}
       <div className="flex-shrink-0">

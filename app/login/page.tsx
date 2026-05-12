@@ -29,10 +29,15 @@ export default function LoginPage() {
       const result = await login(username, password, escenarioId);
 
       if (result.success) {
-        // Alerta no-bloqueante: nombre de usuario y contraseña coinciden.
-        // No impide el login (es solo un aviso de seguridad).
+        // Warning user==pass: levanto flag en sessionStorage; el banner
+        // del dashboard (UserEqPassBanner) lo consume y muestra el aviso.
         if ((result as { warning?: string }).warning === 'USER_EQ_PASS') {
-          alert('Atención: tu nombre de usuario y contraseña son iguales. Por seguridad, te recomendamos cambiar tu contraseña.');
+          try {
+            sessionStorage.setItem('trackmovil:user_eq_pass_warning', '1');
+          } catch {
+            // Si sessionStorage no está disponible, perdemos el warning visual
+            // pero el login sigue funcionando. No interrumpir.
+          }
         }
         // Animación de éxito antes de redirigir
         await new Promise(resolve => setTimeout(resolve, 500));
