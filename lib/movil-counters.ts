@@ -24,6 +24,8 @@ export interface RecomputeResult {
  *     cada movilNro afectado. Los contadores no filtran por zona, pero el
  *     recompute es defensivo: garantiza coherencia ante futuros cambios de
  *     semántica y captura casos donde la reasignación zonal arrastra pedidos.
+ *   - Después de upsert/delete en import/movZonaServicio (Trigger 3b) — mismo
+ *     razonamiento que moviles_zonas.
  *
  * NOTA sobre zonas (Trigger 3):
  *   app/api/zonas/route.ts solo expone GET (sin mutaciones) — no requiere wiring.
@@ -36,6 +38,14 @@ export interface RecomputeResult {
  *   (consistente con el filtro selectedDateCompact del dashboard)
  *
  * INVARIANTE MANTENIDA: capacidad = cant_ped + cant_serv
+ *
+ * CAMPO DE DIAGNÓSTICO: counters_updated_at
+ *   Se setea a NOW() en cada llamada exitosa. Permite verificar externamente
+ *   si el recompute está corriendo:
+ *     SELECT nro, cant_ped, cant_serv, capacidad, counters_updated_at
+ *     FROM moviles WHERE nro = 24;
+ *   Si counters_updated_at no cambia tras ejecutar un endpoint → ese endpoint
+ *   no está wired al helper.
  *
  * DECISIÓN DE DISEÑO: Opción A (TypeScript helper) sobre Opción B (DB triggers).
  *   Si en el futuro se agregan endpoints que olvidan llamar a esta función,
@@ -77,6 +87,7 @@ export async function recomputeMovilCounters(
   // Guard: movil inválido → early return sin queries
   const nro = Number(movilNro);
   if (movilNro == null || !Number.isFinite(nro) || nro === 0) {
+    console.log(`[movil-counters] skip movilNro=${movilNro} reason=invalid`);
     return;
   }
 
@@ -118,13 +129,15 @@ export async function recomputeMovilCounters(
   const ped = cantPed ?? 0;
   const serv = cantServ ?? 0;
 
-  // Actualizar los 3 campos en la fila del móvil (match por `nro`)
+  // Actualizar los 3 campos en la fila del móvil (match por `nro`),
+  // incluyendo counters_updated_at para diagnóstico de stale.
   const { error: errorUpd } = await supabase
     .from('moviles')
     .update({
       cant_ped: ped,
       cant_serv: serv,
       capacidad: ped + serv,
+      counters_updated_at: now.toISOString(),
     } as any)
     .eq('nro', nro);
 

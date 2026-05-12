@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireApiKey } from '@/lib/auth-middleware';
+import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
 
 /**
  * Mapea un item del body de Genexus (PascalCase) a las columnas de la tabla moviles_zonas.
@@ -53,6 +54,37 @@ function mapGxItem(item: any): Record<string, any>[] {
 }
 
 /**
+ * Recomputa contadores y zonas_cap_entrega para todos los móviles únicos
+ * extraídos de un array de filas de moviles_zonas (best-effort).
+ *
+ * Llama recomputeMovilAndCapEntrega (compuesta) para cada nro distinto:
+ * garantiza que cant_ped/cant_serv/capacidad y zonas_cap_entrega quedan
+ * sincronizados después de mutaciones en moviles_zonas.
+ *
+ * Usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.
+ */
+async function recomputeForItems(items: Array<{ movil_id: string }>, trigger: string): Promise<void> {
+  if (!items || items.length === 0) return;
+  const supabase = getServerSupabaseClient();
+  const uniqueNros = [...new Set(
+    items
+      .map((r) => parseInt(r.movil_id, 10))
+      .filter((n) => Number.isFinite(n) && n !== 0),
+  )];
+  if (uniqueNros.length === 0) return;
+  console.log(`[recompute] trigger=${trigger} — moviles a recomputar: ${uniqueNros.join(', ')}`);
+  for (const nro of uniqueNros) {
+    try {
+      await recomputeMovilAndCapEntrega(supabase as any, nro);
+      console.log(`[recompute] trigger=${trigger} movilNro=${nro} → recompute+sync OK`);
+    } catch (err) {
+      console.error(`[recompute] trigger=${trigger} falló recompute para movil ${nro}:`, err);
+      // best-effort: no aborta el response principal
+    }
+  }
+}
+
+/**
  * POST /api/import/movZonaServicio
  * Importar asignaciones móvil-zona desde Genexus.
  *
@@ -69,6 +101,7 @@ function mapGxItem(item: any): Record<string, any>[] {
  * Comportamiento:
  *   1) Borra filas de moviles_zonas del escenario con tipo_de_servicio = TipoDeServicio (+ vacíos)
  *   2) Inserta las nuevas filas
+ *   3) Recomputa contadores + sincroniza zonas_cap_entrega para todos los móviles afectados (best-effort)
  */
 export async function POST(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -190,6 +223,15 @@ export async function POST(request: NextRequest) {
     console.log(`✅ ${totalInserted} asignaciones importadas (escenarios: ${escenarioIds.join(', ')})`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+    // 3) Recomputar contadores + sincronizar zonas_cap_entrega para todos los
+    //    móviles únicos del import (best-effort — no aborta el response si falla).
+    //
+    //    RAZÓN: un import de movZonaServicio cambia las asignaciones zona→movil,
+    //    lo que puede afectar lote_disponible en zonas_cap_entrega para cada móvil
+    //    involucrado. recomputeMovilAndCapEntrega garantiza coherencia:
+    //    primero actualiza cant_ped/cant_serv/capacidad, luego sincroniza zonas_cap_entrega.
+    await recomputeForItems(items, 'POST import/movZonaServicio');
+
     return NextResponse.json({
       success: true,
       message: `${totalInserted} asignaciones importadas correctamente`,
@@ -213,6 +255,7 @@ export async function POST(request: NextRequest) {
  *
  * TipoDeServicio a nivel raíz es OBLIGATORIO.
  * Borra filas del escenario con ese tipo_de_servicio (+ vacíos) e inserta las nuevas.
+ * Recomputa contadores + sincroniza zonas_cap_entrega para todos los móviles afectados (best-effort).
  */
 export async function PUT(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -322,6 +365,9 @@ export async function PUT(request: NextRequest) {
     console.log(`✅ ${totalInserted} asignaciones importadas via PUT (escenarios: ${escenarioIds.join(', ')})`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+    // 3) Recomputar contadores + sincronizar zonas_cap_entrega (best-effort)
+    await recomputeForItems(items, 'PUT import/movZonaServicio');
+
     return NextResponse.json({
       success: true,
       message: `${totalInserted} asignaciones importadas correctamente`,
@@ -341,7 +387,8 @@ export async function PUT(request: NextRequest) {
 
 /**
  * DELETE /api/import/movZonaServicio
- * Eliminar asignaciones por movil_id, zona_id o ambos
+ * Eliminar asignaciones por movil_id, zona_id o ambos.
+ * Recomputa contadores + sincroniza zonas_cap_entrega para los móviles afectados (best-effort).
  */
 export async function DELETE(request: NextRequest) {
   const keyValidation = requireApiKey(request);
@@ -359,7 +406,7 @@ export async function DELETE(request: NextRequest) {
     let query = (supabase as any).from('moviles_zonas').delete();
 
     if (ids && Array.isArray(ids)) {
-      // Eliminar por IDs específicos
+      // Eliminar por IDs específicos — necesitamos recuperar los movil_id para el recompute
       query = query.in('id', ids);
     } else if (movil_id && zona_id) {
       // Eliminar asignación específica
@@ -388,6 +435,12 @@ export async function DELETE(request: NextRequest) {
     }
 
     console.log(`✅ ${data?.length || 0} asignaciones eliminadas`);
+
+    // Recomputar contadores + sincronizar zonas_cap_entrega para los móviles
+    // cuyas asignaciones fueron borradas (best-effort).
+    if (data && data.length > 0) {
+      await recomputeForItems(data as Array<{ movil_id: string }>, 'DELETE import/movZonaServicio');
+    }
 
     return NextResponse.json({
       success: true,

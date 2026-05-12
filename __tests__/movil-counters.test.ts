@@ -19,6 +19,8 @@
  * 12. Bulk deduplication: múltiples llamadas al helper recomputeCountersForMoviles con
  *     registros repetidos del mismo movil solo llama recompute UNA vez por nro distinto
  * 13. DELETE: después de borrar un pedido, el recompute reduce cant_ped
+ * 15. counters_updated_at se incluye en el UPDATE con el valor de `now` inyectado
+ * 16. movilNro inválido → log de skip emitido
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -134,9 +136,11 @@ describe('recomputeMovilCounters', () => {
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
-  it('Caso 4: 0 pedidos + 0 services → actualiza moviles con capacidad=0', async () => {
+  it('Caso 4: 0 pedidos + 0 services → actualiza moviles con capacidad=0 y counters_updated_at', async () => {
     let updateCalledWith: any = null;
     let eqCalledWith: any = null;
+
+    const fixedNow = new Date('2026-05-12T19:00:00.000Z');
 
     // Supabase mock manual para este caso específico
     const supabase = {
@@ -176,14 +180,21 @@ describe('recomputeMovilCounters', () => {
       }),
     };
 
-    await recomputeMovilCounters(supabase as any, 42);
+    await recomputeMovilCounters(supabase as any, 42, fixedNow);
 
-    expect(updateCalledWith).toEqual({ cant_ped: 0, cant_serv: 0, capacidad: 0 });
+    expect(updateCalledWith).toEqual({
+      cant_ped: 0,
+      cant_serv: 0,
+      capacidad: 0,
+      counters_updated_at: fixedNow.toISOString(),
+    });
     expect(eqCalledWith).toEqual({ col: 'nro', val: 42 });
   });
 
   it('Caso 5: 3 pedidos + 2 services → capacidad=5 (invariante cant_ped + cant_serv)', async () => {
     let updateCalledWith: any = null;
+
+    const fixedNow = new Date('2026-05-12T19:00:00.000Z');
 
     const supabase = {
       from: vi.fn((table: string) => {
@@ -219,9 +230,14 @@ describe('recomputeMovilCounters', () => {
       }),
     };
 
-    await recomputeMovilCounters(supabase as any, 10);
+    await recomputeMovilCounters(supabase as any, 10, fixedNow);
 
-    expect(updateCalledWith).toEqual({ cant_ped: 3, cant_serv: 2, capacidad: 5 });
+    expect(updateCalledWith).toEqual({
+      cant_ped: 3,
+      cant_serv: 2,
+      capacidad: 5,
+      counters_updated_at: fixedNow.toISOString(),
+    });
   });
 
   it('Caso 6: Error en count de pedidos → throws (no swallowed)', async () => {
@@ -454,5 +470,70 @@ describe('recomputeMovilCounters', () => {
     const supabase = makeSimpleSupabase(1, 0);
     const result = await recomputeMovilCounters(supabase as any, '42');
     expect(result).toEqual({ movilNro: 42, cant_ped: 1, cant_serv: 0, capacidad: 1 });
+  });
+
+  it('Caso 15: counters_updated_at se incluye en el UPDATE con el valor de now inyectado', async () => {
+    const fixedNow = new Date('2026-05-12T20:30:00.000Z');
+    let updateCalledWith: any = null;
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'pedidos') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            then: (resolve: any) => resolve({ count: 1, error: null }),
+            catch: vi.fn().mockReturnThis(),
+            finally: vi.fn().mockReturnThis(),
+          };
+        }
+        if (table === 'services') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            then: (resolve: any) => resolve({ count: 0, error: null }),
+            catch: vi.fn().mockReturnThis(),
+            finally: vi.fn().mockReturnThis(),
+          };
+        }
+        if (table === 'moviles') {
+          return {
+            update: vi.fn((data: any) => {
+              updateCalledWith = data;
+              return {
+                eq: vi.fn().mockResolvedValue({ error: null }),
+              };
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+
+    await recomputeMovilCounters(supabase as any, 24, fixedNow);
+
+    // counters_updated_at debe ser el ISO string de fixedNow
+    expect(updateCalledWith).toMatchObject({
+      cant_ped: 1,
+      cant_serv: 0,
+      capacidad: 1,
+      counters_updated_at: '2026-05-12T20:30:00.000Z',
+    });
+  });
+
+  it('Caso 16: movilNro inválido → log de skip emitido (console.log capturado)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const supabase = makeSupabaseMock({});
+    await recomputeMovilCounters(supabase as any, null);
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[movil-counters] skip movilNro='),
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('reason=invalid'),
+    );
+
+    logSpy.mockRestore();
   });
 });
