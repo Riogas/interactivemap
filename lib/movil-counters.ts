@@ -20,6 +20,15 @@ export interface RecomputeResult {
  *   - Después de upsert/delete en import/moviles (Trigger 1)
  *   - Después de upsert/delete en import/pedidos (Trigger 2)
  *   - Después de upsert/delete en import/services (Trigger 2)
+ *   - Después de upsert/delete en moviles_zonas (Trigger 3) — recomputar para
+ *     cada movilNro afectado. Los contadores no filtran por zona, pero el
+ *     recompute es defensivo: garantiza coherencia ante futuros cambios de
+ *     semántica y captura casos donde la reasignación zonal arrastra pedidos.
+ *
+ * NOTA sobre zonas (Trigger 3):
+ *   app/api/zonas/route.ts solo expone GET (sin mutaciones) — no requiere wiring.
+ *   app/api/moviles-zonas/route.ts POST hace bulk delete+insert de asignaciones
+ *   y llama a este helper para cada movilId único del body.
  *
  * CRITERIO "PENDIENTE DE HOY":
  *   - estado_nro = 1

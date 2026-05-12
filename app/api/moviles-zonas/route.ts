@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
 import { parseZonasJsonb } from '@/lib/auth-scope';
+import { recomputeMovilCounters } from '@/lib/movil-counters';
 
 /**
  * GET /api/moviles-zonas
@@ -161,6 +162,10 @@ export async function GET(request: NextRequest) {
  *
  * Comportamiento: REEMPLAZA todas las asignaciones del escenario indicado
  * con las nuevas. Esto mantiene consistencia con el import de Genexus.
+ *
+ * Recompute: después del upsert, recomputa contadores cant_ped/cant_serv/capacidad
+ * para cada movilNro afectado (todos los movilId únicos del body) — best-effort,
+ * no aborta el response si falla.
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -240,6 +245,36 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ ${totalInserted} asignaciones guardadas (escenario: ${escenario_id})`);
+
+    // 4) Recomputar contadores cant_ped/cant_serv/capacidad para todos los
+    //    movilId únicos del body (best-effort — no aborta el response si falla).
+    //
+    //    RAZÓN: aunque los contadores no filtran por zona, un cambio en asignaciones
+    //    puede indicar que el operador reasignó móviles entre zonas. El recompute
+    //    garantiza coherencia defensiva y protege ante futuros cambios de semántica.
+    //    Usa getServerSupabaseClient() para bypassear RLS en UPDATE moviles.
+    const uniqueMovilNros = [...new Set(
+      rows
+        .map((r) => parseInt(r.movil_id, 10))
+        .filter((n) => Number.isFinite(n) && n !== 0),
+    )];
+
+    if (uniqueMovilNros.length > 0) {
+      console.log(`[recompute] trigger=POST moviles-zonas — moviles a recomputar: ${uniqueMovilNros.join(', ')}`);
+      for (const nro of uniqueMovilNros) {
+        try {
+          const result = await recomputeMovilCounters(supabase as any, nro);
+          if (result) {
+            console.log(
+              `[recompute] trigger=POST moviles-zonas movilNro=${result.movilNro} → cant_ped=${result.cant_ped} cant_serv=${result.cant_serv} capacidad=${result.capacidad}`,
+            );
+          }
+        } catch (err) {
+          console.error(`⚠️ [recompute] trigger=POST moviles-zonas falló recompute para movil ${nro}:`, err);
+          // best-effort: no aborta el response principal
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
