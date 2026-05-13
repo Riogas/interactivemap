@@ -340,15 +340,6 @@ export default function LoginPage() {
             </motion.button>
           </form>
 
-          {/* Footer */}
-          <motion.div
-            className="mt-6 text-center text-sm text-gray-500"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-          >
-            <p>¿Necesitas ayuda? Contacta al administrador</p>
-          </motion.div>
         </motion.div>
 
         {/* Info adicional */}

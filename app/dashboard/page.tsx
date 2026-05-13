@@ -1042,7 +1042,14 @@ function DashboardContent() {
     if (movilesFiltered.length === 0) return;
 
     const hidden = hiddenMovilIdsRef.current;
-    const visibleIds = movilesFiltered.filter(m => !hidden.has(m.id)).map(m => m.id);
+    // Aplicar el filtro de actividad (mismo criterio que la lista visible del
+    // colapsable). Sin esto, la auto-selección agregaba móviles inactivos al
+    // cambiar empresa, y como esos móviles no aparecen en la UI con
+    // actividad='activo', el usuario no puede deseleccionarlos individualmente
+    // → quedan residualmente en selectedMoviles y aparecen en el badge.
+    const visibleIds = applyActivityFilter(movilesFiltered)
+      .filter(m => !hidden.has(m.id))
+      .map(m => m.id);
     const visibleSet = new Set(visibleIds);
 
     setSelectedMoviles(prev => {
@@ -1080,7 +1087,7 @@ function DashboardContent() {
       }
       return prev;
     });
-  }, [movilesFiltered.length, isInitialLoad, movilesFiltered]);
+  }, [movilesFiltered.length, isInitialLoad, movilesFiltered, applyActivityFilter]);
 
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
