@@ -555,6 +555,8 @@ function DashboardContent() {
           estadoDesc: string;
           estadoNro: number | null;
           capacidad: number;
+          cant_ped: number;
+          cant_serv: number;
         }
 
         // Mapear por ID (que es TEXT), no por nro
@@ -586,6 +588,8 @@ function DashboardContent() {
               estadoDesc: extendedData.estadoDesc,
               estadoNro: extendedData.estadoNro ?? undefined,
               capacidad: extendedData.capacidad ?? 0,
+              cant_ped: extendedData.cant_ped ?? 0,
+              cant_serv: extendedData.cant_serv ?? 0,
               color: calculatedColor,
             };
           }
@@ -1265,6 +1269,8 @@ function DashboardContent() {
                 estadoNro: nextEstado != null ? nextEstado : m.estadoNro,
                 empresaFleteraId: movilEmpresaId ?? m.empresaFleteraId,
                 ...(nextCapacidad != null ? { capacidad: nextCapacidad } : {}),
+                ...((latestMovil as any).cant_ped != null ? { cant_ped: (latestMovil as any).cant_ped } : {}),
+                ...((latestMovil as any).cant_serv != null ? { cant_serv: (latestMovil as any).cant_serv } : {}),
               }
             : m,
         );

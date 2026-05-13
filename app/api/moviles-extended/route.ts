@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     // 1. Obtener datos de móviles (tamano_lote, matricula, capacidad)
     const { data: movilesData, error: movilesError } = await supabase
       .from('moviles')
-      .select('id, nro, tamano_lote, matricula, descripcion, estado_desc, estado_nro, empresa_fletera_id, empresa_fletera_nom, capacidad')
+      .select('id, nro, tamano_lote, matricula, descripcion, estado_desc, estado_nro, empresa_fletera_id, empresa_fletera_nom, capacidad, cant_ped, cant_serv')
       .eq('mostrar_en_mapa', true);
 
     if (movilesError) {
@@ -82,6 +82,8 @@ export async function GET(request: NextRequest) {
       empresa_fletera_nom: movil.empresa_fletera_nom,
       pedidosAsignados: pedidosPorMovil[movil.nro] || 0, // Usar nro para contar pedidos
       capacidad: movil.capacidad ?? 0, // cant_ped + cant_serv pre-computado por trigger
+      cant_ped: movil.cant_ped ?? 0,
+      cant_serv: movil.cant_serv ?? 0,
     }));
 
     console.log(`✅ Fetched ${movilesExtended.length} moviles with extended data`);

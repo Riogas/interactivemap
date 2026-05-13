@@ -282,9 +282,7 @@ export default function MovilSelector({
     if (movilesFilters.estado.length > 0) {
       result = result.filter(movil => {
         const tamanoLote = movil.tamanoLote || 6;
-        const pedidosAsignados = movil.pedidosAsignados || 0;
-        const capacidadRestante = tamanoLote - pedidosAsignados;
-        const porcentajeDisponible = (capacidadRestante / tamanoLote) * 100;
+        const capacidad = movil.capacidad ?? 0;
         
         // Verificar cada estado seleccionado
         return movilesFilters.estado.some(estado => {
@@ -298,14 +296,14 @@ export default function MovilSelector({
               return movil.estadoNro === 4;
             
             case 'con_capacidad':
-              // Móviles con capacidad disponible (> 0%)
-              return capacidadRestante > 0;
+              // Móviles con capacidad disponible (> 0%) — usa capacidad de la DB
+              return tamanoLote > 0 && capacidad < tamanoLote;
             
             case 'sin_capacidad':
               // Móviles sin capacidad: lote completo (4/4) o sobrepasado (6/4).
               // Mismo criterio que loteCompleto en el item del colapsable y el
               // color negro del marker en el mapa.
-              return (movil.tamanoLote ?? 0) > 0 && (movil.pedidosAsignados ?? 0) >= (movil.tamanoLote ?? 0);
+              return (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
             
             default:
               return true;
@@ -1296,12 +1294,12 @@ export default function MovilSelector({
                             const isInactive = movil.isInactive;
                             const isNoActivo = movil.estadoNro === 3;
                             const isBajaMomentanea = movil.estadoNro === 4;
-                            const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.pedidosAsignados ?? 0) >= (movil.tamanoLote ?? 0);
+                            const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
                             // 🎨 Mismo cálculo de color que getMovilColor en MapView
                             const loteColor = (() => {
                               if (loteCompleto) return '#1F2937'; // Negro — lote lleno
                               const tam = movil.tamanoLote || 6;
-                              const ped = movil.pedidosAsignados || 0;
+                              const ped = movil.capacidad || 0;
                               const pct = ((tam - ped) / tam) * 100;
                               if (pct < 50) return '#F59E0B'; // Amarillo — < 50%
                               return movil.color; // Color fletera — >= 50%
@@ -1387,7 +1385,7 @@ export default function MovilSelector({
                                     <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
                                       {movil.id}
                                       {' – '}
-                                      {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0} - {movil.capacidad ?? 0}
+                                      {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
                                       {isNoActivo && (
                                         <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
                                           No activo
