@@ -752,18 +752,29 @@ export default function MovilSelector({
         // "Todos" cuando todos los móviles operativos VISIBLES están seleccionados —
         // usa `allVisibleOperativosSelected` (semántica relajada: no requiere todas
         // las empresas, solo refleja lo que el usuario ve en el colapsable).
-        // El +N es el rebalse de los seleccionados que no caben en el badge.
+        // La lista de IDs mostrada y el contador +N se calculan SOLO sobre la
+        // intersección con los móviles visibles del colapsable. selectedMoviles
+        // puede contener IDs de móviles hidden / filtrados out (ej. inactivos
+        // por el filtro `actividad='activo'`) que el usuario no ve — esos no
+        // deben aparecer en el badge.
         {
-          const noneSelected = selectedMoviles.length === 0;
+          const visibleSet = new Set(
+            (hiddenMovilIds && hiddenMovilIds.size > 0
+              ? moviles.filter(m => !hiddenMovilIds.has(m.id))
+              : moviles
+            ).map(m => m.id),
+          );
+          const visibleSelectedIds = selectedMoviles.filter(id => visibleSet.has(id));
+          const noneSelected = visibleSelectedIds.length === 0;
           const VISIBLE_IDS = 5;
           badges.push({
             label: allVisibleOperativosSelected
               ? '🚗 Móviles: Todos'
               : noneSelected
               ? '🚗 Móviles: Ninguno'
-              : `🚗 Móviles: ${selectedMoviles.length <= VISIBLE_IDS
-                  ? selectedMoviles.join(', ')
-                  : `${selectedMoviles.slice(0, VISIBLE_IDS).join(', ')} +${selectedMoviles.length - VISIBLE_IDS}`}`,
+              : `🚗 Móviles: ${visibleSelectedIds.length <= VISIBLE_IDS
+                  ? visibleSelectedIds.join(', ')
+                  : `${visibleSelectedIds.slice(0, VISIBLE_IDS).join(', ')} +${visibleSelectedIds.length - VISIBLE_IDS}`}`,
             color: 'bg-indigo-100 text-indigo-700',
             onClear: allVisibleOperativosSelected ? undefined : onSelectAll,
           });
