@@ -351,11 +351,12 @@ export default function MovilSelector({
   // lo que el usuario ve y operó. NO tiene impacto en canSeeUnassigned ni en visibilidad
   // de huérfanos. No depende de allEmpresasSelected.
   const allVisibleOperativosSelected = useMemo(() => {
-    const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
-      ? moviles.filter(m => !hiddenMovilIds.has(m.id))
-      : moviles;
-    return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
-  }, [moviles, selectedMoviles, hiddenMovilIds]);
+    // Usar filteredMoviles (lista visible del colapsable, post activity+capacity+
+    // advanced filters + hidden) en vez de moviles raw. Esto asegura que "Todos"
+    // refleje SOLO los items visibles, no inactivos/filtrados-out que el usuario
+    // no ve.
+    return filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
+  }, [filteredMoviles, selectedMoviles]);
 
   // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
@@ -753,17 +754,13 @@ export default function MovilSelector({
         // usa `allVisibleOperativosSelected` (semántica relajada: no requiere todas
         // las empresas, solo refleja lo que el usuario ve en el colapsable).
         // La lista de IDs mostrada y el contador +N se calculan SOLO sobre la
-        // intersección con los móviles visibles del colapsable. selectedMoviles
-        // puede contener IDs de móviles hidden / filtrados out (ej. inactivos
-        // por el filtro `actividad='activo'`) que el usuario no ve — esos no
-        // deben aparecer en el badge.
+        // intersección con `filteredMoviles` (lista visible del colapsable post
+        // activity/capacity/advanced/hidden filters). selectedMoviles puede
+        // contener IDs de móviles que se filtraron out (ej. inactivos cuando
+        // `actividad='activo'`, o móviles residuales de una empresa anterior) que
+        // el usuario no ve — esos no deben aparecer en el badge.
         {
-          const visibleSet = new Set(
-            (hiddenMovilIds && hiddenMovilIds.size > 0
-              ? moviles.filter(m => !hiddenMovilIds.has(m.id))
-              : moviles
-            ).map(m => m.id),
-          );
+          const visibleSet = new Set(filteredMoviles.map(m => m.id));
           const visibleSelectedIds = selectedMoviles.filter(id => visibleSet.has(id));
           const noneSelected = visibleSelectedIds.length === 0;
           const VISIBLE_IDS = 5;
