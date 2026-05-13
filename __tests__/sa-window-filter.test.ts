@@ -92,4 +92,54 @@ describe('isWithinSaWindow', () => {
     const horaPara = new Date('2026-05-11T14:00:30.000Z');
     expect(isWithinSaWindow(horaPara, now, 1)).toBe(true);
   });
+
+  // ── Convencion DB: hora local Uruguay con offset +00 incorrecto ───────────
+  // Estos tests verifican el fix del bug reportado:
+  // La DB guarda "2026-05-13 13:00:00+00" significando 13:00 hora local Uruguay
+  // (no 13:00 UTC). parseDbDate() stripea el offset para que JS interprete
+  // como hora local, igual que utils/pedidoDelay.ts:42.
+  // Nota: estos tests asumen TZ=America/Montevideo en el runner (maquina de desarrollo).
+
+  it('[bug] retorna false cuando DB format +00 esta fuera de ventana (caso del usuario)', () => {
+    // fch_hora_para = "2026-05-13 13:00:00+00" = 13:00 local Uruguay = 16:00 UTC
+    // serverNow = 09:23 Uruguay = 12:23 UTC
+    // windowEnd = 12:23 UTC + 60 min = 13:23 UTC
+    // 16:00 UTC > 13:23 UTC → fuera de ventana → false
+    const serverNow = new Date('2026-05-13T12:23:00Z');
+    expect(isWithinSaWindow('2026-05-13 13:00:00+00', serverNow, 60)).toBe(false);
+  });
+
+  it('retorna true cuando DB format +00 esta dentro de ventana', () => {
+    // fch_hora_para = "2026-05-13 10:00:00+00" = 10:00 local Uruguay = 13:00 UTC
+    // serverNow = 09:30 Uruguay = 12:30 UTC
+    // windowEnd = 12:30 UTC + 60 min = 13:30 UTC
+    // 13:00 UTC <= 13:30 UTC → dentro de ventana → true
+    const serverNow = new Date('2026-05-13T12:30:00Z');
+    expect(isWithinSaWindow('2026-05-13 10:00:00+00', serverNow, 60)).toBe(true);
+  });
+
+  it('retorna true cuando DB format +00 esta atrasado (ya paso la hora)', () => {
+    // fch_hora_para = "2026-05-13 08:00:00+00" = 08:00 local Uruguay = 11:00 UTC
+    // serverNow = 09:30 Uruguay = 12:30 UTC
+    // windowEnd = 12:30 UTC + 60 min = 13:30 UTC
+    // 11:00 UTC <= 13:30 UTC → atrasado, visible → true
+    const serverNow = new Date('2026-05-13T12:30:00Z');
+    expect(isWithinSaWindow('2026-05-13 08:00:00+00', serverNow, 60)).toBe(true);
+  });
+
+  it('retorna false cuando DB format -03 esta fuera de ventana', () => {
+    // fch_hora_para = "2026-05-13 13:00:00-03" = 13:00 local (offset -03 strippeado)
+    // Mismo resultado que el caso +00 en maquina Montevideo: 13:00 local = 16:00 UTC
+    const serverNow = new Date('2026-05-13T12:23:00Z');
+    expect(isWithinSaWindow('2026-05-13 13:00:00-03', serverNow, 60)).toBe(false);
+  });
+
+  it('retorna true (visible) cuando string con Z esta dentro de ventana (retro-compat UTC)', () => {
+    // String con Z = UTC explicito. El regex NO stripea Z.
+    // fch_hora_para = "2026-05-13T13:00:00Z" = 13:00 UTC
+    // serverNow = 12:23 UTC, windowEnd = 13:23 UTC
+    // 13:00 UTC <= 13:23 UTC → dentro de ventana → true (visible, no filtrado)
+    const serverNow = new Date('2026-05-13T12:23:00Z');
+    expect(isWithinSaWindow('2026-05-13T13:00:00Z', serverNow, 60)).toBe(true);
+  });
 });

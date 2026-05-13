@@ -15,6 +15,27 @@
  */
 
 /**
+ * Parsea un timestamp de la DB respetando la convencion del repo:
+ * "la DB almacena hora local Uruguay con sufijo +00 incorrecto".
+ *
+ * Ej: "2026-05-13 13:00:00+00" realmente significa 13:00 hora local Uruguay,
+ * NO 13:00 UTC. Stripeamos el offset para que JS lo interprete como hora local
+ * del navegador (igual que utils/pedidoDelay.ts:42 y
+ * components/map/{Pedido,Service}InfoPopup.tsx:14-15).
+ *
+ * Strings con sufijo Z (ISO UTC explicito) NO se ven afectados — el regex
+ * solo quita offsets numericos (+HH, +HH:MM, -HH, -HH:MM).
+ */
+function parseDbDate(value: Date | string): Date {
+  if (value instanceof Date) return value;
+  // Stripear offset numerico (+00, +00:00, -03, -03:00, etc.) al final del string.
+  // NO afecta sufijo Z (timestamps ISO con Z siguen interpretandose como UTC).
+  // NO afecta strings sin offset (devuelve el mismo string → comportamiento identico).
+  const localStr = value.replace(/[+-]\d{2}(:\d{2})?$/, '').trim();
+  return new Date(localStr);
+}
+
+/**
  * Determina si un pedido/service sin asignar es visible segun la ventana
  * temporal configurada para el escenario.
  *
@@ -34,8 +55,7 @@ export function isWithinSaWindow(
   // Sin hora registrada: no filtrar por falta de dato
   if (fchHoraPara === null) return true;
 
-  const horaPara: Date =
-    fchHoraPara instanceof Date ? fchHoraPara : new Date(fchHoraPara);
+  const horaPara: Date = parseDbDate(fchHoraPara);
 
   // Si la fecha es invalida: no filtrar (safe fallback)
   if (isNaN(horaPara.getTime())) return true;
