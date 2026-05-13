@@ -289,12 +289,17 @@ function DashboardContent() {
   const isRoot = user?.isRoot === 'S';
   
   // � Móviles filtrados por empresas fleteras seleccionadas
+  // Semántica:
+  //   - empresas.length === 0  → empresas todavía no cargadas, fallback a todos los móviles.
+  //   - selectedEmpresas vacío + hay empresas → "Ninguna" explícita: NO mostrar nada.
+  //   - selectedEmpresas con items → filtrar por esos.
   const movilesFiltered = useMemo(() => {
-    if (selectedEmpresas.length === 0) return moviles;
+    if (empresas.length === 0) return moviles;
+    if (selectedEmpresas.length === 0) return [];
     return moviles.filter(m =>
       m.empresaFleteraId && selectedEmpresas.includes(m.empresaFleteraId)
     );
-  }, [moviles, selectedEmpresas]);
+  }, [moviles, selectedEmpresas, empresas.length]);
   // Mantener el ref actualizado para que handleToggleMovil pueda detectar
   // "modo Todos" sin recrear el callback en cada render.
   movilesFilteredRef.current = movilesFiltered;
@@ -1838,6 +1843,12 @@ function DashboardContent() {
       return false;
     });
 
+    // 🚫 "Empresas: Ninguna" (selección explícita de cero empresas con empresas cargadas)
+    // → no mostrar ningún pedido (ni asignados ni sin-asignar). El usuario eligió ver nada.
+    if (empresas.length > 0 && selectedEmpresas.length === 0) {
+      return [];
+    }
+
     // 🔒 Empresa scope: si el user es no-root/no-despacho con allowedEmpresas,
     // descartamos pedidos cuyo móvil pertenezca a una empresa no permitida.
     // Pedidos sin asignar (movil null/0) se mantienen acá; el render-level
@@ -1853,7 +1864,7 @@ function DashboardContent() {
     dbg(`📊 Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
 
     return resultado;
-  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds]);
+  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length]);
 
   // Combinar services iniciales con updates de realtime
   const servicesCompletos = useMemo(() => {
@@ -1869,6 +1880,11 @@ function DashboardContent() {
       return false;
     });
 
+    // 🚫 "Empresas: Ninguna" → no mostrar ningún service (idem pedidosCompletos).
+    if (empresas.length > 0 && selectedEmpresas.length === 0) {
+      return [];
+    }
+
     // 🔒 Mismo filtro que pedidosCompletos: empresa scope para no-root.
     if (userHasEmpresaRestriction) {
       resultado = resultado.filter(s => {
@@ -1879,7 +1895,7 @@ function DashboardContent() {
 
     dbg(`🔧 DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
-  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds]);
+  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length]);
 
   // Mantener refs sincronizadas con las listas memoizadas para acceso sincrónico
   // desde callbacks definidos antes en el render.
