@@ -333,14 +333,12 @@ export default function MovilSelector({
     || empresas.length === 0
     || (selectedEmpresas?.length ?? 0) === empresas.length;
 
-  // allMovilesSelected (alcance "header badge" + "ver sin-asignar"): true solo
-  // cuando (a) todas las empresas disponibles están seleccionadas (o no hay
-  // multi-empresa) Y (b) todos los móviles operativos del universo están en
-  // selectedMoviles (excluyendo ocultos). Se usa para:
-  //   - badge "🚗 Móviles: Todos" del header
-  //   - canSeeUnassigned: privilegiados ven pedidos/services sin asignar
-  // Si el usuario filtra parcialmente por empresa, "Todos" nunca aplica y los
-  // pedidos sin asignar no se muestran (corresponderían a otras empresas).
+  // allMovilesSelected (semántica estricta — guard de canSeeUnassigned y huérfanos):
+  // true SOLO cuando (a) todas las empresas del universo están seleccionadas Y
+  // (b) todos los móviles operativos están en selectedMoviles. Si hay filtro parcial
+  // de empresa, retorna false aun cuando el usuario haya tildado todo lo visible —
+  // porque los huérfanos podrían corresponder a empresas excluidas y no se deben mostrar.
+  // Usado para: canSeeUnassigned (filteredPedidos + filteredServices).
   const allMovilesSelected = useMemo(() => {
     if (!allEmpresasSelected) return false;
     const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
@@ -348,6 +346,18 @@ export default function MovilSelector({
       : moviles;
     return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
   }, [moviles, selectedMoviles, hiddenMovilIds, allEmpresasSelected]);
+
+  // allVisibleOperativosSelected (semántica relajada — label del badge):
+  // true cuando todos los móviles operativos VISIBLES (post filtro de empresa) están
+  // en selectedMoviles. Usado SOLO para el label "Móviles: Todos" del badge — refleja
+  // lo que el usuario ve y operó. NO tiene impacto en canSeeUnassigned ni en visibilidad
+  // de huérfanos. No depende de allEmpresasSelected.
+  const allVisibleOperativosSelected = useMemo(() => {
+    const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
+      ? moviles.filter(m => !hiddenMovilIds.has(m.id))
+      : moviles;
+    return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
+  }, [moviles, selectedMoviles, hiddenMovilIds]);
 
   // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
@@ -741,15 +751,15 @@ export default function MovilSelector({
         }
 
         // Badge de móviles seleccionados.
-        // "Todos" SOLO cuando todos los móviles operativos del sistema están
-        // seleccionados — usa `allMovilesSelected` (NO `allSelected`, que
-        // está restringido a los visibles del colapsable después del search).
+        // "Todos" cuando todos los móviles operativos VISIBLES están seleccionados —
+        // usa `allVisibleOperativosSelected` (semántica relajada: no requiere todas
+        // las empresas, solo refleja lo que el usuario ve en el colapsable).
         // El +N es el rebalse de los seleccionados que no caben en el badge.
         {
           const noneSelected = selectedMoviles.length === 0;
           const VISIBLE_IDS = 5;
           badges.push({
-            label: allMovilesSelected
+            label: allVisibleOperativosSelected
               ? '🚗 Móviles: Todos'
               : noneSelected
               ? '🚗 Móviles: Ninguno'
@@ -757,31 +767,43 @@ export default function MovilSelector({
                   ? selectedMoviles.join(', ')
                   : `${selectedMoviles.slice(0, VISIBLE_IDS).join(', ')} +${selectedMoviles.length - VISIBLE_IDS}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: allMovilesSelected ? undefined : onSelectAll,
+            onClear: allVisibleOperativosSelected ? undefined : onSelectAll,
           });
         }
 
         // Badge de empresas fleteras seleccionadas
-        if (showEmpresaSelector && selectedEmpresas.length > 0 && empresas.length > 0) {
-          const allSelected = selectedEmpresas.length === empresas.length;
-          const selectedNames = empresas
-            .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
-            .map(e => e.nombre);
-          // Para users restringidos (no-root/no-despacho con allowedEmpresas),
-          // "Todas" sería engañoso porque el set ya viene pre-filtrado a sus
-          // empresas asignadas — siempre listamos los nombres como cuando un
-          // root/despacho filtra manualmente.
-          const showNamesAlways = isRestrictedUser;
-          const namesLabel = `🏢 Empresas: ${selectedNames.length <= 2 ? selectedNames.join(', ') : `${selectedNames.slice(0, 2).join(', ')} +${selectedNames.length - 2}`}`;
-          badges.push({
-            label: allSelected && !showNamesAlways
-              ? '🏢 Empresas: Todas'
-              : namesLabel,
-            color: 'bg-amber-100 text-amber-700',
-            onClear: !allSelected && onEmpresasChange
-              ? () => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))
-              : undefined,
-          });
+        if (showEmpresaSelector && empresas.length > 0) {
+          if (selectedEmpresas.length === 0) {
+            // Ninguna empresa seleccionada — badge explícito "Empresas: Ninguna"
+            badges.push({
+              label: '🏢 Empresas: Ninguna',
+              color: 'bg-amber-100 text-amber-700',
+              // X dispara seleccionar todas (equivalente al click "Todas")
+              onClear: onEmpresasChange
+                ? () => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))
+                : undefined,
+            });
+          } else {
+            const allSelected = selectedEmpresas.length === empresas.length;
+            const selectedNames = empresas
+              .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
+              .map(e => e.nombre);
+            // Para users restringidos (no-root/no-despacho con allowedEmpresas),
+            // "Todas" sería engañoso porque el set ya viene pre-filtrado a sus
+            // empresas asignadas — siempre listamos los nombres como cuando un
+            // root/despacho filtra manualmente.
+            const showNamesAlways = isRestrictedUser;
+            const namesLabel = `🏢 Empresas: ${selectedNames.length <= 2 ? selectedNames.join(', ') : `${selectedNames.slice(0, 2).join(', ')} +${selectedNames.length - 2}`}`;
+            badges.push({
+              label: allSelected && !showNamesAlways
+                ? '🏢 Empresas: Todas'
+                : namesLabel,
+              color: 'bg-amber-100 text-amber-700',
+              onClear: !allSelected && onEmpresasChange
+                ? () => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))
+                : undefined,
+            });
+          }
         }
         
         // Badge de filtros activos en PEDIDOS
