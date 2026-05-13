@@ -45,6 +45,7 @@ interface ParsedLoginResponse {
 interface LoginCredentials {
   UserName: string;
   Password: string;
+  EscenarioId?: number;
   Sistema?: string;
 }
 
@@ -93,13 +94,15 @@ export const authService = {
    * Login de usuario
    * @param username - Nombre de usuario
    * @param password - Contraseña
+   * @param escenarioId - ID del escenario seleccionado (opcional, default omitido para que runLoginSecurity use null)
    * @returns Datos del usuario y token
    */
-  login: async (username: string, password: string): Promise<ParsedLoginResponse> => {
+  login: async (username: string, password: string, escenarioId?: number): Promise<ParsedLoginResponse> => {
     try {
       const credentials: LoginCredentials = {
         UserName: username,
         Password: password,
+        ...(escenarioId !== undefined ? { EscenarioId: escenarioId } : {}),
       };
 
       // Llamar al nuevo endpoint de login (secapi.riogas.com.uy)
@@ -129,7 +132,7 @@ export const authService = {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(
-          error.response?.data?.message || 
+          error.response?.data?.message ||
           'Error de conexión con el servidor'
         );
       }
@@ -151,7 +154,7 @@ export const authService = {
   getCurrentUser: (): ParsedLoginResponse['user'] | null => {
     const userJson = authStorage.getItem('trackmovil_user');
     if (!userJson) return null;
-    
+
     try {
       return JSON.parse(userJson);
     } catch {

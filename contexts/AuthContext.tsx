@@ -261,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string }> => {
     try {
       console.log('🔐 Iniciando login en GeneXus...');
-      const response: ParsedLoginResponse = await authService.login(username, password);
+      const response: ParsedLoginResponse = await authService.login(username, password, selectedEscenarioId);
       
       // El login es exitoso SOLO si success=true Y viene el objeto user
       if (response.success && response.user && response.user.id && response.user.username) {

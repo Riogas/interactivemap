@@ -100,25 +100,29 @@ function isWhitelistedIp(ip: string): boolean {
 }
 
 /**
- * Obtener la IP del cliente desde el request
+ * Obtener la IP del cliente desde el request.
+ *
+ * FIX: La versión anterior rechazaba IPs whitelisted (privadas RFC1918) del header
+ * x-forwarded-for como mitigación anti-spoofing, causando que usuarios en la red
+ * corporativa (192.168.x.x) siempre cayeran al fallback 127.0.0.1.
+ *
+ * La nueva versión confía en el primer IP no-vacío de x-forwarded-for sin filtrar
+ * por whitelist. El check de whitelist sigue aplicándose correctamente en
+ * recordLoginAttempt (campo whitelisted) y evaluateAndApplyBlocks (skip de bloqueo IP).
+ *
+ * ASUNCIÓN DE DEPLOY: la app corre detrás de nginx que sanitiza/reescribe el header
+ * x-forwarded-for (escribe solo la IP real del cliente, descartando lo que el
+ * cliente pudiera haber enviado). Si en algún momento se quiere defensa-en-profundidad
+ * sin nginx, usar el ÚLTIMO IP del header (los proxies confiables van anteponiendo).
  */
 function getClientIp(request: NextRequest): string {
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
     const ip = forwardedFor.split(',')[0].trim();
-    const normalized = normalizeIp(ip);
-    // Rechazar IPs privadas en el header para prevenir spoofing de whitelist
-    if (!isWhitelistedIp(normalized) && !normalized.startsWith('0.')) {
-      return normalized;
-    }
+    if (ip) return normalizeIp(ip);
   }
   const realIp = request.headers.get('x-real-ip');
-  if (realIp) {
-    const normalized = normalizeIp(realIp);
-    if (!isWhitelistedIp(normalized)) {
-      return normalized;
-    }
-  }
+  if (realIp) return normalizeIp(realIp);
   // request.ip fue removido en Next.js 13+. El fallback usa solo los headers.
   return '127.0.0.1';
 }
