@@ -5,8 +5,11 @@
 --            en gps_tracking_history dentro del día calendario indicado.
 --            DISTINCT server-side evita traer miles de rows al cliente.
 
+-- NOTA: gps_tracking_history.movil_id es TEXT (no int) en el schema actual
+-- (ver types/supabase.ts). El endpoint TS hace Number(r.movil_id) para
+-- convertir, así que el return type text es lo correcto.
 CREATE OR REPLACE FUNCTION moviles_con_gps_en_dia(p_date date)
-RETURNS TABLE(movil_id int)
+RETURNS TABLE(movil_id text)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
