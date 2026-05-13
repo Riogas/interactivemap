@@ -2531,6 +2531,7 @@ function DashboardContent() {
         hiddenMovilIds={hiddenMovilIds}
         selectedDate={selectedDate}
         selectedMovil={selectedMoviles.length === 1 ? selectedMoviles[0] : undefined}
+        selectedEmpresas={selectedEmpresas}
       />
 
       {/* Modal de Vista Extendida de Pedidos */}
