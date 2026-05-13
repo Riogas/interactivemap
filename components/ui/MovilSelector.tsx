@@ -411,8 +411,14 @@ export default function MovilSelector({
         if (!pedido.movil || Number(pedido.movil) === 0) return false;
         return validMovilIds.has(Number(pedido.movil));
       });
+    } else {
+      // Fallthrough: sin móviles seleccionados y sin branch específico que
+      // aplique (ej. privilegiado + empresa parcial). El usuario eligió
+      // "Móviles: Ninguno" — no mostrar ningún pedido. Antes este caso caía
+      // sin filtro de móvil y mostraba todos, lo cual contradice el badge.
+      result = [];
     }
-    
+
     // Filtrar por búsqueda
     if (pedidosSearch.trim()) {
       const searchLower = pedidosSearch.toLowerCase();
@@ -548,8 +554,13 @@ export default function MovilSelector({
         if (!service.movil || Number(service.movil) === 0) return false;
         return validMovilIds.has(Number(service.movil));
       });
+    } else {
+      // Fallthrough: sin móviles seleccionados y sin branch específico que
+      // aplique (ej. privilegiado + empresa parcial). Mismo criterio que
+      // filteredPedidos: "Móviles: Ninguno" → no mostrar nada.
+      result = [];
     }
-    
+
     // Filtrar por búsqueda
     if (servicesSearch.trim()) {
       const searchLower = servicesSearch.toLowerCase();
