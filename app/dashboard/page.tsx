@@ -2348,6 +2348,7 @@ function DashboardContent() {
             services={servicesCompletos}
             selectedDate={selectedDate}
             selectedMoviles={selectedMoviles}
+            selectedEmpresas={selectedEmpresas}
             escenarioIds={selectedEscenarioIds}
             maxCoordinateDelayMinutes={preferences.maxCoordinateDelayMinutes}
             allMovilEstados={allMovilEstados}
