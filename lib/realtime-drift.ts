@@ -1,6 +1,5 @@
 'use client';
 
-import toast from 'react-hot-toast';
 import { sendAuditBatch } from '@/lib/audit-client';
 
 export type DriftTrigger = 'interval' | 'reconnect' | 'visibility' | 'silence' | 'initial' | 'moviles_event';
@@ -82,13 +81,9 @@ export function reportDrift(params: DriftParams): void {
     },
   }]);
 
-  // Toast solo para usuarios root — gating estricto: isRoot debe ser true (derivado de user?.isRoot === 'S')
-  if (params.isRoot) {
-    toast(
-      `🔄 Reconciliacion (${params.trigger}): +${params.added} / -${params.removed} moviles`,
-      { duration: 3000 },
-    );
-  }
+  // Toast de "Reconciliacion (...): +N / -M moviles" removido a pedido del
+  // usuario — era ruido visual para roots. El audit_log de arriba sigue
+  // emitiendo siempre, así que la observabilidad backend no se pierde.
 }
 
 /**
