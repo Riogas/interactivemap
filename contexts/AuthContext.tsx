@@ -16,6 +16,8 @@ interface User {
     RolTipo: string;
     /** Atributos del rol propagados desde el SecuritySuite (HistoricoMaxCoords, HistoricoMaxPedidos, Escenario, etc.) */
     atributos?: Array<{ atributo: string; valor: string }>;
+    /** Funcionalidades del rol — usado por gates de UI tipo "Capa Capacidad de Entrega". */
+    funcionalidades?: Array<{ funcionalidadId: number; nombre: string }>;
   }>;
   loginTime: string;
   token: string;
@@ -347,13 +349,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Mapear roles del shape nuevo (rolId, rolNombre, aplicacionId, funcionalidades, atributos)
-        // al shape del User (RolId, RolNombre, RolTipo, atributos).
-        // Los atributos se propagan para que getMaxRoleAttribute() pueda leerlos downstream.
+        // al shape del User (RolId, RolNombre, RolTipo, atributos, funcionalidades).
+        // Atributos y funcionalidades se propagan para que helpers downstream
+        // (getMaxRoleAttribute, hasFuncionalidad) puedan consultarlos.
         const mappedRoles = (response.roles || []).map((r) => ({
           RolId: String(r.rolId),
           RolNombre: r.rolNombre,
           RolTipo: '',
           ...(r.atributos ? { atributos: r.atributos } : {}),
+          ...(r.funcionalidades ? { funcionalidades: r.funcionalidades } : {}),
         }));
 
         const newUser: User = {

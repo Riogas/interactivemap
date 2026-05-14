@@ -11,6 +11,9 @@ interface DataViewControlProps {
   onChange: (mode: DataViewMode) => void;
   /** Si false, las capas dependientes de datos en vivo (demoras/saturación/distribución/pedidos-zona/móviles-zonas) se deshabilitan. */
   isToday?: boolean;
+  /** Si true, oculta la opción "Cap. Entrega" (saturacion). Gate por funcionalidad
+   *  "Capa Capacidad de Entrega" del rol del usuario. */
+  hideCapEntrega?: boolean;
 }
 
 // Modos que requieren datos del día actual (live data). En fechas pasadas
@@ -25,7 +28,7 @@ const DATE_DEPENDENT_MODES: DataViewMode[] = ['demoras', 'moviles-zonas', 'zonas
  * - Cant Móviles en Zonas
  * Se posiciona arriba del control de capas (bottomright).
  */
-export default function DataViewControl({ value, onChange, isToday = true }: DataViewControlProps) {
+export default function DataViewControl({ value, onChange, isToday = true, hideCapEntrega = false }: DataViewControlProps) {
   const map = useMap();
   const controlRef = useRef<L.Control | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -36,6 +39,15 @@ export default function DataViewControl({ value, onChange, isToday = true }: Dat
       onChange('normal');
     }
   }, [isToday, value, onChange]);
+
+  // Si la capa "saturacion" (Cap. Entrega) está oculta por permisos y es el
+  // modo activo (ej. view-state restaurado de una sesión donde sí tenía permiso),
+  // forzar 'normal'. Evita que el mapa quede en un modo invisible/inaccesible.
+  useEffect(() => {
+    if (hideCapEntrega && value === 'saturacion') {
+      onChange('normal');
+    }
+  }, [hideCapEntrega, value, onChange]);
 
   useEffect(() => {
     if (!map) return;
@@ -81,7 +93,7 @@ export default function DataViewControl({ value, onChange, isToday = true }: Dat
               <input type="radio" name="dv-mode" value="pedidos-zona" />
               <span class="dv-icon">📦</span> Pedidos/Zona
             </label>
-            <label class="dv-option">
+            <label class="dv-option" data-dv-value="saturacion">
               <input type="radio" name="dv-mode" value="saturacion" />
               <span class="dv-icon">📦</span> Cap. Entrega
             </label>
@@ -161,7 +173,15 @@ export default function DataViewControl({ value, onChange, isToday = true }: Dat
         label.title = shouldDisable ? 'Solo disponible para la fecha de hoy' : '';
       }
     });
-  }, [value, isToday]);
+
+    // Ocultar/mostrar la opción "Cap. Entrega" según permisos. Usamos
+    // display:none en el label entero (no solo disabled) — el usuario sin
+    // permiso no debería ver siquiera la opción.
+    const satLabel = containerRef.current.querySelector<HTMLElement>('label.dv-option[data-dv-value="saturacion"]');
+    if (satLabel) {
+      satLabel.style.display = hideCapEntrega ? 'none' : '';
+    }
+  }, [value, isToday, hideCapEntrega]);
 
   return null;
 }

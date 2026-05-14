@@ -43,6 +43,7 @@ import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
 import { getMaxRoleAttribute } from '@/lib/role-attributes';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import { reportDrift, LastSyncState } from '@/lib/realtime-drift';
 import type { ModalSnapshot } from '@/lib/view-state';
@@ -1811,6 +1812,15 @@ function DashboardContent() {
     [user],
   );
 
+  // Gating de la opción "Cap. Entrega" del control de capas del mapa:
+  // - root (isRoot='S') ve siempre.
+  // - resto de usuarios: solo si algún rol tiene la funcionalidad
+  //   "Capa Capacidad de Entrega" del SecuritySuite.
+  const canSeeCapEntregaLayer = useMemo(
+    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Capa Capacidad de Entrega'),
+    [user],
+  );
+
   // `userHasEmpresaRestriction` mira solo allowedEmpresas — se usa para filtrar
   // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
   // `isScopeRestricted` además exige que el user no sea privilegiado (root/despacho/dashboard/supervisor) — es la
@@ -3128,6 +3138,7 @@ function DashboardContent() {
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
                 isToday={isToday}
+                hideCapEntrega={!canSeeCapEntregaLayer}
                 demorasData={demorasData}
                 pedidosZonaData={pedidosZonaData}
                 pedidosZonaFilter={pedidosZonaFilter}
