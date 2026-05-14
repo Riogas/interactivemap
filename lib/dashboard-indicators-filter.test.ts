@@ -163,14 +163,18 @@ describe('filterPedidosByEmpresa', () => {
     expect(result[0].id).toBe(1);
   });
 
-  it('pedidos con empresa_fletera_id=null NO pasan cuando hay selección activa', () => {
+  it('pedidos con empresa_fletera_id=null PASAN aunque haya selección activa', () => {
+    // Los sin-asignar todavía no están vinculados a una empresa específica.
+    // El indicador "Ped sin Asig." debe contarlos cuando el usuario tiene
+    // "Empresas: Todas" (selectedEmpresas con length>0 pero = todas).
     const pedidos = [
       makePedido(1, { empresa_fletera_id: 5 }),
       makePedido(2, { empresa_fletera_id: null }),
+      makePedido(3, { empresa_fletera_id: 7 }), // distinta empresa → bloqueada
     ];
     const result = filterPedidosByEmpresa(pedidos, [5]);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe(1);
+    expect(result).toHaveLength(2);
+    expect(result.map(p => p.id).sort()).toEqual([1, 2]);
   });
 
   it('múltiples empresas seleccionadas → pasan pedidos de cualquiera', () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { isRoot } from '@/lib/auth-scope';
 import { useRouter } from 'next/navigation';
 
 interface EscenarioSettingRow {
@@ -113,7 +114,7 @@ export default function ConfiguracionPage() {
   }, [user]);
 
   useEffect(() => {
-    if (user?.isRoot === 'S') {
+    if (isRoot(user)) {
       load();
     }
   }, [load, user]);

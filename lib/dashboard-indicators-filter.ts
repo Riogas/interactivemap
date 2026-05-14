@@ -37,8 +37,17 @@ export function filterFinalizadosByMovil(
  * Filtra pedidos por empresa fletera.
  *
  * Si selectedEmpresas está vacío → sin filtro por empresa.
- * Si hay empresas seleccionadas → solo pasan pedidos cuyo `empresa_fletera_id`
- * está en selectedEmpresas. Pedidos sin `empresa_fletera_id` (null) NO pasan.
+ * Si hay empresas seleccionadas:
+ *   - Pedidos con `empresa_fletera_id` ∈ selectedEmpresas → pasan.
+ *   - Pedidos sin empresa "real" (null, undefined o 0) → PASAN. Son los
+ *     sin-asignar todavía no vinculados a una empresa específica, no deben
+ *     quedar "huérfanos" del indicador cuando el usuario tiene "Empresas: Todas".
+ *     Se trata `0` como ausencia porque algunos imports del SecuritySuite
+ *     mandan 0 en lugar de null para indicar "sin empresa fletera".
+ *
+ * Para finalizados los huérfanos sin empresa_fletera_id son raros y los maneja
+ * `isPedidoInScope` upstream, así que este pass-through no introduce
+ * ruido adicional.
  */
 export function filterPedidosByEmpresa(
   pedidos: PedidoSupabase[],
@@ -46,9 +55,9 @@ export function filterPedidosByEmpresa(
 ): PedidoSupabase[] {
   if (selectedEmpresas.length === 0) return pedidos;
 
-  return pedidos.filter(
-    p =>
-      p.empresa_fletera_id != null &&
-      selectedEmpresas.includes(p.empresa_fletera_id)
-  );
+  return pedidos.filter(p => {
+    const efid = p.empresa_fletera_id;
+    if (efid == null || Number(efid) === 0) return true;
+    return selectedEmpresas.includes(Number(efid));
+  });
 }

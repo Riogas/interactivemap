@@ -15,7 +15,7 @@ import {
 // isRoot
 // ─────────────────────────────────────────────────────────────────────────────
 describe('isRoot', () => {
-  it('retorna true cuando isRoot === "S"', () => {
+  it('retorna true cuando isRoot === "S" (legacy)', () => {
     expect(isRoot({ isRoot: 'S' })).toBe(true);
   });
 
@@ -33,6 +33,41 @@ describe('isRoot', () => {
 
   it('retorna false con user undefined', () => {
     expect(isRoot(undefined)).toBe(false);
+  });
+
+  // ── Nuevos casos: detección por rol RolNombre === 'Root' ──────────────────
+
+  it('retorna true cuando isRoot==="S" aunque roles esté vacío (legacy wins)', () => {
+    expect(isRoot({ isRoot: 'S', roles: [] })).toBe(true);
+  });
+
+  it('retorna true cuando isRoot==="N" pero hay un rol con RolNombre==="Root" (nuevo)', () => {
+    expect(isRoot({
+      isRoot: 'N',
+      roles: [{ RolId: '99', RolNombre: 'Root', RolTipo: '' }],
+    })).toBe(true);
+  });
+
+  it('retorna false cuando isRoot==="N" y roles no incluye "Root"', () => {
+    expect(isRoot({
+      isRoot: 'N',
+      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+    })).toBe(false);
+  });
+
+  it('retorna false con user null (rol path)', () => {
+    expect(isRoot(null)).toBe(false);
+  });
+
+  it('retorna false cuando isRoot==="N" y roles es undefined', () => {
+    expect(isRoot({ isRoot: 'N', roles: undefined })).toBe(false);
+  });
+
+  it('retorna true con trim: RolNombre="  Root  " es equivalente a "Root"', () => {
+    expect(isRoot({
+      isRoot: 'N',
+      roles: [{ RolId: '99', RolNombre: '  Root  ', RolTipo: '' }],
+    })).toBe(true);
   });
 });
 
@@ -80,8 +115,15 @@ describe('isDespacho', () => {
 // shouldScopeByEmpresa
 // ─────────────────────────────────────────────────────────────────────────────
 describe('shouldScopeByEmpresa', () => {
-  it('retorna false para root', () => {
+  it('retorna false para root (legacy isRoot=S)', () => {
     expect(shouldScopeByEmpresa({ isRoot: 'S' })).toBe(false);
+  });
+
+  it('retorna false para root (nuevo rol RolNombre=Root)', () => {
+    expect(shouldScopeByEmpresa({
+      isRoot: 'N',
+      roles: [{ RolId: '99', RolNombre: 'Root', RolTipo: '' }],
+    })).toBe(false);
   });
 
   it('retorna false para despacho', () => {
@@ -104,6 +146,13 @@ describe('shouldScopeByEmpresa', () => {
 describe('getScopedEmpresas', () => {
   it('retorna null para root (sin scope)', () => {
     expect(getScopedEmpresas({ isRoot: 'S' })).toBeNull();
+  });
+
+  it('retorna null para root via rol RolNombre=Root', () => {
+    expect(getScopedEmpresas({
+      isRoot: 'N',
+      roles: [{ RolId: '99', RolNombre: 'Root', RolTipo: '' }],
+    })).toBeNull();
   });
 
   it('retorna null para despacho aunque tenga allowedEmpresas (despacho wins)', () => {

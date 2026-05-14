@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { isPrivilegedForZonaScope } from '@/lib/auth-scope';
+import { isPrivilegedForZonaScope, isRoot } from '@/lib/auth-scope';
 import { useSearchParams } from 'next/navigation';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
@@ -229,7 +229,7 @@ function StatsContent() {
   const { user, escenarioId } = useAuth();
   // Gate: puede ver sin-asignar — controlado únicamente por la funcionalidad 'Ped s/asignar acumulados'.
   // Root siempre puede. El rol del usuario ya no condiciona esta visibilidad.
-  const canSeeUnassigned = user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados');
+  const canSeeUnassigned = isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados');
   const isPrivilegedScope = isPrivilegedForZonaScope(user);
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
