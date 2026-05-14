@@ -2555,7 +2555,7 @@ function DashboardContent() {
             (antes abría un tour interactivo — reemplazado por pedido del usuario). */}
         <a
           id="tour-help-btn"
-          href="/manual/instructivoriogastracking.pdf"
+          href="/manual/InstructivoRiogasTracking.pdf"
           download
           target="_blank"
           rel="noopener noreferrer"
