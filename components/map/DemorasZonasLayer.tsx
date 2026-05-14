@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
 
 export interface DemoraZonaData {
   zona_id: number;
@@ -25,6 +26,7 @@ interface DemorasZonasLayerProps {
   onToggleLabels?: (next: boolean) => void;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
+  zonaPattern?: ZonaPattern;
 }
 
 /**
@@ -192,7 +194,7 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false, onToggleLabels, zonaOpacity = 50 }: DemorasZonasLayerProps) {
+const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false, onToggleLabels, zonaOpacity = 50, zonaPattern = 'liso' }: DemorasZonasLayerProps) {
   // Inyectar patrón SVG para zonas con 0 minutos
   useDottedPattern();
   const items = useMemo(() => {

@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
 
 export type PedidosZonaFilter = 'pendientes' | 'sin_asignar' | 'atrasados';
 
@@ -37,6 +38,7 @@ interface PedidosZonasLayerProps {
   showLabels?: boolean;
   /** Callback para togglear las etiquetas desde la leyenda del mapa */
   onToggleLabels?: (next: boolean) => void;
+  zonaPattern?: ZonaPattern;
 }
 
 /**
@@ -188,7 +190,7 @@ function PedidosZonasLegend({ filter, showLabels, onToggleLabels }: { filter: Pe
   return null;
 }
 
-const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick, hideSinAsignarOption = false, demoras, showLabels = false, onToggleLabels }: PedidosZonasLayerProps) {
+const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick, hideSinAsignarOption = false, demoras, showLabels = false, onToggleLabels, zonaPattern = 'liso' }: PedidosZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {

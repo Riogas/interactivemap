@@ -10,6 +10,7 @@ import { filterPuntosInteresByScope } from '@/lib/puntos-interes-scope';
 import { isRoot, isDespacho, getScopedEmpresas, isPrivilegedForZonaScope } from '@/lib/auth-scope';
 import { authStorage } from '@/lib/auth-storage';
 import { MarkerShape } from '@/components/ui/PreferencesModal';
+import { ZonaPattern, getPatternDefs, getPatternFillUrl } from '@/lib/zona-patterns';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
 import { PedidoInfoPopup } from './PedidoInfoPopup';
@@ -142,6 +143,10 @@ interface MapViewProps {
   onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
   /** IDs de empresas fleteras seleccionadas — se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
   selectedEmpresas?: number[];
+  movilHalo?: boolean;
+  pedidoHalo?: boolean;
+  serviceHalo?: boolean;
+  zonaPattern?: ZonaPattern;
 }
 
 
@@ -615,6 +620,35 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// ZonaPatternDefs: injects SVG pattern <defs> into the Leaflet SVG overlay
+// ---------------------------------------------------------------------------
+function ZonaPatternDefs() {
+  const map = useMap();
+  useEffect(() => {
+    // Find Leaflet's internal SVG pane and inject <defs> there
+    const container = map.getPanes().overlayPane;
+    if (!container) return;
+    let svgEl = container.querySelector<SVGSVGElement>('svg');
+    if (!svgEl) {
+      svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svgEl.style.cssText = 'position:absolute;left:-9999px;width:0;height:0;overflow:hidden';
+      container.appendChild(svgEl);
+    }
+    let defsEl = svgEl.querySelector('defs');
+    if (!defsEl) {
+      defsEl = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      svgEl.appendChild(defsEl);
+    }
+    defsEl.innerHTML = getPatternDefs();
+    return () => {
+      // cleanup on unmount: remove our patterns
+      if (defsEl) defsEl.innerHTML = '';
+    };
+  }, [map]);
+  return null;
+}
+
 const MapView = memo(function MapView({ 
   moviles, 
   focusedMovil, 
@@ -696,6 +730,10 @@ const MapView = memo(function MapView({
   minutosAntesSa = null,
   onMapStateChange,
   selectedEmpresas,
+  movilHalo = false,
+  pedidoHalo = false,
+  serviceHalo = false,
+  zonaPattern = 'liso',
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -1295,7 +1333,8 @@ const MapView = memo(function MapView({
 
   // 🚀 OPTIMIZACIÓN: Usar useCallback para funciones de creación de iconos
   const createCustomIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
-    const cacheKey = `custom-${color}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}`;
+    const cacheKey = `custom-${color}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilHalo}`;
+    const normalHaloStyle = movilHalo ? 'box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45),0 4px 8px rgba(0,0,0,0.3);' : 'box-shadow: 0 4px 8px rgba(0,0,0,0.3);';
     
     return getCachedIcon(cacheKey, () => {
       // 🆕 Si el móvil tiene BAJA MOMENTÁNEA (estado_nro 4), ícono naranja con pausa
@@ -1321,7 +1360,7 @@ const MapView = memo(function MapView({
                 background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
                 border: 3px solid white;
                 border-radius: 50%;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                ${normalHaloStyle}
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -1379,7 +1418,7 @@ const MapView = memo(function MapView({
                 background: linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%);
                 border: 3px solid white;
                 border-radius: 50%;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                ${normalHaloStyle}
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -1437,7 +1476,7 @@ const MapView = memo(function MapView({
                 background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
                 border: 3px solid white;
                 border-radius: 50%;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
+                ${normalHaloStyle}
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -1536,7 +1575,8 @@ const MapView = memo(function MapView({
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
     const borderStyle = isInactive ? '2px dashed rgba(255,255,255,0.8)' : '2px solid white';
     const opacity = isNoActivo ? '0.7' : '1';
-    const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}`;
+    const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}-${movilHalo}`;
+    const haloShadow = movilHalo ? 'box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);' : '';
 
     // Generate inner shape HTML based on movilShape preference
     const shapeSize = 18;
@@ -1602,7 +1642,8 @@ const MapView = memo(function MapView({
   const createMiniIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
     const opacity = isNoActivo ? '0.6' : '1';
-    const cacheKey = `mini-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}`;
+    const cacheKey = `mini-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}-${movilHalo}`;
+    const miniHaloStyle = movilHalo ? 'box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);' : '';
 
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
@@ -1749,7 +1790,7 @@ const MapView = memo(function MapView({
   const createPedidoIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
-    const cacheKey = `pedido-delay-compact-${info.label}-${pedidoShape}`;
+    const cacheKey = `pedido-delay-compact-${info.label}-${pedidoShape}-${pedidoHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: getShapeHtml(pedidoShape, 14, info.color, info.lightColor),
@@ -1762,7 +1803,7 @@ const MapView = memo(function MapView({
   const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
-    const cacheKey = `pedido-delay-mini-${info.label}-${pedidoShape}`;
+    const cacheKey = `pedido-delay-mini-${info.label}-${pedidoShape}-${pedidoHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: getShapeHtml(pedidoShape, 10, info.color),
@@ -1775,7 +1816,7 @@ const MapView = memo(function MapView({
   const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
-    const cacheKey = `service-delay-compact-${info.label}-${serviceShape}`;
+    const cacheKey = `service-delay-compact-${info.label}-${serviceShape}-${serviceHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: getShapeHtml(serviceShape, 14, info.color, info.lightColor),
@@ -1788,7 +1829,7 @@ const MapView = memo(function MapView({
   const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
-    const cacheKey = `service-delay-mini-${info.label}-${serviceShape}`;
+    const cacheKey = `service-delay-mini-${info.label}-${serviceShape}-${serviceHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: getShapeHtml(serviceShape, 10, info.color),
@@ -2223,30 +2264,30 @@ const MapView = memo(function MapView({
 
         {/* 🏘️ Capa de Distribución (polígonos con color de tabla + identificador de zona) */}
         {dataViewMode === 'distribucion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DistribucionZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} zonaOpacity={zonaOpacity} />
+          <DistribucionZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} />
         )}
 
         {/* ⏱️ Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} />
+          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} zonaPattern={zonaPattern} />
         )}
 
         {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} zonaPattern={zonaPattern} />
         )}
 
         {/* ✅ Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}
         {dataViewMode === 'zonas-activas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <ZonasActivasLayer zonas={allZonas.length > 0 ? allZonas : zonas} demoras={demorasData} zonaOpacity={zonaOpacity} />
+          <ZonasActivasLayer zonas={allZonas.length > 0 ? allZonas : zonas} demoras={demorasData} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} />
         )}
 
         {/* 🟥 Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
         {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} />
+          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} zonaPattern={zonaPattern} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (

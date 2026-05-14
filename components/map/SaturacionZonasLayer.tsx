@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
 import { isPrivilegedForCapEntrega } from '@/lib/auth-scope';
 import { getCapEntregaColor } from '@/lib/cap-entrega-color';
 import type { SaturacionZonaStats } from '@/lib/cap-entrega-color';
@@ -48,6 +49,7 @@ interface SaturacionZonasLayerProps {
   showLabels?: boolean;
   /** Callback para togglear las etiquetas desde la leyenda del mapa */
   onToggleLabels?: (next: boolean) => void;
+  zonaPattern?: ZonaPattern;
 }
 
 // ──────────────────────────── helpers ────────────────────────────────────

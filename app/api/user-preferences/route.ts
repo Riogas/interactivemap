@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 
 /**
@@ -33,6 +33,7 @@ function preferencesToDb(prefs: Record<string, any>) {
     'poisVisible', 'hiddenPoiCategories', 'poiMarkerSize', 'poiDefaultIcon',
     'demorasPollingSeconds', 'movilesZonasPollingSeconds',
     'lightMode', 'serviceMarkerStyle',
+    'movilHalo', 'pedidoHalo', 'serviceHalo', 'zonaPattern',
   ];
   for (const key of extraKeys) {
     if (prefs[key] !== undefined) extra[key] = prefs[key];

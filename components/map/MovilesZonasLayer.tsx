@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 
 /**
@@ -67,6 +68,7 @@ interface MovilesZonasLayerProps {
   /** Mapa zona_id → demora info. activa===false → zona transparente con borde
       negro punteado (request 2026-05-07). */
   demoras?: Map<number, { minutos: number; activa: boolean }>;
+  zonaPattern?: ZonaPattern;
 }
 
 /**

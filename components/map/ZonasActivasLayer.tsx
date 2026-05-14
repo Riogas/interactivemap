@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
 
 export interface ZonaActivaData {
   zona_id: number;
@@ -19,6 +20,7 @@ interface ZonasActivasLayerProps {
   demoras: Map<number, { minutos: number; activa: boolean }>;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
+  zonaPattern?: ZonaPattern;
 }
 
 /** Centroide del polígono (área con signo) */

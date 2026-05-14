@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,6 +7,7 @@ import { isRoot } from '@/lib/auth-scope';
 import { authStorage } from '@/lib/auth-storage';
 import * as XLSX from 'xlsx';
 import { NIGHT_START_HOUR, DAY_START_HOUR } from '@/lib/horario-servicio';
+import { ZonaPattern, ZONA_PATTERN_OPTIONS } from '@/lib/zona-patterns';
 
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'star';
 
@@ -59,6 +60,11 @@ export interface UserPreferences {
   realtimeRefetchOnVisible: boolean;       // Al volver la pestaña a visible, hacer refetch completo de pedidos/services.
   realtimeHeartbeatSeconds: number;        // Heartbeat del cliente Supabase. ⚠ requiere recarga para aplicar.
   realtimeEventsPerSecond: number;         // Tope de eventos por segundo que el cliente acepta del WS. ⚠ requiere recarga para aplicar.
+  // ===== Halo de markers y patrones de zonas =====
+  movilHalo: boolean;    // Resaltar móviles con halo blanco
+  pedidoHalo: boolean;   // Resaltar pedidos con halo blanco
+  serviceHalo: boolean;  // Resaltar services con halo blanco
+  zonaPattern: ZonaPattern; // Patrón visual de zonas (liso = sin patrón)
   // TODO [realtime-ui-stale-indicator]: próxima mejora pendiente.
   //   Cuando se implemente, agregar aquí:
   //     realtimeStaleIndicatorEnabled: boolean;
@@ -103,6 +109,11 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   realtimeRefetchOnVisible: true,
   realtimeHeartbeatSeconds: 15,
   realtimeEventsPerSecond: 10,
+  // Halo y patron -- default OFF / liso (no cambia UX existente)
+  movilHalo: false,
+  pedidoHalo: false,
+  serviceHalo: false,
+  zonaPattern: 'liso' as ZonaPattern,
 };
 
 interface PreferencesModalProps {
@@ -459,6 +470,23 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 )}
               </div>
 
+              {/* Toggle: Halo de moviles */}
+              <label className="flex items-center justify-between p-3 hover:bg-green-50 rounded-xl cursor-pointer transition-colors border border-green-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600 text-lg">🚗</div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Resaltar moviles con halo</div>
+                    <p className="text-xs text-gray-500">Anillo blanco + borde oscuro alrededor del marker</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => setPreferences({ ...preferences, movilHalo: !preferences.movilHalo })}
+                  className={` relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${preferences.movilHalo ? 'bg-green-500' : 'bg-gray-200'}`}
+                >
+                  <span className={` inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${preferences.movilHalo ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+              </label>
+
               <hr className="border-gray-200" />
 
               {/* Tamaño de Marcadores de Pedidos */}
@@ -533,6 +561,23 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 )}
               </div>
 
+              {/* Toggle: Halo de pedidos */}
+              <label className="flex items-center justify-between p-3 hover:bg-orange-50 rounded-xl cursor-pointer transition-colors border border-orange-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 text-lg">📦</div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Resaltar pedidos con halo</div>
+                    <p className="text-xs text-gray-500">Anillo blanco + borde oscuro alrededor del marker</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => setPreferences({ ...preferences, pedidoHalo: !preferences.pedidoHalo })}
+                  className={` relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${preferences.pedidoHalo ? 'bg-orange-500' : 'bg-gray-200'}`}
+                >
+                  <span className={` inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${preferences.pedidoHalo ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+              </label>
+
               <hr className="border-gray-200" />
 
               {/* Tamaño de Marcadores de Services */}
@@ -606,6 +651,23 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                   </div>
                 )}
               </div>
+
+              {/* Toggle: Halo de services */}
+              <label className="flex items-center justify-between p-3 hover:bg-red-50 rounded-xl cursor-pointer transition-colors border border-red-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 text-lg">🔧</div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Resaltar services con halo</div>
+                    <p className="text-xs text-gray-500">Anillo blanco + borde oscuro alrededor del marker</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => setPreferences({ ...preferences, serviceHalo: !preferences.serviceHalo })}
+                  className={` relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${preferences.serviceHalo ? 'bg-red-500' : 'bg-gray-200'}`}
+                >
+                  <span className={` inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${preferences.serviceHalo ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+              </label>
 
               <hr className="border-gray-200" />
 
@@ -820,6 +882,35 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 <p className="text-xs text-gray-500">
                   Controla la intensidad de los colores de las zonas en las vistas de datos (Distribución, Demoras, Móviles por Zona)
                 </p>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* Patron de Zonas */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span className="text-lg">&#9726;</span>
+                  Patrón de Zonas
+                </label>
+                <p className="text-xs text-gray-500">
+                  Textura superpuesta sobre el color de las zonas. &quot;Liso&quot; mantiene el comportamiento actual.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {ZONA_PATTERN_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPreferences({ ...preferences, zonaPattern: opt.value })}
+                      className={`px-3 py-1.5 rounded-lg border-2 text-xs font-medium transition-all ${
+                        (preferences.zonaPattern ?? 'liso') === opt.value
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {isRoot(user) && (

@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { memo, useMemo } from 'react';
 import { Polygon, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
 
 export interface DistribucionZonaData {
   zona_id: number;
@@ -17,6 +18,7 @@ interface DistribucionZonasLayerProps {
   zonas: DistribucionZonaData[];
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
+  zonaPattern?: ZonaPattern;
 }
 
 /**
@@ -60,7 +62,7 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas, zonaOpacity = 50 }: DistribucionZonasLayerProps) {
+const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas, zonaOpacity = 50, zonaPattern = 'liso' }: DistribucionZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {

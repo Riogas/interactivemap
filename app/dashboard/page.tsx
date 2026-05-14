@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -3216,6 +3216,10 @@ function DashboardContent() {
                 minutosAntesSa={minutosAntesSa}
                 user={user}
                 onMapStateChange={handleMapStateChange}
+                movilHalo={preferences.movilHalo ?? false}
+                pedidoHalo={preferences.pedidoHalo ?? false}
+                serviceHalo={preferences.serviceHalo ?? false}
+                zonaPattern={preferences.zonaPattern ?? 'liso'}
               />
             </motion.div>
           </>
