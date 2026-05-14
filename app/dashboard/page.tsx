@@ -1,4 +1,4 @@
-Ôªø'use client';
+'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -23,7 +23,7 @@ import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
-import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForCapEntrega, isPrivilegedForZonaScope } from '@/lib/auth-scope';
+import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForZonaScope } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
@@ -66,7 +66,7 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
 });
 
 function DashboardContent() {
-  // Hook de autenticaci√≥n (para obtener empresas permitidas y escenario)
+  // Hook de autenticaciÛn (para obtener empresas permitidas y escenario)
   const { user, escenarioId, hasPermiso } = useAuth();
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
@@ -74,39 +74,39 @@ function DashboardContent() {
   // Si el escenario cubre servicio nocturno. Default true (conservativo mientras cargan los settings).
   const aplicaNocturno = escenarioSettings?.aplicaServNocturno ?? true;
   
-  // Hook de Realtime para escuchar actualizaciones GPS y m√≥viles nuevos
+  // Hook de Realtime para escuchar actualizaciones GPS y mÛviles nuevos
   const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect, setOnMovilEvent } = useRealtime();
   
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
   
   const [moviles, setMoviles] = useState<MovilData[]>([]);
-  const movilesRef = useRef<MovilData[]>([]); // Ref para acceso sincr√≥nico en callbacks
+  const movilesRef = useRef<MovilData[]>([]); // Ref para acceso sincrÛnico en callbacks
   movilesRef.current = moviles;
-  const [selectedMoviles, setSelectedMoviles] = useState<number[]>([]); // Array de m√≥viles seleccionados
-  const userExplicitlyCleared = useRef(false); // Evita auto-selecci√≥n cuando el usuario intencionalmente deseleccion√≥
-  // Ref al √∫ltimo Set<number> de m√≥viles ocultos-pero-operativos. Se asigna m√°s
-  // abajo (despu√©s de calcular pedidosCompletos/servicesCompletos). Permite que
+  const [selectedMoviles, setSelectedMoviles] = useState<number[]>([]); // Array de mÛviles seleccionados
+  const userExplicitlyCleared = useRef(false); // Evita auto-selecciÛn cuando el usuario intencionalmente deseleccionÛ
+  // Ref al ˙ltimo Set<number> de mÛviles ocultos-pero-operativos. Se asigna m·s
+  // abajo (despuÈs de calcular pedidosCompletos/servicesCompletos). Permite que
   // callbacks/effects definidos antes accedan a los IDs ocultos sin TDZ errors.
   const hiddenMovilIdsRef = useRef<Set<number>>(new Set());
-  // Ref a la lista filtrada actual ‚Äî sirve para que handlers como
+  // Ref a la lista filtrada actual ó sirve para que handlers como
   // handleToggleMovil puedan calcular "modo Todos" sin re-crearse en cada
-  // cambio de filtros. Se asigna m√°s abajo despu√©s de calcular movilesFiltered.
+  // cambio de filtros. Se asigna m·s abajo despuÈs de calcular movilesFiltered.
   const movilesFilteredRef = useRef<MovilData[]>([]);
-  // Refs a las listas completas de pedidos/services del d√≠a. Se asignan m√°s abajo
-  // (despu√©s de calcular pedidosCompletos/servicesCompletos) para que callbacks
+  // Refs a las listas completas de pedidos/services del dÌa. Se asignan m·s abajo
+  // (despuÈs de calcular pedidosCompletos/servicesCompletos) para que callbacks
   // definidos antes (ej. handleShowPendientes) puedan leer la fuente de verdad
   // sin meter pedidosCompletos en el dep array (TDZ).
   const pedidosCompletosRef = useRef<PedidoSupabase[]>([]);
   const servicesCompletosRef = useRef<ServiceSupabase[]>([]);
   
-  // üöÄ Optimizaci√≥n: Detectar visibilidad de tab para pausar updates
+  // ?? OptimizaciÛn: Detectar visibilidad de tab para pausar updates
   const isTabVisible = useTabVisibility();
   
-  const [focusedMovil, setFocusedMovil] = useState<number | undefined>(); // M√≥vil enfocado en el mapa (para centrar)
-  const [selectedMovil, setSelectedMovil] = useState<number | undefined>(); // M√≥vil seleccionado para animaci√≥n
-  const [selectedMovil2, setSelectedMovil2] = useState<number | undefined>(); // 2do m√≥vil para animaci√≥n dual
-  const [popupMovil, setPopupMovil] = useState<number | undefined>(); // M√≥vil con popup abierto
+  const [focusedMovil, setFocusedMovil] = useState<number | undefined>(); // MÛvil enfocado en el mapa (para centrar)
+  const [selectedMovil, setSelectedMovil] = useState<number | undefined>(); // MÛvil seleccionado para animaciÛn
+  const [selectedMovil2, setSelectedMovil2] = useState<number | undefined>(); // 2do mÛvil para animaciÛn dual
+  const [popupMovil, setPopupMovil] = useState<number | undefined>(); // MÛvil con popup abierto
   const [popupPedido, setPopupPedido] = useState<number | undefined>(); // Pedido con popup abierto
   const [popupService, setPopupService] = useState<number | undefined>(); // Service con popup abierto
   const [focusedPedidoId, setFocusedPedidoId] = useState<number | undefined>(); // Pedido a centralizar
@@ -115,9 +115,9 @@ function DashboardContent() {
   const [focusTrigger, setFocusTrigger] = useState(0);
   const [focusedPuntoId, setFocusedPuntoId] = useState<string | undefined>(); // Punto a centralizar
   // selectionVersion: contador que solo se incrementa por acciones EXPLICITAS del usuario
-  // sobre la selecci√≥n de m√≥viles (toggle, select-all, clear-all, filtro de actividad).
-  // El MapView re-centra/re-ajusta bounds SOLO cuando esta versi√≥n cambia, evitando que
-  // updates de realtime (m√≥vil que aparece/desaparece, GPS) muevan el centrado actual.
+  // sobre la selecciÛn de mÛviles (toggle, select-all, clear-all, filtro de actividad).
+  // El MapView re-centra/re-ajusta bounds SOLO cuando esta versiÛn cambia, evitando que
+  // updates de realtime (mÛvil que aparece/desaparece, GPS) muevan el centrado actual.
   const selectionVersionRef = useRef(0);
   const [selectionVersion, setSelectionVersion] = useState(0);
   const bumpSelectionVersion = useCallback(() => {
@@ -130,13 +130,13 @@ function DashboardContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Flag para carga inicial
-  // Estado del ultimo sync de posiciones (instrumentacion visible de drift ‚Äî solo root)
+  // Estado del ultimo sync de posiciones (instrumentacion visible de drift ó solo root)
   const [lastSync, setLastSync] = useState<LastSyncState | null>(null);
   
   // Estado para marcadores personalizados
   const [isPlacingMarker, setIsPlacingMarker] = useState(false);
   
-  // üîß Modal state (extracted to useDashboardModals hook)
+  // ?? Modal state (extracted to useDashboardModals hook)
   const {
     isTrackingModalOpen, setIsTrackingModalOpen,
     isLeaderboardOpen, setIsLeaderboardOpen,
@@ -160,13 +160,13 @@ function DashboardContent() {
   const [saturacionModalZonaId, setSaturacionModalZonaId] = useState<number | null>(null);
 
 
-  // Mapa completo movil_nro ‚Üí estadoNro (para todos los moviles, no solo los con GPS)
+  // Mapa completo movil_nro ? estadoNro (para todos los moviles, no solo los con GPS)
   const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
   
-  // Trigger para recargar marcadores del mapa tras importaci√≥n OSM
+  // Trigger para recargar marcadores del mapa tras importaciÛn OSM
   const [reloadMarkersTrigger, setReloadMarkersTrigger] = useState(0);
   
-  // Estado para ocultar/mostrar indicadores de m√≥viles en el mapa (persistido en preferencias)
+  // Estado para ocultar/mostrar indicadores de mÛviles en el mapa (persistido en preferencias)
   const movilesHidden = !preferences.movilesVisible;
   const setMovilesHidden = useCallback((hidden: boolean) => updatePreference('movilesVisible', !hidden), [updatePreference]);
   
@@ -178,7 +178,7 @@ function DashboardContent() {
   const servicesHidden = !preferences.servicesVisible;
   const setServicesHidden = useCallback((hidden: boolean) => updatePreference('servicesVisible', !hidden), [updatePreference]);
   
-  // Estado para ocultar/mostrar POIs y categor√≠as de POIs (persistido en preferencias)
+  // Estado para ocultar/mostrar POIs y categorÌas de POIs (persistido en preferencias)
   const poisHidden = !preferences.poisVisible;
   const setPoisHidden = useCallback((hidden: boolean) => updatePreference('poisVisible', !hidden), [updatePreference]);
   const hiddenPoiCategories = useMemo(() => new Set(preferences.hiddenPoiCategories || []), [preferences.hiddenPoiCategories]);
@@ -188,11 +188,11 @@ function DashboardContent() {
     updatePreference('hiddenPoiCategories', next);
   }, [preferences.hiddenPoiCategories, updatePreference]);
   
-  // Estado para puntos de inter√©s
+  // Estado para puntos de interÈs
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
   const [selectedPois, setSelectedPois] = useState<Set<string>>(new Set());
 
-  // Inicializar selecci√≥n cuando se cargan POIs
+  // Inicializar selecciÛn cuando se cargan POIs
   useEffect(() => {
     if (puntosInteres.length > 0) {
       setSelectedPois(new Set(puntosInteres.map(p => p.id)));
@@ -206,17 +206,17 @@ function DashboardContent() {
     [puntosInteres, selectedPois]
   );
 
-  // üìä Capas de Informaci√≥n del mapa ‚Äî dataViewMode persistido en preferencias
+  // ?? Capas de InformaciÛn del mapa ó dataViewMode persistido en preferencias
   const dataViewMode = preferences.dataViewMode;
   
   // Estado para el panel colapsable
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
-  // üìê Sidebar responsive: ancho din√°mico seg√∫n resoluci√≥n
+  // ?? Sidebar responsive: ancho din·mico seg˙n resoluciÛn
   const [sidebarWidth, setSidebarWidth] = useState(384);
   useEffect(() => {
     const updateSidebarWidth = () => {
-      // < 1024px (lg): sidebar m√°s angosto para dejar m√°s espacio al mapa
+      // < 1024px (lg): sidebar m·s angosto para dejar m·s espacio al mapa
       setSidebarWidth(window.innerWidth < 1024 ? 320 : 384);
     };
     updateSidebarWidth();
@@ -237,18 +237,18 @@ function DashboardContent() {
     )];
   }, [selectedEmpresas, empresas]);
 
-  // üîí Scope por rol/empresa: distribuidor s√≥lo ve sus zonas; root/despacho ven todo.
-  // Guard expl√≠cito de user: durante el load inicial user es null y getScopedEmpresas(null)
-  // devolver√≠a [] (fail-closed) ‚Äî eso causar√≠a un flash de contenido vac√≠o para root/despacho.
+  // ?? Scope por rol/empresa: distribuidor sÛlo ve sus zonas; root/despacho ven todo.
+  // Guard explÌcito de user: durante el load inicial user es null y getScopedEmpresas(null)
+  // devolverÌa [] (fail-closed) ó eso causarÌa un flash de contenido vacÌo para root/despacho.
   // Con el guard, mientras user no carga scopedEmpresas = null (sin scope) y el comportamiento
-  // es id√©ntico al estado pre-scope. Una vez user carga, se re-eval√∫a correctamente.
+  // es idÈntico al estado pre-scope. Una vez user carga, se re-eval˙a correctamente.
   const scopedEmpresas = useMemo(
     () => (user ? getScopedEmpresas(user) : null),
     [user]
   );
   const { scopedZonaIds } = useScopedZonaIds(user, selectedEscenarioIds, selectedEmpresas);
 
-  // üîß Map data view state + effects (extracted to useMapDataView hook)
+  // ?? Map data view state + effects (extracted to useMapDataView hook)
   const {
     showZonas, setShowZonas,
     zonasData, allZonasData, demorasData,
@@ -267,14 +267,14 @@ function DashboardContent() {
     aplicaNocturno,
   });
 
-  // Determina si hay que ocultar pedidos/services "sin asignar" (sin m√≥vil).
+  // Determina si hay que ocultar pedidos/services "sin asignar" (sin mÛvil).
   // Motivo: un user no-root nunca tiene contexto para decidir sobre pedidos
-  // sin asignar ‚Äî esos pedidos no pertenecen a ninguna empresa fletera todav√≠a.
+  // sin asignar ó esos pedidos no pertenecen a ninguna empresa fletera todavÌa.
   // Solo root/despacho (sin restricciones) ven los sin asignar.
   //
   // Se activa cuando:
-  //   a) el usuario tiene restricci√≥n de empresas (no-root con allowedEmpresas), o
-  //   b) el usuario deseleccion√≥ manualmente alguna empresa del selector.
+  //   a) el usuario tiene restricciÛn de empresas (no-root con allowedEmpresas), o
+  //   b) el usuario deseleccionÛ manualmente alguna empresa del selector.
   const hideUnassigned = useMemo(() => {
     const userHasRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
     const userDeselectedSome = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
@@ -287,14 +287,14 @@ function DashboardContent() {
     () => empresas.length === 0 || selectedEmpresas.length === empresas.length,
     [empresas.length, selectedEmpresas.length],
   );
-  // Variable derivada para el gating de UI de drift ‚Äî comparacion literal con 'S' (no === true)
+  // Variable derivada para el gating de UI de drift ó comparacion literal con 'S' (no === true)
   const isRoot = user?.isRoot === 'S';
   
-  // ÔøΩ M√≥viles filtrados por empresas fleteras seleccionadas
-  // Sem√°ntica:
-  //   - empresas.length === 0  ‚Üí empresas todav√≠a no cargadas, fallback a todos los m√≥viles.
-  //   - selectedEmpresas vac√≠o + hay empresas ‚Üí "Ninguna" expl√≠cita: NO mostrar nada.
-  //   - selectedEmpresas con items ‚Üí filtrar por esos.
+  // ? MÛviles filtrados por empresas fleteras seleccionadas
+  // Sem·ntica:
+  //   - empresas.length === 0  ? empresas todavÌa no cargadas, fallback a todos los mÛviles.
+  //   - selectedEmpresas vacÌo + hay empresas ? "Ninguna" explÌcita: NO mostrar nada.
+  //   - selectedEmpresas con items ? filtrar por esos.
   const movilesFiltered = useMemo(() => {
     if (empresas.length === 0) return moviles;
     if (selectedEmpresas.length === 0) return [];
@@ -306,7 +306,7 @@ function DashboardContent() {
   // "modo Todos" sin recrear el callback en cada render.
   movilesFilteredRef.current = movilesFiltered;
   
-  // Estado para filtros de m√≥viles (recibidos desde MovilSelector)
+  // Estado para filtros de mÛviles (recibidos desde MovilSelector)
   const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
     capacidad: 'all', 
     estado: [],
@@ -323,10 +323,10 @@ function DashboardContent() {
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>(defaultServicesFilters);
   const [servicesResetToken, setServicesResetToken] = useState(0);
   // ---------------------------------------------------------------------------
-  // View-state sync ‚Äî preserva y restaura el estado visual a trav√©s de auto-reloads
+  // View-state sync ó preserva y restaura el estado visual a travÈs de auto-reloads
   // ---------------------------------------------------------------------------
   // La modal snapshot se construye aqui (calculada antes de llamar al hook).
-  // Como los estados modales a√∫n no cambiaron en esta render, refleja el estado actual.
+  // Como los estados modales a˙n no cambiaron en esta render, refleja el estado actual.
   const modalSnapshot: ModalSnapshot = (() => {
     if (saturacionModalZonaId !== null) return { type: 'saturacion', entityId: saturacionModalZonaId };
     if (popupPedido !== undefined) return { type: 'pedidoPopup', entityId: popupPedido };
@@ -364,7 +364,7 @@ function DashboardContent() {
 
     if (hydration.selectedMoviles !== null && hydration.selectedMoviles.length > 0) {
       setSelectedMoviles(hydration.selectedMoviles);
-      userExplicitlyCleared.current = true; // tratar como selecci√≥n custom ‚Äî no auto-sobreescribir
+      userExplicitlyCleared.current = true; // tratar como selecciÛn custom ó no auto-sobreescribir
     }
     if (hydration.selectedEmpresas !== null && hydration.selectedEmpresas.length > 0) {
       setSelectedEmpresas(hydration.selectedEmpresas);
@@ -393,7 +393,7 @@ function DashboardContent() {
       else if (m.type === 'zonasNoActivas') setIsZonasNoActivasOpen(true);
     }
 
-    // Scrolls de paneles ‚Äî aplicar despu√©s de que el DOM renderice
+    // Scrolls de paneles ó aplicar despuÈs de que el DOM renderice
     if (hydration.panelScrolls) {
       const { pedidos: pScroll, moviles: mScroll, empresas: eScroll } = hydration.panelScrolls;
       requestAnimationFrame(() => {
@@ -403,7 +403,7 @@ function DashboardContent() {
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // solo al montar ‚Äî hydration es estable (ref interno)
+  }, []); // solo al montar ó hydration es estable (ref interno)
 
   // Callback estable para capturar el estado del mapa en cada moveend/zoomend
   const handleMapStateChange = useCallback((s: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => {
@@ -412,13 +412,13 @@ function DashboardContent() {
 
 
   
-  // Tipos de servicio din√°micos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
+  // Tipos de servicio din·micos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
   
-  // Refs para callbacks de fetch ‚Äî permiten pasarlos a hooks antes de que est√©n definidos
+  // Refs para callbacks de fetch ó permiten pasarlos a hooks antes de que estÈn definidos
   const fetchPedidosRef = useRef<(() => void) | null>(null);
   const fetchServicesRef = useRef<(() => void) | null>(null);
 
-  // üî• NUEVO: Hook para escuchar cambios en pedidos en tiempo real
+  // ?? NUEVO: Hook para escuchar cambios en pedidos en tiempo real
   const {
     pedidos: pedidosRealtime,
     isConnected: pedidosConnected,
@@ -431,7 +431,7 @@ function DashboardContent() {
     useCallback(() => { fetchPedidosRef.current?.(); }, [])
   );
 
-  // üîß Hook para escuchar cambios en services en tiempo real
+  // ?? Hook para escuchar cambios en services en tiempo real
   const {
     services: servicesRealtime,
     isConnected: servicesConnected,
@@ -478,12 +478,12 @@ function DashboardContent() {
   }, []);
 
   // True solo si selectedDate es la fecha de hoy. Usado para deshabilitar
-  // capas/botones que solo tienen sentido en modo live (demoras, saturaci√≥n,
-  // distribuci√≥n, m√≥viles/zonas, pedidos/zona, estad√≠sticas por zona).
+  // capas/botones que solo tienen sentido en modo live (demoras, saturaciÛn,
+  // distribuciÛn, mÛviles/zonas, pedidos/zona, estadÌsticas por zona).
   const isToday = selectedDate === todayMontevideo();
 
   // Fix 4: Resetear capa a 'distribucion' si la fecha activa no es hoy y
-  // el modo actual es solo v√°lido en tiempo real.
+  // el modo actual es solo v·lido en tiempo real.
   useEffect(() => {
     if (!isToday) {
       const liveOnlyModes = ['demoras', 'moviles-zonas', 'zonas-activas', 'pedidos-zona', 'saturacion'];
@@ -494,7 +494,7 @@ function DashboardContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isToday, dataViewMode]);
 
-  // üîß Filter helpers (extracted to useFilterHelpers hook)
+  // ?? Filter helpers (extracted to useFilterHelpers hook)
   const {
     isInUruguay, filterByDelay, filterByTipoServicio,
     applyAdvancedFilters, applyActivityFilter,
@@ -505,32 +505,32 @@ function DashboardContent() {
   useEffect(() => {
     const loadEmpresas = async () => {
       try {
-        console.log('üè¢ Loading empresas fleteras...');
+        console.log('?? Loading empresas fleteras...');
         const response = await fetch('/api/empresas');
         const result = await response.json();
         
         if (result.success) {
           let empresasData: EmpresaFleteraSupabase[] = result.data;
           
-          // üîë Si el usuario NO es root y tiene empresas permitidas, filtrar
+          // ?? Si el usuario NO es root y tiene empresas permitidas, filtrar
           if (user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
             const allowedIds = user.allowedEmpresas;
             const empresasFiltradas = empresasData.filter(
               (e: EmpresaFleteraSupabase) => allowedIds.includes(e.empresa_fletera_id)
             );
-            console.log(`üîê Usuario ${user.username}: ${empresasFiltradas.length}/${empresasData.length} empresas permitidas (IDs: ${allowedIds.join(', ')})`);
+            console.log(`?? Usuario ${user.username}: ${empresasFiltradas.length}/${empresasData.length} empresas permitidas (IDs: ${allowedIds.join(', ')})`);
             empresasData = empresasFiltradas;
           } else {
-            console.log(`üëë Usuario ${user?.username || 'unknown'}: acceso a todas las empresas (${empresasData.length})`);
+            console.log(`?? Usuario ${user?.username || 'unknown'}: acceso a todas las empresas (${empresasData.length})`);
           }
           
           setEmpresas(empresasData);
           // Por defecto, seleccionar todas las empresas (filtradas o no)
           setSelectedEmpresas(empresasData.map((e: EmpresaFleteraSupabase) => e.empresa_fletera_id));
-          console.log(`‚úÖ Loaded ${empresasData.length} empresas fleteras`);
+          console.log(`? Loaded ${empresasData.length} empresas fleteras`);
         }
       } catch (err) {
-        console.error('‚ùå Error loading empresas:', err);
+        console.error('? Error loading empresas:', err);
       } finally {
         setIsLoadingEmpresas(false);
       }
@@ -543,18 +543,18 @@ function DashboardContent() {
 
 
 
-  // üî• NUEVO: Funci√≥n para enriquecer m√≥viles con datos extendidos de Supabase
+  // ?? NUEVO: FunciÛn para enriquecer mÛviles con datos extendidos de Supabase
   const enrichMovilesWithExtendedData = useCallback(async (moviles: MovilData[]): Promise<MovilData[]> => {
     try {
-      console.log('üìä Fetching extended data for moviles...');
+      console.log('?? Fetching extended data for moviles...');
       const response = await fetch('/api/moviles-extended');
       const result = await response.json();
 
       if (result.success) {
         // Definir tipo para los datos extendidos
         interface ExtendedData {
-          id: string;           // TEXT - ID del m√≥vil (clave principal)
-          nro: number;          // INTEGER - N√∫mero del m√≥vil
+          id: string;           // TEXT - ID del mÛvil (clave principal)
+          nro: number;          // INTEGER - N˙mero del mÛvil
           tamanoLote: number;
           pedidosAsignados: number;
           matricula: string;
@@ -571,20 +571,20 @@ function DashboardContent() {
           result.data.map((item: ExtendedData) => [item.id, item])
         );
 
-        console.log('üìä Extended data map size:', extendedDataMap.size);
+        console.log('?? Extended data map size:', extendedDataMap.size);
 
         const enrichedMoviles = moviles.map(movil => {
           // Convertir movil.id a string para buscar en el map
           const extendedData = extendedDataMap.get(movil.id.toString());
           if (extendedData) {
-            // Si el m√≥vil es NO ACTIVO (estado_nro 3), usar color gris
-            // Si el m√≥vil es BAJA MOMENT√ÅNEA (estado_nro 4), usar color naranja
+            // Si el mÛvil es NO ACTIVO (estado_nro 3), usar color gris
+            // Si el mÛvil es BAJA MOMENT¡NEA (estado_nro 4), usar color naranja
             const isNoActivo = extendedData.estadoNro === 3;
             const isBajaMomentanea = extendedData.estadoNro === 4;
             const calculatedColor = isNoActivo 
               ? '#9CA3AF' // Gris para NO ACTIVO
               : isBajaMomentanea
-                ? '#8B5CF6' // Violeta para BAJA MOMENT√ÅNEA
+                ? '#8B5CF6' // Violeta para BAJA MOMENT¡NEA
                 : getMovilColorByOccupancy(extendedData.pedidosAsignados, extendedData.tamanoLote);
             
             return {
@@ -612,35 +612,35 @@ function DashboardContent() {
         }
         setAllMovilEstados(estadosMap);
 
-        console.log(`‚úÖ Enriched ${enrichedMoviles.length} moviles, ${estadosMap.size} estados`);
+        console.log(`? Enriched ${enrichedMoviles.length} moviles, ${estadosMap.size} estados`);
         return enrichedMoviles;
       }
 
-      console.warn('‚ö†Ô∏è Could not fetch extended data, returning original moviles');
+      console.warn('?? Could not fetch extended data, returning original moviles');
       return moviles;
     } catch (error) {
-      console.error('‚ùå Error enriching moviles:', error);
+      console.error('? Error enriching moviles:', error);
       return moviles;
     }
   }, [getMovilColorByOccupancy]);
 
   const fetchPositions = useCallback(async (): Promise<{ added: number; removed: number; success: boolean }> => {
     try {
-      // üîí Guard: usuario no-root con restricci√≥n pero 0 empresas v√°lidas.
-      // Pasa cuando el ID del SecuritySuite (ej. 70) no matchea con ning√∫n
-      // empresa_fletera_id del Supabase, o cuando la empresa est√° inactiva.
+      // ?? Guard: usuario no-root con restricciÛn pero 0 empresas v·lidas.
+      // Pasa cuando el ID del SecuritySuite (ej. 70) no matchea con ning˙n
+      // empresa_fletera_id del Supabase, o cuando la empresa est· inactiva.
       // Root ve todo siempre; un user no-root sin empresas accesibles NO
-      // deber√≠a ver nada ‚Äî mapa vac√≠o.
+      // deberÌa ver nada ó mapa vacÌo.
       const userHasRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
       if (userHasRestriction && selectedEmpresas.length === 0) {
-        console.log('üîí Usuario con restricci√≥n y sin empresas v√°lidas ‚Üí mapa vac√≠o');
+        console.log('?? Usuario con restricciÛn y sin empresas v·lidas ? mapa vacÌo');
         setMoviles([]);
         setIsLoading(false);
         setIsInitialLoad(false);
         return { added: 0, removed: 0, success: true };
       }
 
-      console.log('üîÑ Fetching all positions from API...');
+      console.log('?? Fetching all positions from API...');
 
       // Construir URL con filtro de empresas y fecha
       const params = new URLSearchParams();
@@ -665,10 +665,10 @@ function DashboardContent() {
       const result = await response.json();
 
       if (result.success) {
-        console.log(`‚úÖ Received ${result.count} m√≥viles from API`);
+        console.log(`? Received ${result.count} mÛviles from API`);
         
         if (isInitialLoad) {
-          // PRIMERA CARGA: Crear array completo de m√≥viles
+          // PRIMERA CARGA: Crear array completo de mÛviles
           const newMoviles: MovilData[] = result.data.map((item: {
             movilId: number;
             movilName: string;
@@ -681,31 +681,31 @@ function DashboardContent() {
             color: item.color,
             empresaFleteraId: item.empresa_fletera_id,
             currentPosition: item.position,
-            history: undefined, // Se cargar√° bajo demanda
+            history: undefined, // Se cargar· bajo demanda
           }));
 
-          console.log('üìä Sample movil from API:', newMoviles[0]); // Ver ID del m√≥vil
+          console.log('?? Sample movil from API:', newMoviles[0]); // Ver ID del mÛvil
 
           // Eliminar duplicados antes de establecer
           const uniqueMoviles = removeDuplicateMoviles(newMoviles);
 
-          // üî• NUEVO: Enriquecer con datos extendidos de Supabase
+          // ?? NUEVO: Enriquecer con datos extendidos de Supabase
           const enrichedMoviles = await enrichMovilesWithExtendedData(uniqueMoviles);
 
           setMoviles(enrichedMoviles);
           setIsInitialLoad(false); // Marcar que ya no es carga inicial
-          console.log(`üì¶ Carga inicial completa con ${enrichedMoviles.length} m√≥viles √∫nicos enriquecidos`);
+          console.log(`?? Carga inicial completa con ${enrichedMoviles.length} mÛviles ˙nicos enriquecidos`);
         } else {
-          // RECONCILIACI√ìN (post-initial): la API trae el set "verdadero" de
-          // m√≥viles con posici√≥n vigente. Detectamos:
-          //   a) m√≥viles NUEVOS (en API y no en state) ‚Üí los agregamos.
-          //   b) m√≥viles BAJADOS (en state y no en API) ‚Üí los removemos.
-          //   c) m√≥viles existentes ‚Üí solo actualizamos currentPosition,
+          // RECONCILIACI”N (post-initial): la API trae el set "verdadero" de
+          // mÛviles con posiciÛn vigente. Detectamos:
+          //   a) mÛviles NUEVOS (en API y no en state) ? los agregamos.
+          //   b) mÛviles BAJADOS (en state y no en API) ? los removemos.
+          //   c) mÛviles existentes ? solo actualizamos currentPosition,
           //      preservando history/pedidosAsignados/tamanoLote/etc.
           //
-          // Antes este path solo hac√≠a (c) y los nuevos se silenciaban ‚Äî
-          // por eso un F5 tra√≠a m√≥viles que el polling/silence/visibility
-          // ya hab√≠a recibido de la API pero no se hab√≠an incorporado.
+          // Antes este path solo hacÌa (c) y los nuevos se silenciaban ó
+          // por eso un F5 traÌa mÛviles que el polling/silence/visibility
+          // ya habÌa recibido de la API pero no se habÌan incorporado.
           const prevSnapshot = movilesRef.current;
           const prevById = new Map(prevSnapshot.map(m => [m.id, m]));
           const apiIds = new Set<number>(result.data.map((item: any) => Number(item.movilId)));
@@ -716,11 +716,11 @@ function DashboardContent() {
           const removedCount = prevSnapshot.filter(m => !apiIds.has(m.id)).length;
 
           if (newApiMoviles.length === 0 && removedCount === 0) {
-            // Sin altas/bajas: updates de posici√≥n + propagaci√≥n de estadoNro.
+            // Sin altas/bajas: updates de posiciÛn + propagaciÛn de estadoNro.
             // El endpoint /api/all-positions devuelve `estado` (= estado_nro
             // fresco de la tabla moviles). Sin esto, un cambio de estado
-            // (ej. 0‚Üí5 v√≠a importer o SQL directo) no se reflejaba en el
-            // colapsable hasta el pr√≥ximo enrich/F5.
+            // (ej. 0?5 vÌa importer o SQL directo) no se reflejaba en el
+            // colapsable hasta el prÛximo enrich/F5.
             setMoviles(prevMoviles => prevMoviles.map(movil => {
               const updatedData = result.data.find((item: any) => Number(item.movilId) === movil.id);
               if (!updatedData) return movil;
@@ -731,13 +731,13 @@ function DashboardContent() {
                 estadoNro: nextEstado != null ? nextEstado : movil.estadoNro,
               };
             }));
-            console.log('üîÑ Posiciones GPS + estadoNro actualizados (sin altas/bajas)');
+            console.log('?? Posiciones GPS + estadoNro actualizados (sin altas/bajas)');
           } else {
             // Hay altas o bajas: reconstruir lista preservando estado existente
             // (history, pedidosAsignados, tamanoLote, etc.) y enriquecer los
             // nuevos via enrichMovilesWithExtendedData.
             console.log(
-              `üîÑ Reconciliaci√≥n: ${newApiMoviles.length} alta(s), ${removedCount} baja(s) detectada(s)`,
+              `?? ReconciliaciÛn: ${newApiMoviles.length} alta(s), ${removedCount} baja(s) detectada(s)`,
             );
 
             const merged: MovilData[] = result.data.map((item: any) => {
@@ -759,7 +759,7 @@ function DashboardContent() {
             const enriched = await enrichMovilesWithExtendedData(uniqueMerged);
             setMoviles(enriched);
             console.log(
-              `‚úÖ Reconciliaci√≥n aplicada: state ahora tiene ${enriched.length} m√≥viles`,
+              `? ReconciliaciÛn aplicada: state ahora tiene ${enriched.length} mÛviles`,
             );
             return { added: newApiMoviles.length, removed: removedCount, success: true };
           }
@@ -767,29 +767,29 @@ function DashboardContent() {
         
         setLastUpdate(new Date());
         setError(null);
-        // Fallback: path sin altas/bajas ya retorn√≥ arriba
+        // Fallback: path sin altas/bajas ya retornÛ arriba
         return { added: 0, removed: 0, success: true };
       } else {
         setError(result.error || 'Error al cargar datos');
         return { added: 0, removed: 0, success: false };
       }
     } catch (err) {
-      console.error('‚ùå Error fetching positions:', err);
-      setError('Error de conexi√≥n');
+      console.error('? Error fetching positions:', err);
+      setError('Error de conexiÛn');
       return { added: 0, removed: 0, success: false };
     } finally {
       setIsLoading(false);
     }
   }, [selectedEmpresas, empresas.length, isInitialLoad, enrichMovilesWithExtendedData, removeDuplicateMoviles, user?.allowedEmpresas]);
 
-  // Funci√≥n para cargar TODOS los pedidos del d√≠a desde API
-  // El filtrado por m√≥viles seleccionados se hace client-side en MovilSelector y MapView
+  // FunciÛn para cargar TODOS los pedidos del dÌa desde API
+  // El filtrado por mÛviles seleccionados se hace client-side en MovilSelector y MapView
   const fetchPedidos = useCallback(async () => {
     try {
-      console.log('üì¶ Fetching pedidos para fecha:', selectedDate);
+      console.log('?? Fetching pedidos para fecha:', selectedDate);
       setIsLoadingPedidos(true);
       
-      // Construir URL - traer TODOS los pedidos del d√≠a (sin filtrar por m√≥vil)
+      // Construir URL - traer TODOS los pedidos del dÌa (sin filtrar por mÛvil)
       const params = new URLSearchParams();
       params.append('escenario', String(escenarioId));
       if (selectedDate) {
@@ -803,14 +803,14 @@ function DashboardContent() {
       const result = await response.json();
 
       if (result.success) {
-        console.log(`‚úÖ Loaded ${result.count} pedidos`);
+        console.log(`? Loaded ${result.count} pedidos`);
         setPedidosIniciales(result.data || []);
       } else {
-        console.error('‚ùå Error loading pedidos:', result.error);
+        console.error('? Error loading pedidos:', result.error);
       }
     } catch (err) {
-      console.error('‚ùå Error fetching pedidos:', err);
-      console.error('‚ùå Error details:', {
+      console.error('? Error fetching pedidos:', err);
+      console.error('? Error details:', {
         name: (err as Error).name,
         message: (err as Error).message,
         stack: (err as Error).stack
@@ -820,10 +820,10 @@ function DashboardContent() {
     }
   }, [selectedDate]);
 
-  // Funci√≥n para cargar TODOS los services del d√≠a desde API
+  // FunciÛn para cargar TODOS los services del dÌa desde API
   const fetchServices = useCallback(async () => {
     try {
-      console.log('üîß Fetching services para fecha:', selectedDate);
+      console.log('?? Fetching services para fecha:', selectedDate);
       setIsLoadingServices(true);
       
       const params = new URLSearchParams();
@@ -837,19 +837,19 @@ function DashboardContent() {
       const result = await response.json();
 
       if (result.success) {
-        console.log(`‚úÖ Loaded ${result.count} services`);
+        console.log(`? Loaded ${result.count} services`);
         setServicesIniciales(result.data || []);
       } else {
-        console.error('‚ùå Error loading services:', result.error);
+        console.error('? Error loading services:', result.error);
       }
     } catch (err) {
-      console.error('‚ùå Error fetching services:', err);
+      console.error('? Error fetching services:', err);
     } finally {
       setIsLoadingServices(false);
     }
   }, [selectedDate]);
 
-  // Mantener refs actualizadas para que los callbacks de reconexi√≥n siempre usen la versi√≥n m√°s reciente
+  // Mantener refs actualizadas para que los callbacks de reconexiÛn siempre usen la versiÛn m·s reciente
   useEffect(() => { fetchPedidosRef.current = fetchPedidos; }, [fetchPedidos]);
   useEffect(() => { fetchServicesRef.current = fetchServices; }, [fetchServices]);
 
@@ -918,13 +918,13 @@ function DashboardContent() {
     };
   }, [setOnMovilEvent, debouncedFetchOnMovilEvent]);
 
-  // üîÑ Mejora #1 ‚Äî Polling de reconciliaci√≥n configurable (admin / root).
+  // ?? Mejora #1 ó Polling de reconciliaciÛn configurable (admin / root).
   // Cubre eventos del WS que se perdieron por desconexiones silenciosas: cada N segundos
-  // re-pedimos todo pedidos/services Y posiciones/m√≥viles a la API.
+  // re-pedimos todo pedidos/services Y posiciones/mÛviles a la API.
   // Solo en modo live (hoy). 0 = off.
   useEffect(() => {
     const today = todayMontevideo();
-    if (selectedDate !== today) return; // Solo en modo live, no para fechas hist√≥ricas
+    if (selectedDate !== today) return; // Solo en modo live, no para fechas histÛricas
 
     // 0 / null / undefined -> usar default 60s. Solo -1 desactiva explicitamente.
     const seconds = (preferences.realtimePollingReconcileSeconds == null || preferences.realtimePollingReconcileSeconds === 0)
@@ -933,7 +933,7 @@ function DashboardContent() {
     if (seconds === -1) return; // Desactivado explicitamente por el usuario
 
     const interval = setInterval(async () => {
-      console.log(`üîÑ Polling reconciliaci√≥n (${seconds}s) ‚Äî sincronizando datos con la API`);
+      console.log(`?? Polling reconciliaciÛn (${seconds}s) ó sincronizando datos con la API`);
       fetchPedidos();
       fetchServices();
       const result = await fetchPositions();
@@ -954,11 +954,11 @@ function DashboardContent() {
     return () => clearInterval(interval);
   }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimePollingReconcileSeconds, isRoot]);
 
-  // üîá Mejora #2 ‚Äî Detecci√≥n de silencio del WS (admin / root).
+  // ?? Mejora #2 ó DetecciÛn de silencio del WS (admin / root).
   // Si durante N segundos no llegan eventos de pedidos NI de services NI de
-  // m√≥viles/GPS, asumimos que el canal est√° mudo (caso cl√°sico de Cloudflare/proxy
-  // que deja la TCP abierta pero no reenv√≠a frames). Forzamos refetch completo
-  // ‚Äî incluyendo posiciones/m√≥viles ‚Äî para recuperar cambios perdidos.
+  // mÛviles/GPS, asumimos que el canal est· mudo (caso cl·sico de Cloudflare/proxy
+  // que deja la TCP abierta pero no reenvÌa frames). Forzamos refetch completo
+  // ó incluyendo posiciones/mÛviles ó para recuperar cambios perdidos.
   useEffect(() => {
     const today = todayMontevideo();
     if (selectedDate !== today) return;
@@ -973,7 +973,7 @@ function DashboardContent() {
       const now = Date.now();
       const silenceMs = now - Math.max(lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt);
       if (silenceMs > thresholdMs) {
-        console.warn(`üîá Silencio de WS > ${seconds}s (${Math.round(silenceMs / 1000)}s). Forzando refetch.`);
+        console.warn(`?? Silencio de WS > ${seconds}s (${Math.round(silenceMs / 1000)}s). Forzando refetch.`);
         fetchPedidos();
         fetchServices();
         fetchPositions().then((result) => {
@@ -996,10 +996,10 @@ function DashboardContent() {
     return () => clearInterval(interval);
   }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds, isRoot]);
 
-  // üëÄ Mejora #3 ‚Äî Refetch al volver la pesta√±a a visible (admin / root).
+  // ?? Mejora #3 ó Refetch al volver la pestaÒa a visible (admin / root).
   // Cuando la tab estuvo en background mucho tiempo, el WS puede haberse cerrado sin aviso
   // o haber perdido eventos. Al volver, pedimos pedidos+services+posiciones de nuevo
-  // para consolidar m√≥viles del colapsable y mapa.
+  // para consolidar mÛviles del colapsable y mapa.
   useEffect(() => {
     // null / undefined -> default true. Solo false explicito desactiva.
     if (preferences.realtimeRefetchOnVisible === false) return;
@@ -1008,7 +1008,7 @@ function DashboardContent() {
 
     const handler = async () => {
       if (document.visibilityState === 'visible') {
-        console.log('üëÄ Pesta√±a visible ‚Äî refetch completo por preferencia');
+        console.log('?? PestaÒa visible ó refetch completo por preferencia');
         fetchPedidos();
         fetchServices();
         const result = await fetchPositions();
@@ -1030,14 +1030,14 @@ function DashboardContent() {
     return () => document.removeEventListener('visibilitychange', handler);
   }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeRefetchOnVisible, isRoot]);
 
-  // üî• Auto-selecci√≥n de m√≥viles:
-  //  a) Carga inicial ‚Üí marca todos los visibles.
+  // ?? Auto-selecciÛn de mÛviles:
+  //  a) Carga inicial ? marca todos los visibles.
   //  b) Modo "Todos" (userExplicitlyCleared=false): mantener el invariante
-  //     selected = visibleIds. Cuando aparece un m√≥vil nuevo se agrega;
+  //     selected = visibleIds. Cuando aparece un mÛvil nuevo se agrega;
   //     cuando uno desaparece (cambio de estado a no-activo, baja, etc.)
   //     se limpia del selected para que el badge siga diciendo "Todos".
-  //  c) Modo custom (flag=true): NO auto-agregar nuevos, pero s√≠ limpiar
-  //     hu√©rfanos (IDs que ya no est√°n en visibleIds), porque sino el
+  //  c) Modo custom (flag=true): NO auto-agregar nuevos, pero sÌ limpiar
+  //     huÈrfanos (IDs que ya no est·n en visibleIds), porque sino el
   //     badge cuenta selecciones inexistentes.
   useEffect(() => {
     if (isInitialLoad) return;
@@ -1045,37 +1045,37 @@ function DashboardContent() {
 
     const hidden = hiddenMovilIdsRef.current;
     // Aplicar el filtro de actividad (mismo criterio que la lista visible del
-    // colapsable). Sin esto, la auto-selecci√≥n agregaba m√≥viles inactivos al
-    // cambiar empresa, y como esos m√≥viles no aparecen en la UI con
+    // colapsable). Sin esto, la auto-selecciÛn agregaba mÛviles inactivos al
+    // cambiar empresa, y como esos mÛviles no aparecen en la UI con
     // actividad='activo', el usuario no puede deseleccionarlos individualmente
-    // ‚Üí quedan residualmente en selectedMoviles y aparecen en el badge.
+    // ? quedan residualmente en selectedMoviles y aparecen en el badge.
     const visibleIds = applyActivityFilter(movilesFiltered)
       .filter(m => !hidden.has(m.id))
       .map(m => m.id);
     const visibleSet = new Set(visibleIds);
 
     setSelectedMoviles(prev => {
-      // Limpiar hu√©rfanos siempre (independiente de modo Todos/custom).
+      // Limpiar huÈrfanos siempre (independiente de modo Todos/custom).
       const cleanPrev = prev.filter(id => visibleSet.has(id));
       const orphanCount = prev.length - cleanPrev.length;
       const missing = visibleIds.filter(id => !cleanPrev.includes(id));
 
       if (prev.length === 0) {
-        // Si el usuario expl√≠citamente deseleccion√≥ TODO (handleClearAll),
-        // mantener vac√≠o. Sin este guard, cualquier evento Realtime (m√≥vil
+        // Si el usuario explÌcitamente deseleccionÛ TODO (handleClearAll),
+        // mantener vacÌo. Sin este guard, cualquier evento Realtime (mÛvil
         // nuevo, GPS update, baja) re-dispara el effect, ve prev=[] y
-        // re-selecciona toda la flota ‚Äî bug reportado por usuarios.
+        // re-selecciona toda la flota ó bug reportado por usuarios.
         if (userExplicitlyCleared.current) {
           return prev;
         }
-        console.log('‚úÖ Auto-selecci√≥n inicial: marcando todos los m√≥viles por defecto:', visibleIds.length);
+        console.log('? Auto-selecciÛn inicial: marcando todos los mÛviles por defecto:', visibleIds.length);
         return visibleIds;
       }
 
       if (userExplicitlyCleared.current) {
-        // Modo custom: NO auto-agregar nuevos. Solo limpiar hu√©rfanos.
+        // Modo custom: NO auto-agregar nuevos. Solo limpiar huÈrfanos.
         if (orphanCount === 0) return prev;
-        console.log(`üßπ Limpiando ${orphanCount} ID(s) hu√©rfano(s) de selecci√≥n custom`);
+        console.log(`?? Limpiando ${orphanCount} ID(s) huÈrfano(s) de selecciÛn custom`);
         return cleanPrev;
       }
 
@@ -1083,7 +1083,7 @@ function DashboardContent() {
       if (missing.length === 0 && orphanCount === 0) return prev;
       if (missing.length > 0 || orphanCount > 0) {
         console.log(
-          `üîÑ Manteniendo "Todos": +${missing.length} nuevo(s), -${orphanCount} baja(s)`,
+          `?? Manteniendo "Todos": +${missing.length} nuevo(s), -${orphanCount} baja(s)`,
         );
         return visibleIds;
       }
@@ -1091,17 +1091,17 @@ function DashboardContent() {
     });
   }, [movilesFiltered.length, isInitialLoad, movilesFiltered, applyActivityFilter]);
 
-  // Recargar m√≥viles cuando cambia la selecci√≥n de empresas o la fecha (forzar recarga completa)
+  // Recargar mÛviles cuando cambia la selecciÛn de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
     if (!isLoadingEmpresas) {
-      console.log('üè¢ Empresas o fecha cambiaron - Forzando recarga completa');
+      console.log('?? Empresas o fecha cambiaron - Forzando recarga completa');
       setIsInitialLoad(true); // Forzar recarga completa cuando cambian las empresas o la fecha
-      userExplicitlyCleared.current = false; // Reset: recarga = nueva selecci√≥n autom√°tica
-      setSelectedMoviles([]); // Limpiar selecci√≥n para que auto-selecci√≥n re-seleccione los filtrados
+      userExplicitlyCleared.current = false; // Reset: recarga = nueva selecciÛn autom·tica
+      setSelectedMoviles([]); // Limpiar selecciÛn para que auto-selecciÛn re-seleccione los filtrados
       fetchPositions().then((result) => {
         if (result.success) {
           // Marcar el initial load como un sync exitoso para que el indicador
-          // arranque en üü¢ en vez de üî¥ "sin sync" durante los primeros 60s.
+          // arranque en ?? en vez de ?? "sin sync" durante los primeros 60s.
           setLastSync({ at: Date.now(), trigger: 'initial', added: 0, removed: 0 });
         }
       });
@@ -1109,51 +1109,51 @@ function DashboardContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEmpresas, isLoadingEmpresas, selectedDate]); // Remover fetchPositions de dependencias para evitar loops
 
-  // üî• Escuchar actualizaciones en tiempo real de Supabase (solo si est√° activado)
+  // ?? Escuchar actualizaciones en tiempo real de Supabase (solo si est· activado)
   useEffect(() => {
-    // Si el modo Tiempo Real est√° desactivado, no escuchar actualizaciones de Supabase
+    // Si el modo Tiempo Real est· desactivado, no escuchar actualizaciones de Supabase
     if (!preferences.realtimeEnabled) {
-      console.log('‚è∏Ô∏è Modo Tiempo Real desactivado - ignorando actualizaciones de Supabase');
+      console.log('?? Modo Tiempo Real desactivado - ignorando actualizaciones de Supabase');
       return;
     }
     
     if (!latestPosition) return;
     
-    const movilId = parseInt(latestPosition.movil_id); // ‚úÖ Usar 'movil_id'
+    const movilId = parseInt(latestPosition.movil_id); // ? Usar 'movil_id'
     // La tabla gps_latest_positions se limpia cada madrugada por cron,
-    // as√≠ que toda posici√≥n que llega por Realtime es vigente.
-    dbg(`üîî Actualizaci√≥n Realtime para m√≥vil ${movilId}`);
+    // asÌ que toda posiciÛn que llega por Realtime es vigente.
+    dbg(`?? ActualizaciÛn Realtime para mÛvil ${movilId}`);
     
     setMoviles(prevMoviles => {
-      // Buscar si el m√≥vil ya existe en la lista
+      // Buscar si el mÛvil ya existe en la lista
       const movilExists = prevMoviles.some(m => m.id === movilId);
       
       if (!movilExists) {
-        // üÜï M√≥vil no existe en la lista - buscarlo en la API y agregarlo
-        console.log(`üîç M√≥vil ${movilId} no existe en lista, carg√°ndolo desde API...`);
+        // ?? MÛvil no existe en la lista - buscarlo en la API y agregarlo
+        console.log(`?? MÛvil ${movilId} no existe en lista, carg·ndolo desde API...`);
         
-        // Hacer fetch as√≠ncrono del m√≥vil
+        // Hacer fetch asÌncrono del mÛvil
         fetch(`/api/all-positions?movilId=${movilId}`)
           .then(res => res.json())
           .then(result => {
             if (result.success && result.data.length > 0) {
               const movilData = result.data[0];
 
-              // üîí SCOPE de empresa en DOS niveles:
-              //   a) allowedEmpresas (permission, no-root/no-despacho) ‚Üí SIEMPRE
-              //      bloquea si la empresa del movil no est√°. Incluso cuando
-              //      selectedEmpresas viene vac√≠o moment√°neamente durante el
+              // ?? SCOPE de empresa en DOS niveles:
+              //   a) allowedEmpresas (permission, no-root/no-despacho) ? SIEMPRE
+              //      bloquea si la empresa del movil no est·. Incluso cuando
+              //      selectedEmpresas viene vacÌo moment·neamente durante el
               //      load (no podemos confiar en eso para autorizar).
-              //   b) selectedEmpresas (filtro UI) ‚Üí bloquea si hay filtro
-              //      activo y la empresa no est√° ah√≠.
+              //   b) selectedEmpresas (filtro UI) ? bloquea si hay filtro
+              //      activo y la empresa no est· ahÌ.
               const allowedEmpresas = user?.allowedEmpresas;
               const hasRestriction = (allowedEmpresas?.length ?? 0) > 0;
               if (hasRestriction && allowedEmpresas && !allowedEmpresas.includes(movilData.empresa_fletera_id)) {
-                console.log(`üö´ M√≥vil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera de allowedEmpresas. No se agrega.`);
+                console.log(`?? MÛvil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera de allowedEmpresas. No se agrega.`);
                 return;
               }
               if (selectedEmpresas.length > 0 && !selectedEmpresas.includes(movilData.empresa_fletera_id)) {
-                console.log(`üîç M√≥vil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera del filtro UI actual. No se agrega.`);
+                console.log(`?? MÛvil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera del filtro UI actual. No se agrega.`);
                 return;
               }
               
@@ -1166,11 +1166,11 @@ function DashboardContent() {
                 history: undefined,
               };
               
-              console.log(`‚úÖ M√≥vil ${movilId} de empresa ${movilData.empresa_fletera_id} cargado y agregado a la lista`);
+              console.log(`? MÛvil ${movilId} de empresa ${movilData.empresa_fletera_id} cargado y agregado a la lista`);
               setMoviles(prev => {
-                // Verificar nuevamente que no exista (por si se agreg√≥ mientras esper√°bamos)
+                // Verificar nuevamente que no exista (por si se agregÛ mientras esper·bamos)
                 if (prev.some(m => m.id === movilId)) {
-                  console.warn(`‚ö†Ô∏è M√≥vil ${movilId} ya existe, no se agregar√° duplicado`);
+                  console.warn(`?? MÛvil ${movilId} ya existe, no se agregar· duplicado`);
                   return prev;
                 }
                 return removeDuplicateMoviles([...prev, newMovil]);
@@ -1178,17 +1178,17 @@ function DashboardContent() {
             }
           })
           .catch(err => {
-            console.error(`‚ùå Error cargando m√≥vil ${movilId}:`, err);
+            console.error(`? Error cargando mÛvil ${movilId}:`, err);
           });
         
-        // Retornar lista sin cambios por ahora (se actualizar√° con el fetch)
+        // Retornar lista sin cambios por ahora (se actualizar· con el fetch)
         return prevMoviles;
       }
       
-      // M√≥vil existe - actualizar su posici√≥n
+      // MÛvil existe - actualizar su posiciÛn
       return prevMoviles.map(movil => {
         if (movil.id === movilId) {
-          // Actualizar posici√≥n actual
+          // Actualizar posiciÛn actual
           const newPosition = {
             identificador: latestPosition.id,
             origen: 'SUPABASE_REALTIME',
@@ -1214,55 +1214,55 @@ function DashboardContent() {
     
     setLastUpdate(new Date());
     // Nota: selectedEmpresas y user.allowedEmpresas en el array de deps son
-    // cr√≠ticas porque el callback de fetch dentro eval√∫a el scope de empresa
+    // crÌticas porque el callback de fetch dentro eval˙a el scope de empresa
     // contra esos valores. Sin ellos en deps la closure se queda stale y un
-    // movil de empresa no permitida puede colarse moment√°neamente al state.
+    // movil de empresa no permitida puede colarse moment·neamente al state.
   }, [latestPosition, removeDuplicateMoviles, preferences.realtimeEnabled, user?.allowedEmpresas, selectedEmpresas]);
 
-  // üöó Escuchar cuando aparece un m√≥vil nuevo en la base de datos (solo si est√° activado)
+  // ?? Escuchar cuando aparece un mÛvil nuevo en la base de datos (solo si est· activado)
   useEffect(() => {
-    // Si el modo Tiempo Real est√° desactivado, no escuchar nuevos m√≥viles
+    // Si el modo Tiempo Real est· desactivado, no escuchar nuevos mÛviles
     if (!preferences.realtimeEnabled) {
-      console.log('‚è∏Ô∏è Modo Tiempo Real desactivado - ignorando nuevos m√≥viles');
+      console.log('?? Modo Tiempo Real desactivado - ignorando nuevos mÛviles');
       return;
     }
 
     if (!latestMovil) return;
 
-    const movilId = parseInt(latestMovil.id); // ‚úÖ Usar 'id' y convertir a number
+    const movilId = parseInt(latestMovil.id); // ? Usar 'id' y convertir a number
     const movilEmpresaId = latestMovil.empresa_fletera_id;
 
-    // üîí Validar empresa ANTES de tocar state. Sino el m√≥vil entra y luego
-    // el filtro server-side (fetchPositions) o client-side lo descarta ‚Äî eso
+    // ?? Validar empresa ANTES de tocar state. Sino el mÛvil entra y luego
+    // el filtro server-side (fetchPositions) o client-side lo descarta ó eso
     // produce el efecto de "aparece y se va" en el colapsable.
-    //   - User con allowedEmpresas (no-root, no-despacho) y empresa fuera del set ‚Üí ignorar.
-    //   - User con filtro manual parcial (selectedEmpresas no incluye la empresa) ‚Üí ignorar.
+    //   - User con allowedEmpresas (no-root, no-despacho) y empresa fuera del set ? ignorar.
+    //   - User con filtro manual parcial (selectedEmpresas no incluye la empresa) ? ignorar.
     const allowed = user?.allowedEmpresas;
     const userHasRestriction = (allowed?.length ?? 0) > 0;
     if (userHasRestriction && allowed && !allowed.includes(movilEmpresaId)) {
       console.log(
-        `üö´ latestMovil ${movilId}: empresa ${movilEmpresaId} fuera de allowedEmpresas, ignorando`,
+        `?? latestMovil ${movilId}: empresa ${movilEmpresaId} fuera de allowedEmpresas, ignorando`,
       );
       return;
     }
     if (selectedEmpresas.length > 0 && !selectedEmpresas.includes(movilEmpresaId)) {
       console.log(
-        `üîç latestMovil ${movilId}: empresa ${movilEmpresaId} fuera del filtro actual, ignorando`,
+        `?? latestMovil ${movilId}: empresa ${movilEmpresaId} fuera del filtro actual, ignorando`,
       );
       return;
     }
 
-    console.log(`üöó Nuevo m√≥vil detectado en tiempo real:`, latestMovil);
+    console.log(`?? Nuevo mÛvil detectado en tiempo real:`, latestMovil);
 
     setMoviles(prevMoviles => {
-      // Verificar si el m√≥vil ya existe en la lista
+      // Verificar si el mÛvil ya existe en la lista
       const existingMovil = prevMoviles.find(m => m.id === movilId);
 
       if (existingMovil) {
         // El payload del realtime trae estado_nro y empresa_fletera_id frescos
         // de la tabla moviles. Mergearlos para que un UPDATE (cambio de estado,
-        // por ejemplo 0‚Üí5) se refleje al instante en el filtro client-side
-        // del colapsable, sin esperar al pr√≥ximo enrich.
+        // por ejemplo 0?5) se refleje al instante en el filtro client-side
+        // del colapsable, sin esperar al prÛximo enrich.
         const nextEstado = (latestMovil as any).estado_nro;
         const nextCapacidad = (latestMovil as any).capacidad;
         if (
@@ -1270,11 +1270,11 @@ function DashboardContent() {
           movilEmpresaId === existingMovil.empresaFleteraId &&
           (nextCapacidad == null || nextCapacidad === existingMovil.capacidad)
         ) {
-          console.log(`‚ÑπÔ∏è M√≥vil ${movilId} sin cambios relevantes, ignorando`);
+          console.log(`?? MÛvil ${movilId} sin cambios relevantes, ignorando`);
           return prevMoviles;
         }
         console.log(
-          `üîÑ M√≥vil ${movilId} ya existe ‚Äî mergeando estadoNro=${nextEstado}, empresa=${movilEmpresaId}, capacidad=${nextCapacidad}`,
+          `?? MÛvil ${movilId} ya existe ó mergeando estadoNro=${nextEstado}, empresa=${movilEmpresaId}, capacidad=${nextCapacidad}`,
         );
         return prevMoviles.map(m =>
           m.id === movilId
@@ -1290,75 +1290,75 @@ function DashboardContent() {
         );
       }
 
-      // Agregar el nuevo m√≥vil a la lista. Llevamos empresaFleteraId para que
+      // Agregar el nuevo mÛvil a la lista. Llevamos empresaFleteraId para que
       // los filtros downstream (movilesFiltered, validMovilIds, etc.) lo
-      // matcheen sin tener que esperar al pr√≥ximo fetchPositions.
+      // matcheen sin tener que esperar al prÛximo fetchPositions.
       const newMovil: MovilData = {
         id: movilId,
-        name: `M√≥vil-${movilId}`,
+        name: `MÛvil-${movilId}`,
         color: `hsl(${(movilId * 137.508) % 360}, 70%, 50%)`, // Color generado
         empresaFleteraId: movilEmpresaId,
-        currentPosition: undefined, // Se actualizar√° con el primer GPS
+        currentPosition: undefined, // Se actualizar· con el primer GPS
         history: undefined,
         estadoNro: (latestMovil as any).estado_nro ?? undefined,
       };
 
-      console.log(`‚úÖ Agregando m√≥vil ${movilId} (empresa ${movilEmpresaId}) a la lista`);
+      console.log(`? Agregando mÛvil ${movilId} (empresa ${movilEmpresaId}) a la lista`);
       return removeDuplicateMoviles([...prevMoviles, newMovil]);
     });
 
     setLastUpdate(new Date());
   }, [latestMovil, removeDuplicateMoviles, preferences.realtimeEnabled, user?.allowedEmpresas, selectedEmpresas]);
 
-  // Funci√≥n para cargar el historial de un m√≥vil espec√≠fico
+  // FunciÛn para cargar el historial de un mÛvil especÌfico
   const fetchMovilHistory = useCallback(async (movilId: number) => {
     try {
-      console.log(`üìú Fetching history for m√≥vil ${movilId}...`);
+      console.log(`?? Fetching history for mÛvil ${movilId}...`);
       const url = `/api/movil/${movilId}${selectedDate ? `?startDate=${selectedDate}` : ''}`;
       const response = await fetch(url);
       const result = await response.json();
 
       if (result.success) {
-        console.log(`‚úÖ Received ${result.count} coordinates for m√≥vil ${movilId}`);
-        console.log(`üìä Primeros 3 registros:`, result.data.slice(0, 3));
+        console.log(`? Received ${result.count} coordinates for mÛvil ${movilId}`);
+        console.log(`?? Primeros 3 registros:`, result.data.slice(0, 3));
         
-        // Actualizar el m√≥vil con su historial
+        // Actualizar el mÛvil con su historial
         setMoviles(prevMoviles => {
           const updated = prevMoviles.map(movil => {
             if (movil.id === movilId) {
-              console.log(`üîß Actualizando m√≥vil ${movilId} con ${result.data.length} registros en history`);
+              console.log(`?? Actualizando mÛvil ${movilId} con ${result.data.length} registros en history`);
               return {
                 ...movil,
                 history: result.data,
-                currentPosition: result.data[0], // La primera es la m√°s reciente
+                currentPosition: result.data[0], // La primera es la m·s reciente
               };
             }
             return movil;
           });
-          dbg(`üîß Estado actualizado. M√≥vil ${movilId} ahora tiene history:`, updated.find(m => m.id === movilId)?.history?.length);
+          dbg(`?? Estado actualizado. MÛvil ${movilId} ahora tiene history:`, updated.find(m => m.id === movilId)?.history?.length);
           return updated;
         });
       }
     } catch (err) {
-      console.error(`‚ùå Error fetching history for m√≥vil ${movilId}:`, err);
+      console.error(`? Error fetching history for mÛvil ${movilId}:`, err);
     }
   }, [selectedDate]);
 
-  // Funci√≥n para cargar los pedidos pendientes de m√≥viles seleccionados O todos
+  // FunciÛn para cargar los pedidos pendientes de mÛviles seleccionados O todos
   const fetchPedidosPendientes = useCallback(async (movilesIds: number[]) => {
     try {
       // selectedDate ya es un string en formato 'YYYY-MM-DD'
       const fecha = selectedDate;
       
-      // CASO 1: Si NO hay m√≥viles seleccionados, traer TODOS los pedidos del d√≠a
+      // CASO 1: Si NO hay mÛviles seleccionados, traer TODOS los pedidos del dÌa
       if (movilesIds.length === 0) {
-        console.log(`üì¶ Cargando TODOS los pedidos pendientes del d√≠a`);
+        console.log(`?? Cargando TODOS los pedidos pendientes del dÌa`);
         
         const response = await fetch(`/api/pedidos-pendientes?escenarioId=${escenarioId}&fecha=${fecha}`);
         const result = await response.json();
         
         if (result.pedidos && result.pedidos.length > 0) {
-          console.log(`‚úÖ Encontrados ${result.pedidos.length} pedidos pendientes en total`);
+          console.log(`? Encontrados ${result.pedidos.length} pedidos pendientes en total`);
           
             // Convertir todos los pedidos a formato PedidoServicio
           const todosPedidos = result.pedidos.map((p: any) => ({
@@ -1378,7 +1378,7 @@ function DashboardContent() {
             observacion: p.pedido_obs ?? p.observacion ?? '',
             prioridad: p.prioridad || 0,
             movilId: p.movil,
-          }));          // Actualizar m√≥viles agrupando pedidos por m√≥vil
+          }));          // Actualizar mÛviles agrupando pedidos por mÛvil
           setMoviles(prevMoviles => {
             return prevMoviles.map(movil => {
               const pedidosDelMovil = todosPedidos.filter((p: any) => p.movilId === movil.id);
@@ -1400,16 +1400,16 @@ function DashboardContent() {
             });
           });
         } else {
-          console.log(`‚ÑπÔ∏è No hay pedidos pendientes para el d√≠a ${fecha}`);
+          console.log(`?? No hay pedidos pendientes para el dÌa ${fecha}`);
         }
         
         return;
       }
       
-      // CASO 2: Si HAY m√≥viles seleccionados, traer solo sus pedidos
-      console.log(`üì¶ Cargando pedidos pendientes para m√≥viles:`, movilesIds);
+      // CASO 2: Si HAY mÛviles seleccionados, traer solo sus pedidos
+      console.log(`?? Cargando pedidos pendientes para mÛviles:`, movilesIds);
       
-      // Cargar pedidos para cada m√≥vil seleccionado (ahora con fecha)
+      // Cargar pedidos para cada mÛvil seleccionado (ahora con fecha)
       const pedidosPromises = movilesIds.map(async (movilId) => {
         const response = await fetch(`/api/pedidos-pendientes/${movilId}?escenarioId=${escenarioId}&fecha=${fecha}`);
         const result = await response.json();
@@ -1418,7 +1418,7 @@ function DashboardContent() {
 
       const results = await Promise.all(pedidosPromises);
       
-      // Actualizar m√≥viles con sus pedidos pendientes
+      // Actualizar mÛviles con sus pedidos pendientes
       setMoviles(prevMoviles => {
         return prevMoviles.map(movil => {
           const movilPedidos = results.find(r => r.movilId === movil.id);
@@ -1443,7 +1443,7 @@ function DashboardContent() {
             }));
 
             const pendientesEstado1 = pendientes.filter((p: any) => p.estado === 1);
-            console.log(`‚úÖ M√≥vil ${movil.id}: ${pendientesEstado1.length} pedidos pendientes (estado=1)`);
+            console.log(`? MÛvil ${movil.id}: ${pendientesEstado1.length} pedidos pendientes (estado=1)`);
             
             return {
               ...movil,
@@ -1455,14 +1455,14 @@ function DashboardContent() {
         });
       });
     } catch (err) {
-      console.error(`‚ùå Error cargando pedidos pendientes:`, err);
+      console.error(`? Error cargando pedidos pendientes:`, err);
     }
   }, [selectedDate]);
 
-  // Handler para toggle de m√≥vil en la lista (selecci√≥n m√∫ltiple).
-  // El flag userExplicitlyCleared se decide POST-toggle: si la selecci√≥n
-  // resultante cubre todos los m√≥viles visibles, volvemos a modo "Todos"
-  // (flag=false) para que un nuevo m√≥vil que entre por realtime se
+  // Handler para toggle de mÛvil en la lista (selecciÛn m˙ltiple).
+  // El flag userExplicitlyCleared se decide POST-toggle: si la selecciÛn
+  // resultante cubre todos los mÛviles visibles, volvemos a modo "Todos"
+  // (flag=false) para que un nuevo mÛvil que entre por realtime se
   // auto-agregue. Si quedan algunos sin marcar, modo "custom" (flag=true)
   // y los nuevos NO se auto-agregan.
   const handleToggleMovil = useCallback((movilId: number) => {
@@ -1481,8 +1481,8 @@ function DashboardContent() {
       const allSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
       userExplicitlyCleared.current = !allSelected;
 
-      // Solo centrar en m√≥vil individual si va a quedar exactamente 1 seleccionado
-      // Si hay m√∫ltiples, el MapUpdater se encarga del zoom autom√°tico
+      // Solo centrar en mÛvil individual si va a quedar exactamente 1 seleccionado
+      // Si hay m˙ltiples, el MapUpdater se encarga del zoom autom·tico
       if (newSelection.length === 1) {
         setFocusedMovil(newSelection[0]);
       } else {
@@ -1493,7 +1493,7 @@ function DashboardContent() {
     });
   }, []);
 
-  // Handler para seleccionar todos los m√≥viles
+  // Handler para seleccionar todos los mÛviles
   const handleSelectAll = useCallback(() => {
     userExplicitlyCleared.current = false;
     const hidden = hiddenMovilIdsRef.current;
@@ -1503,7 +1503,7 @@ function DashboardContent() {
     setFocusedMovil(undefined);
   }, [movilesFiltered, bumpSelectionVersion]);
 
-  // Handler para deseleccionar todos los m√≥viles
+  // Handler para deseleccionar todos los mÛviles
   const handleClearAll = useCallback(() => {
     userExplicitlyCleared.current = true;
     bumpSelectionVersion();
@@ -1511,9 +1511,9 @@ function DashboardContent() {
     setFocusedMovil(undefined);
   }, [bumpSelectionVersion]);
 
-  // üÜï Cuando cambia el filtro de actividad, re-seleccionar solo m√≥viles que cumplen el filtro
+  // ?? Cuando cambia el filtro de actividad, re-seleccionar solo mÛviles que cumplen el filtro
   useEffect(() => {
-    userExplicitlyCleared.current = false; // Cambiar filtro = nueva selecci√≥n autom√°tica
+    userExplicitlyCleared.current = false; // Cambiar filtro = nueva selecciÛn autom·tica
     const hidden = hiddenMovilIdsRef.current;
     const filteredIds = applyActivityFilter(movilesFiltered)
       .filter(m => !hidden.has(m.id))
@@ -1525,17 +1525,17 @@ function DashboardContent() {
 
   // Handler para clic en el marcador del mapa (abre popup con opciones)
   const handleMovilClick = useCallback(async (movilId: number | undefined) => {
-    setSelectedMovil(undefined); // Cierra animaci√≥n si estaba abierta
+    setSelectedMovil(undefined); // Cierra animaciÛn si estaba abierta
     setShowPendientes(false); // Oculta pendientes
     
     if (movilId) {
-      // Verificar si el m√≥vil existe en el estado actual (via ref para acceso sincr√≥nico)
+      // Verificar si el mÛvil existe en el estado actual (via ref para acceso sincrÛnico)
       // Usar Number() porque movil.id puede llegar como string desde Supabase
       const movilExists = movilesRef.current.some(m => Number(m.id) === Number(movilId));
 
       // Si no existe, cargarlo desde la API antes de abrir el popup
       if (!movilExists) {
-        console.log(`üîç M√≥vil ${movilId} no existe en lista para popup, carg√°ndolo desde API...`);
+        console.log(`?? MÛvil ${movilId} no existe en lista para popup, carg·ndolo desde API...`);
         try {
           const res = await fetch(`/api/all-positions?movilId=${movilId}`);
           const apiResult = await res.json();
@@ -1549,34 +1549,34 @@ function DashboardContent() {
               currentPosition: movilData.position,
               history: undefined,
             };
-            console.log(`‚úÖ M√≥vil ${movilId} cargado desde API para popup`);
+            console.log(`? MÛvil ${movilId} cargado desde API para popup`);
             setMoviles(prev => {
               if (prev.some(m => Number(m.id) === Number(movilId))) return prev;
               return [...prev, newMovil];
             });
           }
         } catch (err) {
-          console.error(`‚ùå Error cargando m√≥vil ${movilId} para popup:`, err);
+          console.error(`? Error cargando mÛvil ${movilId} para popup:`, err);
         }
       }
 
-      // Ahora abrir el popup (el m√≥vil ya existe en el estado)
+      // Ahora abrir el popup (el mÛvil ya existe en el estado)
       setPopupMovil(movilId);
 
-      // Cargar el historial del m√≥vil (para tener listo si quiere ver animaci√≥n)
+      // Cargar el historial del mÛvil (para tener listo si quiere ver animaciÛn)
       fetchMovilHistory(movilId);
       
       // Cargar pedidos y servicios pendientes
       try {
-        console.log(`üì¶ Fetching pendientes for m√≥vil ${movilId}...`);
+        console.log(`?? Fetching pendientes for mÛvil ${movilId}...`);
         const url = `/api/pedidos-servicios-pendientes/${movilId}?fecha=${selectedDate || todayMontevideo()}`;
         const response = await fetch(url);
         const result = await response.json();
 
         if (result.success) {
-          console.log(`‚úÖ Found ${result.pedidosPendientes} pedidos and ${result.serviciosPendientes} servicios pendientes`);
+          console.log(`? Found ${result.pedidosPendientes} pedidos and ${result.serviciosPendientes} servicios pendientes`);
           
-          // Actualizar el m√≥vil con los datos de pendientes
+          // Actualizar el mÛvil con los datos de pendientes
           setMoviles(prevMoviles =>
             prevMoviles.map(movil => {
               if (Number(movil.id) === Number(movilId)) {
@@ -1592,23 +1592,23 @@ function DashboardContent() {
           );
         }
       } catch (err) {
-        console.error(`‚ùå Error fetching pendientes for m√≥vil ${movilId}:`, err);
+        console.error(`? Error fetching pendientes for mÛvil ${movilId}:`, err);
       }
     } else {
       setPopupMovil(undefined);
     }
   }, [fetchMovilHistory, selectedDate]);
 
-  // Handler para mostrar la animaci√≥n (solo si hay UN m√≥vil seleccionado)
+  // Handler para mostrar la animaciÛn (solo si hay UN mÛvil seleccionado)
   const handleShowAnimation = useCallback(async (movilId: number) => {
-    console.log(`üé¨ Iniciando animaci√≥n para m√≥vil ${movilId}`);
+    console.log(`?? Iniciando animaciÛn para mÛvil ${movilId}`);
     
-    // Si el m√≥vil no est√° en selectedMoviles, agregarlo y limpiar los dem√°s
+    // Si el mÛvil no est· en selectedMoviles, agregarlo y limpiar los dem·s
     if (!selectedMoviles.includes(movilId)) {
       bumpSelectionVersion();
       setSelectedMoviles([movilId]);
     } else if (selectedMoviles.length > 1) {
-      // Si hay m√∫ltiples seleccionados, dejar solo este
+      // Si hay m˙ltiples seleccionados, dejar solo este
       bumpSelectionVersion();
       setSelectedMoviles([movilId]);
     }
@@ -1617,20 +1617,20 @@ function DashboardContent() {
     setShowPendientes(false); // Oculta pendientes
     setShowCompletados(false); // Oculta completados
     
-    // Asegurarse de que el historial est√© cargado antes de activar la animaci√≥n
+    // Asegurarse de que el historial estÈ cargado antes de activar la animaciÛn
     const movilData = moviles.find(m => m.id === movilId);
     if (!movilData?.history || movilData.history.length === 0) {
-      console.log(`üìú Historial no disponible, cargando para m√≥vil ${movilId}...`);
+      console.log(`?? Historial no disponible, cargando para mÛvil ${movilId}...`);
       await fetchMovilHistory(movilId);
-      console.log(`‚úÖ Historial cargado, activando animaci√≥n`);
+      console.log(`? Historial cargado, activando animaciÛn`);
     } else {
-      console.log(`‚úÖ Historial ya disponible (${movilData.history.length} registros), activando animaci√≥n`);
+      console.log(`? Historial ya disponible (${movilData.history.length} registros), activando animaciÛn`);
     }
     
-    setSelectedMovil(movilId); // Activa la animaci√≥n
+    setSelectedMovil(movilId); // Activa la animaciÛn
   }, [moviles, fetchMovilHistory, selectedMoviles]);
 
-  // Handler para mostrar pendientes en el mapa (abre tabla filtrada por m√≥vil)
+  // Handler para mostrar pendientes en el mapa (abre tabla filtrada por mÛvil)
   const handleShowPendientes = useCallback(() => {
     setShowPendientes(true); // Muestra los marcadores de pedidos
     setShowCompletados(false); // Oculta completados
@@ -1639,12 +1639,12 @@ function DashboardContent() {
     if (popupMovil) {
       setPreFilterMovil(popupMovil);
 
-      // Determinar qu√© tabla abrir seg√∫n los pendientes reales del m√≥vil.
+      // Determinar quÈ tabla abrir seg˙n los pendientes reales del mÛvil.
       // Fuente de verdad: pedidosCompletos/servicesCompletos (mismos datos que
       // el popup ya muestra), porque la API /pedidos-servicios-pendientes
       // hardcodea serviciosPendientes:0 y no podemos confiar en movilData.
-      // Regla: pedidos > 0 ‚Üí pedidos extended (incluso si hay services);
-      // solo services ‚Üí services extended.
+      // Regla: pedidos > 0 ? pedidos extended (incluso si hay services);
+      // solo services ? services extended.
       const hasPedidos = pedidosCompletosRef.current.some(
         (p) => Number(p.movil) === Number(popupMovil) && Number(p.estado_nro) === 1,
       );
@@ -1657,7 +1657,7 @@ function DashboardContent() {
       } else if (hasServices) {
         setIsServicesTableOpen(true);
       } else {
-        // Sin pendientes (caso defensivo, el bot√≥n no deber√≠a estar visible).
+        // Sin pendientes (caso defensivo, el botÛn no deberÌa estar visible).
         setIsPedidosTableOpen(true);
       }
     } else {
@@ -1671,20 +1671,20 @@ function DashboardContent() {
   const handleShowCompletados = useCallback(() => {
     setShowCompletados(true); // Muestra los marcadores de completados
     setShowPendientes(false); // Oculta pendientes
-    setSelectedMovil(undefined); // Desactiva animaci√≥n si estaba activa
-    setSelectedMovil2(undefined); // Limpiar 2do m√≥vil
+    setSelectedMovil(undefined); // Desactiva animaciÛn si estaba activa
+    setSelectedMovil2(undefined); // Limpiar 2do mÛvil
     setPopupMovil(undefined); // Cierra el popup
   }, []);
 
-  // Handler para cerrar el panel de animaci√≥n
+  // Handler para cerrar el panel de animaciÛn
   const handleCloseAnimation = useCallback(() => {
-    setSelectedMovil(undefined); // Desactiva la animaci√≥n
-    setSelectedMovil2(undefined); // Limpiar 2do m√≥vil
+    setSelectedMovil(undefined); // Desactiva la animaciÛn
+    setSelectedMovil2(undefined); // Limpiar 2do mÛvil
   }, []);
 
   // Handler para confirmar tracking desde el modal
   const handleTrackingConfirm = useCallback(async (movilId: number, date: string) => {
-    console.log(`üé¨ Tracking desde modal: m√≥vil ${movilId}, fecha ${date}`);
+    console.log(`?? Tracking desde modal: mÛvil ${movilId}, fecha ${date}`);
     setIsTrackingModalOpen(false);
     
     // Si la fecha es diferente a la actual, actualizar y recargar historial
@@ -1692,7 +1692,7 @@ function DashboardContent() {
       setSelectedDate(date);
     }
     
-    // Seleccionar solo este m√≥vil
+    // Seleccionar solo este mÛvil
     if (!selectedMoviles.includes(movilId)) {
       bumpSelectionVersion();
       setSelectedMoviles([movilId]);
@@ -1712,7 +1712,7 @@ function DashboardContent() {
       const result = await response.json();
       
       if (result.success) {
-        console.log(`‚úÖ Historial cargado: ${result.count} registros para fecha ${date}`);
+        console.log(`? Historial cargado: ${result.count} registros para fecha ${date}`);
         setMoviles(prevMoviles => prevMoviles.map(movil => {
           if (movil.id === movilId) {
             return {
@@ -1725,7 +1725,7 @@ function DashboardContent() {
         }));
       }
     } catch (err) {
-      console.error(`‚ùå Error cargando historial:`, err);
+      console.error(`? Error cargando historial:`, err);
     }
     
     setSelectedMovil(movilId);
@@ -1753,7 +1753,7 @@ function DashboardContent() {
     setFocusTrigger(focusTriggerRef.current);
   }, []);
 
-  // Handler para click en punto de inter√©s (sidebar): centra mapa, abre popup
+  // Handler para click en punto de interÈs (sidebar): centra mapa, abre popup
   // y permite re-disparar para el mismo POI mediante focusTrigger.
   const handlePuntoInteresClick = useCallback((puntoId: string) => {
     setPopupPedido(undefined);
@@ -1785,10 +1785,10 @@ function DashboardContent() {
   // Fecha seleccionada en formato YYYYMMDD para filtrar por fch_para
   const selectedDateCompact = useMemo(() => selectedDate.replace(/-/g, ''), [selectedDate]);
 
-  // Set de IDs de m√≥viles permitidos para el usuario actual. Se computa a partir
+  // Set de IDs de mÛviles permitidos para el usuario actual. Se computa a partir
   // de movilesFiltered (que ya respeta selectedEmpresas + allowedEmpresas).
   // Lo usamos para filtrar pedidos/services en su origen (pedidosCompletos)
-  // cuando el user no es root/despacho ‚Äî as√≠ los counts del indicador y todos
+  // cuando el user no es root/despacho ó asÌ los counts del indicador y todos
   // los downstream nunca incluyen pedidos de empresas no permitidas.
   const allowedMovilIds = useMemo(
     () => new Set(movilesFiltered.map(m => m.id)),
@@ -1796,7 +1796,7 @@ function DashboardContent() {
   );
   const userHasEmpresaRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
 
-  // Usuarios que deben ver pedidos sin asignar y m√≥viles fuera del panel
+  // Usuarios que deben ver pedidos sin asignar y mÛviles fuera del panel
   // incluso cuando el filtro de empresa es parcial.
   const isPrivilegedUser = useMemo(
     () => user?.isRoot === 'S' ||
@@ -1816,27 +1816,27 @@ function DashboardContent() {
     [user],
   );
 
-  // Gating de capa Cap. Entrega: root/despacho/dashboard/supervisor, O si tiene 'Ped s/asignar x zona'.
+  // Gating de capa Cap. Entrega: controlado unicamente por la funcionalidad (con bypass root).
   const canSeeUnassignedInCapEntrega = useMemo(
-    () => isPrivilegedForCapEntrega(user) || canVerSinAsigPorZona,
+    () => user?.isRoot === 'S' || canVerSinAsigPorZona,
     [user, canVerSinAsigPorZona],
   );
 
-  // Gating de la opci√≥n "Cap. Entrega" del control de capas del mapa:
+  // Gating de la opciÛn "Cap. Entrega" del control de capas del mapa:
   // - root (isRoot='S') ve siempre.
-  // - resto de usuarios: solo si alg√∫n rol tiene la funcionalidad
+  // - resto de usuarios: solo si alg˙n rol tiene la funcionalidad
   //   "Capa Capacidad de Entrega" del SecuritySuite.
   const canSeeCapEntregaLayer = useMemo(
     () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Capa Capacidad de Entrega'),
     [user],
   );
 
-  // `userHasEmpresaRestriction` mira solo allowedEmpresas ‚Äî se usa para filtrar
-  // pedidosCompletos/servicesCompletos por m√≥vil (l√≥gica legacy preservada).
-  // `isScopeRestricted` adem√°s exige que el user no sea privilegiado (root/despacho/dashboard/supervisor) ‚Äî es la
-  // condici√≥n correcta para los filtros de zona en Vista Extendida, indicadores
-  // y estad√≠sticas. Coexisten porque su sem√°ntica es sutilmente distinta y el
-  // refactor a una sola variable est√° fuera del alcance de este cambio.
+  // `userHasEmpresaRestriction` mira solo allowedEmpresas ó se usa para filtrar
+  // pedidosCompletos/servicesCompletos por mÛvil (lÛgica legacy preservada).
+  // `isScopeRestricted` adem·s exige que el user no sea privilegiado (root/despacho/dashboard/supervisor) ó es la
+  // condiciÛn correcta para los filtros de zona en Vista Extendida, indicadores
+  // y estadÌsticas. Coexisten porque su sem·ntica es sutilmente distinta y el
+  // refactor a una sola variable est· fuera del alcance de este cambio.
   const isScopeRestricted = useMemo(
     () => !isPrivilegedForZonaScope(user) && (user?.allowedEmpresas?.length ?? 0) > 0,
     [user],
@@ -1860,7 +1860,7 @@ function DashboardContent() {
     // Actualizar/agregar pedidos de realtime (sobrescriben los iniciales si existen)
     pedidosRealtime.forEach(p => pedidosMap.set(p.id, p));
 
-    // üî• Filtrar por fecha seleccionada: solo incluir pedidos de la fecha actual
+    // ?? Filtrar por fecha seleccionada: solo incluir pedidos de la fecha actual
     // Esto evita que realtime inyecte pedidos de otras fechas
     let resultado = Array.from(pedidosMap.values()).filter(p => {
       // Verificar por fch_para (formato YYYYMMDD) o por fch_hora_para (timestamp)
@@ -1871,15 +1871,15 @@ function DashboardContent() {
       return false;
     });
 
-    // üö´ "Empresas: Ninguna" (selecci√≥n expl√≠cita de cero empresas con empresas cargadas)
-    // ‚Üí no mostrar ning√∫n pedido (ni asignados ni sin-asignar). El usuario eligi√≥ ver nada.
+    // ?? "Empresas: Ninguna" (selecciÛn explÌcita de cero empresas con empresas cargadas)
+    // ? no mostrar ning˙n pedido (ni asignados ni sin-asignar). El usuario eligiÛ ver nada.
     if (empresas.length > 0 && selectedEmpresas.length === 0) {
       return [];
     }
 
-    // üîí Empresa scope: si el user es no-root/no-despacho con allowedEmpresas,
-    // descartamos pedidos cuyo m√≥vil pertenezca a una empresa no permitida.
-    // Pedidos sin asignar (movil null/0) se mantienen ac√°; el render-level
+    // ?? Empresa scope: si el user es no-root/no-despacho con allowedEmpresas,
+    // descartamos pedidos cuyo mÛvil pertenezca a una empresa no permitida.
+    // Pedidos sin asignar (movil null/0) se mantienen ac·; el render-level
     // hideUnassigned los oculta donde corresponda.
     if (userHasEmpresaRestriction) {
       resultado = resultado.filter(p => {
@@ -1888,8 +1888,8 @@ function DashboardContent() {
       });
     }
 
-    dbg('üî∑ DASHBOARD: pedidosCompletos calculado');
-    dbg(`üìä Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
+    dbg('?? DASHBOARD: pedidosCompletos calculado');
+    dbg(`?? Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
 
     return resultado;
   }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length]);
@@ -1900,7 +1900,7 @@ function DashboardContent() {
     servicesIniciales.forEach(s => servicesMap.set(s.id, s));
     servicesRealtime.forEach(s => servicesMap.set(s.id, s));
 
-    // üî• Filtrar por fecha seleccionada
+    // ?? Filtrar por fecha seleccionada
     let resultado = Array.from(servicesMap.values()).filter(s => {
       if (s.fch_para && s.fch_para === selectedDateCompact) return true;
       if (s.fch_hora_para && s.fch_hora_para.startsWith(selectedDate)) return true;
@@ -1908,12 +1908,12 @@ function DashboardContent() {
       return false;
     });
 
-    // üö´ "Empresas: Ninguna" ‚Üí no mostrar ning√∫n service (idem pedidosCompletos).
+    // ?? "Empresas: Ninguna" ? no mostrar ning˙n service (idem pedidosCompletos).
     if (empresas.length > 0 && selectedEmpresas.length === 0) {
       return [];
     }
 
-    // üîí Mismo filtro que pedidosCompletos: empresa scope para no-root.
+    // ?? Mismo filtro que pedidosCompletos: empresa scope para no-root.
     if (userHasEmpresaRestriction) {
       resultado = resultado.filter(s => {
         if (s.movil == null || Number(s.movil) === 0) return true;
@@ -1921,20 +1921,20 @@ function DashboardContent() {
       });
     }
 
-    dbg(`üîß DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
+    dbg(`?? DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
   }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length]);
 
-  // Mantener refs sincronizadas con las listas memoizadas para acceso sincr√≥nico
+  // Mantener refs sincronizadas con las listas memoizadas para acceso sincrÛnico
   // desde callbacks definidos antes en el render.
   pedidosCompletosRef.current = pedidosCompletos;
   servicesCompletosRef.current = servicesCompletos;
 
-  // Set de IDs de m√≥viles "ocultos pero operativos": tienen estadoNro fuera del
+  // Set de IDs de mÛviles "ocultos pero operativos": tienen estadoNro fuera del
   // conjunto de activos ([0,1,2,4]) pero igual tienen pedidos/services asignados
-  // del d√≠a. Se ocultan del colapsable de m√≥viles, mapa, indicadores, etc. ‚Äî
+  // del dÌa. Se ocultan del colapsable de mÛviles, mapa, indicadores, etc. ó
   // pero sus pedidos/services SIGUEN visibles en los colapsables de
-  // pedidos/services y vistas extendidas. Estado 4 (BAJA MOMENT√ÅNEA) cuenta
+  // pedidos/services y vistas extendidas. Estado 4 (BAJA MOMENT¡NEA) cuenta
   // como activo y se renderiza con estilo violeta/pausa.
   const hiddenMovilIds = useMemo(
     () => getHiddenMovilIds(movilesFiltered, pedidosCompletos, servicesCompletos),
@@ -1942,15 +1942,15 @@ function DashboardContent() {
   );
 
   // Ref para que useCallback/useEffect definidos ANTES (handleSelectAll, auto-select
-  // inicial, reset por cambio de actividad) puedan acceder al √∫ltimo hiddenMovilIds
+  // inicial, reset por cambio de actividad) puedan acceder al ˙ltimo hiddenMovilIds
   // sin TDZ errors por block-scope.
   hiddenMovilIdsRef.current = hiddenMovilIds;
 
-  // allMovilesSelected (espejo del MovilSelector): true s√≥lo cuando estamos en
-  // modo "Todos" ‚Äî todas las empresas seleccionadas Y todos los m√≥viles
-  // operativos del universo (excluyendo ocultos) est√°n en selectedMoviles.
+  // allMovilesSelected (espejo del MovilSelector): true sÛlo cuando estamos en
+  // modo "Todos" ó todas las empresas seleccionadas Y todos los mÛviles
+  // operativos del universo (excluyendo ocultos) est·n en selectedMoviles.
   // Lo usa el filtro de pedidos/services del mapa para decidir si pasan los
-  // sin-asignar y los de m√≥viles ocultos-pero-operativos. Si el usuario tiene
+  // sin-asignar y los de mÛviles ocultos-pero-operativos. Si el usuario tiene
   // un subset seleccionado, ninguno de esos pasa.
   const allMovilesSelected = useMemo(() => {
     if (!allEmpresasSelected) return false;
@@ -1958,14 +1958,14 @@ function DashboardContent() {
     return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
   }, [allEmpresasSelected, movilesFiltered, selectedMoviles, hiddenMovilIds]);
 
-  // Versi√≥n basada en el Map completo allMovilEstados (cubre m√≥viles sin GPS).
+  // VersiÛn basada en el Map completo allMovilEstados (cubre mÛviles sin GPS).
   // Devuelve Set<string> con movil_id crudo para matchear moviles_zonas.movil_id.
   const allHiddenMovilIds = useMemo(
     () => getHiddenMovilIdsFromEstadosMap(allMovilEstados, pedidosCompletos, servicesCompletos),
     [allMovilEstados, pedidosCompletos, servicesCompletos],
   );
 
-  // Derivar tipos de servicio din√°micos de servicio_nombre de pedidos y services
+  // Derivar tipos de servicio din·micos de servicio_nombre de pedidos y services
   const tiposServicio = useMemo(() => {
     const nombres = new Set<string>();
     pedidosCompletos.forEach(p => { if (p.servicio_nombre) nombres.add(p.servicio_nombre.trim()); });
@@ -1973,7 +1973,7 @@ function DashboardContent() {
     return [...nombres].filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [pedidosCompletos, servicesCompletos]);
 
-  // üì¶ Conteo de pedidos por zona (para la vista "Pedidos/Zona")
+  // ?? Conteo de pedidos por zona (para la vista "Pedidos/Zona")
   // Tiene su propio filtro independiente: pendientes (todos) / sin asignar / atrasados
   const pedidosZonaData = useMemo(() => {
     const map = new Map<number, number>();
@@ -1982,8 +1982,8 @@ function DashboardContent() {
     pedidosCompletos.forEach(p => {
       const estado = Number(p.estado_nro);
       const tieneMovil = p.movil != null && Number(p.movil) !== 0;
-      // Distribuidor: nunca contar pedidos sin m√≥vil en la capa pedidos/zona.
-      if (isScopeRestricted && !tieneMovil) return;
+      // Gate B (funcionalidad): sin 'Ped s/asignar x zona', no contar pedidos sin movil en esta capa.
+      if (!tieneMovil && !canVerSinAsigPorZona) return;
       // pendientes totales = todos los estado 1 (con o sin movil)
       if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
       // sin asignar = estado 1 sin movil asignado
@@ -1998,28 +1998,28 @@ function DashboardContent() {
       }
       const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
       if (!zona || zona === 0) return;
-      // Scope por rol/empresa: el distribuidor s√≥lo cuenta zonas que cubre.
+      // Scope por rol/empresa: el distribuidor sÛlo cuenta zonas que cubre.
       if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
       map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted, serverNow, minutosAntesSa, canVerSinAsigPorZona]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, serverNow, minutosAntesSa, canVerSinAsigPorZona]);
 
-  // Distribuidor: si por alguna raz√≥n el filtro pedidos/zona qued√≥ en 'sin_asignar'
-  // (ej. estado persistido), forzarlo a 'pendientes' ‚Äî ese filtro no aplica.
+  // Si el filtro pedidos/zona quedo en 'sin_asignar' pero el usuario no tiene la funcionalidad,
+  // forzarlo a 'pendientes' (ej. estado persistido entre sesiones).
   useEffect(() => {
-    if ((isScopeRestricted || !canVerSinAsigPorZona) && pedidosZonaFilter === 'sin_asignar') {
+    if (!canVerSinAsigPorZona && pedidosZonaFilter === 'sin_asignar') {
       setPedidosZonaFilter('pendientes');
     }
-  }, [isScopeRestricted, canVerSinAsigPorZona, pedidosZonaFilter]);
+  }, [canVerSinAsigPorZona, pedidosZonaFilter]);
 
-  // ÔøΩ C√°lculo de saturaci√≥n por zona:
-  //   Para cada m√≥vil con prioridad activa en zonas, su capacidad disponible se proratea
-  //   entre la cantidad de zonas en que tiene prioridad, evitando sobrecontar m√≥viles compartidos.
-  // C√°lculo de saturaci√≥n por zona, filtrado por tipo de servicio:
-  //   - SERVICE  ‚Üí usa servicesCompletos sin asignar + m√≥viles con tipo SERVICE
-  //   - URGENTE/NOCTURNO ‚Üí usa pedidosCompletos sin asignar + m√≥viles con ese tipo
-  //   Los m√≥viles no-activos (estado ‚â† 0/1/2) y los ocultos-pero-operativos se excluyen de la capacidad.
+  // ? C·lculo de saturaciÛn por zona:
+  //   Para cada mÛvil con prioridad activa en zonas, su capacidad disponible se proratea
+  //   entre la cantidad de zonas en que tiene prioridad, evitando sobrecontar mÛviles compartidos.
+  // C·lculo de saturaciÛn por zona, filtrado por tipo de servicio:
+  //   - SERVICE  ? usa servicesCompletos sin asignar + mÛviles con tipo SERVICE
+  //   - URGENTE/NOCTURNO ? usa pedidosCompletos sin asignar + mÛviles con ese tipo
+  //   Los mÛviles no-activos (estado ? 0/1/2) y los ocultos-pero-operativos se excluyen de la capacidad.
   const saturacionData = useMemo(() => {
     const isService = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
     const stats = new Map<number, { sinAsignar: number; capacidadTotal: number; capacidadDisponible: number; movilesEnZona: number; movilesCompartidos: number; asignadosWeight: number; totalWeight: number }>();
@@ -2030,11 +2030,11 @@ function DashboardContent() {
            (r.tipo_de_servicio || '').toUpperCase() === movilesZonasServiceFilter.toUpperCase()
     );
 
-    // 2. Cu√°ntas zonas de prioridad (del mismo tipo) tiene cada m√≥vil (para el prorrateo)
+    // 2. Cu·ntas zonas de prioridad (del mismo tipo) tiene cada mÛvil (para el prorrateo)
     const movilZoneCount = new Map<string, number>();
     priorityRecs.forEach(r => movilZoneCount.set(r.movil_id, (movilZoneCount.get(r.movil_id) ?? 0) + 1));
 
-    // 3. Lookup de datos de m√≥vil: id ‚Üí { tamanoLote, pedidosAsignados, estadoNro }
+    // 3. Lookup de datos de mÛvil: id ? { tamanoLote, pedidosAsignados, estadoNro }
     const movilDataMap = new Map<string, { tamanoLote: number; pedidosAsignados: number; estadoNro?: number }>();
     moviles.forEach(m => movilDataMap.set(String(m.id), {
       tamanoLote: (m as any).tamanoLote ?? 0,
@@ -2043,12 +2043,12 @@ function DashboardContent() {
     }));
 
     // 4. Acumular capacidad por zona (excluye inactivos)
-    // Para SERVICE no se proratea: un m√≥vil libre puede atender cualquiera de sus zonas
+    // Para SERVICE no se proratea: un mÛvil libre puede atender cualquiera de sus zonas
     // Para URGENTE/NOCTURNO se divide entre la cantidad de zonas que cubre (prorrateo)
     //
     // Nota: usamos md.pedidosAsignados (que viene de /api/moviles-extended y ya
-    // cuenta pedidos+services con estado_nro=1) como fuente √∫nica de verdad.
-    // Es la misma fuente que muestra la card del m√≥vil en SaturacionZonaModal ‚Äî
+    // cuenta pedidos+services con estado_nro=1) como fuente ˙nica de verdad.
+    // Es la misma fuente que muestra la card del mÛvil en SaturacionZonaModal ó
     // mantener un solo origen evita inconsistencias entre "2/4 (50%) +2 libres"
     // y "Cap. libre 1.0".
     priorityRecs.forEach(r => {
@@ -2063,12 +2063,12 @@ function DashboardContent() {
       const nZones = isService ? 1 : (movilZoneCount.get(r.movil_id) ?? 1);
       const available = Math.max(0, md.tamanoLote - md.pedidosAsignados);
       const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
-      // El aporte prorrateado por m√≥vil se redondea HACIA ARRIBA al entero
-      // siguiente (request 2026-05-07): un m√≥vil que cubre 3 zonas con 4
-      // libres aporta ceil(4/3)=2 a cada zona en vez de 1.33. M√°s realista
+      // El aporte prorrateado por mÛvil se redondea HACIA ARRIBA al entero
+      // siguiente (request 2026-05-07): un mÛvil que cubre 3 zonas con 4
+      // libres aporta ceil(4/3)=2 a cada zona en vez de 1.33. M·s realista
       // visualmente y evita decimales en cap. libre / cap. total.
-      // Math.ceil(0)=0 ‚Üí m√≥viles llenos siguen aportando 0 a capacidadDisponible.
-      // Pesos sin ceil ‚Äî para el c√°lculo exacto del % de saturaci√≥n.
+      // Math.ceil(0)=0 ? mÛviles llenos siguen aportando 0 a capacidadDisponible.
+      // Pesos sin ceil ó para el c·lculo exacto del % de saturaciÛn.
       const asignadosShare = md.pedidosAsignados / nZones;
       const totalShare = md.tamanoLote / nZones;
       stats.set(r.zona_id, {
@@ -2082,7 +2082,7 @@ function DashboardContent() {
       });
     });
 
-    // 5. Contar trabajos sin asignar por zona seg√∫n tipo de servicio.
+    // 5. Contar trabajos sin asignar por zona seg˙n tipo de servicio.
     // Solo para roles privilegiados (root/despacho/dashboard/supervisor).
     // Zonas inactivas siempre se saltean (todos los roles).
     if (canSeeUnassignedInCapEntrega) {
@@ -2119,10 +2119,10 @@ function DashboardContent() {
     return stats;
   }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds, canSeeUnassignedInCapEntrega, demorasData, serverNow, minutosAntesSa]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
-  // para el mapa. Sin esto, cada llamada inline crea un nuevo array ‚Üí downstream re-renders.
+  // para el mapa. Sin esto, cada llamada inline crea un nuevo array ? downstream re-renders.
 
-  // Conteo client-side de pedidos+services estado=1 por m√≥vil, derivado de los datos
-  // ya cargados en memoria. Es la fuente de verdad para el badge de lote en el sidebar ‚Äî
+  // Conteo client-side de pedidos+services estado=1 por mÛvil, derivado de los datos
+  // ya cargados en memoria. Es la fuente de verdad para el badge de lote en el sidebar ó
   // evita dependencias de timing en el endpoint /api/moviles-extended.
   const pedidosAsignadosClientMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -2145,7 +2145,7 @@ function DashboardContent() {
     () => markInactiveMoviles(movilesFiltered).map(m => {
       const count = pedidosAsignadosClientMap.get(m.id) ?? 0;
       if (count === (m.pedidosAsignados ?? 0)) return m;
-      // Preservar color especial de NO_ACTIVO/BAJA_MOMENT√ÅNEA, recalcular el resto
+      // Preservar color especial de NO_ACTIVO/BAJA_MOMENT¡NEA, recalcular el resto
       const isPaused = m.estadoNro === 3 || m.estadoNro === 4;
       return {
         ...m,
@@ -2167,20 +2167,20 @@ function DashboardContent() {
     [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters],
   );
 
-  // Ref para rastrear el √∫ltimo key de pedidos y evitar loops infinitos
+  // Ref para rastrear el ˙ltimo key de pedidos y evitar loops infinitos
   const prevPedidosKeyRef = useRef<string>('');
   
   useEffect(() => {
-    // üöÄ Pausar actualizaciones si la tab no est√° visible (ahorro de CPU)
+    // ?? Pausar actualizaciones si la tab no est· visible (ahorro de CPU)
     if (!isTabVisible) {
-      console.log('üôà Tab oculto - pausando actualizaci√≥n de lote');
+      console.log('?? Tab oculto - pausando actualizaciÛn de lote');
       return;
     }
     
     // Solo contar pedidos con estado 1 (Pendiente/Asignado) para consistencia
     const ESTADOS_ACTIVOS = [1];
     
-    // Contar pedidos activos por m√≥vil
+    // Contar pedidos activos por mÛvil
     const pedidosPorMovil = new Map<number, number>();
     
     pedidosCompletos.forEach(pedido => {
@@ -2192,17 +2192,17 @@ function DashboardContent() {
       }
     });
     
-    // Serializar para comparaci√≥n estable (sort por key num√©rico)
+    // Serializar para comparaciÛn estable (sort por key numÈrico)
     const pedidosKey = JSON.stringify(Array.from(pedidosPorMovil.entries()).sort((a, b) => a[0] - b[0]));
     
-    // Si el key no cambi√≥ desde la √∫ltima vez, no hacer nada (prevenir loop)
+    // Si el key no cambiÛ desde la ˙ltima vez, no hacer nada (prevenir loop)
     if (pedidosKey === prevPedidosKeyRef.current) {
       return;
     }
     prevPedidosKeyRef.current = pedidosKey;
     
-    dbg('üì¶ Actualizando lote de m√≥viles en tiempo real');
-    dbg('üìä Pedidos activos por m√≥vil:', Object.fromEntries(pedidosPorMovil));
+    dbg('?? Actualizando lote de mÛviles en tiempo real');
+    dbg('?? Pedidos activos por mÛvil:', Object.fromEntries(pedidosPorMovil));
     
     setMoviles(prevMoviles => {
       let cambios = false;
@@ -2211,7 +2211,7 @@ function DashboardContent() {
         const pedidosAsignados = pedidosPorMovil.get(movilId) || 0;
         
         if (movil.pedidosAsignados !== pedidosAsignados) {
-          dbg(`üîÑ M√≥vil ${movilId}: ${pedidosAsignados}/${movil.tamanoLote || 6} pedidos`);
+          dbg(`?? MÛvil ${movilId}: ${pedidosAsignados}/${movil.tamanoLote || 6} pedidos`);
           cambios = true;
           return {
             ...movil,
@@ -2231,7 +2231,7 @@ function DashboardContent() {
     fetchPositions();
   }, [fetchPositions]);
 
-  // Fetch pedidos cuando cambian los m√≥viles seleccionados o la fecha
+  // Fetch pedidos cuando cambian los mÛviles seleccionados o la fecha
   useEffect(() => {
     fetchPedidos();
   }, [fetchPedidos]);
@@ -2250,28 +2250,28 @@ function DashboardContent() {
     setShowCompletados(false);
   }, [selectedDate, selectedEmpresas]);
 
-  // Auto-refresh de posiciones y historial del m√≥vil seleccionado (solo si Tiempo Real est√° activado)
+  // Auto-refresh de posiciones y historial del mÛvil seleccionado (solo si Tiempo Real est· activado)
   useEffect(() => {
-    // Si el modo Tiempo Real est√° desactivado, no hacer polling
+    // Si el modo Tiempo Real est· desactivado, no hacer polling
     if (!preferences.realtimeEnabled) {
-      console.log('‚è∏Ô∏è Modo Tiempo Real desactivado - no hay auto-refresh');
+      console.log('?? Modo Tiempo Real desactivado - no hay auto-refresh');
       return;
     }
 
-    // Intervalo fijo de 30 segundos cuando Tiempo Real est√° activado
+    // Intervalo fijo de 30 segundos cuando Tiempo Real est· activado
     const REALTIME_INTERVAL = 30000; // 30 segundos
     
     const interval = setInterval(() => {
-      console.log(`üîÑ Auto-refresh triggered (Realtime Mode). Selected m√≥vil: ${selectedMovil || 'none'}`);
+      console.log(`?? Auto-refresh triggered (Realtime Mode). Selected mÛvil: ${selectedMovil || 'none'}`);
       fetchPositions(); // Actualizar solo posiciones GPS
       
-      // Si hay un m√≥vil seleccionado, actualizar tambi√©n su historial
+      // Si hay un mÛvil seleccionado, actualizar tambiÈn su historial
       if (selectedMovil) {
-        console.log(`üìú Refreshing history for m√≥vil ${selectedMovil}`);
+        console.log(`?? Refreshing history for mÛvil ${selectedMovil}`);
         fetchMovilHistory(selectedMovil);
       }
       if (selectedMovil2) {
-        console.log(`üìú Refreshing history for 2nd m√≥vil ${selectedMovil2}`);
+        console.log(`?? Refreshing history for 2nd mÛvil ${selectedMovil2}`);
         fetchMovilHistory(selectedMovil2);
       }
     }, REALTIME_INTERVAL);
@@ -2279,33 +2279,33 @@ function DashboardContent() {
     return () => clearInterval(interval);
   }, [fetchPositions, preferences.realtimeEnabled, selectedMovil, selectedMovil2, fetchMovilHistory]);
 
-  // Cargar pedidos pendientes cuando se seleccionan m√≥viles O cuando se carga el dashboard
+  // Cargar pedidos pendientes cuando se seleccionan mÛviles O cuando se carga el dashboard
   useEffect(() => {
     if (selectedMoviles.length > 0) {
-      // CASO 1: Hay m√≥viles seleccionados ‚Üí Mostrar sus pedidos
-      console.log(`üì¶ Cargando pedidos para m√≥viles seleccionados:`, selectedMoviles);
+      // CASO 1: Hay mÛviles seleccionados ? Mostrar sus pedidos
+      console.log(`?? Cargando pedidos para mÛviles seleccionados:`, selectedMoviles);
       fetchPedidosPendientes(selectedMoviles);
       setShowPendientes(true);
     } else {
-      // CASO 2: No hay m√≥viles seleccionados ‚Üí Mostrar TODOS los pedidos del d√≠a
-      console.log(`üì¶ Cargando TODOS los pedidos del d√≠a actual`);
+      // CASO 2: No hay mÛviles seleccionados ? Mostrar TODOS los pedidos del dÌa
+      console.log(`?? Cargando TODOS los pedidos del dÌa actual`);
       fetchPedidosPendientes([]);
       setShowPendientes(true);
     }
   }, [selectedMoviles, fetchPedidosPendientes]);
 
-  // üî• NUEVO: Actualizar pedidos en tiempo real cuando lleguen del hook
+  // ?? NUEVO: Actualizar pedidos en tiempo real cuando lleguen del hook
   const prevRealtimeKeyRef = useRef<string>('');
   
   useEffect(() => {
     if (pedidosRealtime.length === 0) return;
     
-    // Crear key estable para comparar si realmente cambi√≥ algo
+    // Crear key estable para comparar si realmente cambiÛ algo
     const realtimeKey = JSON.stringify(pedidosRealtime.map(p => `${p.id}-${p.movil}-${p.estado_nro}`).sort());
     if (realtimeKey === prevRealtimeKeyRef.current) return;
     prevRealtimeKeyRef.current = realtimeKey;
     
-    console.log(`üì¶ Actualizando ${pedidosRealtime.length} pedidos desde Realtime`);
+    console.log(`?? Actualizando ${pedidosRealtime.length} pedidos desde Realtime`);
     
     // Convertir pedidos de Realtime a formato compatible
     const pedidosFormateados = pedidosRealtime.map(p => ({
@@ -2327,7 +2327,7 @@ function DashboardContent() {
       movilId: p.movil || undefined,
     }));
     
-    // Actualizar m√≥viles con los nuevos pedidos
+    // Actualizar mÛviles con los nuevos pedidos
     setMoviles(prevMoviles => {
       let cambios = false;
       const updated = prevMoviles.map(movil => {
@@ -2356,7 +2356,7 @@ function DashboardContent() {
     });
   }, [pedidosRealtime, getMovilColorByOccupancy]);
 
-  // Callbacks estables para DashboardIndicators ‚Äî sin useCallback se crean inline
+  // Callbacks estables para DashboardIndicators ó sin useCallback se crean inline
   // y DashboardIndicators re-renderiza en cada tick de GPS aunque no haya cambiado nada.
   const onSinAsignarClick = useCallback(() => {
     setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
@@ -2434,27 +2434,27 @@ function DashboardContent() {
       />
 
       {/* Botones flotantes: FAB colapsable con Tracking + POI + Leaderboard */}
-      {/* Por defecto solo muestra un bot√≥n ‚ö°. Al hacer clic se expanden los 3 botones de acci√≥n */}
+      {/* Por defecto solo muestra un botÛn ?. Al hacer clic se expanden los 3 botones de acciÛn */}
       <div id="tour-fab-area" className="fixed z-[9999] flex items-center gap-2 top-3 right-16 flex-row">
-        {/* Botones de acci√≥n - se muestran/ocultan con animaci√≥n */}
+        {/* Botones de acciÛn - se muestran/ocultan con animaciÛn */}
         <div className={`flex items-center gap-2 transition-all duration-300 origin-right ${
           isActionsExpanded 
             ? 'opacity-100 scale-100 translate-x-0' 
             : 'opacity-0 scale-75 translate-x-4 pointer-events-none w-0 overflow-hidden'
         }`}>
-          {/* Bot√≥n de Asignaci√≥n de Zonas */}
+          {/* BotÛn de AsignaciÛn de Zonas */}
           <button
             id="tour-fab-zonas"
             onClick={() => { openZonaView(null); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700"
-            title="Asignaci√≥n de M√≥viles a Zonas"
+            title="AsignaciÛn de MÛviles a Zonas"
           >
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
             </svg>
           </button>
 
-          {/* FAB: Zonas por Empresa Fletera ‚Äî requiere permiso configzonaemp */}
+          {/* FAB: Zonas por Empresa Fletera ó requiere permiso configzonaemp */}
           {hasPermiso('configzonaemp') && (
             <button
               id="tour-fab-fleteras-zonas"
@@ -2468,13 +2468,13 @@ function DashboardContent() {
             </button>
           )}
 
-          {/* FAB: Ranking de M√≥viles ‚Äî requiere permiso ranking */}
+          {/* FAB: Ranking de MÛviles ó requiere permiso ranking */}
           {hasPermiso('ranking') && (
             <button
               id="tour-fab-ranking"
               onClick={() => { setIsLeaderboardOpen(true); setIsActionsExpanded(false); }}
               className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
-              title="Ranking de M√≥viles"
+              title="Ranking de MÛviles"
             >
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -2482,13 +2482,13 @@ function DashboardContent() {
             </button>
           )}
 
-          {/* Bot√≥n Estad√≠sticas por zonas ‚Äî solo habilitado para fecha de hoy */}
+          {/* BotÛn EstadÌsticas por zonas ó solo habilitado para fecha de hoy */}
           <button
             id="tour-fab-estadisticas-zonas"
             onClick={() => { if (!isToday) return; setIsZonaEstadisticasOpen(true); setIsActionsExpanded(false); }}
             disabled={!isToday}
             className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform ${isToday ? 'hover:scale-110 bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 cursor-pointer' : 'bg-gradient-to-br from-gray-500 to-gray-600 opacity-50 cursor-not-allowed'}`}
-            title={isToday ? 'Estad√≠sticas por zonas' : 'Solo disponible para la fecha de hoy'}
+            title={isToday ? 'EstadÌsticas por zonas' : 'Solo disponible para la fecha de hoy'}
           >
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
@@ -2496,7 +2496,7 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* FAB: Estad√≠sticas ‚Äî requiere permiso stats */}
+          {/* FAB: EstadÌsticas ó requiere permiso stats */}
           {hasPermiso('stats') && (
             <button
               id="tour-fab-estadisticas"
@@ -2505,7 +2505,7 @@ function DashboardContent() {
                 setIsActionsExpanded(false);
               }}
               className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
-              title="Estad√≠sticas globales"
+              title="EstadÌsticas globales"
             >
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -2514,7 +2514,7 @@ function DashboardContent() {
           )}
         </div>
 
-        {/* Bot√≥n toggle FAB ‚ö° */}
+        {/* BotÛn toggle FAB ? */}
         <button
           id="tour-fab-toggle"
           onClick={() => setIsActionsExpanded(!isActionsExpanded)}
@@ -2523,7 +2523,7 @@ function DashboardContent() {
               ? 'bg-gradient-to-br from-gray-600 to-gray-700 rotate-45'
               : 'bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
           }`}
-          title={isActionsExpanded ? 'Cerrar acciones' : 'Acciones r√°pidas'}
+          title={isActionsExpanded ? 'Cerrar acciones' : 'Acciones r·pidas'}
         >
           <svg className={`w-5 h-5 text-white transition-transform duration-300 ${isActionsExpanded ? 'rotate-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             {isActionsExpanded ? (
@@ -2534,7 +2534,7 @@ function DashboardContent() {
           </svg>
         </button>
 
-        {/* Bot√≥n de Tour / Ayuda ‚ùì */}
+        {/* BotÛn de Tour / Ayuda ? */}
         <button
           id="tour-help-btn"
           onClick={() => {
@@ -2542,14 +2542,14 @@ function DashboardContent() {
             setTimeout(() => setIsTourOpen(true), 350);
           }}
           className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 group"
-          title="Tour interactivo de la aplicaci√≥n"
+          title="Tour interactivo de la aplicaciÛn"
         >
           <svg className="w-5 h-5 text-white group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </button>
 
-        {/* Bot√≥n Reportar incidencia (grabaci√≥n de pantalla) */}
+        {/* BotÛn Reportar incidencia (grabaciÛn de pantalla) */}
         <IncidentRecorderButton id="tour-incident-btn" />
       </div>
 
@@ -2690,11 +2690,11 @@ function DashboardContent() {
         scopedEmpresas={scopedEmpresas}
       />
 
-      {/* Modal de Saturaci√≥n: click en zona del mapa */}
-      {/* No abrir si zona inactiva (demoras.activa===false) ‚Äî sin m√©tricas relevantes */}
+      {/* Modal de SaturaciÛn: click en zona del mapa */}
+      {/* No abrir si zona inactiva (demoras.activa===false) ó sin mÈtricas relevantes */}
       {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && demorasData.get(saturacionModalZonaId)?.activa !== false && (() => {
         const isServiceMode = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
-        // Solo si canSeeUnassignedInCapEntrega (privilegiado cl√°sico o tiene 'Ped s/asignar x zona').
+        // Solo si canSeeUnassignedInCapEntrega (privilegiado cl·sico o tiene 'Ped s/asignar x zona').
         const sinAsignarList = !canSeeUnassignedInCapEntrega
           ? []
           : isServiceMode
@@ -2747,7 +2747,7 @@ function DashboardContent() {
         );
       })()}
 
-      {/* Modal de Vista M√≥viles por Zona (click en mapa o bot√≥n) */}
+      {/* Modal de Vista MÛviles por Zona (click en mapa o botÛn) */}
       <ZonaMovilesViewModal
         isOpen={zonaViewModalOpen}
         onClose={() => setZonaViewModalOpen(false)}
@@ -2798,7 +2798,7 @@ function DashboardContent() {
         }}
       />
 
-      {/* Modal de Estad√≠sticas por Zona */}
+      {/* Modal de EstadÌsticas por Zona */}
       <ZonaEstadisticasModal
         isOpen={isZonaEstadisticasOpen}
         onClose={() => setIsZonaEstadisticasOpen(false)}
@@ -2822,8 +2822,8 @@ function DashboardContent() {
             setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
             setIsServicesTableOpen(true);
           } else {
-            // PEDIDOS = todos los pedidos (sin filtro por servicio_nombre ‚Üí 'all')
-            // Un tipo espec√≠fico (URGENTE/NOCTURNO) se pasa directamente
+            // PEDIDOS = todos los pedidos (sin filtro por servicio_nombre ? 'all')
+            // Un tipo especÌfico (URGENTE/NOCTURNO) se pasa directamente
             setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: upper === 'PEDIDOS' ? [] : (svcFilter ? [svcFilter] : []) }));
             setIsPedidosTableOpen(true);
           }
@@ -2834,8 +2834,8 @@ function DashboardContent() {
         }}
       />
 
-      {/* Indicador de conexi√≥n Realtime - Debajo del navbar, a la derecha */}
-      {/* right-4 siempre, los botones ya no est√°n en < xl */}
+      {/* Indicador de conexiÛn Realtime - Debajo del navbar, a la derecha */}
+      {/* right-4 siempre, los botones ya no est·n en < xl */}
       <div id="tour-realtime-indicator" className="absolute right-4 top-[68px] z-50">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
@@ -2854,8 +2854,8 @@ function DashboardContent() {
               : 'bg-gray-300'
           }`} />
           {preferences.realtimeEnabled 
-            ? (isConnected ? 'üì° Tiempo Real Activo' : 'üì° Conectando...') 
-            : '‚è∏Ô∏è Modo Est√°tico'
+            ? (isConnected ? '?? Tiempo Real Activo' : '?? Conectando...') 
+            : '?? Modo Est·tico'
           }
         </motion.div>
       </div>
@@ -2892,7 +2892,7 @@ function DashboardContent() {
               className="absolute left-0 top-0 bottom-0 z-30 bg-white shadow-2xl flex flex-col"
               style={{ width: sidebarWidth }}
             >
-              {/* Selector de M√≥viles - Full height */}
+              {/* Selector de MÛviles - Full height */}
               <div className="flex-1 overflow-hidden">
                 <MovilSelector
                   moviles={movilesFilteredMarked}
@@ -2964,7 +2964,7 @@ function DashboardContent() {
               </div>
             </motion.div>
 
-            {/* Bot√≥n para colapsar/expandir el sidebar */}
+            {/* BotÛn para colapsar/expandir el sidebar */}
             <motion.button
               id="tour-sidebar-toggle"
               initial={false}
@@ -2993,7 +2993,7 @@ function DashboardContent() {
               </svg>
             </motion.button>
 
-            {/* Mapa - Full width con padding din√°mico */}
+            {/* Mapa - Full width con padding din·mico */}
             <motion.div
               id="tour-map-area"
               initial={false}
@@ -3028,9 +3028,9 @@ function DashboardContent() {
                   let base = pedidosCompletos.filter(p => {
                     if (Number(p.estado_nro) !== targetEstado) return false;
                     // Sin asignar (movil null/0): pasa en 2 escenarios distintos:
-                    //   (a) modo "Todos" ‚Äî todas empresas + todos moviles seleccionados,
+                    //   (a) modo "Todos" ó todas empresas + todos moviles seleccionados,
                     //       vista pendientes y empresas completas;
-                    //   (b) vista "solo sin asignar" ‚Äî privilegiado con
+                    //   (b) vista "solo sin asignar" ó privilegiado con
                     //       selectedMoviles=[] (handleClearAll) y empresas completas.
                     if (!p.movil || Number(p.movil) === 0) {
                       if (!isPendientes || isEmpresaPartial) return false;
@@ -3039,16 +3039,16 @@ function DashboardContent() {
                       return false;
                     }
                     if (selectedMoviles.length > 0) {
-                      // Subset de m√≥viles: solo pasan los explicitamente
-                      // seleccionados. Los de m√≥viles ocultos-pero-operativos
-                      // SOLO pasan en modo "Todos" ‚Äî sino corresponden a un
-                      // segmento que el usuario no eligi√≥ ver.
+                      // Subset de mÛviles: solo pasan los explicitamente
+                      // seleccionados. Los de mÛviles ocultos-pero-operativos
+                      // SOLO pasan en modo "Todos" ó sino corresponden a un
+                      // segmento que el usuario no eligiÛ ver.
                       if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
                       if (allMovilesSelected && hiddenMovilIds.has(Number(p.movil))) return true;
                       return false;
                     }
                     // selectedMoviles = []: privilegiado solo ve sin-asignar
-                    // (manejado arriba). Aqu√≠ los pedidos CON m√≥vil no pasan.
+                    // (manejado arriba). AquÌ los pedidos CON mÛvil no pasan.
                     if (isPrivilegedUser) return false;
                     if (isEmpresaPartial) {
                       return validMovilIds.has(Number(p.movil));
@@ -3086,7 +3086,7 @@ function DashboardContent() {
                     if (Number(s.estado_nro) !== targetEstado) return false;
                     // Sin asignar: pasa en 2 escenarios distintos:
                     //   (a) modo "Todos" (todas empresas + todos moviles seleccionados);
-                    //   (b) vista "solo sin asignar" ‚Äî privilegiado con selectedMoviles=[]
+                    //   (b) vista "solo sin asignar" ó privilegiado con selectedMoviles=[]
                     //       (handleClearAll) y empresas completas.
                     if (!s.movil || Number(s.movil) === 0) {
                       if (!isPendientes || isEmpresaPartial) return false;
@@ -3095,7 +3095,7 @@ function DashboardContent() {
                       return false;
                     }
                     if (selectedMoviles.length > 0) {
-                      // Subset: solo pasan los seleccionados. Los de m√≥viles
+                      // Subset: solo pasan los seleccionados. Los de mÛviles
                       // ocultos-pero-operativos SOLO pasan en modo "Todos".
                       if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
                       if (allMovilesSelected && hiddenMovilIds.has(Number(s.movil))) return true;
@@ -3133,7 +3133,7 @@ function DashboardContent() {
                 onMovilDateChange={handleTrackingConfirm}
                 onSecondaryAnimMovilChange={async (movilId) => {
                   if (movilId) {
-                    // Cargar historial del 2do m√≥vil si no est√° cargado
+                    // Cargar historial del 2do mÛvil si no est· cargado
                     const movilData = moviles.find(m => m.id === movilId);
                     if (!movilData?.history || movilData.history.length === 0) {
                       await fetchMovilHistory(movilId);
@@ -3157,7 +3157,7 @@ function DashboardContent() {
                 pedidosZonaData={pedidosZonaData}
                 pedidosZonaFilter={pedidosZonaFilter}
                 onPedidosZonaFilterChange={setPedidosZonaFilter}
-                hideSinAsignarOption={isScopeRestricted || !canVerSinAsigPorZona}
+                hideSinAsignarOption={!canVerSinAsigPorZona}
                 allMovilEstados={allMovilEstados}
                 allHiddenMovilIds={allHiddenMovilIds}
                 movilesZonasData={movilesZonasData}
@@ -3178,7 +3178,7 @@ function DashboardContent() {
                 hiddenPoiCategories={hiddenPoiCategories}
                 hiddenPoiIds={hiddenPoiIds}
                 poiMarkerSize={preferences.poiMarkerSize ?? 2}
-                poiDefaultIcon={preferences.poiDefaultIcon ?? 'üè¢'}
+                poiDefaultIcon={preferences.poiDefaultIcon ?? '??'}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
                 onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : dataViewMode === 'saturacion' ? setSaturacionModalZonaId : undefined}

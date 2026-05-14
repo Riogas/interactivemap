@@ -38,8 +38,9 @@ interface DashboardIndicatorsProps {
   /** Scope (móviles + zonas) para filtrar pedidos en sinAsignar / entregados / % cuando el user es distribuidor. */
   scope?: ScopeFilter;
   /** Gate: puede ver el indicador "Ped Sin Asig." y métricas de sin-asignar acumuladas.
-   *  false → ocultar indicador (y separador adyacente). Funcionalidad "Ped s/asignar acumulados".
-   *  Defaults true para retrocompatibilidad. Root siempre true. */
+   *  Controlado únicamente por la funcionalidad "Ped s/asignar acumulados" (root siempre true).
+   *  false → ocultar indicador (y separador adyacente).
+   *  Defaults true para retrocompatibilidad. */
   canVerAcumulados?: boolean;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
@@ -340,8 +341,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       {/* Contenedor scrollable de indicadores */}
       <div ref={scrollRef} className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar min-w-0 flex-1">
       <div className="flex items-center gap-1.5">
-        {/* Pedidos Sin Asignar — oculto para distribuidor (scope.isRestricted) y cuando !canVerAcumulados */}
-        {!scope?.isRestricted && canVerAcumulados && (
+        {/* Pedidos Sin Asignar — visible para cualquier rol con la funcionalidad 'Ped s/asignar acumulados' (gating por funcionalidad, no por rol) */}
+        {canVerAcumulados && (
           <>
             <Indicator
               icon="📦"

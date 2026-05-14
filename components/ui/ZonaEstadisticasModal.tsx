@@ -43,9 +43,10 @@ interface ZonaEstadisticasModalProps {
   serverNow?: Date;
   /** Minutos de anticipacion del escenario. null = sin filtro (backwards-compat). */
   minutosAntesSa?: number | null;
-  /** Override externo para ocultar la columna/sección sin-asignar.
-   *  Cuando true, tiene prioridad sobre scope.isRestricted (OR).
-   *  Usado para implementar Gate B ('Ped s/asignar x zona'). */
+  /** Ocultar la columna/sección sin-asignar.
+   *  Controlado desde el caller según la funcionalidad 'Ped s/asignar x zona'
+   *  (true = sin permiso, false = con permiso). Root siempre false.
+   *  Reemplaza el gate por rol anterior. */
   hideSinAsignarOverride?: boolean;
 }
 
@@ -80,10 +81,10 @@ export default function ZonaEstadisticasModal({
   const [serviceFilter, setServiceFilter] = useState<string>('PEDIDOS');
   const [filters, setFilters] = useState<Partial<Record<SortKey | 'zonaText', string>>>({});
 
-  // Distribuidor: oculta columna/summary/filtro de "Sin Asignar" y excluye los
-  // pedidos sin móvil del cómputo de pendientes.
-  // Ocultar sin-asignar si: distribuidor (scope.isRestricted) O Gate B no concedido (hideSinAsignarOverride).
-  const hideSinAsignar = (scope?.isRestricted ?? false) || hideSinAsignarOverride;
+  // Ocultar sin-asignar controlado únicamente por la funcionalidad 'Ped s/asignar x zona'
+  // (hideSinAsignarOverride=true cuando el usuario no tiene la funcionalidad).
+  // El rol del usuario ya no condiciona esta visibilidad.
+  const hideSinAsignar = hideSinAsignarOverride;
 
   // Si la columna sinAsignar queda oculta y el sort estaba en esa key, volver a 'zona'.
   useEffect(() => {
@@ -262,8 +263,8 @@ export default function ZonaEstadisticasModal({
       const pedidosZona = filteredPedidos.filter(p => p.zona_nro === zonaId);
 
       // Pendientes: TODOS los estado 1 (con y sin movil, igual que la capa heatmap).
-      // Distribuidor: NO sumarizar los sin móvil — la columna se elimina y la
-      // columna pendientes refleja solo los pedidos asignados a sus móviles.
+      // Si sin-asignar está oculto (hideSinAsignar): la columna se elimina y
+      // la columna pendientes refleja solo los pedidos asignados a sus móviles.
       const pendientesList = pedidosZona.filter(p => {
         if (Number(p.estado_nro) !== 1) return false;
         const isSinAsignar = !p.movil || Number(p.movil) === 0;
@@ -275,7 +276,7 @@ export default function ZonaEstadisticasModal({
       const pendientes = pendientesList.length;
 
       // Sin asignar: subconjunto de pendientes sin movil asignado.
-      // Para distribuidor queda en 0 (la columna se oculta igualmente).
+      // Si hideSinAsignar=true queda en 0 (la columna se oculta igualmente).
       const sinAsignar = pendientesList.filter(p =>
         !p.movil || Number(p.movil) === 0
       ).length;
