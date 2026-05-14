@@ -12,7 +12,7 @@ import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
-type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'producto' | 'importe' | 'direccion' | 'hora_max' | 'obs_pedido' | 'obs_cliente' | 'estado';
+type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'producto' | 'importe' | 'direccion' | 'hora_max' | 'obs_pedido' | 'obs_cliente' | 'estado' | 'cumplido';
 type SortDir = 'asc' | 'desc';
 
 interface Filters {
@@ -121,11 +121,24 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
   const servicioDropdownRef = useRef<HTMLDivElement>(null);
   const servicioButtonRef = useRef<HTMLButtonElement>(null);
   const [servicioDropdownPos, setServicioDropdownPos] = useState({ top: 0, left: 0 });
-  const [sortKey, setSortKey] = useState<SortKey>('delay');
+  // Default sortKey según vista:
+  //   - finalizados → 'cumplido' (fch_hora_finalizacion asc)
+  //   - pendientes  → 'delay' (atraso asc)
+  // Si el usuario cambia de vista, useEffect abajo lo ajusta.
+  const [sortKey, setSortKey] = useState<SortKey>(vista === 'finalizados' ? 'cumplido' : 'delay');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Re-aplicar sort default cuando cambia la vista (pendientes ↔ finalizados).
+  // Si el usuario eligió otra columna manualmente, igual se resetea — la
+  // intención de "ver finalizados" implica querer el orden por cumplido.
+  useEffect(() => {
+    setSortKey(vista === 'finalizados' ? 'cumplido' : 'delay');
+    setSortDir('asc');
+    setPage(0);
+  }, [vista]);
 
   // Report inner filter changes upward
   const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
@@ -395,6 +408,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
         case 'obs_pedido': return (a.pedido.pedido_obs || '').localeCompare(b.pedido.pedido_obs || '') * dir;
         case 'obs_cliente': return (a.pedido.cliente_obs || '').localeCompare(b.pedido.cliente_obs || '') * dir;
         case 'estado': return ((a.pedido.sub_estado_nro || 0) - (b.pedido.sub_estado_nro || 0)) * dir;
+        case 'cumplido': return (a.pedido.fch_hora_finalizacion || '').localeCompare(b.pedido.fch_hora_finalizacion || '') * dir;
         default: return 0;
       }
     });
@@ -857,7 +871,9 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                     </th>
                     {isFinalizados && (
                       <>
-                        <th className="px-4 py-3 text-gray-400 whitespace-nowrap">Cumplido</th>
+                        <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('cumplido')}>
+                          Cumplido <SortArrow col="cumplido" />
+                        </th>
                         <th className="px-4 py-3 text-gray-400 whitespace-nowrap">Atraso</th>
                       </>
                     )}

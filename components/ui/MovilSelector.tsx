@@ -504,7 +504,17 @@ export default function MovilSelector({
         return delayA - delayB;
       });
     } else {
-      result.sort((a, b) => Number(b.id) - Number(a.id));
+      // Finalizados: orden ascendente por fch_hora_finalizacion (columna "Cumplido")
+      // — consistente con el sort default de PedidosTableModal vista finalizados.
+      // Nulls al final para no mezclar con los que sí tienen fecha de cumplido.
+      result.sort((a, b) => {
+        const ca = a.fch_hora_finalizacion || '';
+        const cb = b.fch_hora_finalizacion || '';
+        if (!ca && !cb) return Number(a.id) - Number(b.id);
+        if (!ca) return 1;
+        if (!cb) return -1;
+        return ca.localeCompare(cb);
+      });
     }
 
     return result;
