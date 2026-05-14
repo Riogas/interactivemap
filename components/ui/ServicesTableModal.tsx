@@ -207,9 +207,9 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
             // nunca los ven.
             return allMovilesSelected && privilegedUser;
           }
-          // Pendientes sin asignar: solo en modo "Todos" — con subset
-          // seleccionado, los sin-asignar corresponden a otra cosa.
-          return filters.asignacion === 'todos' && !hideUnassigned && allMovilesSelected;
+          // Pendientes sin asignar: pasa si tiene permiso "Ped s/asignar
+          // unitarios". Scope por zona ya validado por isServiceInScope arriba.
+          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
         }
         // Móviles seleccionados pasan
         if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
@@ -228,15 +228,15 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       // pendientes: mostramos exclusivamente services sin móvil.
       result = result.filter(s => !s.movil || Number(s.movil) === 0);
     } else if (hideUnassigned && filters.asignacion === 'todos') {
-      // Sin móviles seleccionados, con restricción: ocultar sin asignar
-      // y restringir a móviles del usuario. Incluir los IDs ocultos-pero-operativos
-      // para que sus services no se pierdan.
+      // Sin móviles seleccionados, con restricción de empresa: restringir
+      // a los móviles que el usuario puede ver. Sin-asignar pasa si tiene
+      // permiso "Ped s/asignar unitarios" (scope por zona ya validado).
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
       if (hiddenMovilIds) {
         hiddenMovilIds.forEach(id => validMovilIds.add(id));
       }
       result = result.filter(s => {
-        if (!s.movil || Number(s.movil) === 0) return false;
+        if (!s.movil || Number(s.movil) === 0) return canVerSinAsignarUnitario;
         return validMovilIds.has(Number(s.movil));
       });
     }

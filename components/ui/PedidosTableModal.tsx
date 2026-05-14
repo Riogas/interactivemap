@@ -259,9 +259,11 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
           if (isFinalizados) {
             return allMovilesSelected && privilegedUser;
           }
-          // Pendientes sin móvil: solo en modo "Todos" — si el usuario tiene
-          // un subset, los sin-asignar corresponden a otra cosa y no aplican.
-          return filters.asignacion === 'todos' && !hideUnassigned && allMovilesSelected;
+          // Pendientes sin móvil: pasa si tiene permiso "Ped s/asignar
+          // unitarios". La scope por zona ya se aplicó vía isPedidoInScope
+          // arriba (línea 243). Los gates legacy (hideUnassigned,
+          // allMovilesSelected) ya no aplican — refactor permisos.
+          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
         }
         // Móviles seleccionados pasan
         if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
@@ -283,16 +285,16 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       // exclusivamente pedidos sin móvil ("solo sin asignar").
       result = result.filter(p => !p.movil || Number(p.movil) === 0);
     } else if (hideUnassigned && filters.asignacion === 'todos') {
-      // Sin móviles seleccionados, con restricción: ocultar sin asignar
-      // y restringir a los móviles que el usuario puede ver (los que vienen
-      // en la prop `moviles`, ya filtrados por empresa desde el dashboard).
-      // Incluir también los IDs ocultos-pero-operativos: sus pedidos igual se ven.
+      // Sin móviles seleccionados, con restricción de empresa: restringir
+      // a los móviles que el usuario puede ver. Sin-asignar pasa si tiene
+      // permiso "Ped s/asignar unitarios" (scope por zona ya validado por
+      // isPedidoInScope arriba).
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
       if (hiddenMovilIds) {
         hiddenMovilIds.forEach(id => validMovilIds.add(id));
       }
       result = result.filter(p => {
-        if (!p.movil || Number(p.movil) === 0) return false;
+        if (!p.movil || Number(p.movil) === 0) return canVerSinAsignarUnitario;
         return validMovilIds.has(Number(p.movil));
       });
     }

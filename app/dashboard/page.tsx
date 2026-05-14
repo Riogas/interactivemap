@@ -3043,10 +3043,14 @@ function DashboardContent() {
                     //   (b) vista "solo sin asignar"  privilegiado con
                     //       selectedMoviles=[] (handleClearAll) y empresas completas.
                     if (!p.movil || Number(p.movil) === 0) {
-                      if (!canVerSinAsignarUnitario || !isPendientes || isEmpresaPartial) return false;
-                      if (allMovilesSelected) return true;
-                      if (selectedMoviles.length === 0 && isPrivilegedUser) return true;
-                      return false;
+                      // Sin movil: requiere permiso 'Ped s/asignar unitarios' +
+                      // vista pendientes. Scope por zona aplica al distribuidor.
+                      if (!canVerSinAsignarUnitario || !isPendientes) return false;
+                      if (scope?.isRestricted && scope.scopedZonaIds) {
+                        const zonaId = p.zona_nro != null ? Number(p.zona_nro) : null;
+                        if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+                      }
+                      return true;
                     }
                     if (selectedMoviles.length > 0) {
                       // Subset de móviles: solo pasan los explicitamente
@@ -3099,10 +3103,14 @@ function DashboardContent() {
                     //   (b) vista "solo sin asignar"  privilegiado con selectedMoviles=[]
                     //       (handleClearAll) y empresas completas.
                     if (!s.movil || Number(s.movil) === 0) {
-                      if (!canVerSinAsignarUnitario || !isPendientes || isEmpresaPartial) return false;
-                      if (allMovilesSelected) return true;
-                      if (selectedMoviles.length === 0 && isPrivilegedUser) return true;
-                      return false;
+                      // Sin movil: requiere permiso 'Ped s/asignar unitarios' +
+                      // vista pendientes. Scope por zona aplica al distribuidor.
+                      if (!canVerSinAsignarUnitario || !isPendientes) return false;
+                      if (scope?.isRestricted && scope.scopedZonaIds) {
+                        const zonaId = s.zona_nro != null ? Number(s.zona_nro) : null;
+                        if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+                      }
+                      return true;
                     }
                     if (selectedMoviles.length > 0) {
                       // Subset: solo pasan los seleccionados. Los de móviles
