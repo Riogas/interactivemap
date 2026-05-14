@@ -204,7 +204,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   showCountLabels = false,
   onShowCountLabelsChange,
   tiposServicioDisponibles = [],
-  zonaOpacity = 50,
+  zonaOpacity = 50, zonaPattern = 'liso' as ZonaPattern,
   movilEstados,
   hiddenMovilIds,
   onZonaClick,
@@ -320,6 +320,19 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
               click: () => onZonaClick(zona.zona_id),
             } : undefined}
           />
+          {!isInactive && zonaPattern !== 'liso' && getPatternFillUrl(zonaPattern) && (
+            <Polygon
+              positions={positions}
+              renderer={L.svg()}
+              pathOptions={{
+                fillColor: getPatternFillUrl(zonaPattern)!,
+                fillOpacity: 0.85,
+                stroke: false,
+                color: 'transparent',
+                weight: 0,
+              }}
+            />
+          )}
           <Marker
             position={center}
             icon={L.divIcon({

@@ -115,6 +115,7 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
   zonas,
   demoras,
   zonaOpacity = 50,
+  zonaPattern = 'liso' as ZonaPattern,
 }: ZonasActivasLayerProps) {
   // Pre-calcular etiquetas
   const labels = useMemo(() => {
@@ -153,17 +154,31 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
         const borderColor = '#000000';
 
         return (
-          <Polygon
-            key={zona.zona_id}
-            positions={positions}
-            pathOptions={{
-              color: borderColor,
-              fillColor,
-              fillOpacity: adjustOpacity(0.35, zonaOpacity),
-              weight: 2,
-              opacity: adjustOpacity(0.8, zonaOpacity),
-            }}
-          />
+          <React.Fragment key={zona.zona_id}>
+            <Polygon
+              positions={positions}
+              pathOptions={{
+                color: borderColor,
+                fillColor,
+                fillOpacity: adjustOpacity(0.35, zonaOpacity),
+                weight: 2,
+                opacity: adjustOpacity(0.8, zonaOpacity),
+              }}
+            />
+            {zonaPattern !== 'liso' && getPatternFillUrl(zonaPattern) && (
+              <Polygon
+                positions={positions}
+                renderer={L.svg()}
+                pathOptions={{
+                  fillColor: getPatternFillUrl(zonaPattern)!,
+                  fillOpacity: 0.85,
+                  stroke: false,
+                  color: 'transparent',
+                  weight: 0,
+                }}
+              />
+            )}
+          </React.Fragment>
         );
       })}
 

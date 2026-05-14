@@ -256,6 +256,19 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
             }}
             eventHandlers={onZonaClick ? { click: () => onZonaClick(zona.zona_id) } : {}}
           />
+          {!isInactive && zonaPattern !== 'liso' && getPatternFillUrl(zonaPattern) && (
+            <Polygon
+              positions={positions}
+              renderer={L.svg()}
+              pathOptions={{
+                fillColor: getPatternFillUrl(zonaPattern)!,
+                fillOpacity: 0.85,
+                stroke: false,
+                color: 'transparent',
+                weight: 0,
+              }}
+            />
+          )}
           <Marker
             position={center}
             icon={L.divIcon({

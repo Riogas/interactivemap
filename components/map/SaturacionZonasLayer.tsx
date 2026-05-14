@@ -194,6 +194,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   demoras,
   showLabels = false,
   onToggleLabels,
+  zonaPattern = 'liso' as ZonaPattern,
 }: SaturacionZonasLayerProps) {
   // Derivar privilegio UNA vez por render de la capa (no por zona).
   const isPrivileged = isPrivilegedForCapEntrega(user ?? null);
@@ -284,6 +285,19 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
             eventHandlers={onZonaClick ? { click: () => onZonaClick(zona.zona_id) } : {}}
           >
           </Polygon>
+          {!isInactive && zonaPattern !== 'liso' && getPatternFillUrl(zonaPattern) && (
+            <Polygon
+              positions={positions}
+              renderer={L.svg()}
+              pathOptions={{
+                fillColor: getPatternFillUrl(zonaPattern)!,
+                fillOpacity: 0.85,
+                stroke: false,
+                color: 'transparent',
+                weight: 0,
+              }}
+            />
+          )}
           <Marker
             position={center}
             icon={L.divIcon({

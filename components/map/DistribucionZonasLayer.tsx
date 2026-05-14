@@ -119,6 +119,19 @@ const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas, zon
               opacity: adjustOpacity(0.85, zonaOpacity),
             }}
           />
+          {zonaPattern !== 'liso' && getPatternFillUrl(zonaPattern) && (
+            <Polygon
+              positions={positions}
+              renderer={L.svg()}
+              pathOptions={{
+                fillColor: getPatternFillUrl(zonaPattern)!,
+                fillOpacity: 0.85,
+                stroke: false,
+                color: 'transparent',
+                weight: 0,
+              }}
+            />
+          )}
           <Marker
             position={center}
             icon={L.divIcon({

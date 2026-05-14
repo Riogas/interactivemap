@@ -624,28 +624,31 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
 // ZonaPatternDefs: injects SVG pattern <defs> into the Leaflet SVG overlay
 // ---------------------------------------------------------------------------
 function ZonaPatternDefs() {
-  const map = useMap();
   useEffect(() => {
-    // Find Leaflet's internal SVG pane and inject <defs> there
-    const container = map.getPanes().overlayPane;
-    if (!container) return;
-    let svgEl = container.querySelector<SVGSVGElement>('svg');
+    // Inyectar <defs> en un SVG oculto a nivel document.body.
+    // SVG url(#id) funciona desde cualquier SVG del documento cuando el <defs>
+    // esta en el mismo documento — incluso si Leaflet usa Canvas para otros layers.
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const DEFS_ID = 'zona-pattern-defs-root';
+    let svgEl = document.getElementById(DEFS_ID) as SVGSVGElement | null;
     if (!svgEl) {
-      svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svgEl.style.cssText = 'position:absolute;left:-9999px;width:0;height:0;overflow:hidden';
-      container.appendChild(svgEl);
+      svgEl = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+      svgEl.setAttribute('id', DEFS_ID);
+      svgEl.setAttribute('aria-hidden', 'true');
+      svgEl.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+      document.body.appendChild(svgEl);
     }
     let defsEl = svgEl.querySelector('defs');
     if (!defsEl) {
-      defsEl = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      defsEl = document.createElementNS(SVG_NS, 'defs');
       svgEl.appendChild(defsEl);
     }
     defsEl.innerHTML = getPatternDefs();
     return () => {
-      // cleanup on unmount: remove our patterns
+      // Limpiar solo los patterns que inyectamos (otros pueden haberlos agregado)
       if (defsEl) defsEl.innerHTML = '';
     };
-  }, [map]);
+  }, []);
   return null;
 }
 
@@ -752,31 +755,37 @@ const MapView = memo(function MapView({
   }, [moviles, allMovilEstados]);
 
   // �🔷 Generador de HTML para formas geométricas (compact/mini)
-  const getShapeHtml = useCallback((shape: MarkerShape, size: number, color: string, lightColor?: string) => {
+  const getShapeHtml = useCallback((shape: MarkerShape, size: number, color: string, lightColor?: string, halo = false) => {
     const half = size / 2;
     const border = size > 12 ? 1.5 : 1;
     const bg = lightColor ? `linear-gradient(135deg,${color} 0%,${lightColor} 100%)` : color;
+    // halo: anillo blanco + anillo oscuro exterior. Para box-shadow shapes se antepone al shadow.
+    // Para clip-path/filter shapes (triangle, hexagon, star) se envuelve en un container.
+    const haloCss = halo ? '0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45),' : '';
+    const haloWrap = (inner: string) => halo
+      ? `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;border-radius:50%;box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);">${inner}</div>`
+      : inner;
     switch (shape) {
       case 'circle':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
       case 'square':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:${Math.round(size * 0.15)}px;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:${Math.round(size * 0.15)}px;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
       case 'triangle': {
         const bw = Math.round(half);
         const bh = Math.round(size * 0.9);
-        return `<div style="width:0;height:0;position:absolute;left:-${bw}px;top:-${half}px;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
+        return haloWrap(`<div style="width:0;height:0;position:absolute;left:-${bw}px;top:-${half}px;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`);
       }
       case 'diamond': {
         const inner = Math.round(size * 0.72);
         const offset = Math.round(inner / 2);
-        return `<div style="width:${inner}px;height:${inner}px;position:absolute;left:-${offset}px;top:-${offset}px;background:${bg};border:${border}px solid white;transform:rotate(45deg);box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+        return `<div style="width:${inner}px;height:${inner}px;position:absolute;left:-${offset}px;top:-${offset}px;background:${bg};border:${border}px solid white;transform:rotate(45deg);box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
       }
       case 'hexagon':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
+        return haloWrap(`<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`);
       case 'star':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
+        return haloWrap(`<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`);
       default:
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
     }
   }, []);
 
@@ -1612,6 +1621,7 @@ const MapView = memo(function MapView({
           align-items: center;
           justify-content: center;
           opacity: ${opacity};
+          ${haloShadow}
         ">
           ${getCompactShapeHtml()}
           ${movilId ? `
@@ -1636,7 +1646,7 @@ const MapView = memo(function MapView({
       iconSize: [28, 28],
       iconAnchor: [14, 14],
     }));
-  }, []);
+  }, [movilShape, movilHalo]);
 
   // 🔹 MINI: Solo punto diminuto (14px), sin número
   const createMiniIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
@@ -1647,11 +1657,11 @@ const MapView = memo(function MapView({
 
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="opacity:${opacity};${isInactive ? 'animation:alarm-pulse 1.5s infinite;' : ''}">${getShapeHtml(movilShape, 14, effectiveColor)}</div>`,
+      html: `<div style="opacity:${opacity};${isInactive ? 'animation:alarm-pulse 1.5s infinite;' : ''}">${getShapeHtml(movilShape, 14, effectiveColor, undefined, movilHalo)}</div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [movilShape, getShapeHtml]);
+  }, [movilShape, movilHalo, getShapeHtml]);
 
   // �🚀 OPTIMIZACIÓN: Iconos con cache
   const createPedidoIcon = useCallback(() => {
@@ -1793,11 +1803,11 @@ const MapView = memo(function MapView({
     const cacheKey = `pedido-delay-compact-${info.label}-${pedidoShape}-${pedidoHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: getShapeHtml(pedidoShape, 14, info.color, info.lightColor),
+      html: getShapeHtml(pedidoShape, 14, info.color, info.lightColor, pedidoHalo),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [pedidoShape, getShapeHtml]);
+  }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
   // 📦 Iconos MINI para pedidos (forma configurable mínima)
   const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
@@ -1806,11 +1816,11 @@ const MapView = memo(function MapView({
     const cacheKey = `pedido-delay-mini-${info.label}-${pedidoShape}-${pedidoHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: getShapeHtml(pedidoShape, 10, info.color),
+      html: getShapeHtml(pedidoShape, 10, info.color, undefined, pedidoHalo),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, [pedidoShape, getShapeHtml]);
+  }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
   // 🔧 Iconos COMPACTOS para services (forma configurable)
   const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
@@ -1819,11 +1829,11 @@ const MapView = memo(function MapView({
     const cacheKey = `service-delay-compact-${info.label}-${serviceShape}-${serviceHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: getShapeHtml(serviceShape, 14, info.color, info.lightColor),
+      html: getShapeHtml(serviceShape, 14, info.color, info.lightColor, serviceHalo),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [serviceShape, getShapeHtml]);
+  }, [serviceShape, serviceHalo, getShapeHtml]);
 
   // 🔧 Iconos MINI para services (forma configurable mínima)
   const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
@@ -1832,11 +1842,11 @@ const MapView = memo(function MapView({
     const cacheKey = `service-delay-mini-${info.label}-${serviceShape}-${serviceHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: getShapeHtml(serviceShape, 10, info.color),
+      html: getShapeHtml(serviceShape, 10, info.color, undefined, serviceHalo),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, [serviceShape, getShapeHtml]);
+  }, [serviceShape, serviceHalo, getShapeHtml]);
 
   // 🚀 Funciones selectoras de icono por estilo de pedido
   const getPedidoIcon = useCallback((fchHoraMaxEntComp: string | null) => {
@@ -2260,6 +2270,9 @@ const MapView = memo(function MapView({
         )}
 
         {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}
+        {/* SVG <defs> para patrones de zonas — solo cuando hay patron activo */}
+        {zonaPattern !== 'liso' && <ZonaPatternDefs />}
+
         {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} zonaOpacity={zonaOpacity} demoras={demorasData} />}
 
         {/* 🏘️ Capa de Distribución (polígonos con color de tabla + identificador de zona) */}

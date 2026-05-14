@@ -274,6 +274,19 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
               className: !demoraActiva ? undefined : (isDotted ? 'demora-zona-dotted' : undefined),
             }}
           />
+          {demoraActiva && zonaPattern !== 'liso' && getPatternFillUrl(zonaPattern) && (
+            <Polygon
+              positions={positions}
+              renderer={L.svg()}
+              pathOptions={{
+                fillColor: getPatternFillUrl(zonaPattern)!,
+                fillOpacity: 0.85,
+                stroke: false,
+                color: 'transparent',
+                weight: 0,
+              }}
+            />
+          )}
           <Marker
             position={center}
             icon={L.divIcon({
