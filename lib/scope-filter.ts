@@ -12,19 +12,25 @@
  * en el dashboard — esos siguen filtrando solo por allowedMovilIds (legacy);
  * acá agregamos el segundo eje (zona) y la regla de "entregados sin móvil".
  *
- * Reglas:
+ * Reglas (actualizadas tras refactor de gates por funcionalidad — commits
+ * e44763f, 6937e0a):
  *   - Sin scope (root/despacho) → todo pasa.
- *   - Distribuidor (isRestricted=true) NUNCA ve pedidos/services sin móvil,
- *     ni pendientes ni finalizados, sin importar la zona ni la opción
- *     hideEntregadosSinMovil. Los pedidos sin asignar son responsabilidad de
- *     despacho hasta que un móvil los toma.
- *   - Pedido con móvil: el móvil debe estar en allowedMovilIds Y la zona en scopedZonaIds.
- *   - Pedido sin zona: NO pasa bajo scope (no podemos decidir).
- *   - scopedZonaIds === null bajo isRestricted true es un caso defensivo: tratado
- *     como "todo pasa" para no romper si el caller no propaga el set; el dashboard
- *     siempre pasa un set concreto (eventualmente vacío) cuando isRestricted = true.
- *   - hideEntregadosSinMovil queda en la firma por compat con callers existentes,
- *     pero ya no aplica para distribuidor: la regla "sin móvil → false" corta antes.
+ *   - Pedido CON móvil: el móvil debe estar en allowedMovilIds Y la zona
+ *     en scopedZonaIds.
+ *   - Pedido SIN móvil (sin-asignar):
+ *       · Si NO tiene zona → no pasa (no scopeable).
+ *       · Si tiene zona → pasa si la zona está en scopedZonaIds.
+ *       · Adicional: si el caller pidió hideEntregadosSinMovil=true Y el
+ *         pedido es finalizado (estado=2) → no pasa.
+ *     ANTES: regla legacy hardcodeaba "sin móvil → false" para todo
+ *     distribuidor. Eso contradecía los gates por funcionalidad
+ *     (Ped s/asignar acumulados/x zona/unitarios) que ahora controlan
+ *     visibilidad de sin-asignar en la UI. La decisión de mostrar/ocultar
+ *     sin-asignar a un distribuidor ahora pertenece al caller vía permisos,
+ *     no al scope filter.
+ *   - Pedido con móvil sin zona: NO pasa.
+ *   - scopedZonaIds === null bajo isRestricted true es defensivo: tratado
+ *     como "todo pasa".
  */
 
 interface ScopeCheckable {
@@ -47,8 +53,7 @@ export interface ScopeFilterOpts {
   hideEntregadosSinMovil: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function isInScope(item: ScopeCheckable, scope: ScopeFilter, _opts: ScopeFilterOpts): boolean {
+function isInScope(item: ScopeCheckable, scope: ScopeFilter, opts: ScopeFilterOpts): boolean {
   if (!scope.isRestricted) return true;
   // Defensa: si caller dice isRestricted pero no nos pasó scopedZonaIds,
   // no podemos decidir — dejamos pasar para no esconder datos por error.
@@ -58,9 +63,17 @@ function isInScope(item: ScopeCheckable, scope: ScopeFilter, _opts: ScopeFilterO
   const zonaId = item.zona_nro != null ? Number(item.zona_nro) : null;
   const sinMovil = !movilId;
 
-  // Regla de distribuidor: nunca ve pedidos/services sin móvil
-  // (ni pendientes ni finalizados, sin importar la zona ni opts).
-  if (sinMovil) return false;
+  // Sin móvil (sin-asignar): scope solo por zona.
+  // La decisión de mostrar/ocultar sin-asignar al distribuidor se delegó a
+  // los gates de funcionalidad (Ped s/asignar acumulados/x zona/unitarios)
+  // en los call-sites — este helper ya no la bloquea. Ver commit e44763f.
+  if (sinMovil) {
+    if (zonaId === null) return false; // sin zona: no scopeable
+    // Finalizados huérfanos siguen filtrándose si el caller lo pide explícito.
+    const estadoNro = item.estado_nro != null ? Number(item.estado_nro) : null;
+    if (opts.hideEntregadosSinMovil && estadoNro === 2) return false;
+    return scope.scopedZonaIds.has(zonaId);
+  }
 
   if (!scope.allowedMovilIds.has(movilId)) return false;
   if (zonaId === null) return false;
