@@ -1,10 +1,11 @@
-﻿'use client';
+'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import PreferencesModal, { UserPreferences } from '@/components/ui/PreferencesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
+import { getMaxRoleAttribute } from '@/lib/role-attributes';
 
 interface FloatingToolbarProps {
   selectedDate: string;
@@ -19,10 +20,32 @@ export default function FloatingToolbar({
 }: FloatingToolbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
-  const { user, logout, hasPermiso } = useAuth();
+  const { user, escenarioId, logout, hasPermiso } = useAuth();
   const canChangeDate = hasPermiso('date');
   const router = useRouter();
   const panelRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Fecha mínima permitida en el selector de fecha del dashboard.
+   * Derivada de HistoricoMaxPedidos del rol activo en el escenario actual.
+   * Si el usuario es root o no tiene restricciones en su rol, se usa la anterior
+   * lógica de 10 días (fallback conservador visible solo para usuarios con permiso 'date').
+   */
+  const minDatePreferences = useMemo(() => {
+    // Root: sin restricción (se comporta como antes — no mostramos el input igual)
+    if (user?.isRoot === 'S') return undefined;
+    // Sin roles: sin restricción
+    if (!user?.roles) return undefined;
+
+    const dias = getMaxRoleAttribute(
+      user.roles.map(r => ({ rolId: Number(r.RolId), rolNombre: r.RolNombre, atributos: r.atributos })),
+      'HistoricoMaxPedidos',
+      escenarioId,
+    );
+
+    // null = ningún rol aplica al escenario = sin restricción
+    return dias !== null ? daysAgoMontevideo(dias) : undefined;
+  }, [user, escenarioId]);
 
   // Cerrar al hacer clic fuera
   useEffect(() => {
@@ -62,17 +85,17 @@ export default function FloatingToolbar({
           className={`
             flex items-center justify-center w-10 h-10 rounded-full shadow-2xl
             transition-all duration-300 transform hover:scale-110
-            ${isOpen 
-              ? 'bg-gradient-to-br from-blue-600 to-blue-700 rotate-90' 
+            ${isOpen
+              ? 'bg-gradient-to-br from-blue-600 to-blue-700 rotate-90'
               : 'bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'
             }
           `}
           title="Filtros y Configuración"
         >
-          <svg 
+          <svg
             className={`w-5 h-5 text-white transition-transform duration-300 ${isOpen ? 'rotate-45' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
+            fill="none"
+            stroke="currentColor"
             viewBox="0 0 24 24"
           >
             {isOpen ? (
@@ -81,7 +104,7 @@ export default function FloatingToolbar({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             )}
           </svg>
-          
+
 
         </button>
 
@@ -90,8 +113,8 @@ export default function FloatingToolbar({
           className={`
             absolute top-16 right-0 w-80 bg-white rounded-2xl shadow-2xl
             transition-all duration-300 transform origin-top-right
-            ${isOpen 
-              ? 'opacity-100 scale-100 translate-y-0' 
+            ${isOpen
+              ? 'opacity-100 scale-100 translate-y-0'
               : 'opacity-0 scale-95 -translate-y-4 pointer-events-none'
             }
           `}
@@ -119,7 +142,7 @@ export default function FloatingToolbar({
                   type="date"
                   value={selectedDate}
                   onChange={(e) => onDateChange(e.target.value)}
-                  min={daysAgoMontevideo(10)}
+                  {...(minDatePreferences !== undefined ? { min: minDatePreferences } : {})}
                   max={todayMontevideo()}
                   className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 text-gray-700 font-medium"
                 />
@@ -142,10 +165,10 @@ export default function FloatingToolbar({
               }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-gray-50 to-gray-100 hover:from-blue-50 hover:to-blue-100 border-2 border-gray-200 hover:border-blue-300 transition-all duration-200 group"
             >
-              <svg 
-                className="w-5 h-5 text-gray-600 group-hover:text-blue-600 group-hover:rotate-90 transition-all duration-300" 
-                fill="none" 
-                stroke="currentColor" 
+              <svg
+                className="w-5 h-5 text-gray-600 group-hover:text-blue-600 group-hover:rotate-90 transition-all duration-300"
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -154,10 +177,10 @@ export default function FloatingToolbar({
               <span className="font-semibold text-gray-700 group-hover:text-blue-700 transition-colors">
                 Preferencias
               </span>
-              <svg 
-                className="w-5 h-5 text-gray-400 group-hover:text-blue-500 ml-auto transition-all duration-200 group-hover:translate-x-1" 
-                fill="none" 
-                stroke="currentColor" 
+              <svg
+                className="w-5 h-5 text-gray-400 group-hover:text-blue-500 ml-auto transition-all duration-200 group-hover:translate-x-1"
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -251,10 +274,10 @@ export default function FloatingToolbar({
               onClick={handleLogout}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 border-2 border-red-200 hover:border-red-300 transition-all duration-200 group"
             >
-              <svg 
-                className="w-5 h-5 text-red-600 group-hover:text-red-700 transition-colors" 
-                fill="none" 
-                stroke="currentColor" 
+              <svg
+                className="w-5 h-5 text-red-600 group-hover:text-red-700 transition-colors"
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -269,7 +292,7 @@ export default function FloatingToolbar({
 
       {/* Backdrop cuando está abierto */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[9998] transition-opacity duration-300"
           onClick={() => setIsOpen(false)}
         />

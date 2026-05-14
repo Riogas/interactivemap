@@ -39,7 +39,8 @@ import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
-import { todayMontevideo } from '@/lib/date-utils';
+import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
+import { getMaxRoleAttribute } from '@/lib/role-attributes';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
@@ -2555,6 +2556,20 @@ function DashboardContent() {
         selectedDate={selectedDate}
         selectedMovil={selectedMoviles.length === 1 ? selectedMoviles[0] : undefined}
         selectedEmpresas={selectedEmpresas}
+        minDate={
+          // HistoricoMaxCoords: restriccion de fecha para ver recorridos.
+          // Solo aplica a usuarios no-root con roles que tienen atributos de escenario.
+          user?.isRoot !== 'S' && user?.roles
+            ? (() => {
+                const dias = getMaxRoleAttribute(
+                  user.roles.map(r => ({ rolId: Number(r.RolId), rolNombre: r.RolNombre, atributos: r.atributos })),
+                  'HistoricoMaxCoords',
+                  escenarioId,
+                );
+                return dias !== null ? daysAgoMontevideo(dias) : undefined;
+              })()
+            : undefined
+        }
       />
 
       {/* Modal de Vista Extendida de Pedidos */}

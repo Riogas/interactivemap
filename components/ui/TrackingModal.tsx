@@ -16,6 +16,12 @@ interface TrackingModalProps {
   selectedMovil?: number; // Si ya hay un móvil seleccionado
   /** IDs de empresas fleteras seleccionadas — se pasan al endpoint para filtrar actividad. */
   selectedEmpresas?: number[];
+  /**
+   * Fecha mínima permitida en el selector (YYYY-MM-DD).
+   * Calculada por el dashboard a partir de HistoricoMaxCoords del rol activo.
+   * Si es undefined no se aplica restricción (comportamiento original).
+   */
+  minDate?: string;
 }
 
 export default function TrackingModal({
@@ -27,6 +33,7 @@ export default function TrackingModal({
   selectedDate,
   selectedMovil: preSelectedMovil,
   selectedEmpresas,
+  minDate,
 }: TrackingModalProps) {
   const [movilId, setMovilId] = useState<number | ''>(preSelectedMovil || '');
   const [date, setDate] = useState(selectedDate);
@@ -287,6 +294,7 @@ export default function TrackingModal({
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   max={todayMontevideo()}
+                  {...(minDate !== undefined ? { min: minDate } : {})}
                   className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-medium focus:border-purple-400 focus:outline-none transition-colors"
                 />
               </div>

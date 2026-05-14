@@ -32,6 +32,11 @@ interface ParsedLoginResponse {
       funcionalidadId: number;
       nombre: string;
     }>;
+    /** Atributos del rol — incluye HistoricoMaxCoords, HistoricoMaxPedidos y Escenario */
+    atributos?: Array<{
+      atributo: string;
+      valor: string;
+    }>;
   }>;
   preferencias?: Array<{
     atributo: string;
