@@ -271,7 +271,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.success && response.user && response.user.id && response.user.username) {
         console.log('✅ Login GeneXus exitoso');
 
-        const isRoot = response.user.isRoot === 'S';
+        const isRoot = response.user.isRoot === 'S' ||
+          (response.roles || []).some((r) => String(r.rolNombre ?? '').trim() === 'Root');
 
         // 🚪 Gate de funcionalidad "PermiteLogin": un usuario no-root debe tener
         // al menos un rol con una funcionalidad de nombre "PermiteLogin" para

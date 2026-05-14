@@ -6,6 +6,7 @@ import PreferencesModal, { UserPreferences } from '@/components/ui/PreferencesMo
 import { useAuth } from '@/contexts/AuthContext';
 import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
 import { getMaxRoleAttribute } from '@/lib/role-attributes';
+import { isRoot } from '@/lib/auth-scope';
 
 interface FloatingToolbarProps {
   selectedDate: string;
@@ -33,7 +34,7 @@ export default function FloatingToolbar({
    */
   const minDatePreferences = useMemo(() => {
     // Root: sin restricción (se comporta como antes — no mostramos el input igual)
-    if (user?.isRoot === 'S') return undefined;
+    if (isRoot(user)) return undefined;
     // Sin roles: sin restricción
     if (!user?.roles) return undefined;
 
@@ -188,7 +189,7 @@ export default function FloatingToolbar({
             </button>
 
             {/* Botones Admin - Solo root */}
-            {user?.isRoot === 'S' && (
+            {isRoot(user) && (
               <div className="space-y-2">
                 <button
                   onClick={() => { window.open('/admin/incidencias', '_blank'); setIsOpen(false); }}

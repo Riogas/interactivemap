@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { isRoot } from '@/lib/auth-scope';
 import { authStorage } from '@/lib/auth-storage';
 import * as XLSX from 'xlsx';
 import { NIGHT_START_HOUR, DAY_START_HOUR } from '@/lib/horario-servicio';
@@ -301,19 +302,19 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
   // Cargar preferencias desde localStorage al montar (cache local de lo que ya se cargó de DB).
   // Override de rol: para root lightMode=false, resto true (a menos que el usuario lo haya guardado).
   useEffect(() => {
-    const isRoot = user?.isRoot === 'S';
+    const isRootLocal = isRoot(user);
     const saved = localStorage.getItem('userPreferences');
     if (saved) {
       try {
-        setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRoot, ...JSON.parse(saved) });
+        setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRootLocal, ...JSON.parse(saved) });
       } catch (e) {
         console.error('Error al cargar preferencias:', e);
-        setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRoot });
+        setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRootLocal });
       }
     } else {
-      setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRoot });
+      setPreferences({ ...DEFAULT_PREFERENCES, lightMode: !isRootLocal });
     }
-  }, [user?.isRoot]);
+  }, [user?.isRoot, user?.roles]);
 
   const handleSave = () => {
     localStorage.setItem('userPreferences', JSON.stringify(preferences));
@@ -821,7 +822,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 </p>
               </div>
 
-              {user?.isRoot === 'S' && (
+              {isRoot(user) && (
                 <>
                   <hr className="border-gray-200" />
 
@@ -949,7 +950,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
               )}
 
               {/* ===== Auditoría — solo root (isRoot=S) ===== */}
-              {user?.isRoot === "S" && (
+              {isRoot(user) && (
                 <>
                   <hr className="border-gray-200" />
                   <div className="space-y-4">
@@ -1088,9 +1089,9 @@ export function useUserPreferences() {
   // resto de perfiles lightMode=true. Si el usuario guardó explícitamente un
   // valor, ese valor (en `saved`) gana sobre el default.
   const mergeWithDefaults = useCallback((saved: Partial<UserPreferences>): UserPreferences => {
-    const isRoot = user?.isRoot === 'S';
-    return { ...DEFAULT_PREFERENCES, lightMode: !isRoot, ...saved };
-  }, [user?.isRoot]);
+    const isRootLocal = isRoot(user);
+    return { ...DEFAULT_PREFERENCES, lightMode: !isRootLocal, ...saved };
+  }, [user?.isRoot, user?.roles]);
 
   // Cargar preferencias: primero intenta DB, fallback a localStorage
   useEffect(() => {

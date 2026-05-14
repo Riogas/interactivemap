@@ -2,7 +2,7 @@
  * Helpers de scoping por rol/empresa para limitar lo que ve el usuario en el dashboard.
  *
  * Reglas de negocio:
- *   - Root (isRoot === 'S'): ve todo, sin restricción.
+ *   - Root (isRoot === 'S' o rol RolNombre === 'Root'): ve todo, sin restricción.
  *   - Despacho (RolId === '49'): ve todo, despacho wins por sobre allowedEmpresas.
  *   - Otros usuarios (típicamente "distribuidor"): se limitan al set de zonas
  *     que cubre el conjunto allowedEmpresas configurado en sus preferencias
@@ -26,9 +26,17 @@ interface ScopedUser {
   allowedEmpresas?: number[] | null;
 }
 
-/** True si el usuario es root (sin restricción). */
+/**
+ * True si el usuario es root (sin restricción).
+ * - Modo legacy: atributo user.isRoot === 'S' (preservado por compat).
+ * - Modo nuevo: alguno de sus roles tiene RolNombre === 'Root'.
+ *
+ * El objetivo a futuro es migrar todo a roles y deprecar isRoot, pero
+ * mantenemos ambos vivos durante la transición.
+ */
 export function isRoot(user: ScopedUser | null | undefined): boolean {
-  return user?.isRoot === 'S';
+  if (user?.isRoot === 'S') return true;
+  return user?.roles?.some((r) => String(r.RolNombre ?? '').trim() === 'Root') ?? false;
 }
 
 /** True si el usuario tiene rol Despacho (RolId === '49'). */
@@ -46,7 +54,7 @@ export function shouldScopeByEmpresa(user: ScopedUser | null | undefined): boole
  * Estos roles ven TODAS las zonas sin importar la selección de empresas en el header.
  *
  * Roles privilegiados:
- *   - Root        (isRoot === 'S')
+ *   - Root        (isRoot === 'S' o RolNombre === 'Root')
  *   - Despacho    (RolId === '49')
  *   - Dashboard   (RolId === '48')
  *   - Supervisor  (RolId === '50')
@@ -78,7 +86,7 @@ export function getScopedEmpresas(user: ScopedUser | null | undefined): number[]
  * en la capa Cap. Entrega del mapa.
  *
  * Roles privilegiados:
- *   - Root        (isRoot === 'S')
+ *   - Root        (isRoot === 'S' o RolNombre === 'Root')
  *   - Despacho    (RolId === '49')
  *   - Dashboard   (RolId === '48')
  *   - Supervisor  (RolId === '50')
@@ -100,7 +108,7 @@ export function isPrivilegedForCapEntrega(user: ScopedUser | null | undefined): 
  * pero se declara separado para permitir evolución independiente de la regla de negocio.
  *
  * Roles privilegiados:
- *   - Root        (isRoot === 'S')
+ *   - Root        (isRoot === 'S' o RolNombre === 'Root')
  *   - Despacho    (RolId === '49')
  *   - Dashboard   (RolId === '48')
  *   - Supervisor  (RolId === '50')

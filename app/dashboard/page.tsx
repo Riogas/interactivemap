@@ -23,7 +23,7 @@ import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
-import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForZonaScope } from '@/lib/auth-scope';
+import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForZonaScope, isRoot } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
@@ -288,7 +288,7 @@ function DashboardContent() {
     [empresas.length, selectedEmpresas.length],
   );
   // Variable derivada para el gating de UI de drift  comparacion literal con 'S' (no === true)
-  const isRoot = user?.isRoot === 'S';
+  const isRootUser = isRoot(user);
   
   // ? Móviles filtrados por empresas fleteras seleccionadas
   // Semántica:
@@ -867,9 +867,9 @@ function DashboardContent() {
       totalBefore: movilesRef.current.length,
       totalAfter: movilesRef.current.length + result.added - result.removed,
       selectedDate: selectedDate ?? '',
-      isRoot,
+      isRoot: isRootUser,
     });
-  }, [fetchPositions, selectedDate, isRoot]);
+  }, [fetchPositions, selectedDate, isRootUser]);
 
   // Registrar fetchPositions como callback de reconexion del RealtimeProvider.
   // Cuando GPS o Moviles reconectan (tras una caida del WS), el provider llama
@@ -901,11 +901,11 @@ function DashboardContent() {
           totalBefore: movilesRef.current.length,
           totalAfter: movilesRef.current.length + result.added - result.removed,
           selectedDate: selectedDate ?? '',
-          isRoot,
+          isRoot: isRootUser,
         });
       }
     }, 500);
-  }, [fetchPositions, selectedDate, isRoot]);
+  }, [fetchPositions, selectedDate, isRootUser]);
 
   useEffect(() => {
     setOnMovilEvent(debouncedFetchOnMovilEvent);
@@ -947,12 +947,12 @@ function DashboardContent() {
         totalBefore: movilesRef.current.length,
         totalAfter: movilesRef.current.length + result.added - result.removed,
         selectedDate: selectedDate ?? '',
-        isRoot,
+        isRoot: isRootUser,
       });
     }, seconds * 1000);
 
     return () => clearInterval(interval);
-  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimePollingReconcileSeconds, isRoot]);
+  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimePollingReconcileSeconds, isRootUser]);
 
   // ?? Mejora #2  Detección de silencio del WS (admin / root).
   // Si durante N segundos no llegan eventos de pedidos NI de services NI de
@@ -987,14 +987,14 @@ function DashboardContent() {
             totalBefore: movilesRef.current.length,
             totalAfter: movilesRef.current.length + result.added - result.removed,
             selectedDate: selectedDate ?? '',
-            isRoot,
+            isRoot: isRootUser,
           });
         });
       }
     }, checkMs);
 
     return () => clearInterval(interval);
-  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds, isRoot]);
+  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds, isRootUser]);
 
   // ?? Mejora #3  Refetch al volver la pestaña a visible (admin / root).
   // Cuando la tab estuvo en background mucho tiempo, el WS puede haberse cerrado sin aviso
@@ -1022,13 +1022,13 @@ function DashboardContent() {
           totalBefore: movilesRef.current.length,
           totalAfter: movilesRef.current.length + result.added - result.removed,
           selectedDate: selectedDate ?? '',
-          isRoot,
+          isRoot: isRootUser,
         });
       }
     };
     document.addEventListener('visibilitychange', handler);
     return () => document.removeEventListener('visibilitychange', handler);
-  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeRefetchOnVisible, isRoot]);
+  }, [selectedDate, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeRefetchOnVisible, isRootUser]);
 
   // ?? Auto-selección de móviles:
   //  a) Carga inicial ? marca todos los visibles.
@@ -1799,7 +1799,7 @@ function DashboardContent() {
   // Usuarios que deben ver pedidos sin asignar y móviles fuera del panel
   // incluso cuando el filtro de empresa es parcial.
   const isPrivilegedUser = useMemo(
-    () => user?.isRoot === 'S' ||
+    () => isRoot(user) ||
       (user?.roles?.some(r => [48, 49, 50].includes(Number(r.RolId))) ?? false),
     [user],
   );
@@ -1807,25 +1807,25 @@ function DashboardContent() {
   // Gates: 'Ped s/asignar acumulados' (Gate A) y 'Ped s/asignar x zona' (Gate B).
   // Root siempre pasa (defensivo, consistente con canSeeCapEntregaLayer).
   const canVerAcumulados = useMemo(
-    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados'),
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados'),
     [user],
   );
 
   const canVerSinAsigPorZona = useMemo(
-    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Ped s/asignar x zona'),
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar x zona'),
     [user],
   );
 
   // Gating de capa Cap. Entrega: controlado unicamente por la funcionalidad (con bypass root).
   const canSeeUnassignedInCapEntrega = useMemo(
-    () => user?.isRoot === 'S' || canVerSinAsigPorZona,
+    () => isRoot(user) || canVerSinAsigPorZona,
     [user, canVerSinAsigPorZona],
   );
 
   // Gate: 'Ped s/asignar unitarios' (Gate C — markers mapa, colapsable, tabla extendida).
   // Root siempre pasa. Independiente de los otros 2 gates.
   const canVerSinAsignarUnitario = useMemo(
-    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Ped s/asignar unitarios'),
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar unitarios'),
     [user],
   );
 
@@ -1834,7 +1834,7 @@ function DashboardContent() {
   // - resto de usuarios: solo si algún rol tiene la funcionalidad
   //   "Capa Capacidad de Entrega" del SecuritySuite.
   const canSeeCapEntregaLayer = useMemo(
-    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Capa Capacidad de Entrega'),
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Capa Capacidad de Entrega'),
     [user],
   );
 
@@ -1842,7 +1842,7 @@ function DashboardContent() {
   // - root siempre lo ve.
   // - resto: solo si algun rol tiene la funcionalidad "Estadisticas por zona".
   const canVerEstadisticasPorZona = useMemo(
-    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Estadisticas por zona'),
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Estadisticas por zona'),
     [user],
   );
 
@@ -2964,12 +2964,12 @@ function DashboardContent() {
                   empresas={empresas}
                   selectedEmpresas={selectedEmpresas}
                   onEmpresasChange={setSelectedEmpresas}
-                  showEmpresaSelector={user?.isRoot === 'S' || (empresas.length > 1)}
+                  showEmpresaSelector={isRoot(user) || (empresas.length > 1)}
                   hideUnassigned={hideUnassigned}
                   isRestrictedUser={userHasEmpresaRestriction}
                   privilegedUser={isPrivilegedUser}
                   canVerSinAsignarUnitario={canVerSinAsignarUnitario}
-                  isRootUser={isRoot}
+                  isRootUser={isRootUser}
                   lastSync={lastSync}
                   onResync={fetchPositions}
                   pollingSeconds={
