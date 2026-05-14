@@ -3090,6 +3090,7 @@ function DashboardContent() {
                 onMarkersChange={setPuntosInteres}
                 allMoviles={movilesFiltered}
                 selectedDate={selectedDate}
+                selectedEmpresas={selectedEmpresas}
                 onMovilDateChange={handleTrackingConfirm}
                 onSecondaryAnimMovilChange={async (movilId) => {
                   if (movilId) {

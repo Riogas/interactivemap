@@ -137,6 +137,8 @@ interface MapViewProps {
   user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>; allowedEmpresas?: number[] | null } | null;
   /** Callback invocado en moveend/zoomend para capturar el estado del mapa (view-state). */
   onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
+  /** IDs de empresas fleteras seleccionadas — se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
+  selectedEmpresas?: number[];
 }
 
 
@@ -689,6 +691,7 @@ const MapView = memo(function MapView({
   serverNow = new Date(),
   minutosAntesSa = null,
   onMapStateChange,
+  selectedEmpresas,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -3150,6 +3153,7 @@ const MapView = memo(function MapView({
           selectedDate={selectedDate}
           onMovilDateChange={onMovilDateChange}
           currentAnimTimeStr={currentAnimTimeStr}
+          selectedEmpresas={selectedEmpresas}
         />
       )}
 
