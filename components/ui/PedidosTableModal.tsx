@@ -636,12 +636,9 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                       <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
                     </div>
                   ))}
-                  {/* Filtro Asignación: Todos / Con Móvil / Sin Móvil.
-                      Solo tiene sentido para root/despacho (sin restricción).
-                      Un usuario con restricción de empresa nunca ve "sin móvil",
-                      entonces el toggle no aporta nada. */}
-                  {!hideUnassigned && (
-                    <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
+                  {/* Filtro Asignacion: Todos / Con Movil / Sin Movil.
+                      Todos y Con Movil siempre visibles; Sin Movil gateado por canVerSinAsignarUnitario. */}
+                  <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
                       <button
                         onClick={() => setFilters(f => ({ ...f, asignacion: 'todos' }))}
                         className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
@@ -668,8 +665,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                           Sin Móvil
                         </button>
                       )}
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
               <div className="ml-auto text-xs text-gray-500">

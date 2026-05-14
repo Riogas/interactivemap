@@ -2971,6 +2971,7 @@ function DashboardContent() {
                   }
                   serverNow={serverNow}
                   minutosAntesSa={minutosAntesSa}
+                  scope={scope}
                 />
               </div>
             </motion.div>

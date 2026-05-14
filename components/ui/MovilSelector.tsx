@@ -13,6 +13,7 @@ import MapGuideModal from './MapGuideModal';
 import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicator';
 import type { LastSyncState } from '@/lib/realtime-drift';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import type { ScopeFilter } from '@/lib/scope-filter';
 
 interface MovilSelectorProps {
   moviles: MovilData[];
@@ -88,6 +89,10 @@ interface MovilSelectorProps {
   minutosAntesSa?: number | null;
   /** Segundos de polling configurados (para calcular umbrales 🟢🟡🔴). Default 60. */
   pollingSeconds?: number;
+  /** Scope del usuario distribuidor (zonas + moviles permitidos). null/isRestricted=false = sin filtro.
+   *  Si scope.isRestricted y scope.scopedZonaIds, los sin-asignar del colapsable
+   *  se filtran igual que en el mapa. */
+  scope?: ScopeFilter;
 }
 
 // Definir las categorías del árbol
@@ -151,6 +156,7 @@ export default function MovilSelector({
   serverNow = new Date(),
   minutosAntesSa = null,
   pollingSeconds = 60,
+  scope,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -393,7 +399,16 @@ export default function MovilSelector({
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
     if (selectedMoviles.length > 0) {
       result = result.filter(pedido => {
-        if (!pedido.movil || Number(pedido.movil) === 0) return canSeeUnassigned;
+        if (!pedido.movil || Number(pedido.movil) === 0) {
+          if (!canSeeUnassigned) return false;
+          // Distribuidor con scope: filtrar sin-asignar por zona, igual que el mapa.
+          // Root/despacho (scope.isRestricted=false) siempre pasan.
+          if (scope?.isRestricted && scope.scopedZonaIds) {
+            const zonaId = pedido.zona_nro != null ? Number(pedido.zona_nro) : null;
+            if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+          }
+          return true;
+        }
         // Cuando todos los móviles del colapsable están seleccionados y el usuario
         // es privilegiado, también pasan los pedidos de móviles ocultos (no activos
         // pero con operativa). Si solo hay un subset seleccionado, NO pasan.
@@ -527,7 +542,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa, scope]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -554,7 +569,16 @@ export default function MovilSelector({
 
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
-        if (!service.movil || Number(service.movil) === 0) return canSeeUnassignedSvc;
+        if (!service.movil || Number(service.movil) === 0) {
+          if (!canSeeUnassignedSvc) return false;
+          // Distribuidor con scope: filtrar sin-asignar por zona, igual que el mapa.
+          // Root/despacho (scope.isRestricted=false) siempre pasan.
+          if (scope?.isRestricted && scope.scopedZonaIds) {
+            const zonaId = service.zona_nro != null ? Number(service.zona_nro) : null;
+            if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+          }
+          return true;
+        }
         // Mismo criterio que pedidos: móviles ocultos pasan cuando todos seleccionados y usuario privilegiado
         if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
@@ -674,7 +698,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa, scope]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
