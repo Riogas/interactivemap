@@ -12,6 +12,7 @@ import { todayMontevideo } from '@/lib/date-utils';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
 interface Pedido {
@@ -226,7 +227,7 @@ function StatsContent() {
   const searchParams = useSearchParams();
   const date = searchParams.get('date') ?? todayMontevideo();
   const { user, escenarioId } = useAuth();
-  const canSeeUnassigned = isPrivilegedForUnassignedVisibility(user);
+  const canSeeUnassigned = isPrivilegedForUnassignedVisibility(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados');
   const isPrivilegedScope = isPrivilegedForZonaScope(user);
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);

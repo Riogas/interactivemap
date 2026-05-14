@@ -37,6 +37,10 @@ interface DashboardIndicatorsProps {
   selectedEmpresas?: number[];
   /** Scope (móviles + zonas) para filtrar pedidos en sinAsignar / entregados / % cuando el user es distribuidor. */
   scope?: ScopeFilter;
+  /** Gate: puede ver el indicador "Ped Sin Asig." y métricas de sin-asignar acumuladas.
+   *  false → ocultar indicador (y separador adyacente). Funcionalidad "Ped s/asignar acumulados".
+   *  Defaults true para retrocompatibilidad. Root siempre true. */
+  canVerAcumulados?: boolean;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
@@ -49,7 +53,7 @@ interface DashboardIndicatorsProps {
   minutosAntesSa?: number | null;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], selectedEmpresas = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick, serverNow = new Date(), minutosAntesSa = null }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], selectedEmpresas = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, canVerAcumulados = true, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick, serverNow = new Date(), minutosAntesSa = null }: DashboardIndicatorsProps) {
 
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -336,8 +340,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       {/* Contenedor scrollable de indicadores */}
       <div ref={scrollRef} className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar min-w-0 flex-1">
       <div className="flex items-center gap-1.5">
-        {/* Pedidos Sin Asignar — oculto para distribuidor (no ve sin asignar) */}
-        {!scope?.isRestricted && (
+        {/* Pedidos Sin Asignar — oculto para distribuidor (scope.isRestricted) y cuando !canVerAcumulados */}
+        {!scope?.isRestricted && canVerAcumulados && (
           <>
             <Indicator
               icon="📦"

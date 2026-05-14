@@ -43,6 +43,10 @@ interface ZonaEstadisticasModalProps {
   serverNow?: Date;
   /** Minutos de anticipacion del escenario. null = sin filtro (backwards-compat). */
   minutosAntesSa?: number | null;
+  /** Override externo para ocultar la columna/sección sin-asignar.
+   *  Cuando true, tiene prioridad sobre scope.isRestricted (OR).
+   *  Usado para implementar Gate B ('Ped s/asignar x zona'). */
+  hideSinAsignarOverride?: boolean;
 }
 
 type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
@@ -66,6 +70,7 @@ export default function ZonaEstadisticasModal({
   scopedZonaIds = null,
   scopedEmpresas = null,
   scope,
+  hideSinAsignarOverride = false,
   serverNow,
   minutosAntesSa = null,
 }: ZonaEstadisticasModalProps) {
@@ -77,7 +82,8 @@ export default function ZonaEstadisticasModal({
 
   // Distribuidor: oculta columna/summary/filtro de "Sin Asignar" y excluye los
   // pedidos sin móvil del cómputo de pendientes.
-  const hideSinAsignar = scope?.isRestricted ?? false;
+  // Ocultar sin-asignar si: distribuidor (scope.isRestricted) O Gate B no concedido (hideSinAsignarOverride).
+  const hideSinAsignar = (scope?.isRestricted ?? false) || hideSinAsignarOverride;
 
   // Si la columna sinAsignar queda oculta y el sort estaba en esa key, volver a 'zona'.
   useEffect(() => {

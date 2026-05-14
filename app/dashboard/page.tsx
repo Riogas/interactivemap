@@ -1804,12 +1804,22 @@ function DashboardContent() {
     [user],
   );
 
-  // Gating de capa Cap. Entrega: solo root/despacho/dashboard/supervisor ven y
-  // cuentan los pedidos sin asignar. Para otros roles sinAsignar=0 (no afecta
-  // calc, no se lista en modal). Derivado de isPrivilegedForCapEntrega().
-  const canSeeUnassignedInCapEntrega = useMemo(
-    () => isPrivilegedForCapEntrega(user),
+  // Gates: 'Ped s/asignar acumulados' (Gate A) y 'Ped s/asignar x zona' (Gate B).
+  // Root siempre pasa (defensivo, consistente con canSeeCapEntregaLayer).
+  const canVerAcumulados = useMemo(
+    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados'),
     [user],
+  );
+
+  const canVerSinAsigPorZona = useMemo(
+    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Ped s/asignar x zona'),
+    [user],
+  );
+
+  // Gating de capa Cap. Entrega: root/despacho/dashboard/supervisor, O si tiene 'Ped s/asignar x zona'.
+  const canSeeUnassignedInCapEntrega = useMemo(
+    () => isPrivilegedForCapEntrega(user) || canVerSinAsigPorZona,
+    [user, canVerSinAsigPorZona],
   );
 
   // Gating de la opción "Cap. Entrega" del control de capas del mapa:
@@ -1967,6 +1977,8 @@ function DashboardContent() {
   // Tiene su propio filtro independiente: pendientes (todos) / sin asignar / atrasados
   const pedidosZonaData = useMemo(() => {
     const map = new Map<number, number>();
+    // Gate B: si el usuario no tiene 'Ped s/asignar x zona', el filtro sin_asignar devuelve 0 por zona.
+    if (pedidosZonaFilter === 'sin_asignar' && !canVerSinAsigPorZona) return map;
     pedidosCompletos.forEach(p => {
       const estado = Number(p.estado_nro);
       const tieneMovil = p.movil != null && Number(p.movil) !== 0;
@@ -1991,15 +2003,15 @@ function DashboardContent() {
       map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted, serverNow, minutosAntesSa]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, isScopeRestricted, serverNow, minutosAntesSa, canVerSinAsigPorZona]);
 
   // Distribuidor: si por alguna razón el filtro pedidos/zona quedó en 'sin_asignar'
   // (ej. estado persistido), forzarlo a 'pendientes' — ese filtro no aplica.
   useEffect(() => {
-    if (isScopeRestricted && pedidosZonaFilter === 'sin_asignar') {
+    if ((isScopeRestricted || !canVerSinAsigPorZona) && pedidosZonaFilter === 'sin_asignar') {
       setPedidosZonaFilter('pendientes');
     }
-  }, [isScopeRestricted, pedidosZonaFilter]);
+  }, [isScopeRestricted, canVerSinAsigPorZona, pedidosZonaFilter]);
 
   // � Cálculo de saturación por zona:
   //   Para cada móvil con prioridad activa en zonas, su capacidad disponible se proratea
@@ -2397,6 +2409,7 @@ function DashboardContent() {
             scopedZonaIds={scopedZonaIds}
             scopedEmpresas={scopedEmpresas}
             scope={scope}
+            canVerAcumulados={canVerAcumulados}
             onSinAsignarClick={onSinAsignarClick}
             onEntregadosClick={onEntregadosClick}
             onPorcentajeClick={onPorcentajeClick}
@@ -2681,7 +2694,7 @@ function DashboardContent() {
       {/* No abrir si zona inactiva (demoras.activa===false) — sin métricas relevantes */}
       {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && demorasData.get(saturacionModalZonaId)?.activa !== false && (() => {
         const isServiceMode = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
-        // Solo roles privilegiados (root/despacho/dashboard/supervisor) ven sin asignar.
+        // Solo si canSeeUnassignedInCapEntrega (privilegiado clásico o tiene 'Ped s/asignar x zona').
         const sinAsignarList = !canSeeUnassignedInCapEntrega
           ? []
           : isServiceMode
@@ -2797,6 +2810,7 @@ function DashboardContent() {
         scopedZonaIds={scopedZonaIds}
         scopedEmpresas={scopedEmpresas}
         scope={scope}
+        hideSinAsignarOverride={!canVerSinAsigPorZona}
         serverNow={serverNow}
         minutosAntesSa={minutosAntesSa}
         onZonaClick={(zonaId, svcFilter) => {
@@ -3143,7 +3157,7 @@ function DashboardContent() {
                 pedidosZonaData={pedidosZonaData}
                 pedidosZonaFilter={pedidosZonaFilter}
                 onPedidosZonaFilterChange={setPedidosZonaFilter}
-                hideSinAsignarOption={isScopeRestricted}
+                hideSinAsignarOption={isScopeRestricted || !canVerSinAsigPorZona}
                 allMovilEstados={allMovilEstados}
                 allHiddenMovilIds={allHiddenMovilIds}
                 movilesZonasData={movilesZonasData}
