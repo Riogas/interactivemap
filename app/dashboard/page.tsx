@@ -1838,6 +1838,14 @@ function DashboardContent() {
     [user],
   );
 
+  // Gating del FAB "Estadísticas por zonas":
+  // - root siempre lo ve.
+  // - resto: solo si algun rol tiene la funcionalidad "Estadisticas por zona".
+  const canVerEstadisticasPorZona = useMemo(
+    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Estadisticas por zona'),
+    [user],
+  );
+
   // `userHasEmpresaRestriction` mira solo allowedEmpresas  se usa para filtrar
   // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
   // `isScopeRestricted` además exige que el user no sea privilegiado (root/despacho/dashboard/supervisor)  es la
@@ -2490,18 +2498,20 @@ function DashboardContent() {
           )}
 
           {/* Botón Estadísticas por zonas  solo habilitado para fecha de hoy */}
-          <button
-            id="tour-fab-estadisticas-zonas"
-            onClick={() => { if (!isToday) return; setIsZonaEstadisticasOpen(true); setIsActionsExpanded(false); }}
-            disabled={!isToday}
-            className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform ${isToday ? 'hover:scale-110 bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 cursor-pointer' : 'bg-gradient-to-br from-gray-500 to-gray-600 opacity-50 cursor-not-allowed'}`}
-            title={isToday ? 'Estadísticas por zonas' : 'Solo disponible para la fecha de hoy'}
-          >
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-            </svg>
-          </button>
+          {canVerEstadisticasPorZona && (
+            <button
+              id="tour-fab-estadisticas-zonas"
+              onClick={() => { if (!isToday) return; setIsZonaEstadisticasOpen(true); setIsActionsExpanded(false); }}
+              disabled={!isToday}
+              className={`flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform ${isToday ? 'hover:scale-110 bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 cursor-pointer' : 'bg-gradient-to-br from-gray-500 to-gray-600 opacity-50 cursor-not-allowed'}`}
+              title={isToday ? 'Estadísticas por zonas' : 'Solo disponible para la fecha de hoy'}
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+              </svg>
+            </button>
+          )}
 
           {/* FAB: Estadísticas  requiere permiso stats */}
           {hasPermiso('stats') && (
