@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
 import { getMaxRoleAttribute } from '@/lib/role-attributes';
 import { isRoot } from '@/lib/auth-scope';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 
 interface FloatingToolbarProps {
   selectedDate: string;
@@ -22,7 +23,15 @@ export default function FloatingToolbar({
   const [isOpen, setIsOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const { user, escenarioId, logout, hasPermiso } = useAuth();
-  const canChangeDate = hasPermiso('date');
+  // canChangeDate: el usuario puede navegar a fechas anteriores en el selector.
+  // Pasa si:
+  //   - es root (bypass), o
+  //   - tiene la accion 'date' en su array `accesos` (sistema legacy
+  //     consultado vía hasPermiso → /api/auth/permisos), o
+  //   - tiene la funcionalidad "Ver Historico" en alguno de sus roles
+  //     (sistema nuevo de funcionalidades en roles[]).
+  // Cualquiera de los tres alcanza para habilitar el cambio de fecha.
+  const canChangeDate = isRoot(user) || hasPermiso('date') || hasFuncionalidad(user?.roles, 'Ver Historico');
   const router = useRouter();
   const panelRef = useRef<HTMLDivElement>(null);
 
