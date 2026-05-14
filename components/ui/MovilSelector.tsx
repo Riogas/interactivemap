@@ -72,6 +72,10 @@ interface MovilSelectorProps {
    *  muestran tambien los pedidos sin movil y los de moviles fuera del panel
    *  aunque el filtro de empresas sea parcial. */
   privilegedUser?: boolean;
+  /** Gate funcional: true si el usuario tiene la funcionalidad
+   *  "Ped s/asignar unitarios" (o es root). Habilita la visibilidad de
+   *  pedidos/services sin movil en el colapsable. */
+  canVerSinAsignarUnitario?: boolean;
   /** Instrumentacion de drift: true si user?.isRoot === 'S'. Gating estricto — comparacion literal. */
   isRootUser?: boolean;
   /** Estado del ultimo sync de posiciones (null si nunca sincronizo). Solo visible si isRootUser. */
@@ -140,6 +144,7 @@ export default function MovilSelector({
   hideUnassigned = false,
   isRestrictedUser = false,
   privilegedUser = false,
+  canVerSinAsignarUnitario = false,
   isRootUser = false,
   lastSync = null,
   onResync,
@@ -380,7 +385,10 @@ export default function MovilSelector({
     // (alcance global, no del colapsable). Si el usuario filtró a un subset de
     // empresas, los sin asignar no aplican porque podrían corresponder a
     // empresas excluidas.
-    const canSeeUnassigned = privilegedUser && allMovilesSelected;
+    // Nuevo: canSeeUnassigned se basa en el gate funcional "Ped s/asignar unitarios".
+    // privilegedUser ya no controla la visibilidad de sin-asignar en el colapsable —
+    // eso queda solo en canVerSinAsignarUnitario (root bypass incluido en la prop).
+    const canSeeUnassigned = canVerSinAsignarUnitario;
 
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
     if (selectedMoviles.length > 0) {
@@ -392,10 +400,11 @@ export default function MovilSelector({
         if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
-    } else if (privilegedUser && !isPartialEmpresa) {
+    } else if (privilegedUser && canVerSinAsignarUnitario && !isPartialEmpresa) {
       // Privilegiado SIN móviles seleccionados (handleClearAll) y empresas
       // completas: vista "solo sin asignar". Mostramos exclusivamente pedidos
       // sin móvil — los asignados quedan ocultos hasta que el usuario seleccione.
+      // Gate funcional: requiere canVerSinAsignarUnitario ademas de privilegio rol.
       result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
     } else if (isPartialEmpresa && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
@@ -540,7 +549,8 @@ export default function MovilSelector({
     // todas las empresas + todos los móviles están seleccionados. Mismo
     // criterio que en filteredPedidos: usa allMovilesSelected (incluye gating
     // por empresa).
-    const canSeeUnassignedSvc = privilegedUser && allMovilesSelected;
+    // Mismo criterio que canSeeUnassigned para pedidos: basado en gate funcional.
+    const canSeeUnassignedSvc = canVerSinAsignarUnitario;
 
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
@@ -549,9 +559,10 @@ export default function MovilSelector({
         if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
-    } else if (privilegedUser && !isPartialEmpresaSvc) {
+    } else if (privilegedUser && canVerSinAsignarUnitario && !isPartialEmpresaSvc) {
       // Privilegiado SIN móviles seleccionados y empresas completas: vista
       // "solo sin asignar". Mostramos exclusivamente services sin móvil.
+      // Gate funcional: requiere canVerSinAsignarUnitario ademas de privilegio rol.
       result = result.filter(service => !service.movil || Number(service.movil) === 0);
     } else if (isPartialEmpresaSvc && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: restringir también a los

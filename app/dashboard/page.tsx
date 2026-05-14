@@ -1822,6 +1822,13 @@ function DashboardContent() {
     [user, canVerSinAsigPorZona],
   );
 
+  // Gate: 'Ped s/asignar unitarios' (Gate C — markers mapa, colapsable, tabla extendida).
+  // Root siempre pasa. Independiente de los otros 2 gates.
+  const canVerSinAsignarUnitario = useMemo(
+    () => user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Ped s/asignar unitarios'),
+    [user],
+  );
+
   // Gating de la opción "Cap. Entrega" del control de capas del mapa:
   // - root (isRoot='S') ve siempre.
   // - resto de usuarios: solo si algún rol tiene la funcionalidad
@@ -2617,6 +2624,7 @@ function DashboardContent() {
         hideUnassigned={hideUnassigned}
         allMovilesSelected={allMovilesSelected}
         privilegedUser={isPrivilegedUser}
+        canVerSinAsignarUnitario={canVerSinAsignarUnitario}
         onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[], tipoServicio: f.tipoServicio }))}
         externalResetToken={pedidosResetToken}
         serverNow={serverNow}
@@ -2645,6 +2653,7 @@ function DashboardContent() {
         hideUnassigned={hideUnassigned}
         allMovilesSelected={allMovilesSelected}
         privilegedUser={isPrivilegedUser}
+        canVerSinAsignarUnitario={canVerSinAsignarUnitario}
         onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, defecto: f.defecto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
         externalResetToken={servicesResetToken}
         serverNow={serverNow}
@@ -2948,6 +2957,7 @@ function DashboardContent() {
                   hideUnassigned={hideUnassigned}
                   isRestrictedUser={userHasEmpresaRestriction}
                   privilegedUser={isPrivilegedUser}
+                  canVerSinAsignarUnitario={canVerSinAsignarUnitario}
                   isRootUser={isRoot}
                   lastSync={lastSync}
                   onResync={fetchPositions}
@@ -3033,7 +3043,7 @@ function DashboardContent() {
                     //   (b) vista "solo sin asignar"  privilegiado con
                     //       selectedMoviles=[] (handleClearAll) y empresas completas.
                     if (!p.movil || Number(p.movil) === 0) {
-                      if (!isPendientes || isEmpresaPartial) return false;
+                      if (!canVerSinAsignarUnitario || !isPendientes || isEmpresaPartial) return false;
                       if (allMovilesSelected) return true;
                       if (selectedMoviles.length === 0 && isPrivilegedUser) return true;
                       return false;
@@ -3089,7 +3099,7 @@ function DashboardContent() {
                     //   (b) vista "solo sin asignar"  privilegiado con selectedMoviles=[]
                     //       (handleClearAll) y empresas completas.
                     if (!s.movil || Number(s.movil) === 0) {
-                      if (!isPendientes || isEmpresaPartial) return false;
+                      if (!canVerSinAsignarUnitario || !isPendientes || isEmpresaPartial) return false;
                       if (allMovilesSelected) return true;
                       if (selectedMoviles.length === 0 && isPrivilegedUser) return true;
                       return false;

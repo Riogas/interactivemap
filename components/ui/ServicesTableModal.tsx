@@ -66,6 +66,10 @@ interface ServicesTableModalProps {
   /** True para usuarios root / despacho / supervisor / dashboards. Solo ellos
    *  pueden ver services finalizados sin móvil y solo en modo "Todos". */
   privilegedUser?: boolean;
+  /** Gate funcional: true si el usuario tiene la funcionalidad
+   *  "Ped s/asignar unitarios" (o es root). Controla visibilidad de sin-movil
+   *  en la tabla y en el filtro de asignacion. */
+  canVerSinAsignarUnitario?: boolean;
   onClearPreFilter?: () => void;
   onInnerFiltersChange?: (f: Filters) => void;
   externalResetToken?: number;
@@ -98,7 +102,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -151,9 +155,15 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
 
   // ========== Services base: según vista (pendientes/finalizados) + filtros externos ==========
   const servicesBase = useMemo(() => {
+    // Gate funcional: si el usuario no tiene "Ped s/asignar unitarios", excluir
+    // services sin movil desde el inicio. El filtro de asignacion sin_movil
+    // tampoco aplica en ese caso (su boton queda oculto en la UI).
+    const servicesFiltradosPorGate = !canVerSinAsignarUnitario
+      ? services.filter(s => s.movil && Number(s.movil) !== 0)
+      : services;
     let result: ServiceSupabase[];
     if (isFinalizados) {
-      result = services.filter(s => Number(s.estado_nro) === 2);
+      result = servicesFiltradosPorGate.filter(s => Number(s.estado_nro) === 2);
 
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
@@ -163,7 +173,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       }
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
-      result = services
+      result = servicesFiltradosPorGate
         .filter(s => Number(s.estado_nro) === 1)
         .filter(s =>
           (s.movil && Number(s.movil) !== 0) ||
@@ -238,7 +248,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
+  }, [services, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
   // Respetamos scope: un distribuidor solo ve sus móviles/zonas/defectos en los dropdowns.
@@ -547,14 +557,16 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                       >
                         Con Móvil
                       </button>
-                      <button
-                        onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
-                        className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
-                          filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                        }`}
-                      >
-                        Sin Móvil
-                      </button>
+                      {canVerSinAsignarUnitario && (
+                        <button
+                          onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
+                          className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                            filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                          }`}
+                        >
+                          Sin Móvil
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

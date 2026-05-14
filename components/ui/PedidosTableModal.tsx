@@ -73,6 +73,10 @@ interface PedidosTableModalProps {
    *  pueden ver pedidos finalizados sin móvil ("ENTR. SIN 1710" huérfanos) y
    *  sólo en modo "Todos". Distribuidores nunca los ven. */
   privilegedUser?: boolean;
+  /** Gate funcional: true si el usuario tiene la funcionalidad
+   *  "Ped s/asignar unitarios" (o es root). Controla visibilidad de sin-movil
+   *  en la tabla y en el filtro de asignacion. */
+  canVerSinAsignarUnitario?: boolean;
   onInnerFiltersChange?: (f: Filters) => void;
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
@@ -104,7 +108,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -200,9 +204,15 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
+    // Gate funcional: si el usuario no tiene "Ped s/asignar unitarios", excluir
+    // pedidos sin movil desde el inicio. El filtro de asignacion sin_movil
+    // tampoco aplica en ese caso (su boton queda oculto en la UI).
+    const pedidosFiltradosPorGate = !canVerSinAsignarUnitario
+      ? pedidos.filter(p => p.movil && Number(p.movil) !== 0)
+      : pedidos;
     let result: PedidoSupabase[];
     if (isFinalizados) {
-      result = pedidos.filter(p => Number(p.estado_nro) === 2);
+      result = pedidosFiltradosPorGate.filter(p => Number(p.estado_nro) === 2);
 
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
@@ -212,7 +222,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       }
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
-      result = pedidos
+      result = pedidosFiltradosPorGate
         .filter(p => Number(p.estado_nro) === 1)
         .filter(p =>
           (p.movil && Number(p.movil) !== 0) ||
@@ -293,7 +303,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
+  }, [pedidos, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
@@ -646,14 +656,16 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                       >
                         Con Móvil
                       </button>
-                      <button
-                        onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
-                        className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
-                          filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                        }`}
-                      >
-                        Sin Móvil
-                      </button>
+                      {canVerSinAsignarUnitario && (
+                        <button
+                          onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
+                          className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                            filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                          }`}
+                        >
+                          Sin Móvil
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
