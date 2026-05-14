@@ -256,23 +256,16 @@ function transformPedidoToSupabase(pedido: any) {
 }
 
 /**
- * Helper: extrae movil nros únicos y no nulos de un array de registros,
- * luego recomputa los contadores y sincroniza zonas_cap_entrega (best-effort).
+ * Recomputa los contadores y sincroniza zonas_cap_entrega para un conjunto de
+ * movilNros (ya deduplicados). Recibe los nros directamente — no extrae de records.
  *
  * IMPORTANTE: usa el cliente de servidor (service role) para bypassear RLS en
  * el UPDATE de la tabla moviles. El cliente anon puede fallar silenciosamente.
- *
- * Llama recomputeMovilAndCapEntrega (compuesta) en lugar de recomputeMovilCounters:
- * garantiza que zonas_cap_entrega queda sincronizada después de cada mutación.
  */
-async function recomputeCountersForMoviles(records: any[], trigger: string): Promise<void> {
-  if (!records || records.length === 0) return;
+async function recomputeMovilNrosBatch(movilNros: number[], trigger: string): Promise<void> {
+  if (!movilNros || movilNros.length === 0) return;
   const serverClient = getServerSupabaseClient();
-  const movilNros = [...new Set(
-    records.map((r: any) => r.movil).filter((m: any) => m != null && m !== 0)
-  )];
-  if (movilNros.length === 0) return;
-  console.log(`[zonas-cap-entrega] trigger=${trigger} — moviles a recomputar: ${movilNros.join(', ')}`);
+  console.log(`[recompute] trigger=${trigger} affectedMoviles=[${movilNros.join(', ')}] (OLD+NEW dedup)`);
   for (const nro of movilNros) {
     try {
       await recomputeMovilAndCapEntrega(serverClient as any, nro);
@@ -284,6 +277,89 @@ async function recomputeCountersForMoviles(records: any[], trigger: string): Pro
       // best-effort: no aborta el response
     }
   }
+}
+
+/**
+ * Helper: extrae movil nros únicos y no nulos de un array de registros,
+ * luego recomputa los contadores y sincroniza zonas_cap_entrega (best-effort).
+ *
+ * Wrapper de recomputeMovilNrosBatch para compatibilidad con call-sites que
+ * pasan un array de registros (ej: DELETE handler).
+ */
+async function recomputeCountersForMoviles(records: any[], trigger: string): Promise<void> {
+  if (!records || records.length === 0) return;
+  const movilNros = [...new Set(
+    records.map((r: any) => r.movil).filter((m: any) => m != null && m !== 0)
+  )] as number[];
+  await recomputeMovilNrosBatch(movilNros, trigger);
+}
+
+/**
+ * Obtiene el Map de movil OLD antes del upsert, usando getServerSupabaseClient()
+ * para bypassear RLS. Si el SELECT falla, retorna un Map vacío y loggea warning
+ * (degrade gracefully — el recompute seguirá con solo los NEWs).
+ */
+async function fetchOldMovilByKey(
+  transformedRows: Array<{ id: any; escenario: any }>,
+  tableName: 'pedidos' | 'services',
+): Promise<Map<string, number | null>> {
+  const keys = transformedRows
+    .map(p => ({ id: p.id, escenario: p.escenario }))
+    .filter(k => k.id != null && k.escenario != null);
+
+  const oldMovilByKey = new Map<string, number | null>();
+  if (keys.length === 0) return oldMovilByKey;
+
+  const idsInPayload = [...new Set(keys.map(k => k.id))];
+  const escenariosInPayload = [...new Set(keys.map(k => k.escenario))];
+
+  try {
+    const serverClient = getServerSupabaseClient();
+    const { data: existing, error: existingErr } = await serverClient
+      .from(tableName)
+      .select('id, escenario, movil')
+      .in('id', idsInPayload)
+      .in('escenario', escenariosInPayload);
+
+    if (existingErr) {
+      console.warn(`⚠️ No se pudieron leer movils OLD pre-upsert (${tableName}):`, existingErr);
+      // Degrade gracefully: retornar map vacío — recompute solo con NEWs (comportamiento anterior)
+      return oldMovilByKey;
+    }
+
+    for (const row of ((existing as any[]) || [])) {
+      oldMovilByKey.set(`${row.id}|${row.escenario}`, (row as any).movil ?? null);
+    }
+  } catch (err) {
+    console.warn(`⚠️ Excepción leyendo movils OLD pre-upsert (${tableName}):`, err);
+    // Degrade gracefully
+  }
+
+  return oldMovilByKey;
+}
+
+/**
+ * Computa el set de movilNros afectados (OLD + NEW) dado el resultado del upsert
+ * y el Map de OLD que obtuvimos antes.
+ */
+function computeAffectedMoviles(
+  upsertResult: any[],
+  oldMovilByKey: Map<string, number | null>,
+): number[] {
+  const affectedMoviles = new Set<number>();
+  for (const row of upsertResult) {
+    const key = `${row.id}|${row.escenario}`;
+    const oldMovil = oldMovilByKey.get(key);
+    // Si había un OLD distinto de 0/null y diferente al NEW → agregar OLD
+    if (oldMovil != null && oldMovil !== 0 && Number(oldMovil) !== Number(row.movil)) {
+      affectedMoviles.add(Number(oldMovil));
+    }
+    // Siempre agregar NEW (si es válido)
+    if (row.movil != null && row.movil !== 0) {
+      affectedMoviles.add(Number(row.movil));
+    }
+  }
+  return [...affectedMoviles];
 }
 
 /**
@@ -354,6 +430,10 @@ export async function POST(request: NextRequest) {
     console.log(JSON.stringify(transformedPedidos[0], null, 2));
     console.log('─'.repeat(100) + '\n');
 
+    // 3b. Capturar movil OLD antes del upsert (para detectar re-asignaciones)
+    console.log('🔍 3b. Leyendo movil OLD pre-upsert...');
+    const oldMovilByKey = await fetchOldMovilByKey(transformedPedidos, 'pedidos');
+
     console.log('🔄 4. Haciendo UPSERT en Supabase (conflict: id,escenario)...');
     const { data, error } = await supabase
       .from('pedidos')
@@ -382,8 +462,9 @@ export async function POST(request: NextRequest) {
     console.log(`📊 5. Pedidos procesados (insertados o actualizados): ${data?.length || 0}`);
     console.log('✅'.repeat(50) + '\n');
 
-    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (best-effort)
-    await recomputeCountersForMoviles(data || [], 'POST import/pedidos');
+    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (OLD + NEW)
+    const affectedMoviles = computeAffectedMoviles(data || [], oldMovilByKey);
+    await recomputeMovilNrosBatch(affectedMoviles, 'POST import/pedidos');
 
     return NextResponse.json({
       success: true,
@@ -472,6 +553,10 @@ export async function PUT(request: NextRequest) {
     console.log(JSON.stringify(transformedPedidos[0], null, 2));
     console.log('─'.repeat(100) + '\n');
 
+    // 3b. Capturar movil OLD antes del upsert (para detectar re-asignaciones)
+    console.log('🔍 3b. Leyendo movil OLD pre-upsert...');
+    const oldMovilByKey = await fetchOldMovilByKey(transformedPedidos, 'pedidos');
+
     console.log('🔄 4. Haciendo UPSERT en Supabase (conflict: id,escenario)...');
     const { data, error } = await supabase
       .from('pedidos')
@@ -500,8 +585,9 @@ export async function PUT(request: NextRequest) {
     console.log(`📊 5. Pedidos actualizados: ${data?.length || 0}`);
     console.log('✅'.repeat(50) + '\n');
 
-    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (best-effort)
-    await recomputeCountersForMoviles(data || [], 'PUT import/pedidos');
+    // Recomputar contadores + sincronizar zonas_cap_entrega para moviles afectados (OLD + NEW)
+    const affectedMoviles = computeAffectedMoviles(data || [], oldMovilByKey);
+    await recomputeMovilNrosBatch(affectedMoviles, 'PUT import/pedidos');
 
     return NextResponse.json({
       success: true,

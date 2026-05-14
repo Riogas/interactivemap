@@ -1,6 +1,6 @@
-﻿'use client';
+'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { MovilData } from '@/types';
 import { todayMontevideo } from '@/lib/date-utils';
@@ -26,6 +26,8 @@ interface RouteAnimationControlProps {
   selectedDate?: string;
   onMovilDateChange?: (movilId: number, date: string) => void;
   currentAnimTimeStr?: string; // Hora actual de la animación (modo timeline unificado)
+  /** IDs de empresas fleteras seleccionadas — se pasan al endpoint para filtrar actividad. */
+  selectedEmpresas?: number[];
 }
 
 const SPEED_OPTIONS = [
@@ -58,28 +60,96 @@ export default function RouteAnimationControl({
   selectedDate = '',
   onMovilDateChange,
   currentAnimTimeStr = '',
+  selectedEmpresas,
 }: RouteAnimationControlProps) {
   const [movilSearch, setMovilSearch] = useState('');
   const [isMovilDropdownOpen, setIsMovilDropdownOpen] = useState(false);
   const [isSecondaryDropdownOpen, setIsSecondaryDropdownOpen] = useState(false);
   const [secondarySearch, setSecondarySearch] = useState('');
 
+  // R-activity: Conjunto de nros de móvil con actividad en la fecha seleccionada.
+  // null = cargando o fetch fallido (fallback: mostrar todos).
+  const [activityMovilIds, setActivityMovilIds] = useState<Set<number> | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(false);
+
+  // Ref para cancelar fetches anteriores si la fecha/empresa cambia
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // R-isToday: ¿La fecha seleccionada es hoy?
+  const isToday = selectedDate === todayMontevideo();
+
+  // R-activity: Fetch de móviles con actividad cada vez que cambia la fecha o empresas
+  useEffect(() => {
+    if (!selectedDate) return;
+
+    // Cancelar fetch anterior si existe
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setActivityLoading(true);
+    setActivityError(false);
+    setActivityMovilIds(null);
+
+    const params = new URLSearchParams({ date: selectedDate });
+    if (selectedEmpresas && selectedEmpresas.length > 0) {
+      params.set('empresaIds', selectedEmpresas.join(','));
+    }
+
+    fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
+      .then((res) => res.json())
+      .then((result: { success: boolean; data?: number[] }) => {
+        if (result.success && Array.isArray(result.data)) {
+          setActivityMovilIds(new Set(result.data));
+        } else {
+          console.warn('[RouteAnimationControl] moviles-with-activity respondió sin data:', result);
+          setActivityError(true);
+          setActivityMovilIds(null);
+        }
+      })
+      .catch((err: Error) => {
+        if (err.name === 'AbortError') return;
+        console.error('[RouteAnimationControl] Error al cargar móviles con actividad:', err);
+        setActivityError(true);
+        setActivityMovilIds(null); // Fallback: mostrar todos
+      })
+      .finally(() => {
+        setActivityLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [selectedDate, selectedEmpresas]);
+
+  // Filtrar por actividad + búsqueda para el dropdown primario
+  // (excluir el secundario si está seleccionado)
   const filteredMoviles = useMemo(() => {
-    if (!movilSearch.trim()) return allMoviles;
+    const base = activityMovilIds !== null
+      ? allMoviles.filter(m => activityMovilIds.has(m.id))
+      : allMoviles;
+    if (!movilSearch.trim()) return base;
     const q = movilSearch.toLowerCase();
-    return allMoviles.filter(m =>
+    return base.filter(m =>
       String(m.id).includes(q) ||
       (m.name && m.name.toLowerCase().includes(q)) ||
       (m.matricula && m.matricula.toLowerCase().includes(q))
     );
-  }, [allMoviles, movilSearch]);
+  }, [allMoviles, movilSearch, activityMovilIds]);
 
   const currentMovil = allMoviles.find(m => m.id === selectedMovilId);
   const secondaryMovil = allMoviles.find(m => m.id === secondaryMovilId);
 
-  // Filtrar móviles para el dropdown secundario (excluir el primario)
+  // Filtrar móviles para el dropdown secundario (excluir el primario, filtrar por actividad)
   const filteredSecondaryMoviles = useMemo(() => {
-    const available = allMoviles.filter(m => m.id !== selectedMovilId);
+    const base = activityMovilIds !== null
+      ? allMoviles.filter(m => activityMovilIds.has(m.id))
+      : allMoviles;
+    const available = base.filter(m => m.id !== selectedMovilId);
     if (!secondarySearch.trim()) return available;
     const q = secondarySearch.toLowerCase();
     return available.filter(m =>
@@ -87,7 +157,7 @@ export default function RouteAnimationControl({
       (m.name && m.name.toLowerCase().includes(q)) ||
       (m.matricula && m.matricula.toLowerCase().includes(q))
     );
-  }, [allMoviles, selectedMovilId, secondarySearch]);
+  }, [allMoviles, selectedMovilId, secondarySearch, activityMovilIds]);
 
   return (
     <motion.div
@@ -218,32 +288,50 @@ export default function RouteAnimationControl({
                           autoFocus
                         />
                       </div>
+                      {/* Aviso de carga/fallback */}
+                      {activityLoading && (
+                        <div className="px-3 py-2 text-xs text-gray-400 bg-gray-50 border-b border-gray-100">
+                          Cargando móviles con actividad...
+                        </div>
+                      )}
+                      {activityError && !activityLoading && (
+                        <div className="px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b border-amber-100">
+                          No se pudo filtrar por actividad — mostrando todos los móviles
+                        </div>
+                      )}
                       <div className="overflow-y-auto max-h-[200px]">
-                        {filteredMoviles.map(m => (
-                          <button
-                            key={m.id}
-                            onClick={() => {
-                              if (m.id !== selectedMovilId) {
-                                onMovilDateChange(m.id, selectedDate);
-                              }
-                              setIsMovilDropdownOpen(false);
-                              setMovilSearch('');
-                            }}
-                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
-                              m.id === selectedMovilId ? 'bg-purple-100 font-semibold' : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                              m.id === selectedMovilId ? 'bg-purple-500 text-white' : 'bg-gray-200 text-gray-600'
-                            }`}>{m.id}</span>
-                            <span className="flex-1 truncate text-gray-700">{m.name || `Móvil ${m.id}`}</span>
-                            {m.id === selectedMovilId && (
-                              <svg className="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                          </button>
-                        ))}
+                        {filteredMoviles.map(m => {
+                          // Badge: si es hoy → estado real, si pasado → gris
+                          const forceInactive = !isToday;
+                          const circleClass = m.id === selectedMovilId
+                            ? 'bg-purple-500 text-white'
+                            : (forceInactive || m.isInactive)
+                              ? 'bg-gray-200 text-gray-600'
+                              : 'bg-green-100 text-green-700';
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => {
+                                if (m.id !== selectedMovilId) {
+                                  onMovilDateChange(m.id, selectedDate);
+                                }
+                                setIsMovilDropdownOpen(false);
+                                setMovilSearch('');
+                              }}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                                m.id === selectedMovilId ? 'bg-purple-100 font-semibold' : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${circleClass}`}>{m.id}</span>
+                              <span className="flex-1 truncate text-gray-700">{m.name || `Móvil ${m.id}`}</span>
+                              {m.id === selectedMovilId && (
+                                <svg className="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -307,21 +395,39 @@ export default function RouteAnimationControl({
                             autoFocus
                           />
                         </div>
+                        {/* Aviso de carga/fallback */}
+                        {activityLoading && (
+                          <div className="px-3 py-2 text-xs text-gray-400 bg-gray-50 border-b border-gray-100">
+                            Cargando móviles con actividad...
+                          </div>
+                        )}
+                        {activityError && !activityLoading && (
+                          <div className="px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b border-amber-100">
+                            No se pudo filtrar por actividad — mostrando todos los móviles
+                          </div>
+                        )}
                         <div className="overflow-y-auto max-h-[200px]">
-                          {filteredSecondaryMoviles.map(m => (
-                            <button
-                              key={m.id}
-                              onClick={() => {
-                                onSecondaryMovilChange(m.id);
-                                setIsSecondaryDropdownOpen(false);
-                                setSecondarySearch('');
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors hover:bg-teal-50"
-                            >
-                              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-teal-100 text-teal-700">{m.id}</span>
-                              <span className="flex-1 truncate text-gray-700">{m.name || `Móvil ${m.id}`}</span>
-                            </button>
-                          ))}
+                          {filteredSecondaryMoviles.map(m => {
+                            // Badge: si es hoy → estado real, si pasado → gris
+                            const forceInactive = !isToday;
+                            const circleClass = (forceInactive || m.isInactive)
+                              ? 'bg-gray-200 text-gray-600'
+                              : 'bg-teal-100 text-teal-700';
+                            return (
+                              <button
+                                key={m.id}
+                                onClick={() => {
+                                  onSecondaryMovilChange(m.id);
+                                  setIsSecondaryDropdownOpen(false);
+                                  setSecondarySearch('');
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors hover:bg-teal-50"
+                              >
+                                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${circleClass}`}>{m.id}</span>
+                                <span className="flex-1 truncate text-gray-700">{m.name || `Móvil ${m.id}`}</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -354,7 +460,7 @@ export default function RouteAnimationControl({
                 />
               </div>
             </div>
-            
+
             {/* Switch para simplificar trayectoria */}
             {onSimplifiedPathChange && (
               <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2 border border-blue-200">
@@ -384,7 +490,7 @@ export default function RouteAnimationControl({
           <div className="relative h-3 bg-gray-200 rounded-full overflow-hidden">
             <motion.div
               className="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
-              style={{ 
+              style={{
                 width: `${progress}%`,
               }}
               initial={false}
@@ -447,8 +553,8 @@ export default function RouteAnimationControl({
 
         {/* Info */}
         <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500 text-center">
-          💡 {onTimeRangeChange 
-            ? 'Selecciona el rango horario para filtrar el recorrido animado' 
+          💡 {onTimeRangeChange
+            ? 'Selecciona el rango horario para filtrar el recorrido animado'
             : 'La animación muestra el recorrido del vehículo desde el inicio del día'}
         </div>
       </div>

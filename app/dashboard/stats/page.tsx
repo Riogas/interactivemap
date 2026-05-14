@@ -1,8 +1,8 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { isPrivilegedForZonaScope, isPrivilegedForUnassignedVisibility } from '@/lib/auth-scope';
+import { isPrivilegedForZonaScope } from '@/lib/auth-scope';
 import { useSearchParams } from 'next/navigation';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
@@ -12,6 +12,7 @@ import { todayMontevideo } from '@/lib/date-utils';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
 interface Pedido {
@@ -226,7 +227,9 @@ function StatsContent() {
   const searchParams = useSearchParams();
   const date = searchParams.get('date') ?? todayMontevideo();
   const { user, escenarioId } = useAuth();
-  const canSeeUnassigned = isPrivilegedForUnassignedVisibility(user);
+  // Gate: puede ver sin-asignar — controlado únicamente por la funcionalidad 'Ped s/asignar acumulados'.
+  // Root siempre puede. El rol del usuario ya no condiciona esta visibilidad.
+  const canSeeUnassigned = user?.isRoot === 'S' || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados');
   const isPrivilegedScope = isPrivilegedForZonaScope(user);
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
@@ -429,7 +432,7 @@ function StatsContent() {
     }
     if (selectedProducto !== 'Todos')
       result = result.filter(p => String(p.producto_cod ?? '') === selectedProducto);
-    // Distribuidores no ven pedidos sin asignar (movil=0)
+    // Usuarios sin la funcionalidad no ven pedidos sin asignar (movil=0)
     if (!canSeeUnassigned)
       result = result.filter(p => !(Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0)));
     return result;
@@ -465,7 +468,7 @@ function StatsContent() {
         return allowedNombres.has(nombre);
       });
     }
-    // Distribuidores no ven services sin asignar
+    // Usuarios sin la funcionalidad no ven services sin asignar
     if (!canSeeUnassigned) {
       return services.filter(s => !(Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0)));
     }
@@ -474,14 +477,14 @@ function StatsContent() {
 
   // ─── KPIs Pedidos ──────────────────────────────────────────────────────────
   const pedidosStats = useMemo(() => {
-    // filteredPedidos ya excluye sinAsignar para distribuidores (canSeeUnassigned=false)
+    // filteredPedidos ya excluye sinAsignar para usuarios sin la funcionalidad (canSeeUnassigned=false)
     const total = filteredPedidos.length;
     const finalizados = filteredPedidos.filter(p => Number(p.estado_nro) === 2);
     // Excluir pedidos hijo (re-entregas) del % entregados
     const finalizadosSinHijo = finalizados.filter(p => !p.pedido_hijo);
     const entregados = finalizadosSinHijo.filter(p => isPedidoEntregado(p));
     const noEntregados = finalizadosSinHijo.filter(p => !isPedidoEntregado(p));
-    // sinAsignar solo visible para privilegiados (distribuidor ya los tiene excluidos)
+    // sinAsignar solo visible si tiene la funcionalidad (distribuidor ya los tiene excluidos)
     const sinAsignar = filteredPedidos.filter(p =>
       Number(p.estado_nro) === 1 &&
       (!p.movil || Number(p.movil) === 0) &&
@@ -495,12 +498,12 @@ function StatsContent() {
 
   // ─── KPIs Services ─────────────────────────────────────────────────────────
   const servicesStats = useMemo(() => {
-    // filteredServices ya excluye sinAsignar para distribuidores
+    // filteredServices ya excluye sinAsignar para usuarios sin la funcionalidad
     const total = filteredServices.length;
     const finalizados = filteredServices.filter(s => Number(s.estado_nro) === 2);
     const realizados = finalizados.filter(s => isServiceEntregado(s));
     const noRealizados = finalizados.filter(s => !isServiceEntregado(s));
-    // sinAsignar solo visible para privilegiados
+    // sinAsignar solo visible si tiene la funcionalidad
     const sinAsignar = filteredServices.filter(s =>
       Number(s.estado_nro) === 1 &&
       (!s.movil || Number(s.movil) === 0) &&
@@ -672,7 +675,7 @@ function StatsContent() {
 
   // ─── Atrasos de pedidos pendientes ─────────────────────────────────────────
   const atrasosStats = useMemo(() => {
-    // filteredPedidos ya excluye sinAsignar para distribuidores
+    // filteredPedidos ya excluye sinAsignar para usuarios sin la funcionalidad
     const pendientes = filteredPedidos.filter(p => Number(p.estado_nro) === 1);
     let muyAtrasado = 0, atrasado = 0, limiteCercana = 0, enHora = 0, sinHora = 0;
     pendientes.forEach(p => {

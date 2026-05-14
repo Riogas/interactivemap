@@ -8,6 +8,7 @@ import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { todayMontevideo } from '@/lib/date-utils';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { filterFinalizadosByMovil, filterPedidosByEmpresa } from '@/lib/dashboard-indicators-filter';
 
 interface DashboardIndicatorsProps {
   moviles: any[];
@@ -30,8 +31,17 @@ interface DashboardIndicatorsProps {
   scopedZonaIds?: Set<number> | null;
   /** Empresas permitidas — se pasan como ?empresaIds= a /api/zonas, /api/moviles-zonas, /api/demoras. null = sin scope. */
   scopedEmpresas?: number[] | null;
+  /** Empresas fleteras SELECCIONADAS por el usuario en el filtro UI.
+   *  Distinto a `scopedEmpresas` (auth scope) — esto es preferencia UI activa.
+   *  Si está vacío o undefined, no filtra por empresa. */
+  selectedEmpresas?: number[];
   /** Scope (móviles + zonas) para filtrar pedidos en sinAsignar / entregados / % cuando el user es distribuidor. */
   scope?: ScopeFilter;
+  /** Gate: puede ver el indicador "Ped Sin Asig." y métricas de sin-asignar acumuladas.
+   *  Controlado únicamente por la funcionalidad "Ped s/asignar acumulados" (root siempre true).
+   *  false → ocultar indicador (y separador adyacente).
+   *  Defaults true para retrocompatibilidad. */
+  canVerAcumulados?: boolean;
   onSinAsignarClick?: () => void;
   onEntregadosClick?: () => void;
   onPorcentajeClick?: () => void;
@@ -44,7 +54,7 @@ interface DashboardIndicatorsProps {
   minutosAntesSa?: number | null;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick, serverNow = new Date(), minutosAntesSa = null }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], selectedEmpresas = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, canVerAcumulados = true, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick, serverNow = new Date(), minutosAntesSa = null }: DashboardIndicatorsProps) {
 
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -68,16 +78,19 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       // y los finalizados con móvil deben pertenecer a su scope (móvil + zona).
       finalizados = finalizados.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: true }));
     } else if (selectedMoviles.length > 0) {
-      // Filtrar por móviles seleccionados. Pedidos de móviles ocultos-pero-
-      // operativos (p. ej. 167 sin GPS, o huérfanos ausentes de la lista visible)
-      // pasan siempre, para que el total coincida con la Vista Extendida y el
-      // colapsable de pedidos. Los finalizados sin móvil asignado (huérfanos,
-      // p. ej. ENTR. SIN 1710) también pasan siempre, ya están entregados.
-      finalizados = finalizados.filter(p => {
-        if (!p.movil || Number(p.movil) === 0) return true;
-        if (hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
-        return selectedMoviles.some(id => Number(id) === Number(p.movil));
-      });
+      // Filtro estricto por móvil seleccionado: cuenta SOLO los pedidos
+      // cuyo movil esta en selectedMoviles. Pedidos huérfanos (sin movil)
+      // y de móviles ocultos-pero-operativos NO pasan — el indicador refleja
+      // exactamente lo que el usuario filtró.
+      finalizados = filterFinalizadosByMovil(finalizados, selectedMoviles);
+    }
+
+    // Filtro por empresa fletera seleccionada en la UI (aplica sobre sinAsignar y finalizados).
+    // Pedidos sin empresa_fletera_id (null) no pasan cuando hay selección activa.
+    // Este filtro es independiente del scope de distribuidor (ya manejado arriba).
+    if (!scopeRestricted && selectedEmpresas.length > 0) {
+      sinAsignar = filterPedidosByEmpresa(sinAsignar, selectedEmpresas);
+      finalizados = filterPedidosByEmpresa(finalizados, selectedEmpresas);
     }
 
     // Excluir pedidos hijo (re-entregas) del % entregados
@@ -94,7 +107,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       entregados,
       porcentajeEntregados,
     };
-  }, [pedidos, selectedMoviles, hiddenMovilIds, scope, serverNow, minutosAntesSa]);
+  }, [pedidos, selectedMoviles, selectedEmpresas, scope, serverNow, minutosAntesSa]);
 
   // ============= MÓVILES SIN REPORTAR GPS =============
   // Excluir estadoNro 3 ("No Activo") — esos están fuera de servicio, no es un problema de GPS
@@ -328,8 +341,8 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       {/* Contenedor scrollable de indicadores */}
       <div ref={scrollRef} className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto hide-scrollbar min-w-0 flex-1">
       <div className="flex items-center gap-1.5">
-        {/* Pedidos Sin Asignar — oculto para distribuidor (no ve sin asignar) */}
-        {!scope?.isRestricted && (
+        {/* Pedidos Sin Asignar — visible para cualquier rol con la funcionalidad 'Ped s/asignar acumulados' (gating por funcionalidad, no por rol) */}
+        {canVerAcumulados && (
           <>
             <Indicator
               icon="📦"

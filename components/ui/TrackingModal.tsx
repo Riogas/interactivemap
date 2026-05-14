@@ -1,6 +1,6 @@
-﻿'use client';
+'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData } from '@/types';
 import { todayMontevideo } from '@/lib/date-utils';
@@ -14,6 +14,14 @@ interface TrackingModalProps {
   hiddenMovilIds?: Set<number>;
   selectedDate: string; // Fecha actual del dashboard (default)
   selectedMovil?: number; // Si ya hay un móvil seleccionado
+  /** IDs de empresas fleteras seleccionadas — se pasan al endpoint para filtrar actividad. */
+  selectedEmpresas?: number[];
+  /**
+   * Fecha mínima permitida en el selector (YYYY-MM-DD).
+   * Calculada por el dashboard a partir de HistoricoMaxCoords del rol activo.
+   * Si es undefined no se aplica restricción (comportamiento original).
+   */
+  minDate?: string;
 }
 
 export default function TrackingModal({
@@ -24,31 +32,108 @@ export default function TrackingModal({
   hiddenMovilIds,
   selectedDate,
   selectedMovil: preSelectedMovil,
+  selectedEmpresas,
+  minDate,
 }: TrackingModalProps) {
   const [movilId, setMovilId] = useState<number | ''>(preSelectedMovil || '');
   const [date, setDate] = useState(selectedDate);
   const [search, setSearch] = useState('');
+
+  // R2: Conjunto de nros de móvil con actividad en la fecha seleccionada.
+  // null = cargando o fetch fallido (fallback: mostrar todos).
+  const [activityMovilIds, setActivityMovilIds] = useState<Set<number> | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(false);
+
+  // Ref para cancelar fetches anteriores si la fecha cambia
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // R4: ¿La fecha seleccionada es hoy?
+  const isToday = date === todayMontevideo();
 
   // Reset cuando se abre el modal
   const handleOpen = () => {
     setMovilId(preSelectedMovil || '');
     setDate(selectedDate);
     setSearch('');
+    // activityMovilIds se resetea por el useEffect cuando date cambia
   };
 
-  // Filtrar móviles por búsqueda. También excluye ocultos-pero-operativos.
+  // R2: Fetch de móviles con actividad cada vez que cambia la fecha (o cuando abre el modal)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Cancelar fetch anterior si existe
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setActivityLoading(true);
+    setActivityError(false);
+    setActivityMovilIds(null);
+
+    const params = new URLSearchParams({ date });
+    if (selectedEmpresas && selectedEmpresas.length > 0) {
+      params.set('empresaIds', selectedEmpresas.join(','));
+    }
+
+    fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
+      .then((res) => res.json())
+      .then((result: { success: boolean; data?: number[] }) => {
+        if (result.success && Array.isArray(result.data)) {
+          setActivityMovilIds(new Set(result.data));
+        } else {
+          // API respondió con error — fallback: mostrar todos
+          console.warn('[TrackingModal] moviles-with-activity respondió sin data:', result);
+          setActivityError(true);
+          setActivityMovilIds(null);
+        }
+      })
+      .catch((err: Error) => {
+        if (err.name === 'AbortError') return; // Fetch cancelado intencionalmente
+        console.error('[TrackingModal] Error al cargar móviles con actividad:', err);
+        setActivityError(true);
+        setActivityMovilIds(null); // Fallback: mostrar todos
+      })
+      .finally(() => {
+        setActivityLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [isOpen, date, selectedEmpresas]);
+
+  // R2 + R3: Filtrar por actividad + ocultos + búsqueda, ordenar por nro (m.id)
   const filteredMoviles = useMemo(() => {
     const base = hiddenMovilIds && hiddenMovilIds.size > 0
       ? moviles.filter(m => !hiddenMovilIds.has(m.id))
       : moviles;
-    if (!search.trim()) return base;
-    const q = search.toLowerCase();
-    return base.filter(m =>
-      String(m.id).includes(q) ||
-      (m.name && m.name.toLowerCase().includes(q)) ||
-      (m.matricula && m.matricula.toLowerCase().includes(q))
-    );
-  }, [moviles, search, hiddenMovilIds]);
+
+    // R2: Filtrar por actividad (solo si el fetch terminó con datos)
+    // Si activityMovilIds === null (cargando o error), mostrar todos como fallback
+    const withActivity = activityMovilIds !== null
+      ? base.filter(m => activityMovilIds.has(m.id))
+      : base;
+
+    // Filtrar por búsqueda
+    const withSearch = !search.trim()
+      ? withActivity
+      : (() => {
+          const q = search.toLowerCase();
+          return withActivity.filter(m =>
+            String(m.id).includes(q) ||
+            (m.name && m.name.toLowerCase().includes(q)) ||
+            (m.matricula && m.matricula.toLowerCase().includes(q))
+          );
+        })();
+
+    // R3: Ordenar por número de móvil ascendente
+    return withSearch.slice().sort((a, b) => a.id - b.id);
+  }, [moviles, search, hiddenMovilIds, activityMovilIds]);
 
   // Móvil seleccionado actualmente
   const selectedMovilData = useMemo(() => {
@@ -111,7 +196,7 @@ export default function TrackingModal({
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   🚗 Móvil
                 </label>
-                
+
                 {/* Búsqueda */}
                 <div className="relative mb-2">
                   <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -128,45 +213,73 @@ export default function TrackingModal({
 
                 {/* Lista de móviles */}
                 <div className="max-h-[200px] overflow-y-auto border-2 border-gray-200 rounded-xl">
-                  {filteredMoviles.length === 0 ? (
+                  {/* R2: Estado de carga del filtro de actividad */}
+                  {activityLoading ? (
                     <div className="p-4 text-center text-sm text-gray-400">
-                      No se encontraron móviles
+                      Cargando móviles con actividad...
                     </div>
                   ) : (
-                    filteredMoviles.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => setMovilId(m.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all border-b border-gray-100 last:border-b-0 ${
-                          movilId === m.id
-                            ? 'bg-purple-50 border-l-4 border-l-purple-500'
-                            : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                          movilId === m.id
+                    <>
+                      {/* Aviso de fallback si hubo error en el fetch */}
+                      {activityError && (
+                        <div className="px-3 py-2 text-xs text-amber-600 bg-amber-50 border-b border-amber-100">
+                          No se pudo filtrar por actividad — mostrando todos los móviles
+                        </div>
+                      )}
+
+                      {filteredMoviles.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-400">
+                          No se encontraron móviles con actividad en esta fecha
+                        </div>
+                      ) : (
+                        filteredMoviles.map((m) => {
+                          // R4: Estilo del círculo y texto del estado según fecha
+                          // Si es hoy → usar estado real del móvil (isInactive)
+                          // Si es fecha pasada → gris/inactivo para todos
+                          const forceInactive = !isToday;
+                          const circleClass = movilId === m.id
                             ? 'bg-purple-500 text-white'
-                            : m.isInactive
+                            : (forceInactive || m.isInactive)
                               ? 'bg-gray-200 text-gray-500'
-                              : 'bg-green-100 text-green-700'
-                        }`}>
-                          {m.id}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-800 truncate">
-                            {m.name || `Móvil ${m.id}`}
-                          </div>
-                          <div className="text-xs text-gray-400 truncate">
-                            {m.matricula || 'Sin patente'} • {m.isInactive ? '⚠️ Sin reportar' : '🟢 Activo'}
-                          </div>
-                        </div>
-                        {movilId === m.id && (
-                          <svg className="w-5 h-5 text-purple-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                      </button>
-                    ))
+                              : 'bg-green-100 text-green-700';
+
+                          const statusText = forceInactive
+                            ? '⚪ Inactivo'
+                            : m.isInactive
+                              ? '⚠️ Sin reportar'
+                              : '🟢 Activo';
+
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => setMovilId(m.id)}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all border-b border-gray-100 last:border-b-0 ${
+                                movilId === m.id
+                                  ? 'bg-purple-50 border-l-4 border-l-purple-500'
+                                  : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${circleClass}`}>
+                                {m.id}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-800 truncate">
+                                  {m.name || `Móvil ${m.id}`}
+                                </div>
+                                <div className="text-xs text-gray-400 truncate">
+                                  {m.matricula || 'Sin patente'} • {statusText}
+                                </div>
+                              </div>
+                              {movilId === m.id && (
+                                <svg className="w-5 h-5 text-purple-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -181,6 +294,7 @@ export default function TrackingModal({
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   max={todayMontevideo()}
+                  {...(minDate !== undefined ? { min: minDate } : {})}
                   className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-medium focus:border-purple-400 focus:outline-none transition-colors"
                 />
               </div>

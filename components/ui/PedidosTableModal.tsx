@@ -12,7 +12,7 @@ import { isWithinSaWindow } from '@/lib/sa-window-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
-type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'producto' | 'importe' | 'direccion' | 'hora_max' | 'obs_pedido' | 'obs_cliente' | 'estado';
+type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'producto' | 'importe' | 'direccion' | 'hora_max' | 'obs_pedido' | 'obs_cliente' | 'estado' | 'cumplido';
 type SortDir = 'asc' | 'desc';
 
 interface Filters {
@@ -73,6 +73,10 @@ interface PedidosTableModalProps {
    *  pueden ver pedidos finalizados sin móvil ("ENTR. SIN 1710" huérfanos) y
    *  sólo en modo "Todos". Distribuidores nunca los ven. */
   privilegedUser?: boolean;
+  /** Gate funcional: true si el usuario tiene la funcionalidad
+   *  "Ped s/asignar unitarios" (o es root). Controla visibilidad de sin-movil
+   *  en la tabla y en el filtro de asignacion. */
+  canVerSinAsignarUnitario?: boolean;
   onInnerFiltersChange?: (f: Filters) => void;
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
@@ -104,7 +108,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -121,11 +125,24 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
   const servicioDropdownRef = useRef<HTMLDivElement>(null);
   const servicioButtonRef = useRef<HTMLButtonElement>(null);
   const [servicioDropdownPos, setServicioDropdownPos] = useState({ top: 0, left: 0 });
-  const [sortKey, setSortKey] = useState<SortKey>('delay');
+  // Default sortKey según vista:
+  //   - finalizados → 'cumplido' (fch_hora_finalizacion asc)
+  //   - pendientes  → 'delay' (atraso asc)
+  // Si el usuario cambia de vista, useEffect abajo lo ajusta.
+  const [sortKey, setSortKey] = useState<SortKey>(vista === 'finalizados' ? 'cumplido' : 'delay');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Re-aplicar sort default cuando cambia la vista (pendientes ↔ finalizados).
+  // Si el usuario eligió otra columna manualmente, igual se resetea — la
+  // intención de "ver finalizados" implica querer el orden por cumplido.
+  useEffect(() => {
+    setSortKey(vista === 'finalizados' ? 'cumplido' : 'delay');
+    setSortDir('asc');
+    setPage(0);
+  }, [vista]);
 
   // Report inner filter changes upward
   const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
@@ -187,9 +204,15 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
+    // Gate funcional: si el usuario no tiene "Ped s/asignar unitarios", excluir
+    // pedidos sin movil desde el inicio. El filtro de asignacion sin_movil
+    // tampoco aplica en ese caso (su boton queda oculto en la UI).
+    const pedidosFiltradosPorGate = !canVerSinAsignarUnitario
+      ? pedidos.filter(p => p.movil && Number(p.movil) !== 0)
+      : pedidos;
     let result: PedidoSupabase[];
     if (isFinalizados) {
-      result = pedidos.filter(p => Number(p.estado_nro) === 2);
+      result = pedidosFiltradosPorGate.filter(p => Number(p.estado_nro) === 2);
 
       // Filtro de entrega (solo para finalizados)
       if (filters.entrega === 'entregados') {
@@ -199,7 +222,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       }
     } else {
       // Pendientes: todos estado_nro = 1 (asignados + sin asignar combinados)
-      result = pedidos
+      result = pedidosFiltradosPorGate
         .filter(p => Number(p.estado_nro) === 1)
         .filter(p =>
           (p.movil && Number(p.movil) !== 0) ||
@@ -236,9 +259,11 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
           if (isFinalizados) {
             return allMovilesSelected && privilegedUser;
           }
-          // Pendientes sin móvil: solo en modo "Todos" — si el usuario tiene
-          // un subset, los sin-asignar corresponden a otra cosa y no aplican.
-          return filters.asignacion === 'todos' && !hideUnassigned && allMovilesSelected;
+          // Pendientes sin móvil: pasa si tiene permiso "Ped s/asignar
+          // unitarios". La scope por zona ya se aplicó vía isPedidoInScope
+          // arriba (línea 243). Los gates legacy (hideUnassigned,
+          // allMovilesSelected) ya no aplican — refactor permisos.
+          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
         }
         // Móviles seleccionados pasan
         if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
@@ -260,16 +285,16 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       // exclusivamente pedidos sin móvil ("solo sin asignar").
       result = result.filter(p => !p.movil || Number(p.movil) === 0);
     } else if (hideUnassigned && filters.asignacion === 'todos') {
-      // Sin móviles seleccionados, con restricción: ocultar sin asignar
-      // y restringir a los móviles que el usuario puede ver (los que vienen
-      // en la prop `moviles`, ya filtrados por empresa desde el dashboard).
-      // Incluir también los IDs ocultos-pero-operativos: sus pedidos igual se ven.
+      // Sin móviles seleccionados, con restricción de empresa: restringir
+      // a los móviles que el usuario puede ver. Sin-asignar pasa si tiene
+      // permiso "Ped s/asignar unitarios" (scope por zona ya validado por
+      // isPedidoInScope arriba).
       const validMovilIds = new Set(moviles.map(m => Number(m.id)));
       if (hiddenMovilIds) {
         hiddenMovilIds.forEach(id => validMovilIds.add(id));
       }
       result = result.filter(p => {
-        if (!p.movil || Number(p.movil) === 0) return false;
+        if (!p.movil || Number(p.movil) === 0) return canVerSinAsignarUnitario;
         return validMovilIds.has(Number(p.movil));
       });
     }
@@ -280,7 +305,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     
     return result;
-  }, [pedidos, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
+  }, [pedidos, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
@@ -395,6 +420,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
         case 'obs_pedido': return (a.pedido.pedido_obs || '').localeCompare(b.pedido.pedido_obs || '') * dir;
         case 'obs_cliente': return (a.pedido.cliente_obs || '').localeCompare(b.pedido.cliente_obs || '') * dir;
         case 'estado': return ((a.pedido.sub_estado_nro || 0) - (b.pedido.sub_estado_nro || 0)) * dir;
+        case 'cumplido': return (a.pedido.fch_hora_finalizacion || '').localeCompare(b.pedido.fch_hora_finalizacion || '') * dir;
         default: return 0;
       }
     });
@@ -610,12 +636,9 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                       <span className="font-bold text-gray-200">{stats[opt.key] || 0}</span>
                     </div>
                   ))}
-                  {/* Filtro Asignación: Todos / Con Móvil / Sin Móvil.
-                      Solo tiene sentido para root/despacho (sin restricción).
-                      Un usuario con restricción de empresa nunca ve "sin móvil",
-                      entonces el toggle no aporta nada. */}
-                  {!hideUnassigned && (
-                    <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
+                  {/* Filtro Asignacion: Todos / Con Movil / Sin Movil.
+                      Todos y Con Movil siempre visibles; Sin Movil gateado por canVerSinAsignarUnitario. */}
+                  <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
                       <button
                         onClick={() => setFilters(f => ({ ...f, asignacion: 'todos' }))}
                         className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
@@ -632,16 +655,17 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                       >
                         Con Móvil
                       </button>
-                      <button
-                        onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
-                        className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
-                          filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                        }`}
-                      >
-                        Sin Móvil
-                      </button>
-                    </div>
-                  )}
+                      {canVerSinAsignarUnitario && (
+                        <button
+                          onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
+                          className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
+                            filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
+                          }`}
+                        >
+                          Sin Móvil
+                        </button>
+                      )}
+                  </div>
                 </div>
               )}
               <div className="ml-auto text-xs text-gray-500">
@@ -857,7 +881,9 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                     </th>
                     {isFinalizados && (
                       <>
-                        <th className="px-4 py-3 text-gray-400 whitespace-nowrap">Cumplido</th>
+                        <th className="px-4 py-3 cursor-pointer hover:text-gray-200 whitespace-nowrap" onClick={() => handleSort('cumplido')}>
+                          Cumplido <SortArrow col="cumplido" />
+                        </th>
                         <th className="px-4 py-3 text-gray-400 whitespace-nowrap">Atraso</th>
                       </>
                     )}

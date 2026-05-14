@@ -14,6 +14,10 @@ interface User {
     RolId: string;
     RolNombre: string;
     RolTipo: string;
+    /** Atributos del rol propagados desde el SecuritySuite (HistoricoMaxCoords, HistoricoMaxPedidos, Escenario, etc.) */
+    atributos?: Array<{ atributo: string; valor: string }>;
+    /** Funcionalidades del rol — usado por gates de UI tipo "Capa Capacidad de Entrega". */
+    funcionalidades?: Array<{ funcionalidadId: number; nombre: string }>;
   }>;
   loginTime: string;
   token: string;
@@ -168,16 +172,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const savedUser = authStorage.getItem('trackmovil_user');
     const savedToken = authStorage.getItem('trackmovil_token');
-    
+
     if (savedUser && savedToken) {
       try {
         // Validar que savedUser sea JSON válido
         if (!savedUser.startsWith('{')) {
           throw new Error('Invalid user data format');
         }
-        
+
         const parsedUser = JSON.parse(savedUser);
-        
+
         // Validar que tenga campos mínimos requeridos
         if (!parsedUser.username || !parsedUser.id) {
           throw new Error('Invalid user data structure');
@@ -189,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsLoading(false);
           return;
         }
-        
+
         // Cargar empresas permitidas desde localStorage
         const savedEmpresas = authStorage.getItem('trackmovil_allowed_empresas');
         let allowedEmpresas: number[] | null = null;
@@ -261,8 +265,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string }> => {
     try {
       console.log('🔐 Iniciando login en GeneXus...');
-      const response: ParsedLoginResponse = await authService.login(username, password);
-      
+      const response: ParsedLoginResponse = await authService.login(username, password, selectedEscenarioId);
+
       // El login es exitoso SOLO si success=true Y viene el objeto user
       if (response.success && response.user && response.user.id && response.user.username) {
         console.log('✅ Login GeneXus exitoso');
@@ -344,13 +348,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           authStorage.setItem('trackmovil_allowed_escenarios', JSON.stringify(allowedEscenarios));
         }
 
-        // Mapear roles del shape nuevo (rolId, rolNombre, aplicacionId, funcionalidades)
-        // al shape viejo (RolId, RolNombre, RolTipo) que espera el consumo downstream
-        // (componentes/hooks que leen user.roles).
+        // Mapear roles del shape nuevo (rolId, rolNombre, aplicacionId, funcionalidades, atributos)
+        // al shape del User (RolId, RolNombre, RolTipo, atributos, funcionalidades).
+        // Atributos y funcionalidades se propagan para que helpers downstream
+        // (getMaxRoleAttribute, hasFuncionalidad) puedan consultarlos.
         const mappedRoles = (response.roles || []).map((r) => ({
           RolId: String(r.rolId),
           RolNombre: r.rolNombre,
           RolTipo: '',
+          ...(r.atributos ? { atributos: r.atributos } : {}),
+          ...(r.funcionalidades ? { funcionalidades: r.funcionalidades } : {}),
         }));
 
         const newUser: User = {
@@ -384,22 +391,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (response.success && !response.user) {
         // Si success=true pero no hay usuario, es credencial inválida
         console.log('❌ Login falló: no hay datos de usuario');
-        return { 
-          success: false, 
-          error: 'Usuario o contraseña incorrectos' 
+        return {
+          success: false,
+          error: 'Usuario o contraseña incorrectos'
         };
       } else {
         console.log('❌ Login falló:', response.message);
-        return { 
-          success: false, 
-          error: response.message || 'Usuario o contraseña incorrectos' 
+        return {
+          success: false,
+          error: response.message || 'Usuario o contraseña incorrectos'
         };
       }
     } catch (error) {
       console.error('❌ Error en login:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Error de conexión con el servidor' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error de conexión con el servidor'
       };
     }
   };

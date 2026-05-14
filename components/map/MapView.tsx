@@ -100,6 +100,9 @@ interface MapViewProps {
   dataViewMode?: DataViewMode; // Capas de Información activa
   onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
   isToday?: boolean; // True si selectedDate === hoy. Si false, las capas dependientes de datos en vivo se deshabilitan.
+  /** Si true, oculta la opción "Cap. Entrega" (saturacion) del control de capas.
+   *  Gate por funcionalidad "Capa Capacidad de Entrega" del rol del usuario. */
+  hideCapEntrega?: boolean;
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
   pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
@@ -137,6 +140,8 @@ interface MapViewProps {
   user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>; allowedEmpresas?: number[] | null } | null;
   /** Callback invocado en moveend/zoomend para capturar el estado del mapa (view-state). */
   onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
+  /** IDs de empresas fleteras seleccionadas — se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
+  selectedEmpresas?: number[];
 }
 
 
@@ -656,6 +661,7 @@ const MapView = memo(function MapView({
   dataViewMode = 'normal',
   onDataViewChange,
   isToday = true,
+  hideCapEntrega = false,
   demorasData = new Map(),
   pedidosZonaData,
   pedidosZonaFilter = 'pendientes',
@@ -689,6 +695,7 @@ const MapView = memo(function MapView({
   serverNow = new Date(),
   minutosAntesSa = null,
   onMapStateChange,
+  selectedEmpresas,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2208,7 +2215,7 @@ const MapView = memo(function MapView({
 
         {/* 📊 Control de Capas de Información (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
-          <DataViewControl value={dataViewMode} onChange={onDataViewChange} isToday={isToday} />
+          <DataViewControl value={dataViewMode} onChange={onDataViewChange} isToday={isToday} hideCapEntrega={hideCapEntrega} />
         )}
 
         {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}
@@ -3150,6 +3157,7 @@ const MapView = memo(function MapView({
           selectedDate={selectedDate}
           onMovilDateChange={onMovilDateChange}
           currentAnimTimeStr={currentAnimTimeStr}
+          selectedEmpresas={selectedEmpresas}
         />
       )}
 

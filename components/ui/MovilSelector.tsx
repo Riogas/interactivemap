@@ -13,6 +13,7 @@ import MapGuideModal from './MapGuideModal';
 import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicator';
 import type { LastSyncState } from '@/lib/realtime-drift';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import type { ScopeFilter } from '@/lib/scope-filter';
 
 interface MovilSelectorProps {
   moviles: MovilData[];
@@ -72,6 +73,10 @@ interface MovilSelectorProps {
    *  muestran tambien los pedidos sin movil y los de moviles fuera del panel
    *  aunque el filtro de empresas sea parcial. */
   privilegedUser?: boolean;
+  /** Gate funcional: true si el usuario tiene la funcionalidad
+   *  "Ped s/asignar unitarios" (o es root). Habilita la visibilidad de
+   *  pedidos/services sin movil en el colapsable. */
+  canVerSinAsignarUnitario?: boolean;
   /** Instrumentacion de drift: true si user?.isRoot === 'S'. Gating estricto — comparacion literal. */
   isRootUser?: boolean;
   /** Estado del ultimo sync de posiciones (null si nunca sincronizo). Solo visible si isRootUser. */
@@ -84,6 +89,10 @@ interface MovilSelectorProps {
   minutosAntesSa?: number | null;
   /** Segundos de polling configurados (para calcular umbrales 🟢🟡🔴). Default 60. */
   pollingSeconds?: number;
+  /** Scope del usuario distribuidor (zonas + moviles permitidos). null/isRestricted=false = sin filtro.
+   *  Si scope.isRestricted y scope.scopedZonaIds, los sin-asignar del colapsable
+   *  se filtran igual que en el mapa. */
+  scope?: ScopeFilter;
 }
 
 // Definir las categorías del árbol
@@ -140,12 +149,14 @@ export default function MovilSelector({
   hideUnassigned = false,
   isRestrictedUser = false,
   privilegedUser = false,
+  canVerSinAsignarUnitario = false,
   isRootUser = false,
   lastSync = null,
   onResync,
   serverNow = new Date(),
   minutosAntesSa = null,
   pollingSeconds = 60,
+  scope,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -282,9 +293,7 @@ export default function MovilSelector({
     if (movilesFilters.estado.length > 0) {
       result = result.filter(movil => {
         const tamanoLote = movil.tamanoLote || 6;
-        const pedidosAsignados = movil.pedidosAsignados || 0;
-        const capacidadRestante = tamanoLote - pedidosAsignados;
-        const porcentajeDisponible = (capacidadRestante / tamanoLote) * 100;
+        const capacidad = movil.capacidad ?? 0;
         
         // Verificar cada estado seleccionado
         return movilesFilters.estado.some(estado => {
@@ -298,14 +307,14 @@ export default function MovilSelector({
               return movil.estadoNro === 4;
             
             case 'con_capacidad':
-              // Móviles con capacidad disponible (> 0%)
-              return capacidadRestante > 0;
+              // Móviles con capacidad disponible (> 0%) — usa capacidad de la DB
+              return tamanoLote > 0 && capacidad < tamanoLote;
             
             case 'sin_capacidad':
               // Móviles sin capacidad: lote completo (4/4) o sobrepasado (6/4).
               // Mismo criterio que loteCompleto en el item del colapsable y el
               // color negro del marker en el mapa.
-              return (movil.tamanoLote ?? 0) > 0 && (movil.pedidosAsignados ?? 0) >= (movil.tamanoLote ?? 0);
+              return (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
             
             default:
               return true;
@@ -333,14 +342,12 @@ export default function MovilSelector({
     || empresas.length === 0
     || (selectedEmpresas?.length ?? 0) === empresas.length;
 
-  // allMovilesSelected (alcance "header badge" + "ver sin-asignar"): true solo
-  // cuando (a) todas las empresas disponibles están seleccionadas (o no hay
-  // multi-empresa) Y (b) todos los móviles operativos del universo están en
-  // selectedMoviles (excluyendo ocultos). Se usa para:
-  //   - badge "🚗 Móviles: Todos" del header
-  //   - canSeeUnassigned: privilegiados ven pedidos/services sin asignar
-  // Si el usuario filtra parcialmente por empresa, "Todos" nunca aplica y los
-  // pedidos sin asignar no se muestran (corresponderían a otras empresas).
+  // allMovilesSelected (semántica estricta — guard de canSeeUnassigned y huérfanos):
+  // true SOLO cuando (a) todas las empresas del universo están seleccionadas Y
+  // (b) todos los móviles operativos están en selectedMoviles. Si hay filtro parcial
+  // de empresa, retorna false aun cuando el usuario haya tildado todo lo visible —
+  // porque los huérfanos podrían corresponder a empresas excluidas y no se deben mostrar.
+  // Usado para: canSeeUnassigned (filteredPedidos + filteredServices).
   const allMovilesSelected = useMemo(() => {
     if (!allEmpresasSelected) return false;
     const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
@@ -348,6 +355,19 @@ export default function MovilSelector({
       : moviles;
     return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
   }, [moviles, selectedMoviles, hiddenMovilIds, allEmpresasSelected]);
+
+  // allVisibleOperativosSelected (semántica relajada — label del badge):
+  // true cuando todos los móviles operativos VISIBLES (post filtro de empresa) están
+  // en selectedMoviles. Usado SOLO para el label "Móviles: Todos" del badge — refleja
+  // lo que el usuario ve y operó. NO tiene impacto en canSeeUnassigned ni en visibilidad
+  // de huérfanos. No depende de allEmpresasSelected.
+  const allVisibleOperativosSelected = useMemo(() => {
+    // Usar filteredMoviles (lista visible del colapsable, post activity+capacity+
+    // advanced filters + hidden) en vez de moviles raw. Esto asegura que "Todos"
+    // refleje SOLO los items visibles, no inactivos/filtrados-out que el usuario
+    // no ve.
+    return filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
+  }, [filteredMoviles, selectedMoviles]);
 
   // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
@@ -371,22 +391,35 @@ export default function MovilSelector({
     // (alcance global, no del colapsable). Si el usuario filtró a un subset de
     // empresas, los sin asignar no aplican porque podrían corresponder a
     // empresas excluidas.
-    const canSeeUnassigned = privilegedUser && allMovilesSelected;
+    // Nuevo: canSeeUnassigned se basa en el gate funcional "Ped s/asignar unitarios".
+    // privilegedUser ya no controla la visibilidad de sin-asignar en el colapsable —
+    // eso queda solo en canVerSinAsignarUnitario (root bypass incluido en la prop).
+    const canSeeUnassigned = canVerSinAsignarUnitario;
 
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
     if (selectedMoviles.length > 0) {
       result = result.filter(pedido => {
-        if (!pedido.movil || Number(pedido.movil) === 0) return canSeeUnassigned;
+        if (!pedido.movil || Number(pedido.movil) === 0) {
+          if (!canSeeUnassigned) return false;
+          // Distribuidor con scope: filtrar sin-asignar por zona, igual que el mapa.
+          // Root/despacho (scope.isRestricted=false) siempre pasan.
+          if (scope?.isRestricted && scope.scopedZonaIds) {
+            const zonaId = pedido.zona_nro != null ? Number(pedido.zona_nro) : null;
+            if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+          }
+          return true;
+        }
         // Cuando todos los móviles del colapsable están seleccionados y el usuario
         // es privilegiado, también pasan los pedidos de móviles ocultos (no activos
         // pero con operativa). Si solo hay un subset seleccionado, NO pasan.
         if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
-    } else if (privilegedUser && !isPartialEmpresa) {
+    } else if (privilegedUser && canVerSinAsignarUnitario && !isPartialEmpresa) {
       // Privilegiado SIN móviles seleccionados (handleClearAll) y empresas
       // completas: vista "solo sin asignar". Mostramos exclusivamente pedidos
       // sin móvil — los asignados quedan ocultos hasta que el usuario seleccione.
+      // Gate funcional: requiere canVerSinAsignarUnitario ademas de privilegio rol.
       result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
     } else if (isPartialEmpresa && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
@@ -402,8 +435,14 @@ export default function MovilSelector({
         if (!pedido.movil || Number(pedido.movil) === 0) return false;
         return validMovilIds.has(Number(pedido.movil));
       });
+    } else {
+      // Fallthrough: sin móviles seleccionados y sin branch específico que
+      // aplique (ej. privilegiado + empresa parcial). El usuario eligió
+      // "Móviles: Ninguno" — no mostrar ningún pedido. Antes este caso caía
+      // sin filtro de móvil y mostraba todos, lo cual contradice el badge.
+      result = [];
     }
-    
+
     // Filtrar por búsqueda
     if (pedidosSearch.trim()) {
       const searchLower = pedidosSearch.toLowerCase();
@@ -489,11 +528,21 @@ export default function MovilSelector({
         return delayA - delayB;
       });
     } else {
-      result.sort((a, b) => Number(b.id) - Number(a.id));
+      // Finalizados: orden ascendente por fch_hora_finalizacion (columna "Cumplido")
+      // — consistente con el sort default de PedidosTableModal vista finalizados.
+      // Nulls al final para no mezclar con los que sí tienen fecha de cumplido.
+      result.sort((a, b) => {
+        const ca = a.fch_hora_finalizacion || '';
+        const cb = b.fch_hora_finalizacion || '';
+        if (!ca && !cb) return Number(a.id) - Number(b.id);
+        if (!ca) return 1;
+        if (!cb) return -1;
+        return ca.localeCompare(cb);
+      });
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa, scope]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -515,18 +564,29 @@ export default function MovilSelector({
     // todas las empresas + todos los móviles están seleccionados. Mismo
     // criterio que en filteredPedidos: usa allMovilesSelected (incluye gating
     // por empresa).
-    const canSeeUnassignedSvc = privilegedUser && allMovilesSelected;
+    // Mismo criterio que canSeeUnassigned para pedidos: basado en gate funcional.
+    const canSeeUnassignedSvc = canVerSinAsignarUnitario;
 
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
-        if (!service.movil || Number(service.movil) === 0) return canSeeUnassignedSvc;
+        if (!service.movil || Number(service.movil) === 0) {
+          if (!canSeeUnassignedSvc) return false;
+          // Distribuidor con scope: filtrar sin-asignar por zona, igual que el mapa.
+          // Root/despacho (scope.isRestricted=false) siempre pasan.
+          if (scope?.isRestricted && scope.scopedZonaIds) {
+            const zonaId = service.zona_nro != null ? Number(service.zona_nro) : null;
+            if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+          }
+          return true;
+        }
         // Mismo criterio que pedidos: móviles ocultos pasan cuando todos seleccionados y usuario privilegiado
         if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
-    } else if (privilegedUser && !isPartialEmpresaSvc) {
+    } else if (privilegedUser && canVerSinAsignarUnitario && !isPartialEmpresaSvc) {
       // Privilegiado SIN móviles seleccionados y empresas completas: vista
       // "solo sin asignar". Mostramos exclusivamente services sin móvil.
+      // Gate funcional: requiere canVerSinAsignarUnitario ademas de privilegio rol.
       result = result.filter(service => !service.movil || Number(service.movil) === 0);
     } else if (isPartialEmpresaSvc && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: restringir también a los
@@ -539,8 +599,13 @@ export default function MovilSelector({
         if (!service.movil || Number(service.movil) === 0) return false;
         return validMovilIds.has(Number(service.movil));
       });
+    } else {
+      // Fallthrough: sin móviles seleccionados y sin branch específico que
+      // aplique (ej. privilegiado + empresa parcial). Mismo criterio que
+      // filteredPedidos: "Móviles: Ninguno" → no mostrar nada.
+      result = [];
     }
-    
+
     // Filtrar por búsqueda
     if (servicesSearch.trim()) {
       const searchLower = servicesSearch.toLowerCase();
@@ -633,7 +698,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa, scope]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
@@ -741,47 +806,66 @@ export default function MovilSelector({
         }
 
         // Badge de móviles seleccionados.
-        // "Todos" SOLO cuando todos los móviles operativos del sistema están
-        // seleccionados — usa `allMovilesSelected` (NO `allSelected`, que
-        // está restringido a los visibles del colapsable después del search).
-        // El +N es el rebalse de los seleccionados que no caben en el badge.
+        // "Todos" cuando todos los móviles operativos VISIBLES están seleccionados —
+        // usa `allVisibleOperativosSelected` (semántica relajada: no requiere todas
+        // las empresas, solo refleja lo que el usuario ve en el colapsable).
+        // La lista de IDs mostrada y el contador +N se calculan SOLO sobre la
+        // intersección con `filteredMoviles` (lista visible del colapsable post
+        // activity/capacity/advanced/hidden filters). selectedMoviles puede
+        // contener IDs de móviles que se filtraron out (ej. inactivos cuando
+        // `actividad='activo'`, o móviles residuales de una empresa anterior) que
+        // el usuario no ve — esos no deben aparecer en el badge.
         {
-          const noneSelected = selectedMoviles.length === 0;
+          const visibleSet = new Set(filteredMoviles.map(m => m.id));
+          const visibleSelectedIds = selectedMoviles.filter(id => visibleSet.has(id));
+          const noneSelected = visibleSelectedIds.length === 0;
           const VISIBLE_IDS = 5;
           badges.push({
-            label: allMovilesSelected
+            label: allVisibleOperativosSelected
               ? '🚗 Móviles: Todos'
               : noneSelected
               ? '🚗 Móviles: Ninguno'
-              : `🚗 Móviles: ${selectedMoviles.length <= VISIBLE_IDS
-                  ? selectedMoviles.join(', ')
-                  : `${selectedMoviles.slice(0, VISIBLE_IDS).join(', ')} +${selectedMoviles.length - VISIBLE_IDS}`}`,
+              : `🚗 Móviles: ${visibleSelectedIds.length <= VISIBLE_IDS
+                  ? visibleSelectedIds.join(', ')
+                  : `${visibleSelectedIds.slice(0, VISIBLE_IDS).join(', ')} +${visibleSelectedIds.length - VISIBLE_IDS}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: allMovilesSelected ? undefined : onSelectAll,
+            onClear: allVisibleOperativosSelected ? undefined : onSelectAll,
           });
         }
 
         // Badge de empresas fleteras seleccionadas
-        if (showEmpresaSelector && selectedEmpresas.length > 0 && empresas.length > 0) {
-          const allSelected = selectedEmpresas.length === empresas.length;
-          const selectedNames = empresas
-            .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
-            .map(e => e.nombre);
-          // Para users restringidos (no-root/no-despacho con allowedEmpresas),
-          // "Todas" sería engañoso porque el set ya viene pre-filtrado a sus
-          // empresas asignadas — siempre listamos los nombres como cuando un
-          // root/despacho filtra manualmente.
-          const showNamesAlways = isRestrictedUser;
-          const namesLabel = `🏢 Empresas: ${selectedNames.length <= 2 ? selectedNames.join(', ') : `${selectedNames.slice(0, 2).join(', ')} +${selectedNames.length - 2}`}`;
-          badges.push({
-            label: allSelected && !showNamesAlways
-              ? '🏢 Empresas: Todas'
-              : namesLabel,
-            color: 'bg-amber-100 text-amber-700',
-            onClear: !allSelected && onEmpresasChange
-              ? () => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))
-              : undefined,
-          });
+        if (showEmpresaSelector && empresas.length > 0) {
+          if (selectedEmpresas.length === 0) {
+            // Ninguna empresa seleccionada — badge explícito "Empresas: Ninguna"
+            badges.push({
+              label: '🏢 Empresas: Ninguna',
+              color: 'bg-amber-100 text-amber-700',
+              // X dispara seleccionar todas (equivalente al click "Todas")
+              onClear: onEmpresasChange
+                ? () => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))
+                : undefined,
+            });
+          } else {
+            const allSelected = selectedEmpresas.length === empresas.length;
+            const selectedNames = empresas
+              .filter(e => selectedEmpresas.includes(e.empresa_fletera_id))
+              .map(e => e.nombre);
+            // Para users restringidos (no-root/no-despacho con allowedEmpresas),
+            // "Todas" sería engañoso porque el set ya viene pre-filtrado a sus
+            // empresas asignadas — siempre listamos los nombres como cuando un
+            // root/despacho filtra manualmente.
+            const showNamesAlways = isRestrictedUser;
+            const namesLabel = `🏢 Empresas: ${selectedNames.length <= 2 ? selectedNames.join(', ') : `${selectedNames.slice(0, 2).join(', ')} +${selectedNames.length - 2}`}`;
+            badges.push({
+              label: allSelected && !showNamesAlways
+                ? '🏢 Empresas: Todas'
+                : namesLabel,
+              color: 'bg-amber-100 text-amber-700',
+              onClear: !allSelected && onEmpresasChange
+                ? () => onEmpresasChange(empresas.map(e => e.empresa_fletera_id))
+                : undefined,
+            });
+          }
         }
         
         // Badge de filtros activos en PEDIDOS
@@ -869,27 +953,9 @@ export default function MovilSelector({
               customFilters={
                 activeCategory === 'moviles' ? (
                   <div className="mt-3 pt-3 border-t border-gray-300">
-                    {/* 🆕 Combo de Actividad: ACTIVO / NO ACTIVO / TODOS */}
-                    <div className="mb-3">
-                      <label className="text-xs font-semibold text-gray-700 mb-1.5 flex items-center gap-2">
-                        <svg className="w-4 h-4 text-indigo-600" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                        Estado de Actividad
-                      </label>
-                      <select
-                        value={movilesFilters.actividad}
-                        onChange={(e) => setMovilesFilters(prev => ({ ...prev, actividad: e.target.value as MovilFilters['actividad'] }))}
-                        className={clsx(
-                          "w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all",
-                          movilesFilters.actividad === 'activo' && "bg-green-50 border-green-300 text-green-800",
-                          movilesFilters.actividad === 'no_activo' && "bg-red-50 border-red-300 text-red-800",
-                        )}
-                      >
-                        <option value="activo">🟢 Activo</option>
-                        <option value="no_activo">🔴 No Activo</option>
-                      </select>
-                    </div>
+                    {/* Combo "Estado de Actividad" removido — el filtro queda forzado al
+                        default 'activo' en el state (ver useState `movilesFilters`). El
+                        usuario decide que la UI no expone más ese toggle. */}
 
                     <h5 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-2">
                       <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
@@ -1274,12 +1340,12 @@ export default function MovilSelector({
                             const isInactive = movil.isInactive;
                             const isNoActivo = movil.estadoNro === 3;
                             const isBajaMomentanea = movil.estadoNro === 4;
-                            const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.pedidosAsignados ?? 0) >= (movil.tamanoLote ?? 0);
+                            const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
                             // 🎨 Mismo cálculo de color que getMovilColor en MapView
                             const loteColor = (() => {
                               if (loteCompleto) return '#1F2937'; // Negro — lote lleno
                               const tam = movil.tamanoLote || 6;
-                              const ped = movil.pedidosAsignados || 0;
+                              const ped = movil.capacidad || 0;
                               const pct = ((tam - ped) / tam) * 100;
                               if (pct < 50) return '#F59E0B'; // Amarillo — < 50%
                               return movil.color; // Color fletera — >= 50%
@@ -1365,7 +1431,7 @@ export default function MovilSelector({
                                     <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
                                       {movil.id}
                                       {' – '}
-                                      {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0} - {movil.capacidad ?? 0}
+                                      {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
                                       {isNoActivo && (
                                         <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
                                           No activo

@@ -5,7 +5,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { checkLoginBlock, recordLoginAttempt, evaluateAndApplyBlocks } from './login-security';
+import { checkLoginBlock, recordLoginAttempt, evaluateAndApplyBlocks, runLoginSecurity } from './login-security';
+import { NextRequest } from 'next/server';
 
 // ==============================================================================
 // MOCKS DE SUPABASE
@@ -50,6 +51,23 @@ vi.mock('./login-security-config', () => ({
 }));
 
 import { getServerSupabaseClient } from './supabase';
+
+// ==============================================================================
+// HELPER — crear NextRequest con headers personalizados
+// ==============================================================================
+
+function makeRequest(headers: Record<string, string> = {}): NextRequest {
+  const url = 'http://localhost/api/auth/login';
+  const body = JSON.stringify({ UserName: 'testuser', Password: 'pass123' });
+  return new NextRequest(url, {
+    method: 'POST',
+    body,
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+  });
+}
 
 describe('Login Security', () => {
   beforeEach(() => {
@@ -396,6 +414,81 @@ describe('Login Security', () => {
       expect(result.ipBlocked).toBeUndefined();
       // No debe hacer consulta de IP ni upsert porque la IP está whitelisted
       expect(upsertMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==============================================================================
+  // Tests de getClientIp (probados via runLoginSecurity — la función no es exportada)
+  //
+  // FIX: getClientIp ya no rechaza IPs privadas del header x-forwarded-for.
+  // Ahora devuelve siempre la primera IP no-vacía del header, sin filtrar por whitelist.
+  // ==============================================================================
+
+  describe('getClientIp (via runLoginSecurity)', () => {
+    // upstream siempre ok para tests de IP (no queremos probar lógica de auth aquí)
+    const upstreamOk = vi.fn().mockResolvedValue({ success: true, token: 'tok' });
+
+    beforeEach(() => {
+      upstreamOk.mockClear();
+      // Supabase: no hay bloqueos activos (maybeSingle → null) y insert ok
+      mockSupabaseClient.__mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
+      mockSupabaseClient.__mockQuery.insert.mockResolvedValue({ error: null });
+      // evaluateAndApplyBlocks no se llama en success, pero por si acaso:
+      const selectMock = vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockResolvedValue({ count: 0, error: null }),
+      });
+      mockSupabaseClient.__mockQuery.select = selectMock;
+    });
+
+    it('debería loguear la IP privada real del header x-forwarded-for (no 127.0.0.1)', async () => {
+      // BUG FIX: antes devolvía 127.0.0.1 para IPs corporativas 192.168.x.x
+      const insertMock = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseClient.__mockQuery.insert = insertMock;
+
+      const req = makeRequest({ 'x-forwarded-for': '192.168.1.50' });
+      await runLoginSecurity(req, upstreamOk);
+
+      expect(insertMock).toHaveBeenCalledWith(
+        expect.objectContaining({ ip: '192.168.1.50' })
+      );
+    });
+
+    it('debería tomar el primer IP de x-forwarded-for cuando hay cadena de proxies', async () => {
+      // Formato típico: cliente, proxy1, proxy2 — el primero es el cliente real
+      const insertMock = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseClient.__mockQuery.insert = insertMock;
+
+      const req = makeRequest({ 'x-forwarded-for': '203.0.113.5, 192.168.1.50' });
+      await runLoginSecurity(req, upstreamOk);
+
+      expect(insertMock).toHaveBeenCalledWith(
+        expect.objectContaining({ ip: '203.0.113.5' })
+      );
+    });
+
+    it('debería usar x-real-ip como fallback si no hay x-forwarded-for', async () => {
+      const insertMock = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseClient.__mockQuery.insert = insertMock;
+
+      const req = makeRequest({ 'x-real-ip': '10.0.0.5' });
+      await runLoginSecurity(req, upstreamOk);
+
+      expect(insertMock).toHaveBeenCalledWith(
+        expect.objectContaining({ ip: '10.0.0.5' })
+      );
+    });
+
+    it('debería retornar 127.0.0.1 si no hay headers de IP', async () => {
+      const insertMock = vi.fn().mockResolvedValue({ error: null });
+      mockSupabaseClient.__mockQuery.insert = insertMock;
+
+      const req = makeRequest(); // sin headers de IP
+      await runLoginSecurity(req, upstreamOk);
+
+      expect(insertMock).toHaveBeenCalledWith(
+        expect.objectContaining({ ip: '127.0.0.1' })
+      );
     });
   });
 });

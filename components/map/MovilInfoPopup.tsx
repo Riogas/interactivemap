@@ -111,7 +111,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
 
   if (!movil || !movil.currentPosition) return null;
 
-  const totalPendientes = pedidosPendientes + serviciosPendientes;
+  const totalPendientes = (movil.cant_ped ?? pedidosPendientes) + (movil.cant_serv ?? serviciosPendientes);
   const canShowAnimation = selectedMovilesCount === 1;
 
   // Historial ordenado ascendente por fecha
@@ -144,7 +144,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   <span className="text-lg">🚚</span>
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm">{movil.name} <span className="font-normal opacity-80">– {movil.pedidosAsignados ?? 0}/{movil.tamanoLote ?? 0}</span></h3>
+                  <h3 className="font-bold text-sm">{movil.name} <span className="font-normal opacity-80">– {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}</span></h3>
                   <p className="text-[10px] opacity-90">Móvil #{movil.id}</p>
                 </div>
               </div>
@@ -422,14 +422,14 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                 <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-2.5 border-2 border-orange-300">
                   <div className="grid grid-cols-2 gap-2 mb-2">
                     <div className="text-center bg-white bg-opacity-60 rounded-lg p-1.5">
-                      <div className="text-xl font-bold text-orange-600">{pedidosPendientes}</div>
+                      <div className="text-xl font-bold text-orange-600">{movil.cant_ped ?? pedidosPendientes}</div>
                       <div className="text-[9px] text-gray-700 font-semibold flex items-center justify-center gap-0.5">
                         <span>📦</span>
                         <span>Pedidos</span>
                       </div>
                     </div>
                     <div className="text-center bg-white bg-opacity-60 rounded-lg p-1.5">
-                      <div className="text-xl font-bold text-red-600">{serviciosPendientes}</div>
+                      <div className="text-xl font-bold text-red-600">{movil.cant_serv ?? serviciosPendientes}</div>
                       <div className="text-[9px] text-gray-700 font-semibold flex items-center justify-center gap-0.5">
                         <span>🔧</span>
                         <span>Servicios</span>
