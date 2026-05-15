@@ -124,41 +124,78 @@ export async function GET(request: NextRequest) {
   // Forward del token del usuario al upstream (proxy con auth del usuario)
   const authHeader = request.headers.get('Authorization') ?? '';
 
-  const upstreamUrl = `${SECURITY_SUITE_URL}/api/db/usuarios/por-empresa-fletera?empresas=${encodeURIComponent(empresasParam)}`;
-
-  console.log(
-    `[usuarios-empresa] GET proxy → ${upstreamUrl} (caller: ${request.headers.get('x-track-user') ?? 'unknown'})`,
-  );
+  // Helper interno para llamar al upstream con un param ya construido.
+  async function callUpstream(param: string): Promise<{ ok: boolean; status: number; body: unknown; url: string }> {
+    const upstreamUrl = `${SECURITY_SUITE_URL}/api/db/usuarios/por-empresa-fletera?empresas=${encodeURIComponent(param)}`;
+    console.log(
+      `[usuarios-empresa] GET upstream → ${upstreamUrl} (caller: ${request.headers.get('x-track-user') ?? 'unknown'})`,
+    );
+    try {
+      const upstreamRes = await fetch(upstreamUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: authHeader,
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+      const body = await upstreamRes.json().catch(() => null);
+      return { ok: upstreamRes.ok, status: upstreamRes.status, body, url: upstreamUrl };
+    } catch (err) {
+      console.error('[usuarios-empresa] Excepción al llamar upstream:', err);
+      throw err;
+    }
+  }
 
   try {
-    const upstreamRes = await fetch(upstreamUrl, {
-      method: 'GET',
-      headers: {
-        Authorization: authHeader,
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
+    // Primer intento con el param tal como vino (típicamente nombres).
+    let attempt = await callUpstream(empresasParam);
 
-    const data = await upstreamRes.json();
+    // Fallback: si el upstream rechaza con 400 y el caller es root (que ya
+    // tiene auto-resolución), o el param parece contener nombres (no-numérico),
+    // probamos con los IDs equivalentes desde Supabase.
+    const paramLooksNonNumeric = !/^[\d,\s]+$/.test(empresasParam);
+    if (!attempt.ok && attempt.status === 400 && paramLooksNonNumeric) {
+      try {
+        const supabase = getServerSupabaseClient();
+        const nombres = empresasParam.split(',').map((s) => s.trim()).filter(Boolean);
+        const { data: rows } = await supabase
+          .from('empresas_fleteras')
+          .select('empresa_fletera_id, nombre')
+          .in('nombre', nombres);
+        type EmpresaRow = { empresa_fletera_id: number | null };
+        const ids = ((rows ?? []) as EmpresaRow[])
+          .map((e) => e?.empresa_fletera_id)
+          .filter((n): n is number => typeof n === 'number');
+        if (ids.length > 0) {
+          console.log(
+            `[usuarios-empresa] upstream 400 con nombres "${empresasParam}", reintentando con IDs: ${ids.join(',')}`,
+          );
+          attempt = await callUpstream(ids.map(String).join(','));
+        }
+      } catch (e) {
+        console.warn('[usuarios-empresa] no se pudo armar el fallback de IDs:', e);
+      }
+    }
 
-    if (!upstreamRes.ok) {
+    if (!attempt.ok) {
       console.error(
-        `[usuarios-empresa] Upstream error ${upstreamRes.status}:`,
-        data,
+        `[usuarios-empresa] Upstream error final ${attempt.status}:`,
+        JSON.stringify(attempt.body),
       );
       return NextResponse.json(
         {
           success: false,
           error: 'Error del servicio upstream',
-          upstream_status: upstreamRes.status,
-          detail: data,
+          upstream_status: attempt.status,
+          upstream_url: attempt.url,
+          detail: attempt.body,
         },
-        { status: upstreamRes.status },
+        { status: attempt.status },
       );
     }
 
-    return NextResponse.json(data, { status: 200 });
+    return NextResponse.json(attempt.body, { status: 200 });
   } catch (err) {
     console.error('[usuarios-empresa] Error de red al llamar upstream:', err);
     return NextResponse.json(
