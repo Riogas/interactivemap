@@ -883,3 +883,34 @@ export interface Database {
     }
   }
 }
+
+// ============================================================
+// Notificaciones de novedades
+// ============================================================
+
+export type Notificacion = {
+  id: number;
+  titulo: string;
+  descripcion: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  activa: boolean;
+  roles_target: string[];
+  media_url: string | null;
+  media_type: 'image' | 'video' | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificacionUserState = {
+  notificacion_id: number;
+  username: string;
+  visto_at: string | null;
+  dismissed_at: string | null;
+};
+
+export type NotificacionWithStats = Notificacion & {
+  vistos: number;
+  dismissed_count: number;
+};

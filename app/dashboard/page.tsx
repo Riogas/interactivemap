@@ -39,6 +39,7 @@ import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
+import NovedadesModal from '@/components/ui/NovedadesModal';
 import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
 import { getMaxRoleAttribute } from '@/lib/role-attributes';
 import { useServerTime } from '@/hooks/useServerTime';
@@ -3233,6 +3234,7 @@ function DashboardContent() {
 export default function Dashboard() {
   return (
     <ProtectedRoute>
+      <NovedadesModal />
       <DashboardContent />
     </ProtectedRoute>
   );
