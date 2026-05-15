@@ -390,24 +390,8 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
             {/* Content */}
             <div className="p-6 space-y-6">
 
-              {/* ─── Notificaciones de novedades (solo root) ─────────────────── */}
-              {isRoot(user) && (
-                <div>
-                  <button
-                    onClick={() => window.open('/admin/notificaciones', '_blank')}
-                    className="w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors text-left"
-                  >
-                    <span className="text-xl">&#128226;</span>
-                    <div className="flex-1">
-                      <div className="font-medium text-indigo-900">Notificaciones de novedades</div>
-                      <div className="text-xs text-indigo-600">Panel de administracion — Solo root</div>
-                    </div>
-                    <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </button>
-                </div>
-              )}
+              {/* Botón "Notificaciones de novedades" se movió al FloatingToolbar
+                  (junto a Bloqueos de Login, Logs/Auditoría, Configuración, Incidentes). */}
 
               {/* ═══════════════════════════════════════════════════════════
                   SECCIÓN 1: Tamaño y Forma de Marcadores
