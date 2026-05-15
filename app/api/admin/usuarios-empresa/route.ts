@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSupabaseClient } from '@/lib/supabase';
 
 /**
  * API proxy: GET /api/admin/usuarios-empresa
@@ -51,7 +52,63 @@ export async function GET(request: NextRequest) {
   if (gate !== true) return gate;
 
   const url = new URL(request.url);
-  const empresasParam = url.searchParams.get('empresas') ?? '';
+  let empresasParam = url.searchParams.get('empresas') ?? '';
+  const isRootCaller = request.headers.get('x-track-isroot') === 'S';
+
+  // Caso root sin parámetro: auto-resolver a TODAS las empresas fleteras activas.
+  // Root no tiene allowedEmpresas ni preferencias EmpFletera (acceso total),
+  // así que el cliente manda `empresas=` vacío y acá completamos.
+  if (!empresasParam && isRootCaller) {
+    try {
+      const supabase = getServerSupabaseClient();
+      const { data: empresas, error } = await supabase
+        .from('empresas_fleteras')
+        .select('nombre, empresa_fletera_id')
+        .eq('estado', 1)
+        .order('nombre');
+
+      if (error) {
+        console.error('[usuarios-empresa] error cargando empresas activas para root:', error);
+        return NextResponse.json(
+          { success: false, error: 'Error cargando empresas activas para root' },
+          { status: 500 },
+        );
+      }
+
+      // Primer intento: nombres (consistente con el helper del cliente).
+      // Fallback: IDs si los nombres están vacíos.
+      type EmpresaRow = { nombre: string | null; empresa_fletera_id: number | null };
+      const rows: EmpresaRow[] = (empresas as EmpresaRow[]) ?? [];
+      const nombres = rows
+        .map((e) => String(e?.nombre ?? '').trim())
+        .filter(Boolean);
+      if (nombres.length > 0) {
+        empresasParam = nombres.join(',');
+      } else {
+        const ids = rows
+          .map((e) => e?.empresa_fletera_id)
+          .filter((n): n is number => typeof n === 'number');
+        empresasParam = ids.map(String).join(',');
+      }
+
+      if (!empresasParam) {
+        return NextResponse.json(
+          { success: true, data: [] }, // No hay empresas activas — lista vacía es válida
+          { status: 200 },
+        );
+      }
+
+      console.log(
+        `[usuarios-empresa] root sin param → auto-resolvió a ${rows.length} empresas activas: ${empresasParam}`,
+      );
+    } catch (err) {
+      console.error('[usuarios-empresa] excepción al auto-resolver empresas para root:', err);
+      return NextResponse.json(
+        { success: false, error: 'Excepción auto-resolviendo empresas para root' },
+        { status: 500 },
+      );
+    }
+  }
 
   if (!empresasParam) {
     return NextResponse.json(
