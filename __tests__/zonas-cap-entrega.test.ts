@@ -6,7 +6,7 @@
  *  2.  movilNro 0 → early return void, sin queries
  *  3.  Móvil con 0 zonas activas → no genera filas en zonas_cap_entrega + borra stale
  *  4.  Móvil con 3 zonas activas → genera 3 filas con lote_disponible correcto
- *  5.  Móvil con capacidad > tamano_lote → lote_disponible negativo (sin clamp)
+ *  5.  Móvil con capacidad > tamano_lote → lote_disponible = 0 (clamp a 0 por nueva semantica)
  *  6.  Móvil con tamano_lote = null → no genera filas + borra filas previas
  *  7.  Cambio de tipo_servicio → filas stale detectadas y borradas
  *  8.  Error en UPSERT → lanza (no swallowed)
@@ -44,6 +44,8 @@ import {
  * Crea un mock de Supabase adaptado a los accesos de syncMovilZonasCapEntrega.
  * Permite pasar el movilRow directamente, las zonas asignadas, y controlar
  * el resultado de upsert/existingRows/delete.
+ *
+ * Incluye mock de escenario_settings con alpha=0.3 por defecto.
  */
 function makeSupabaseMock({
   movilRow,
@@ -51,17 +53,25 @@ function makeSupabaseMock({
   upsertData = [],
   existingData = [],
   deleteError = null,
+  alpha = 0.3,
 }: {
   movilRow: any | null;
   zonaRows: any[];
   upsertData?: any[];
   existingData?: any[];
   deleteError?: any;
+  alpha?: number;
 }) {
   const movilChain = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({ data: movilRow, error: null }),
+  };
+
+  const settingsChain = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: { peso_transito_alpha: alpha }, error: null }),
   };
 
   const zonaChainBase: any = {
@@ -83,6 +93,7 @@ function makeSupabaseMock({
 
   const mockFromFn = vi.fn((table: string) => {
     if (table === 'moviles') return movilChain;
+    if (table === 'escenario_settings') return settingsChain;
     if (table === 'moviles_zonas') return zonaChainBase;
     if (table === 'zonas_cap_entrega') {
       return {
@@ -147,21 +158,29 @@ describe('syncMovilZonasCapEntrega', () => {
   it('Caso 4: móvil con 3 zonas → genera 3 filas con lote_disponible correcto', async () => {
     const tamano_lote = 4;
     const capacidad = 1;
-    const expectedLote = tamano_lote - capacidad; // 3
+    // lote_libre = 3, 3 zonas todas prioridad_o_transito=1 (prioridad)
+    // W = 3, porcion = ceil(3 * 1 / 3) = 1
+    const expectedLote = 1;
 
     let upsertCalledWith: any[] = [];
 
     const movilRow = { escenario_id: 1000, empresa_fletera_id: 5, tamano_lote, capacidad };
     const zonaRows = [
-      { zona_id: 1, escenario_id: 1000, tipo_de_servicio: 'URGENTE' },
-      { zona_id: 2, escenario_id: 1000, tipo_de_servicio: 'NOCTURNO' },
-      { zona_id: 3, escenario_id: 1000, tipo_de_servicio: 'SERVICE' },
+      { zona_id: 1, escenario_id: 1000, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 1 },
+      { zona_id: 2, escenario_id: 1000, tipo_de_servicio: 'NOCTURNO', prioridad_o_transito: 1 },
+      { zona_id: 3, escenario_id: 1000, tipo_de_servicio: 'SERVICE', prioridad_o_transito: 1 },
     ];
 
     const movilChain = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       maybeSingle: vi.fn().mockResolvedValue({ data: movilRow, error: null }),
+    };
+
+    const settingsChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { peso_transito_alpha: 0.3 }, error: null }),
     };
 
     const zonaChain: any = {
@@ -176,6 +195,7 @@ describe('syncMovilZonasCapEntrega', () => {
     const sb = {
       from: vi.fn((table: string) => {
         if (table === 'moviles') return movilChain;
+        if (table === 'escenario_settings') return settingsChain;
         if (table === 'moviles_zonas') return zonaChain;
         if (table === 'zonas_cap_entrega') {
           return {
@@ -212,20 +232,27 @@ describe('syncMovilZonasCapEntrega', () => {
     }
   });
 
-  it('Caso 5: capacidad > tamano_lote → lote_disponible negativo (sin clamp a 0)', async () => {
+  it('Caso 5: capacidad > tamano_lote → lote_disponible = 0 (clamp a 0, no negativo)', async () => {
+    // Nueva semantica: lote_libre < 0 se trata como 0
     const tamano_lote = 4;
     const capacidad = 6; // sobrecupo
-    const expectedLote = tamano_lote - capacidad; // -2
 
     let upsertCalledWith: any[] = [];
 
     const movilRow = { escenario_id: 1000, empresa_fletera_id: 5, tamano_lote, capacidad };
-    const zonaRows = [{ zona_id: 1, escenario_id: 1000, tipo_de_servicio: 'URGENTE' }];
+    const zonaRows = [
+      { zona_id: 1, escenario_id: 1000, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 1 },
+    ];
 
     const movilChain = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       maybeSingle: vi.fn().mockResolvedValue({ data: movilRow, error: null }),
+    };
+    const settingsChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { peso_transito_alpha: 0.3 }, error: null }),
     };
     const zonaChain: any = {
       select: vi.fn().mockReturnThis(),
@@ -239,6 +266,7 @@ describe('syncMovilZonasCapEntrega', () => {
     const sb = {
       from: vi.fn((table: string) => {
         if (table === 'moviles') return movilChain;
+        if (table === 'escenario_settings') return settingsChain;
         if (table === 'moviles_zonas') return zonaChain;
         if (table === 'zonas_cap_entrega') {
           return {
@@ -266,8 +294,8 @@ describe('syncMovilZonasCapEntrega', () => {
     await syncMovilZonasCapEntrega(sb as any, 42);
 
     expect(upsertCalledWith.length).toBeGreaterThan(0);
-    expect(upsertCalledWith[0].lote_disponible).toBe(expectedLote);
-    expect(upsertCalledWith[0].lote_disponible).toBeLessThan(0);
+    // Nueva semantica: lote_libre negativo se clampea a 0
+    expect(upsertCalledWith[0].lote_disponible).toBe(0);
   });
 
   it('Caso 6: tamano_lote = null → no genera filas + borra todas las filas del movil', async () => {
@@ -313,7 +341,9 @@ describe('syncMovilZonasCapEntrega', () => {
     let deleteCalledWith: Array<{ col: string; val: any }> = [];
 
     const movilRow = { escenario_id: 1000, empresa_fletera_id: 5, tamano_lote: 4, capacidad: 1 };
-    const zonaRows = [{ zona_id: 1, escenario_id: 1000, tipo_de_servicio: 'URGENTE' }];
+    const zonaRows = [
+      { zona_id: 1, escenario_id: 1000, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 1 },
+    ];
     // Existing row: zona 1 con NOCTURNO (stale — ya no coincide con URGENTE)
     const existingData = [{ escenario: 1000, zona: 1, tipo_servicio: 'NOCTURNO' }];
 
@@ -321,6 +351,11 @@ describe('syncMovilZonasCapEntrega', () => {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       maybeSingle: vi.fn().mockResolvedValue({ data: movilRow, error: null }),
+    };
+    const settingsChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { peso_transito_alpha: 0.3 }, error: null }),
     };
     const zonaChain: any = {
       select: vi.fn().mockReturnThis(),
@@ -334,6 +369,7 @@ describe('syncMovilZonasCapEntrega', () => {
     const sb = {
       from: vi.fn((table: string) => {
         if (table === 'moviles') return movilChain;
+        if (table === 'escenario_settings') return settingsChain;
         if (table === 'moviles_zonas') return zonaChain;
         if (table === 'zonas_cap_entrega') {
           return {
@@ -375,12 +411,19 @@ describe('syncMovilZonasCapEntrega', () => {
 
   it('Caso 8: error en UPSERT → lanza (no swallowed)', async () => {
     const movilRow = { escenario_id: 1000, empresa_fletera_id: 5, tamano_lote: 4, capacidad: 1 };
-    const zonaRows = [{ zona_id: 1, escenario_id: 1000, tipo_de_servicio: 'URGENTE' }];
+    const zonaRows = [
+      { zona_id: 1, escenario_id: 1000, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 1 },
+    ];
 
     const movilChain = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       maybeSingle: vi.fn().mockResolvedValue({ data: movilRow, error: null }),
+    };
+    const settingsChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { peso_transito_alpha: 0.3 }, error: null }),
     };
     const zonaChain: any = {
       select: vi.fn().mockReturnThis(),
@@ -394,6 +437,7 @@ describe('syncMovilZonasCapEntrega', () => {
     const sb = {
       from: vi.fn((table: string) => {
         if (table === 'moviles') return movilChain;
+        if (table === 'escenario_settings') return settingsChain;
         if (table === 'moviles_zonas') return zonaChain;
         if (table === 'zonas_cap_entrega') {
           return {
@@ -455,15 +499,20 @@ describe('syncMovilZonasCapEntrega', () => {
 
     const movilRow = { escenario_id: 1000, empresa_fletera_id: 5, tamano_lote: 4, capacidad: 1 };
     const zonasConVacio = [
-      { zona_id: 1, escenario_id: 1000, tipo_de_servicio: '' },        // vacío → ignorado
-      { zona_id: 2, escenario_id: 1000, tipo_de_servicio: null },      // null → ignorado
-      { zona_id: 3, escenario_id: 1000, tipo_de_servicio: 'URGENTE' }, // válido → upserted
+      { zona_id: 1, escenario_id: 1000, tipo_de_servicio: '', prioridad_o_transito: 1 },       // vacío → ignorado
+      { zona_id: 2, escenario_id: 1000, tipo_de_servicio: null, prioridad_o_transito: 1 },     // null → ignorado
+      { zona_id: 3, escenario_id: 1000, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 1 }, // válido → upserted
     ];
 
     const movilChain = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       maybeSingle: vi.fn().mockResolvedValue({ data: movilRow, error: null }),
+    };
+    const settingsChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { peso_transito_alpha: 0.3 }, error: null }),
     };
     const zonaChain: any = {
       select: vi.fn().mockReturnThis(),
@@ -477,6 +526,7 @@ describe('syncMovilZonasCapEntrega', () => {
     const sb = {
       from: vi.fn((table: string) => {
         if (table === 'moviles') return movilChain;
+        if (table === 'escenario_settings') return settingsChain;
         if (table === 'moviles_zonas') return zonaChain;
         if (table === 'zonas_cap_entrega') {
           return {
@@ -531,11 +581,16 @@ describe('recomputeMovilAndCapEntrega', () => {
 
     const movilChain = {
       select: vi.fn().mockReturnThis(),
-      eq: vi.fn(() => {
-        callOrder.push('sync');
+      eq: vi.fn((col: string) => {
+        if (col === 'nro') callOrder.push('sync');
         return movilChain;
       }),
       maybeSingle: vi.fn().mockResolvedValue({ data: movilRow, error: null }),
+    };
+    const settingsChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { peso_transito_alpha: 0.3 }, error: null }),
     };
     const zonaChain: any = {
       select: vi.fn().mockReturnThis(),
@@ -549,6 +604,7 @@ describe('recomputeMovilAndCapEntrega', () => {
     const sb = {
       from: vi.fn((table: string) => {
         if (table === 'moviles') return movilChain;
+        if (table === 'escenario_settings') return settingsChain;
         if (table === 'moviles_zonas') return zonaChain;
         if (table === 'zonas_cap_entrega') {
           return {

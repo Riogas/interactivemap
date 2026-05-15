@@ -12,6 +12,7 @@ interface EscenarioSettingRow {
   aplicaServNocturno: boolean;
   horaIniNocturno: string | null;
   horaFinNocturno: string | null;
+  pesoTransitoAlpha: number;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -26,6 +27,9 @@ interface RowState {
   horaFin: string; // '' significa null (usar default)
   horasSaveState: SaveState;
   horasDirty: boolean;
+  alphaValue: string; // representacion string del alpha para el input
+  alphaSaveState: SaveState;
+  alphaDirty: boolean;
 }
 
 function minutesToStr(v: number | null): string {
@@ -55,6 +59,20 @@ function inputToTimeStr(v: string): string | null {
   return trimmed;
 }
 
+/** Convierte alpha numerico a string con 2 decimales para el input. */
+function alphaToStr(v: number): string {
+  return v.toFixed(2);
+}
+
+/** Parsea string del input alpha a numero valido entre 0 y 1, o null si invalido. */
+function strToAlpha(s: string): number | null {
+  const trimmed = s.trim();
+  if (!trimmed) return null;
+  const n = parseFloat(trimmed);
+  if (isNaN(n) || n < 0 || n > 1) return null;
+  return Math.round(n * 100) / 100; // redondear a 2 decimales
+}
+
 export default function ConfiguracionPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -62,6 +80,7 @@ export default function ConfiguracionPage() {
   const [rowStates, setRowStates] = useState<Map<number, RowState>>(new Map());
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [recalcStatus, setRecalcStatus] = useState<Map<number, string>>(new Map());
   const loadingRef = useRef(false);
 
   // Gate: redirigir si no es root
@@ -102,6 +121,9 @@ export default function ConfiguracionPage() {
           horaFin: timeToInputValue(row.horaFinNocturno),
           horasSaveState: 'idle',
           horasDirty: false,
+          alphaValue: alphaToStr(row.pesoTransitoAlpha),
+          alphaSaveState: 'idle',
+          alphaDirty: false,
         });
       }
       setRowStates(states);
@@ -122,7 +144,7 @@ export default function ConfiguracionPage() {
   function handleChange(escenarioId: number, value: string) {
     setRowStates(prev => {
       const next = new Map(prev);
-      const cur = next.get(escenarioId) ?? { value: '', saveState: 'idle' as SaveState, dirty: false, aplicaServNocturno: true, nocturnaSaveState: 'idle' as SaveState, horaIni: '', horaFin: '', horasSaveState: 'idle' as SaveState, horasDirty: false };
+      const cur = next.get(escenarioId) ?? { value: '', saveState: 'idle' as SaveState, dirty: false, aplicaServNocturno: true, nocturnaSaveState: 'idle' as SaveState, horaIni: '', horaFin: '', horasSaveState: 'idle' as SaveState, horasDirty: false, alphaValue: '0.30', alphaSaveState: 'idle' as SaveState, alphaDirty: false };
       next.set(escenarioId, { ...cur, value, dirty: true, saveState: 'idle' });
       return next;
     });
@@ -134,6 +156,16 @@ export default function ConfiguracionPage() {
       const cur = next.get(escenarioId);
       if (!cur) return prev;
       next.set(escenarioId, { ...cur, [field]: value, horasDirty: true, horasSaveState: 'idle' });
+      return next;
+    });
+  }
+
+  function handleAlphaChange(escenarioId: number, value: string) {
+    setRowStates(prev => {
+      const next = new Map(prev);
+      const cur = next.get(escenarioId);
+      if (!cur) return prev;
+      next.set(escenarioId, { ...cur, alphaValue: value, alphaDirty: true, alphaSaveState: 'idle' });
       return next;
     });
   }
@@ -246,6 +278,102 @@ export default function ConfiguracionPage() {
     }
   }
 
+  async function handleSaveAlpha(escenarioId: number) {
+    const state = rowStates.get(escenarioId);
+    if (!state || !state.alphaDirty) return;
+
+    const pesoTransitoAlpha = strToAlpha(state.alphaValue);
+    if (pesoTransitoAlpha === null) {
+      // Valor invalido — revertir al valor guardado del row
+      const row = rows.find(r => r.escenarioId === escenarioId);
+      setRowStates(prev => {
+        const next = new Map(prev);
+        const cur = next.get(escenarioId);
+        if (cur) next.set(escenarioId, { ...cur, alphaValue: alphaToStr(row?.pesoTransitoAlpha ?? 0.3), alphaDirty: false, alphaSaveState: 'idle' });
+        return next;
+      });
+      return;
+    }
+
+    setRowStates(prev => {
+      const next = new Map(prev);
+      next.set(escenarioId, { ...state, alphaSaveState: 'saving' });
+      return next;
+    });
+
+    // Indicar recalculo en progreso
+    setRecalcStatus(prev => new Map(prev).set(escenarioId, 'recalculando...'));
+
+    try {
+      const res = await fetch('/api/admin/escenario-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-track-isroot': user?.isRoot ?? '',
+          'x-track-user': user?.username ?? '',
+        },
+        body: JSON.stringify({ escenarioId, pesoTransitoAlpha }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? 'Error al guardar');
+
+      // Actualizar el row en memoria con el nuevo alpha
+      setRows(prev => prev.map(r => r.escenarioId === escenarioId ? { ...r, pesoTransitoAlpha } : r));
+
+      setRowStates(prev => {
+        const next = new Map(prev);
+        const cur = next.get(escenarioId);
+        if (cur) next.set(escenarioId, { ...cur, alphaSaveState: 'saved', alphaDirty: false, alphaValue: alphaToStr(pesoTransitoAlpha) });
+        return next;
+      });
+
+      // Mostrar resultado del recalculo si vino en la respuesta
+      if (json.recalc) {
+        const r = json.recalc;
+        const msg = r.status === 'ok'
+          ? `Recalculo OK (${r.processed}/${r.total} moviles)`
+          : `Recalculo parcial: ${r.processed}/${r.total} OK, ${r.errors?.length ?? 0} errores`;
+        setRecalcStatus(prev => new Map(prev).set(escenarioId, msg));
+      } else {
+        setRecalcStatus(prev => {
+          const next = new Map(prev);
+          next.delete(escenarioId);
+          return next;
+        });
+      }
+
+      setTimeout(() => {
+        setRowStates(prev => {
+          const next = new Map(prev);
+          const cur = next.get(escenarioId);
+          if (cur && cur.alphaSaveState === 'saved') {
+            next.set(escenarioId, { ...cur, alphaSaveState: 'idle' });
+          }
+          return next;
+        });
+        setRecalcStatus(prev => {
+          const next = new Map(prev);
+          next.delete(escenarioId);
+          return next;
+        });
+      }, 5000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error desconocido';
+      setRowStates(prev => {
+        const next = new Map(prev);
+        const cur = next.get(escenarioId);
+        if (cur) next.set(escenarioId, { ...cur, alphaSaveState: 'error', alphaDirty: true });
+        return next;
+      });
+      setRecalcStatus(prev => {
+        const next = new Map(prev);
+        next.delete(escenarioId);
+        return next;
+      });
+      console.error('[configuracion] save alpha error:', msg);
+    }
+  }
+
   async function handleToggleNocturno(escenarioId: number, newValue: boolean) {
     const state = rowStates.get(escenarioId);
     if (!state) return;
@@ -319,7 +447,7 @@ export default function ConfiguracionPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Configuracion por escenario</h1>
           <p className="text-sm text-gray-600 mt-1">
@@ -352,6 +480,7 @@ export default function ConfiguracionPage() {
                   <th className="px-4 py-3 text-left font-semibold">Cubre nocturno</th>
                   <th className="px-4 py-3 text-left font-semibold" title="Si esta vacio se usa el default (20:30 / 06:00)">Ini nocturno</th>
                   <th className="px-4 py-3 text-left font-semibold" title="Si esta vacio se usa el default (20:30 / 06:00)">Fin nocturno</th>
+                  <th className="px-4 py-3 text-left font-semibold" title="Peso de zonas de transito en el prorrateo del lote. 1=igual que prioridad, 0=no aportan, 0.3=30%. Al guardar recalcula todos los moviles del escenario.">Peso transito (α)</th>
                   <th className="px-4 py-3 text-left font-semibold">Estado</th>
                 </tr>
               </thead>
@@ -367,11 +496,15 @@ export default function ConfiguracionPage() {
                     horaFin: '',
                     horasSaveState: 'idle' as SaveState,
                     horasDirty: false,
+                    alphaValue: '0.30',
+                    alphaSaveState: 'idle' as SaveState,
+                    alphaDirty: false,
                   };
-                  const anySaving = state.saveState === 'saving' || state.nocturnaSaveState === 'saving' || state.horasSaveState === 'saving';
-                  const anySaved = (state.saveState === 'saved' || state.nocturnaSaveState === 'saved' || state.horasSaveState === 'saved') && !anySaving;
-                  const anyError = (state.saveState === 'error' || state.nocturnaSaveState === 'error' || state.horasSaveState === 'error') && !anySaving;
-                  const anyDirty = (state.dirty || state.horasDirty) && !anySaving;
+                  const anySaving = state.saveState === 'saving' || state.nocturnaSaveState === 'saving' || state.horasSaveState === 'saving' || state.alphaSaveState === 'saving';
+                  const anySaved = (state.saveState === 'saved' || state.nocturnaSaveState === 'saved' || state.horasSaveState === 'saved' || state.alphaSaveState === 'saved') && !anySaving;
+                  const anyError = (state.saveState === 'error' || state.nocturnaSaveState === 'error' || state.horasSaveState === 'error' || state.alphaSaveState === 'error') && !anySaving;
+                  const anyDirty = (state.dirty || state.horasDirty || state.alphaDirty) && !anySaving;
+                  const recalc = recalcStatus.get(row.escenarioId);
                   return (
                     <tr key={row.escenarioId} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 font-mono text-gray-700">{row.escenarioId}</td>
@@ -437,6 +570,25 @@ export default function ConfiguracionPage() {
                         />
                       </td>
                       <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            title="Peso de zonas de transito (α). 1=igual que prioridad, 0=no aportan nada, 0.3=aportan ~30% del lote. Al guardar recalcula todos los moviles del escenario."
+                            value={state.alphaValue}
+                            onChange={e => handleAlphaChange(row.escenarioId, e.target.value)}
+                            onBlur={() => handleSaveAlpha(row.escenarioId)}
+                            className="w-24 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            disabled={state.alphaSaveState === 'saving'}
+                          />
+                          {recalc && (
+                            <span className="text-xs text-amber-600">{recalc}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
                         {anySaving && (
                           <span className="text-blue-500 text-xs">Guardando...</span>
                         )}
@@ -459,6 +611,7 @@ export default function ConfiguracionPage() {
               Minutos antes: se guarda al salir del campo (on blur).
               Cubre nocturno: se guarda al cambiar el toggle.
               Horarios nocturno: se guardan al salir del campo. Si estan vacios se usan los defaults (20:30 / 06:00).
+              Peso transito (α): se guarda al salir del campo. Al cambiar, recalcula automaticamente todos los moviles del escenario.
             </p>
           </div>
         )}

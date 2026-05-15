@@ -9,6 +9,12 @@ export type EscenarioSettings = {
   horaIniNocturno: string | null;
   /** Hora de fin del periodo nocturno / inicio diurno (HH:MM:SS). NULL = usar default (06:00). */
   horaFinNocturno: string | null;
+  /**
+   * Peso de las zonas de transito en el prorrateo del lote del movil.
+   * 1 = igual que prioridad, 0 = no aporta nada, 0.3 default = aporta ~30%.
+   * Configurable solo por root.
+   */
+  pesoTransitoAlpha: number;
 };
 
 const CACHE_TTL_MS = 60_000; // 60 segundos
@@ -24,7 +30,7 @@ type ApiResponse = {
  *
  * Si escenarioId es null, no hace fetch y retorna settings=null.
  * Si no existe configuracion para el escenario, retorna defaults seguros
- * ({ pedidosSaMinutosAntes: null, aplicaServNocturno: true, horaIniNocturno: null, horaFinNocturno: null }).
+ * ({ pedidosSaMinutosAntes: null, aplicaServNocturno: true, horaIniNocturno: null, horaFinNocturno: null, pesoTransitoAlpha: 0.3 }).
  *
  * Uso:
  *   const { settings } = useEscenarioSettings(escenarioId);
@@ -32,6 +38,7 @@ type ApiResponse = {
  *   const aplicaNocturno = settings?.aplicaServNocturno ?? true;
  *   const horaIni = settings?.horaIniNocturno ?? null;
  *   const horaFin = settings?.horaFinNocturno ?? null;
+ *   const alpha = settings?.pesoTransitoAlpha ?? 0.3;
  */
 export function useEscenarioSettings(escenarioId: number | null): {
   settings: EscenarioSettings | null;

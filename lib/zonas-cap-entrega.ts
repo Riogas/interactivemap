@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { recomputeMovilCounters } from '@/lib/movil-counters';
 
+const DEFAULT_PESO_TRANSITO_ALPHA = 0.3;
+
 /**
  * Shape de una fila en la tabla zonas_cap_entrega.
  * Refleja la PK compuesta: (escenario, zona, tipo_servicio, movil, emp_fletera_id).
@@ -15,20 +17,66 @@ export interface ZonasCapEntregaRow {
 }
 
 /**
- * Sincroniza zonas_cap_entrega para el movil dado.
+ * Calcula la porcion del lote libre para cada zona usando prorrateo con peso.
+ *
+ * Pesos: prioridad_o_transito === 1 => peso 1 (prioridad), otro => peso alpha (transito).
+ *
+ * W = sum(peso_zona para todas las zonas)
+ * porcion_zona = ceil(lote_libre * peso_zona / W)
+ *
+ * Edge cases:
+ *  - lote_libre <= 0 => todas las porciones son 0
+ *  - W === 0 (sin zonas) => array vacio
+ *  - alpha = 0 y solo zonas de transito => W = 0, array vacio (no upsertamos nada)
+ */
+function calcularPorciones(
+  zonas: Array<{ zona_id: number; escenario_id: number; tipo_de_servicio: string; prioridad_o_transito: number }>,
+  loteLibre: number,
+  alpha: number,
+): Array<{ zona_id: number; escenario_id: number; tipo_de_servicio: string; porcion: number }> {
+  if (zonas.length === 0) return [];
+
+  // lote_libre negativo o cero => todas las porciones son 0
+  const loteEfectivo = Math.max(0, loteLibre);
+
+  // Calcular W = suma de pesos
+  const W = zonas.reduce((acc, z) => {
+    const peso = z.prioridad_o_transito === 1 ? 1 : alpha;
+    return acc + peso;
+  }, 0);
+
+  // Si W === 0 (por ej: alpha=0 y solo zonas de transito) => no generar filas
+  if (W === 0) return [];
+
+  return zonas.map(z => {
+    const peso = z.prioridad_o_transito === 1 ? 1 : alpha;
+    const porcion = loteEfectivo === 0 ? 0 : Math.ceil(loteEfectivo * peso / W);
+    return {
+      zona_id: z.zona_id,
+      escenario_id: z.escenario_id,
+      tipo_de_servicio: z.tipo_de_servicio,
+      porcion,
+    };
+  });
+}
+
+/**
+ * Sincroniza zonas_cap_entrega para el movil dado, usando prorrateo con peso alpha.
  *
  * ESTRATEGIA (idempotente):
- *   1. Lee el estado actual del móvil desde `moviles` (escenario_id, empresa_fletera_id,
+ *   1. Lee el estado actual del movil desde `moviles` (escenario_id, empresa_fletera_id,
  *      tamano_lote, capacidad). Si tamano_lote es null, no genera filas y borra las previas.
- *   2. Lee la lista de zonas activas asignadas al móvil desde `moviles_zonas`,
- *      incluyendo tipo_de_servicio por fila (puede variar por zona).
- *   3. Para cada asignación con tipo_de_servicio no vacío:
- *      UPSERT en zonas_cap_entrega con lote_disponible = tamano_lote - capacidad.
- *   4. DELETE de filas stale: cualquier fila en zonas_cap_entrega para este movil
- *      que ya no esté en la lista activa (por zona+tipo_servicio).
+ *   2. Lee pesoTransitoAlpha del escenario_settings del escenario del movil (default 0.3).
+ *   3. Lee la lista de zonas activas del movil desde `moviles_zonas` incluyendo
+ *      tipo_de_servicio y prioridad_o_transito por fila.
+ *   4. Calcula lote_libre = max(0, tamano_lote - capacidad).
+ *   5. Calcula W = sum(peso_zona) donde peso = 1 si prioridad, alpha si transito.
+ *   6. Por cada zona: porcion = ceil(lote_libre * peso_zona / W).
+ *   7. UPSERT en zonas_cap_entrega con lote_disponible = porcion.
+ *   8. DELETE filas stale.
  *
- * PRECONDICIÓN:
- *   Llamar DESPUÉS de recomputeMovilCounters para que `capacidad` esté actualizada.
+ * PRECONDICION:
+ *   Llamar DESPUES de recomputeMovilCounters para que `capacidad` este actualizado.
  *   Usar recomputeMovilAndCapEntrega() que garantiza este orden.
  *
  * CLIENTE:
@@ -36,19 +84,19 @@ export interface ZonasCapEntregaRow {
  *
  * @param supabase  - Cliente Supabase de SERVIDOR (getServerSupabaseClient())
  * @param movilNro  - Valor del campo `nro` en tabla moviles
- * @returns Array de filas upserted, o void si movilNro inválido
+ * @returns Array de filas upserted, o void si movilNro invalido
  */
 export async function syncMovilZonasCapEntrega(
   supabase: SupabaseClient,
   movilNro: number | string | null | undefined,
 ): Promise<ZonasCapEntregaRow[] | void> {
-  // Guard: movil inválido → early return sin queries
+  // Guard: movil invalido => early return sin queries
   const nro = Number(movilNro);
   if (movilNro == null || !Number.isFinite(nro) || nro === 0) {
     return;
   }
 
-  // ── 1. Leer estado actual del móvil ──────────────────────────────────────
+  // ── 1. Leer estado actual del movil ──────────────────────────────────────
   const { data: movilData, error: movilError } = await (supabase as any)
     .from('moviles')
     .select('escenario_id, empresa_fletera_id, tamano_lote, capacidad')
@@ -61,7 +109,7 @@ export async function syncMovilZonasCapEntrega(
   }
 
   if (!movilData) {
-    // Móvil no existe en la tabla → borrar filas stale si las hubiera
+    // Movil no existe en la tabla => borrar filas stale si las hubiera
     console.warn(`[zonas-cap-entrega] movilNro=${nro} no encontrado en moviles — borrando filas stale`);
     await _deleteAllRowsForMovil(supabase, nro);
     return [];
@@ -69,21 +117,35 @@ export async function syncMovilZonasCapEntrega(
 
   const { escenario_id, empresa_fletera_id, tamano_lote, capacidad } = movilData;
 
-  // Guard: tamano_lote null → no generar filas
+  // Guard: tamano_lote null => no generar filas
   if (tamano_lote == null) {
     console.warn(
-      `[zonas-cap-entrega] movilNro=${nro} tamano_lote=null → no genera filas en zonas_cap_entrega`,
+      `[zonas-cap-entrega] movilNro=${nro} tamano_lote=null => no genera filas en zonas_cap_entrega`,
     );
     await _deleteAllRowsForMovil(supabase, nro);
     return [];
   }
 
-  const loteDisponible = tamano_lote - (capacidad ?? 0);
+  // ── 2. Leer pesoTransitoAlpha del escenario ──────────────────────────────
+  let alpha = DEFAULT_PESO_TRANSITO_ALPHA;
+  if (escenario_id != null) {
+    const { data: settingsRow } = await (supabase as any)
+      .from('escenario_settings')
+      .select('peso_transito_alpha')
+      .eq('escenario_id', escenario_id)
+      .maybeSingle();
 
-  // ── 2. Leer zonas activas del móvil ──────────────────────────────────────
+    if (settingsRow?.peso_transito_alpha != null) {
+      alpha = Number(settingsRow.peso_transito_alpha);
+    }
+  }
+
+  const loteLibre = tamano_lote - (capacidad ?? 0);
+
+  // ── 3. Leer zonas activas del movil ──────────────────────────────────────
   const { data: zonaRows, error: zonaError } = await (supabase as any)
     .from('moviles_zonas')
-    .select('zona_id, escenario_id, tipo_de_servicio')
+    .select('zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito')
     .eq('movil_id', String(nro))
     .eq('activa', true);
 
@@ -92,22 +154,25 @@ export async function syncMovilZonasCapEntrega(
     throw zonaError;
   }
 
-  const zonas: Array<{ zona_id: number; escenario_id: number; tipo_de_servicio: string }> =
+  const zonas: Array<{ zona_id: number; escenario_id: number; tipo_de_servicio: string; prioridad_o_transito: number }> =
     (zonaRows ?? []).filter(
       (z: any) => z.tipo_de_servicio != null && z.tipo_de_servicio !== '',
     );
 
-  // ── 3. UPSERT de filas activas ────────────────────────────────────────────
+  // ── 4. Calcular porciones con prorrateo ───────────────────────────────────
+  const porciones = calcularPorciones(zonas, loteLibre, alpha);
+
+  // ── 5. UPSERT de filas activas ────────────────────────────────────────────
   const upsertedRows: ZonasCapEntregaRow[] = [];
 
-  if (zonas.length > 0) {
-    const rows: ZonasCapEntregaRow[] = zonas.map((z) => ({
-      escenario: z.escenario_id ?? escenario_id,
-      zona: z.zona_id,
-      tipo_servicio: z.tipo_de_servicio,
+  if (porciones.length > 0) {
+    const rows: ZonasCapEntregaRow[] = porciones.map((p) => ({
+      escenario: p.escenario_id ?? escenario_id,
+      zona: p.zona_id,
+      tipo_servicio: p.tipo_de_servicio,
       movil: nro,
       emp_fletera_id: empresa_fletera_id,
-      lote_disponible: loteDisponible,
+      lote_disponible: p.porcion,
     }));
 
     const { data: upsertData, error: upsertError } = await (supabase as any)
@@ -128,16 +193,16 @@ export async function syncMovilZonasCapEntrega(
 
     upsertedRows.push(...(upsertData ?? []));
     console.log(
-      `[zonas-cap-entrega] movilNro=${nro} → upserted ${upsertedRows.length} filas` +
-        ` (lote_disponible=${loteDisponible})`,
+      `[zonas-cap-entrega] movilNro=${nro} => upserted ${upsertedRows.length} filas` +
+        ` (lote_libre=${loteLibre}, alpha=${alpha})`,
     );
   } else {
     console.log(
-      `[zonas-cap-entrega] movilNro=${nro} → 0 zonas activas con tipo_servicio válido`,
+      `[zonas-cap-entrega] movilNro=${nro} => 0 zonas activas con tipo_servicio valido o W=0`,
     );
   }
 
-  // ── 4. DELETE de filas stale ──────────────────────────────────────────────
+  // ── 6. DELETE de filas stale ──────────────────────────────────────────────
   // Filas que existen en zonas_cap_entrega para este movil
   // pero ya no corresponden a ninguna zona activa.
   const { data: existingRows, error: existingError } = await (supabase as any)
@@ -150,14 +215,14 @@ export async function syncMovilZonasCapEntrega(
       `[zonas-cap-entrega] Error leyendo filas existentes para movil ${nro}:`,
       existingError,
     );
-    // No abortar — el upsert ya está hecho; el stale cleanup es best-effort
+    // No abortar — el upsert ya esta hecho; el stale cleanup es best-effort
     return upsertedRows;
   }
 
   // Conjunto de claves activas (zona+tipo_servicio es suficiente para identificar stale,
-  // dado que escenario y emp_fletera_id son fijos para el móvil)
+  // dado que escenario y emp_fletera_id son fijos para el movil)
   const activeKeys = new Set(
-    zonas.map((z) => `${z.escenario_id ?? escenario_id}:${z.zona_id}:${z.tipo_de_servicio}`),
+    porciones.map((p) => `${p.escenario_id ?? escenario_id}:${p.zona_id}:${p.tipo_de_servicio}`),
   );
 
   const staleRows = (existingRows ?? []).filter(
@@ -166,7 +231,7 @@ export async function syncMovilZonasCapEntrega(
 
   if (staleRows.length > 0) {
     // DELETE one by one to match composite PK cleanly
-    // (Supabase JS no soporta DELETE con múltiples condiciones compuestas en un solo call)
+    // (Supabase JS no soporta DELETE con multiples condiciones compuestas en un solo call)
     for (const stale of staleRows) {
       const { error: delError } = await (supabase as any)
         .from('zonas_cap_entrega')
@@ -186,7 +251,7 @@ export async function syncMovilZonasCapEntrega(
       }
     }
     console.log(
-      `[zonas-cap-entrega] movilNro=${nro} → deleted ${staleRows.length} filas stale`,
+      `[zonas-cap-entrega] movilNro=${nro} => deleted ${staleRows.length} filas stale`,
     );
   }
 
@@ -195,7 +260,7 @@ export async function syncMovilZonasCapEntrega(
 
 /**
  * Borra TODAS las filas de zonas_cap_entrega para el movil dado.
- * Usado cuando el móvil no existe o tamano_lote es null.
+ * Usado cuando el movil no existe o tamano_lote es null.
  */
 async function _deleteAllRowsForMovil(
   supabase: SupabaseClient,
@@ -216,14 +281,14 @@ async function _deleteAllRowsForMovil(
 }
 
 /**
- * Función compuesta: recomputa cant_ped/cant_serv/capacidad del móvil
- * y luego sincroniza zonas_cap_entrega para ese mismo móvil.
+ * Funcion compuesta: recomputa cant_ped/cant_serv/capacidad del movil
+ * y luego sincroniza zonas_cap_entrega para ese mismo movil.
  *
  * ORDEN GARANTIZADO:
- *   1. recomputeMovilCounters → actualiza `capacidad` en moviles
- *   2. syncMovilZonasCapEntrega → lee `capacidad` ya actualizado
+ *   1. recomputeMovilCounters => actualiza `capacidad` en moviles
+ *   2. syncMovilZonasCapEntrega => lee `capacidad` ya actualizado
  *
- * USAR en todos los call-sites de mutación que hoy llaman recomputeMovilCounters.
+ * USAR en todos los call-sites de mutacion que hoy llaman recomputeMovilCounters.
  *
  * @param supabase  - Cliente Supabase de SERVIDOR (getServerSupabaseClient())
  * @param movilNro  - Valor del campo `nro` en tabla moviles
@@ -232,7 +297,7 @@ export async function recomputeMovilAndCapEntrega(
   supabase: SupabaseClient,
   movilNro: number | string | null | undefined,
 ): Promise<void> {
-  // Guard: movil inválido → early return
+  // Guard: movil invalido => early return
   const nro = Number(movilNro);
   if (movilNro == null || !Number.isFinite(nro) || nro === 0) {
     return;
@@ -242,15 +307,15 @@ export async function recomputeMovilAndCapEntrega(
   const result = await recomputeMovilCounters(supabase, movilNro);
   if (result) {
     console.log(
-      `[zonas-cap-entrega] trigger=recompute movilNro=${result.movilNro} → ` +
+      `[zonas-cap-entrega] trigger=recompute movilNro=${result.movilNro} => ` +
         `cant_ped=${result.cant_ped} cant_serv=${result.cant_serv} capacidad=${result.capacidad}`,
     );
   }
 
-  // Paso 2: sincronizar zonas_cap_entrega con la capacidad recién actualizada
+  // Paso 2: sincronizar zonas_cap_entrega con la capacidad recien actualizada
   const syncedRows = await syncMovilZonasCapEntrega(supabase, movilNro);
   const rowCount = Array.isArray(syncedRows) ? syncedRows.length : 0;
   console.log(
-    `[zonas-cap-entrega] trigger=sync movilNro=${nro} → rows=${rowCount}`,
+    `[zonas-cap-entrega] trigger=sync movilNro=${nro} => rows=${rowCount}`,
   );
 }
