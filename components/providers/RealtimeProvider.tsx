@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
 import { useGPSTracking, useMoviles } from '@/lib/hooks/useRealtimeSubscriptions';
+import { useAuth } from '@/contexts/AuthContext';
 import type { GPSTrackingSupabase, MovilSupabase } from '@/types';
 
 interface RealtimeContextType {
@@ -39,7 +40,43 @@ interface RealtimeProviderProps {
   escenarioId?: number;
 }
 
-export function RealtimeProvider({
+/**
+ * Provider público: gate por usuario.
+ *
+ * Si no hay user logueado (ej. /login), NO se monta el provider activo
+ * (RealtimeProviderActive), entonces no se llaman useGPSTracking ni useMoviles
+ * y NO se abren los WebSockets de Supabase Realtime. Esto bajó el consumo de
+ * RAM/CPU de la pestaña de login de ~250MB / 50% a niveles normales.
+ *
+ * Si los consumidores de useRealtime() llegan a renderearse sin user (no
+ * deberían — el dashboard ya tiene su propio gate), reciben un contexto noop.
+ */
+export function RealtimeProvider({ children, escenarioId = 1000 }: RealtimeProviderProps) {
+  const { user } = useAuth();
+  if (!user) {
+    return (
+      <RealtimeContext.Provider value={NOOP_CONTEXT}>
+        {children}
+      </RealtimeContext.Provider>
+    );
+  }
+  return <RealtimeProviderActive escenarioId={escenarioId}>{children}</RealtimeProviderActive>;
+}
+
+const NOOP_CONTEXT: RealtimeContextType = {
+  positions: new Map(),
+  isConnected: false,
+  error: null,
+  latestPosition: null,
+  latestMovil: null,
+  lastEventAt: 0,
+  onReconnect: null,
+  setOnReconnect: () => undefined,
+  onMovilEvent: null,
+  setOnMovilEvent: () => undefined,
+};
+
+function RealtimeProviderActive({
   children,
   escenarioId = 1000,
 }: RealtimeProviderProps) {

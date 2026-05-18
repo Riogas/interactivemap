@@ -129,6 +129,23 @@ function isFirefoxBrowser(): boolean {
 
 export function IncidentRecorderProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  // Gate por user: si no hay sesión (ej. /login), no hay nada que reportar.
+  // Evita instanciar el state, los refs y los useEffect del provider hasta que
+  // exista un usuario logueado.
+  if (!user) {
+    return (
+      <RecorderContext.Provider
+        value={{ state: 'idle', seconds: 0, start: async () => undefined, stop: () => undefined, available: false }}
+      >
+        {children}
+      </RecorderContext.Provider>
+    );
+  }
+  return <IncidentRecorderProviderActive>{children}</IncidentRecorderProviderActive>;
+}
+
+function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [state, setState] = useState<RecorderState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [description, setDescription] = useState('');
