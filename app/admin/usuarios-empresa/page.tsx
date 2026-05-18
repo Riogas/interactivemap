@@ -14,6 +14,7 @@ import { getEmpresasParamForUpstream, type EmpresaEntry } from '@/lib/empresas-d
 type EmpFletera = { Nombre?: string; Valor?: number; nombre?: string; valor?: number };
 
 type UsuarioEmpresa = {
+  id?: number; // id numérico del usuario en el SecuritySuite (necesario para toggle)
   username: string;
   nombre?: string;
   apellido?: string | null;
@@ -210,11 +211,9 @@ export default function UsuariosEmpresaPage() {
   const [toast, setToast] = useState<ToastState>(null);
   const toastTimerRef = useRef<number | null>(null);
 
-  // Mock banner: visible mientras el toggle devuelva mock:true
-  const [isMockMode, setIsMockMode] = useState(true);
-
   // Modal de confirmación de toggle
   const [confirmModal, setConfirmModal] = useState<{
+    userId: number;
     username: string;
     nombre: string;
     empresas: string[];
@@ -306,8 +305,13 @@ export default function UsuariosEmpresaPage() {
   // ─── Apertura del modal de confirmación al clickear el toggle ───────────────
   const requestToggle = (u: UsuarioEmpresa, nuevoEstado: boolean) => {
     if (toggling.has(u.username)) return;
+    if (typeof u.id !== 'number' || !Number.isFinite(u.id)) {
+      showToast(false, 'No se puede modificar este usuario: falta el id en la respuesta del servidor.');
+      return;
+    }
     const currentlyEnabled = isUsuarioHabilitado(u);
     setConfirmModal({
+      userId: u.id,
       username: u.username,
       nombre: String(u.nombre ?? u.username),
       empresas: getEmpresasNombres(u),
@@ -317,14 +321,18 @@ export default function UsuariosEmpresaPage() {
   };
 
   // ─── Toggle habilitado/deshabilitado (ejecuta tras confirmación del modal) ──
-  const handleToggle = async (username: string, nuevoEstado: boolean) => {
+  // Llama al endpoint real del SecuritySuite vía proxy:
+  //   POST /api/admin/usuarios-empresa/toggle  body: { userId, enabled }
+  // → upstream POST /api/db/usuarios/{userId}/permite-login  body: { accion: grant|revoke }
+  // El upstream responde con `habilitado: boolean` (estado final real, no asumido).
+  const handleToggle = async (userId: number, username: string, nuevoEstado: boolean) => {
     if (toggling.has(username)) return;
 
-    // Optimistic UI: actualizar estado visualmente de inmediato
+    // Optimistic UI
     setUsuarios((prev) =>
       prev.map((u) => {
         if (u.username !== username) return u;
-        return { ...u, habilitado: nuevoEstado, enabled: nuevoEstado };
+        return { ...u, habilitado: nuevoEstado };
       }),
     );
     setToggling((prev) => new Set(prev).add(username));
@@ -333,35 +341,44 @@ export default function UsuariosEmpresaPage() {
       const res = await fetch('/api/admin/usuarios-empresa/toggle', {
         method: 'POST',
         headers: getAuthHeaders(userRoles),
-        body: JSON.stringify({ username, enabled: nuevoEstado }),
+        body: JSON.stringify({ userId, username, enabled: nuevoEstado }),
       });
 
       const json = await res.json();
 
-      if (!res.ok || !json.success) {
+      if (!res.ok || json.success === false) {
         // Revertir si falló
         setUsuarios((prev) =>
           prev.map((u) => {
             if (u.username !== username) return u;
-            return { ...u, habilitado: !nuevoEstado, enabled: !nuevoEstado };
+            return { ...u, habilitado: !nuevoEstado };
           }),
         );
-        showToast(false, json.error ?? 'Error al cambiar el estado del usuario.');
+        const detail = json?.detail?.error ?? json?.error ?? 'Error al cambiar el estado del usuario.';
+        showToast(false, String(detail));
         return;
       }
 
-      // Si el endpoint ya no devuelve mock:true, ocultamos el banner
-      if (!json.mock) {
-        setIsMockMode(false);
-      }
+      // El upstream devuelve `habilitado` con el estado final real — usar eso, no el asumido.
+      const habilitadoFinal: boolean =
+        typeof json.habilitado === 'boolean' ? json.habilitado : nuevoEstado;
+      setUsuarios((prev) =>
+        prev.map((u) => {
+          if (u.username !== username) return u;
+          return { ...u, habilitado: habilitadoFinal };
+        }),
+      );
 
-      showToast(true, `Usuario "${username}" ${nuevoEstado ? 'habilitado' : 'deshabilitado'} correctamente${json.mock ? ' (MOCK)' : ''}.`);
+      showToast(
+        true,
+        `Usuario "${username}" ${habilitadoFinal ? 'habilitado' : 'deshabilitado'} correctamente.`,
+      );
     } catch {
       // Revertir en caso de error de red
       setUsuarios((prev) =>
         prev.map((u) => {
           if (u.username !== username) return u;
-          return { ...u, habilitado: !nuevoEstado, enabled: !nuevoEstado };
+          return { ...u, habilitado: !nuevoEstado };
         }),
       );
       showToast(false, 'Error de red al cambiar el estado del usuario.');
@@ -471,21 +488,6 @@ export default function UsuariosEmpresaPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
-
-        {/* ─── Banner MOCK ─────────────────────────────────────────────────────── */}
-        {isMockMode && (
-          <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-4 flex items-start gap-3">
-            <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
-            </svg>
-            <div>
-              <p className="text-sm font-semibold text-yellow-800">El toggle está en modo mock</p>
-              <p className="text-xs text-yellow-700 mt-0.5">
-                El cambio no persiste todavía hasta que se conecte el endpoint real. Los cambios son solo visuales en esta sesión.
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* ─── Toast ───────────────────────────────────────────────────────────── */}
         {toast && (
@@ -727,9 +729,9 @@ export default function UsuariosEmpresaPage() {
               <button
                 type="button"
                 onClick={() => {
-                  const { username, newValue } = confirmModal;
+                  const { userId, username, newValue } = confirmModal;
                   setConfirmModal(null);
-                  void handleToggle(username, newValue);
+                  void handleToggle(userId, username, newValue);
                 }}
                 className={`px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-colors ${
                   confirmModal.newValue
