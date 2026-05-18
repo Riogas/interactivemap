@@ -791,17 +791,15 @@ const MapView = memo(function MapView({
     }
   }, []);
 
-  // 🔧 DEBUG: Log services recibidos en MapView
-  useEffect(() => {
-    const conCoords = services.filter(s => s.latitud && s.longitud);
-    console.log(`🔧 MapView: ${services.length} services recibidos, ${conCoords.length} con coordenadas`);
-    if (conCoords.length > 0) {
-      console.log('🔧 Primer service con coords:', { id: conCoords[0].id, lat: conCoords[0].latitud, lng: conCoords[0].longitud, defecto: conCoords[0].defecto });
-    }
-    if (services.length > 0 && conCoords.length === 0) {
-      console.log('🔧 Services sin coordenadas - ejemplo:', { id: services[0].id, lat: services[0].latitud, lng: services[0].longitud, movil: services[0].movil, estado: services[0].estado_nro });
-    }
-  }, [services]);
+  // DEBUG eliminado: este useEffect corría en cada cambio de referencia del array
+  // services y generaba console.log en hot path. Causaba ruido en devtools y
+  // costo de CPU por filter() + JSON marshal a stdout en cada GPS/pedidos update.
+  // Reactivable poniendo NEXT_PUBLIC_DEBUG_MAPVIEW=true y descomentando el bloque.
+  // useEffect(() => {
+  //   if (process.env.NEXT_PUBLIC_DEBUG_MAPVIEW !== 'true') return;
+  //   const conCoords = services.filter(s => s.latitud && s.longitud);
+  //   console.log(`🔧 MapView: ${services.length} services recibidos, ${conCoords.length} con coordenadas`);
+  // }, [services]);
   
   // Estado para controlar la animación del recorrido
   const [isAnimating, setIsAnimating] = useState(false);

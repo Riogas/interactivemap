@@ -732,7 +732,9 @@ function DashboardContent() {
                 estadoNro: nextEstado != null ? nextEstado : movil.estadoNro,
               };
             }));
-            console.log('?? Posiciones GPS + estadoNro actualizados (sin altas/bajas)');
+            if (process.env.NEXT_PUBLIC_DEBUG_REALTIME === 'true') {
+              console.log('?? Posiciones GPS + estadoNro actualizados (sin altas/bajas)');
+            }
           } else {
             // Hay altas o bajas: reconstruir lista preservando estado existente
             // (history, pedidosAsignados, tamanoLote, etc.) y enriquecer los
@@ -2405,7 +2407,9 @@ function DashboardContent() {
     if (realtimeKey === prevRealtimeKeyRef.current) return;
     prevRealtimeKeyRef.current = realtimeKey;
     
-    console.log(`?? Actualizando ${pedidosRealtime.length} pedidos desde Realtime`);
+    if (process.env.NEXT_PUBLIC_DEBUG_REALTIME === 'true') {
+      console.log(`?? Actualizando ${pedidosRealtime.length} pedidos desde Realtime`);
+    }
     
     // Convertir pedidos de Realtime a formato compatible
     const pedidosFormateados = pedidosRealtime.map(p => ({
