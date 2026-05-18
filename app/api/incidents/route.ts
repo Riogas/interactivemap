@@ -9,6 +9,10 @@
  *   - video: File (webm/mp4)
  *   - description: string (opcional)
  *   - duration_s: number (opcional)
+ *
+ * Notificación: si INCIDENT_WEBHOOK_URL está definido, se hace un POST
+ * fire-and-forget al webhook (ej: n8n) con el payload de la incidencia.
+ * El webhook falla silenciosamente — no bloquea la respuesta al cliente.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
@@ -47,6 +51,34 @@ function extractUser(req: NextRequest): { userId: string | null; username: strin
     }
   }
   return { userId: null, username: null };
+}
+
+/**
+ * Notifica via webhook (fire-and-forget).
+ * No lanza excepciones — cualquier error se loguea como warn.
+ */
+function notifyWebhook(payload: {
+  id: number;
+  username: string | null;
+  ts: string;
+  description: string | null;
+  detail_url: string;
+  ip: string;
+}): void {
+  const webhookUrl = process.env.INCIDENT_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
+  try {
+    fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch((err: unknown) => {
+      console.warn('[incidents/notify] webhook falló (no bloquea):', err);
+    });
+  } catch (e) {
+    console.warn('[incidents/notify] error armando webhook:', e);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -139,9 +171,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const insertedId = insertResult.data?.id ?? 0;
+
+    // Notificación fire-and-forget (no bloquea la respuesta)
+    notifyWebhook({
+      id: insertedId,
+      username,
+      ts: now.toISOString(),
+      description,
+      detail_url: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/admin/incidencias?id=${insertedId}`,
+      ip,
+    });
+
     return NextResponse.json({
       success: true,
-      id: insertResult.data?.id,
+      id: insertedId,
       video_path: videoPath,
     });
   } catch (error) {
