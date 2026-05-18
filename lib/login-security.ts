@@ -239,6 +239,12 @@ export async function recordLoginAttempt(input: RecordLoginAttemptInput): Promis
  * asegurando que un bloqueo nuevo no herede un is_active=false de un row previo
  * desbloqueado (el ON CONFLICT actualiza todos los campos especificados).
  *
+ * FIX (Opción C — reset de contador al desbloquear): al contar fails del usuario,
+ * se busca el último unblocked_at en login_blocks para ese username. Si existe,
+ * solo se cuentan fails POSTERIORES a ese timestamp. Así, un admin-unblock
+ * actúa como "punto cero" sin modificar el histórico de login_attempts.
+ * Lo mismo aplica para el conteo de IP: se busca el último unblocked_at de esa IP.
+ *
  * Retorna info de bloqueos aplicados
  */
 export async function evaluateAndApplyBlocks(username: string, ip: string): Promise<{
@@ -257,15 +263,36 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
 
     let userBlocked, ipBlocked;
 
-    // 1. Contar fails del username en los últimos 10 min
+    // FIX (Opción C): buscar el último unblocked_at para el username.
+    // Solo se cuentan fails posteriores a ese timestamp (el más reciente entre
+    // windowStart y el último unblocked_at). Esto garantiza que un desbloqueo
+    // manual actúa como "punto cero" del contador sin alterar el histórico.
+    const { data: lastUserUnblock } = await client
+      .from('login_blocks')
+      .select('unblocked_at')
+      .eq('block_type', 'user')
+      .eq('key', username)
+      .not('unblocked_at', 'is', null)
+      .order('unblocked_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const userCountFrom = lastUserUnblock?.unblocked_at
+      ? new Date(Math.max(
+          new Date(lastUserUnblock.unblocked_at).getTime(),
+          windowStart.getTime()
+        )).toISOString()
+      : windowStart.toISOString();
+
+    // 1. Contar fails del username desde el punto cero efectivo
     const { count: userFailCount } = await client
       .from('login_attempts')
       .select('*', { count: 'exact', head: true })
       .eq('username', username)
       .eq('estado', 'fail')
-      .gte('ts', windowStart.toISOString());
+      .gte('ts', userCountFrom);
 
-    console.log(`[login-security] user=${username} ip=${normalizedIp} user_fails=${userFailCount ?? 0} max_user=${config.maxIntentosUsuario}`);
+    console.log(`[login-security] user=${username} ip=${normalizedIp} user_fails=${userFailCount ?? 0} max_user=${config.maxIntentosUsuario} count_from=${userCountFrom}`);
 
     if (userFailCount && userFailCount >= config.maxIntentosUsuario) {
       const blockedUntil = new Date(now.getTime() + USER_BLOCK_MINUTES * 60 * 1000);
@@ -284,16 +311,34 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
 
     // 2. Contar TOTAL de intentos fallidos desde la IP en los últimos 10 min
     // FIX (Opción A): cambiado de "usernames distintos" a "total intentos"
+    // FIX (Opción C): igual que para usuario, respetar el último unblocked_at de la IP
     // IMPORTANTE: Solo si la IP NO está whitelisted
     if (!isWhitelistedIp(normalizedIp)) {
+      const { data: lastIpUnblock } = await client
+        .from('login_blocks')
+        .select('unblocked_at')
+        .eq('block_type', 'ip')
+        .eq('key', normalizedIp)
+        .not('unblocked_at', 'is', null)
+        .order('unblocked_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const ipCountFrom = lastIpUnblock?.unblocked_at
+        ? new Date(Math.max(
+            new Date(lastIpUnblock.unblocked_at).getTime(),
+            windowStart.getTime()
+          )).toISOString()
+        : windowStart.toISOString();
+
       const { count: ipFailCount } = await client
         .from('login_attempts')
         .select('*', { count: 'exact', head: true })
         .eq('ip', normalizedIp)
         .eq('estado', 'fail')
-        .gte('ts', windowStart.toISOString());
+        .gte('ts', ipCountFrom);
 
-      console.log(`[login-security] user=${username} ip=${normalizedIp} ip_fails=${ipFailCount ?? 0} max_ip=${config.maxIntentosIp}`);
+      console.log(`[login-security] user=${username} ip=${normalizedIp} ip_fails=${ipFailCount ?? 0} max_ip=${config.maxIntentosIp} count_from=${ipCountFrom}`);
 
       if (ipFailCount && ipFailCount >= config.maxIntentosIp) {
         const blockedUntil = new Date(now.getTime() + IP_BLOCK_MINUTES * 60 * 1000);
@@ -326,7 +371,8 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
  * Limpia los contadores tras un login exitoso
  * (Opcional - implementación simple: no hacer nada)
  */
-export async function onSuccessfulLogin(_username: string): Promise<void> {
+export async function onSuccessfulLogin(username: string): Promise<void> {
+  void username;
   // Implementación simple: dejar que la ventana de 10 min "olvide" naturalmente los fails
   // Si se requiere borrar explícitamente, descomentar:
   // const client = getServerSupabaseClient();
@@ -495,6 +541,7 @@ export async function runLoginSecurity(
   }
 }
 
-// Keep unused constants referenced to avoid TS unused-variable errors
+// Keep unused constants referenced to avoid TS/ESLint unused-variable errors
 void USER_FAIL_THRESHOLD;
 void IP_FAIL_THRESHOLD;
+void IP_FAIL_WINDOW_MINUTES;

@@ -35,6 +35,22 @@ type LoginAttempt = {
 
 type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';
 
+type UsuarioDetalle = {
+  id?: number | string;
+  username?: string;
+  nombre?: string;
+  apellido?: string;
+  email?: string;
+  telefono?: string;
+  estado?: string;
+  tipoUsuario?: string;
+  esExterno?: boolean;
+  fechaCreacion?: string;
+  fechaUltimoLogin?: string;
+  empFletera?: string | string[];
+  [key: string]: unknown;
+};
+
 // ==============================================================================
 // HELPERS DE FETCH CON AUTH HEADERS
 // ==============================================================================
@@ -76,11 +92,15 @@ export default function LoginBlocksPage() {
   const [configToast, setConfigToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
+  // ─── Estado: modal de settings ──────────────────────────────────────────────
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+
   // ─── Estado: bloqueos ───────────────────────────────────────────────────────
   const [blocks, setBlocks] = useState<ActiveBlock[]>([]);
   const [blocksLoading, setBlocksLoading] = useState(true);
   const [blocksFilter, setBlocksFilter] = useState('');
   const [blocksShowAll, setBlocksShowAll] = useState(false); // false=solo activos
+  const [blocksCollapsed, setBlocksCollapsed] = useState(true); // colapsado por default
 
   // ─── Estado: intentos ───────────────────────────────────────────────────────
   const [attempts, setAttempts] = useState<LoginAttempt[]>([]);
@@ -92,6 +112,13 @@ export default function LoginBlocksPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [attemptsLimit] = useState(200);
+
+  // ─── Estado: modal detalle de usuario ───────────────────────────────────────
+  const [detalleModalOpen, setDetalleModalOpen] = useState(false);
+  const [detalleUsername, setDetalleUsername] = useState<string | null>(null);
+  const [detalleUsuario, setDetalleUsuario] = useState<UsuarioDetalle | null>(null);
+  const [detalleLoading, setDetalleLoading] = useState(false);
+  const [detalleError, setDetalleError] = useState<string | null>(null);
 
   // ─── Estado: realtime ───────────────────────────────────────────────────────
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting');
@@ -299,6 +326,13 @@ export default function LoginBlocksPage() {
       const json = await res.json();
       if (res.ok && json.success) {
         setConfigToast({ ok: true, msg: 'Configuración guardada correctamente.' });
+        // Cerrar el modal tras guardado exitoso
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = window.setTimeout(() => {
+          setSettingsModalOpen(false);
+          setConfigToast(null);
+          toastTimerRef.current = null;
+        }, 1500);
       } else {
         setConfigToast({ ok: false, msg: json.error || 'Error al guardar' });
       }
@@ -306,12 +340,6 @@ export default function LoginBlocksPage() {
       setConfigToast({ ok: false, msg: 'Error de red al guardar' });
     } finally {
       setConfigSaving(false);
-      // Auto-ocultar toast después de 4s
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = window.setTimeout(() => {
-        setConfigToast(null);
-        toastTimerRef.current = null;
-      }, 4000);
     }
   };
 
@@ -337,6 +365,32 @@ export default function LoginBlocksPage() {
       alert('Error de red al desbloquear');
     }
   };
+
+  // ─── Abrir modal de detalle del usuario ──────────────────────────────────
+  const handleOpenDetalle = useCallback(async (username: string) => {
+    setDetalleUsername(username);
+    setDetalleUsuario(null);
+    setDetalleError(null);
+    setDetalleLoading(true);
+    setDetalleModalOpen(true);
+
+    try {
+      const res = await fetch(
+        `/api/admin/login-security/usuario-detalle?username=${encodeURIComponent(username)}`,
+        { headers: getAuthHeaders() }
+      );
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setDetalleUsuario(json.usuario as UsuarioDetalle);
+      } else {
+        setDetalleError(json.error || 'Error al obtener detalle del usuario');
+      }
+    } catch {
+      setDetalleError('Error de red al obtener detalle del usuario');
+    } finally {
+      setDetalleLoading(false);
+    }
+  }, []);
 
   // ─── Estado del intento: label legible + estilo ──────────────────────────
   // Mapping de los 5 estados que se loguean en login_attempts.estado a un texto
@@ -403,8 +457,8 @@ export default function LoginBlocksPage() {
               <p className="text-xs text-red-100">Panel de administración — Solo root</p>
             </div>
           </div>
-          {/* Indicador de estado realtime */}
-          <div className="flex items-center gap-2">
+          {/* Indicador de estado realtime + botón settings */}
+          <div className="flex items-center gap-3">
             {realtimeStatus === 'connected' ? (
               <span className="flex items-center gap-1.5 text-xs text-green-200 font-medium">
                 <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -421,211 +475,370 @@ export default function LoginBlocksPage() {
                 Reconectando (polling 30s)
               </span>
             )}
+            {/* Botón ruedita de settings */}
+            <button
+              onClick={() => setSettingsModalOpen(true)}
+              title="Configuración global de límites"
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors text-white"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-[1600px] mx-auto px-6 py-6">
-        {/* Layout 2 columnas en pantallas grandes (lg+).
-            Izquierda: Configuración global + Bloqueos (apilados).
-            Derecha: Intentos de Login (tabla principal — más ancha).
-            En pantallas chicas vuelve a una sola columna. */}
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(420px,1fr)_2fr] gap-6">
-
-        {/* ─── Columna izquierda: Config + Bloqueos ────────────────────────── */}
-        <div className="space-y-6 min-w-0">
-
-        {/* ─── Panel: Configuración global ─────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-            </svg>
-            <h2 className="text-lg font-semibold text-gray-900">Configuración Global de Límites</h2>
-            <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-red-100 text-red-700">ADMIN</span>
-          </div>
-          <p className="text-sm text-gray-500 mb-4">
-            Define cuántos intentos fallidos se permiten antes de bloquear. Los cambios aplican de inmediato al próximo intento de login.
-          </p>
-
-          {configLoading ? (
-            <div className="flex items-center gap-2 text-gray-400 text-sm">
-              <div className="animate-spin w-4 h-4 rounded-full border-2 border-gray-300 border-t-gray-600" />
-              Cargando configuración...
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">
-                  Intentos fallidos antes de bloquear usuario
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={configUsuario}
-                  onChange={(e) => setConfigUsuario(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                  className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
-                />
-              </div>
-              <div className="space-y-1">
-                {/* FIX (Issue 3 — label): actualizado para reflejar la semántica real (total intentos, no usuarios distintos) */}
-                <label className="block text-sm font-medium text-gray-700">
-                  Intentos totales desde una IP para bloqueo de IP
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={configIp}
-                  onChange={(e) => setConfigIp(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                  className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
-                />
+      {/* ─── Modal: Configuración global de límites ───────────────────────────── */}
+      {settingsModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => { if (e.target === e.currentTarget) setSettingsModalOpen(false); }}
+        >
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            {/* Modal header */}
+            <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                <h2 className="text-base font-semibold text-white">Configuración Global de Límites</h2>
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-red-800/50 text-red-100">ADMIN</span>
               </div>
               <button
+                onClick={() => setSettingsModalOpen(false)}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Modal body */}
+            <div className="p-6">
+              <p className="text-sm text-gray-500 mb-5">
+                Define cuántos intentos fallidos se permiten antes de bloquear. Los cambios aplican de inmediato al próximo intento de login.
+              </p>
+              {configLoading ? (
+                <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
+                  <div className="animate-spin w-4 h-4 rounded-full border-2 border-gray-300 border-t-gray-600" />
+                  Cargando configuración...
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Intentos fallidos antes de bloquear usuario
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={configUsuario}
+                      onChange={(e) => setConfigUsuario(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                      className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
+                    />
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Intentos totales desde una IP para bloqueo de IP
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={configIp}
+                      onChange={(e) => setConfigIp(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                      className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
+                    />
+                  </div>
+                </div>
+              )}
+              {configToast && (
+                <div className={`mt-4 px-4 py-2 rounded-lg text-sm border ${configToast.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                  {configToast.msg}
+                </div>
+              )}
+            </div>
+            {/* Modal footer */}
+            <div className="px-6 pb-5 flex justify-end gap-3">
+              <button
+                onClick={() => setSettingsModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
                 onClick={handleSaveConfig}
-                disabled={configSaving}
-                className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={configSaving || configLoading}
+                className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {configSaving ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
-          )}
-
-          {configToast && (
-            <div className={`mt-3 px-4 py-2 rounded-lg text-sm border ${configToast.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-              {configToast.msg}
-            </div>
-          )}
+          </div>
         </div>
+      )}
 
-        {/* ─── Panel: Bloqueos activos ──────────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <div className="flex items-center justify-between mb-4">
+      {/* ─── Modal: Detalle del usuario ───────────────────────────────────────── */}
+      {detalleModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => { if (e.target === e.currentTarget) setDetalleModalOpen(false); }}
+        >
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+            {/* Modal header */}
+            <div className="bg-gradient-to-r from-gray-700 to-gray-800 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <h2 className="text-base font-semibold text-white">
+                  Detalle de usuario
+                  {detalleUsername && <span className="ml-2 font-mono text-gray-300 text-sm">@{detalleUsername}</span>}
+                </h2>
+              </div>
+              <button
+                onClick={() => setDetalleModalOpen(false)}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Modal body */}
+            <div className="p-6">
+              {detalleLoading ? (
+                <div className="flex items-center justify-center gap-2 text-gray-400 text-sm py-8">
+                  <div className="animate-spin w-5 h-5 rounded-full border-2 border-gray-300 border-t-gray-600" />
+                  Cargando datos del usuario...
+                </div>
+              ) : detalleError ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                      <p className="font-medium">No disponible</p>
+                      <p className="mt-0.5 text-amber-700">{detalleError}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : detalleUsuario ? (
+                <div className="space-y-3">
+                  {[
+                    { label: 'ID', value: String(detalleUsuario.id ?? '-') },
+                    { label: 'Username', value: detalleUsuario.username as string ?? '-' },
+                    { label: 'Nombre completo', value: [detalleUsuario.nombre, detalleUsuario.apellido].filter(Boolean).join(' ') || '-' },
+                    { label: 'Email', value: detalleUsuario.email as string ?? '-' },
+                    { label: 'Teléfono', value: detalleUsuario.telefono as string ?? '-' },
+                    { label: 'Estado', value: detalleUsuario.estado as string ?? '-' },
+                    { label: 'Tipo', value: detalleUsuario.tipoUsuario as string ?? '-' },
+                    { label: 'Externo', value: detalleUsuario.esExterno != null ? (detalleUsuario.esExterno ? 'Sí' : 'No') : '-' },
+                    { label: 'Creación', value: detalleUsuario.fechaCreacion ? new Date(detalleUsuario.fechaCreacion as string).toLocaleString('es-UY') : '-' },
+                    { label: 'Último login', value: detalleUsuario.fechaUltimoLogin ? new Date(detalleUsuario.fechaUltimoLogin as string).toLocaleString('es-UY') : '-' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-start gap-3 py-1.5 border-b border-gray-100 last:border-0">
+                      <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">{label}</span>
+                      <span className="text-sm text-gray-900 font-mono">{value}</span>
+                    </div>
+                  ))}
+                  {detalleUsuario.empFletera && (
+                    <div className="flex items-start gap-3 py-1.5">
+                      <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">Emp. Fletera</span>
+                      <div className="flex flex-wrap gap-1">
+                        {(Array.isArray(detalleUsuario.empFletera)
+                          ? detalleUsuario.empFletera
+                          : [detalleUsuario.empFletera]
+                        ).map((e, i) => (
+                          <span key={i} className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full font-medium">
+                            {String(e)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            {/* Modal footer */}
+            <div className="px-6 pb-5 flex justify-end">
+              <button
+                onClick={() => setDetalleModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-[1600px] mx-auto px-6 py-6 space-y-4">
+
+        {/* ─── Colapsable de Bloqueos (arriba de los filtros) ──────────────────── */}
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          {/* Header del colapsable */}
+          <button
+            onClick={() => setBlocksCollapsed(c => !c)}
+            className={`w-full flex items-center justify-between px-5 py-3 text-left transition-colors ${
+              filteredBlocks.length > 0
+                ? 'bg-red-50 hover:bg-red-100'
+                : 'bg-gray-50 hover:bg-gray-100'
+            }`}
+          >
             <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              <svg
+                className={`w-4 h-4 ${filteredBlocks.length > 0 ? 'text-red-500' : 'text-gray-400'}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <span className={`font-semibold text-sm ${filteredBlocks.length > 0 ? 'text-red-700' : 'text-gray-700'}`}>
                 {blocksShowAll ? 'Todos los Bloqueos' : 'Bloqueos Activos'}
-              </h2>
-              {!blocksLoading && (
-                <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-orange-100 text-orange-700">
+              </span>
+              {!blocksLoading && filteredBlocks.length > 0 && (
+                <span className="inline-flex items-center justify-center w-5 h-5 text-[11px] font-bold rounded-full bg-red-500 text-white">
                   {filteredBlocks.length}
                 </span>
               )}
+              {!blocksLoading && filteredBlocks.length === 0 && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-200 text-gray-500">
+                  0
+                </span>
+              )}
             </div>
-            {/* Filtros de bloqueos */}
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={blocksShowAll}
-                  onChange={(e) => setBlocksShowAll(e.target.checked)}
-                  className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                />
-                Ver histórico
-              </label>
-              <input
-                type="text"
-                value={blocksFilter}
-                onChange={(e) => setBlocksFilter(e.target.value)}
-                placeholder="Filtrar por usuario o IP..."
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 w-52"
-              />
+              {/* Filtros DENTRO del colapsable (visibles en el header para fácil acceso) */}
+              <span
+                className="text-xs text-gray-500"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {blocksCollapsed ? 'Click para ver' : ''}
+              </span>
+              <svg
+                className={`w-4 h-4 text-gray-400 transition-transform ${blocksCollapsed ? '' : 'rotate-180'}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
             </div>
-          </div>
+          </button>
 
-          {blocksLoading ? (
-            <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
-              <div className="animate-spin w-4 h-4 rounded-full border-2 border-gray-300 border-t-gray-600" />
-              Cargando bloqueos...
-            </div>
-          ) : filteredBlocks.length === 0 ? (
-            <p className="text-gray-400 text-sm py-4">No hay bloqueos{blocksShowAll ? '' : ' activos'}{blocksFilter ? ' que coincidan con el filtro' : ''}.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario / IP</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bloqueado hasta</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Creado</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Razón</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredBlocks.map((block) => (
-                    <tr key={block.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-medium rounded border ${
-                          block.block_type === 'user'
-                            ? 'bg-blue-100 text-blue-800 border-blue-200'
-                            : 'bg-purple-100 text-purple-800 border-purple-200'
-                        }`}>
-                          {block.block_type === 'user' ? 'Usuario' : 'IP'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-900">{block.key}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(block.blocked_until).toLocaleString('es-UY')}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(block.created_at).toLocaleString('es-UY')}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {block.reason || '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {block.is_active === false ? (
-                          <span className="px-2 py-1 text-xs font-medium rounded border bg-gray-100 text-gray-500 border-gray-200">
-                            Desbloqueado
-                            {block.unblocked_by ? ` por ${block.unblocked_by}` : ''}
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs font-medium rounded border bg-orange-100 text-orange-700 border-orange-200">
-                            Activo
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          {block.block_type === 'user' && block.is_active !== false && (
-                            <button
-                              onClick={() => handleUnblock('user', block.key, block.key)}
-                              className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded transition-colors"
-                            >
-                              Desbloquear usuario
-                            </button>
-                          )}
-                          {block.block_type === 'ip' && block.is_active !== false && (
-                            <button
-                              onClick={() => handleUnblock('ip', block.key, block.key)}
-                              className="px-2 py-1 bg-purple-500 hover:bg-purple-600 text-white text-xs font-medium rounded transition-colors"
-                            >
-                              Desbloquear IP
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Contenido colapsable */}
+          {!blocksCollapsed && (
+            <div className="p-5 border-t border-gray-100">
+              {/* Controles internos */}
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={blocksShowAll}
+                    onChange={(e) => setBlocksShowAll(e.target.checked)}
+                    className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                  />
+                  Ver histórico
+                </label>
+                <input
+                  type="text"
+                  value={blocksFilter}
+                  onChange={(e) => setBlocksFilter(e.target.value)}
+                  placeholder="Filtrar por usuario o IP..."
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 w-52"
+                />
+              </div>
+
+              {blocksLoading ? (
+                <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
+                  <div className="animate-spin w-4 h-4 rounded-full border-2 border-gray-300 border-t-gray-600" />
+                  Cargando bloqueos...
+                </div>
+              ) : filteredBlocks.length === 0 ? (
+                <p className="text-gray-400 text-sm py-4">
+                  No hay bloqueos{blocksShowAll ? '' : ' activos'}{blocksFilter ? ' que coincidan con el filtro' : ''}.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario / IP</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bloqueado hasta</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Creado</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Razón</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredBlocks.map((block) => (
+                        <tr key={block.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-medium rounded border ${
+                              block.block_type === 'user'
+                                ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                : 'bg-purple-100 text-purple-800 border-purple-200'
+                            }`}>
+                              {block.block_type === 'user' ? 'Usuario' : 'IP'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-900">{block.key}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            {new Date(block.blocked_until).toLocaleString('es-UY')}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(block.created_at).toLocaleString('es-UY')}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                            {block.reason || '-'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {block.is_active === false ? (
+                              <span className="px-2 py-1 text-xs font-medium rounded border bg-gray-100 text-gray-500 border-gray-200">
+                                Desbloqueado
+                                {block.unblocked_by ? ` por ${block.unblocked_by}` : ''}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 text-xs font-medium rounded border bg-orange-100 text-orange-700 border-orange-200">
+                                Activo
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              {block.block_type === 'user' && block.is_active !== false && (
+                                <button
+                                  onClick={() => handleUnblock('user', block.key, block.key)}
+                                  className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded transition-colors"
+                                >
+                                  Desbloquear usuario
+                                </button>
+                              )}
+                              {block.block_type === 'ip' && block.is_active !== false && (
+                                <button
+                                  onClick={() => handleUnblock('ip', block.key, block.key)}
+                                  className="px-2 py-1 bg-purple-500 hover:bg-purple-600 text-white text-xs font-medium rounded transition-colors"
+                                >
+                                  Desbloquear IP
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        </div>
-        {/* ─── /Columna izquierda ──────────────────────────────────────────── */}
-
-        {/* ─── Columna derecha: Intentos de Login ──────────────────────────── */}
-        <div className="min-w-0">
-
-        {/* ─── Panel: Intentos de login ─────────────────────────────────────── */}
+        {/* ─── Panel: Intentos de login (full-width) ────────────────────────────── */}
         <div className="bg-white rounded-xl shadow-md p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -720,20 +933,30 @@ export default function LoginBlocksPage() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {attempts.map((attempt) => (
-                    <tr key={attempt.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={attempt.id}
+                      className="hover:bg-blue-50 transition-colors cursor-pointer"
+                      onClick={(e) => {
+                        // Evitar abrir detalle al clickear sobre el badge WL o el badge de estado
+                        const target = e.target as HTMLElement;
+                        if (target.tagName === 'SPAN' && (target.classList.contains('wl-chip') || target.classList.contains('estado-badge'))) return;
+                        handleOpenDetalle(attempt.username);
+                      }}
+                      title={`Ver detalle de ${attempt.username}`}
+                    >
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {new Date(attempt.ts).toLocaleString('es-UY')}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {attempt.username}
                         {attempt.whitelisted && (
-                          <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded">WL</span>
+                          <span className="wl-chip ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded">WL</span>
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-700">{attempt.ip}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span
-                          className={`px-2 py-1 text-xs font-medium rounded border ${getEstadoBadgeClass(attempt.estado)}`}
+                          className={`estado-badge px-2 py-1 text-xs font-medium rounded border ${getEstadoBadgeClass(attempt.estado)}`}
                           title={attempt.estado}
                         >
                           {getEstadoLabel(attempt.estado)}
@@ -758,11 +981,6 @@ export default function LoginBlocksPage() {
           )}
         </div>
 
-        </div>
-        {/* ─── /Columna derecha ────────────────────────────────────────────── */}
-
-        </div>
-        {/* ─── /Grid 2-col ─────────────────────────────────────────────────── */}
       </div>
     </div>
   );
