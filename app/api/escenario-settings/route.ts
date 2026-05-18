@@ -31,20 +31,38 @@ export async function GET(request: NextRequest) {
     aplica_serv_nocturno: boolean | null;
     hora_ini_nocturno: string | null;
     hora_fin_nocturno: string | null;
-    peso_transito_alpha: number | null;
+    peso_transito_alpha?: number | null;
   };
-  const { data, error } = await (
-    supabase.from('escenario_settings') as unknown as {
-      select: (cols: string) => {
-        eq: (col: string, val: number) => {
-          maybeSingle: () => Promise<{ data: Row | null; error: { message: string } | null }>;
-        };
+  type QueryBuilder = {
+    select: (cols: string) => {
+      eq: (col: string, val: number) => {
+        maybeSingle: () => Promise<{ data: Row | null; error: { message: string; code?: string } | null }>;
       };
-    }
-  )
-    .select('escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno, hora_ini_nocturno, hora_fin_nocturno, peso_transito_alpha')
-    .eq('escenario_id', escenarioId)
-    .maybeSingle();
+    };
+  };
+
+  // Intentar con peso_transito_alpha (columna agregada por la migration del round de
+  // prorrateo, 2026-05-15-peso-transito-alpha.sql). Si la migration NO se aplicó en
+  // este server (síntoma: error 42703 column does not exist), reintentamos sin esa
+  // columna y devolvemos el default. Evita romper el polling de useEscenarioSettings.
+  const buildBase = (cols: string) =>
+    (supabase.from('escenario_settings') as unknown as QueryBuilder)
+      .select(cols)
+      .eq('escenario_id', escenarioId)
+      .maybeSingle();
+
+  let { data, error } = await buildBase(
+    'escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno, hora_ini_nocturno, hora_fin_nocturno, peso_transito_alpha',
+  );
+
+  if (error && (error.code === '42703' || /column .* does not exist|peso_transito_alpha/i.test(error.message))) {
+    console.warn('[escenario-settings] columna peso_transito_alpha ausente, fallback sin ella. Aplicar migration 2026-05-15-peso-transito-alpha.sql.');
+    const retry = await buildBase(
+      'escenario_id, pedidos_sa_minutos_antes, aplica_serv_nocturno, hora_ini_nocturno, hora_fin_nocturno',
+    );
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     console.error('[escenario-settings] GET error:', error.message);
