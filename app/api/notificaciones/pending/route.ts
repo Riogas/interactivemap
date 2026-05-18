@@ -47,6 +47,19 @@ export async function GET(request: NextRequest) {
       .limit(50); // tomar mas que suficientes para filtrar
 
     if (error) {
+      // Si las tablas `notificaciones` o `notificaciones_user_state` no existen
+      // (migration 2026-05-15-notificaciones.sql no aplicada), devolver "sin
+      // notificaciones" en vez de 500. Evita loop de errores en el polling del
+      // hook useNotificacionPendiente.
+      const msg = String(error?.message ?? '');
+      const code = String(error?.code ?? '');
+      const isMissingTable = code === '42P01' || /relation .* does not exist|notificaciones/i.test(msg);
+      if (isMissingTable) {
+        console.warn(
+          '[notificaciones/pending] tabla(s) ausente(s) — aplicar migration docs/sqls/2026-05-15-notificaciones.sql. Devolviendo notificacion=null como fallback.',
+        );
+        return NextResponse.json({ success: true, notificacion: null });
+      }
       console.error('[notificaciones/pending] GET error:', error);
       return NextResponse.json(
         { success: false, error: 'Error al obtener notificaciones pendientes' },
