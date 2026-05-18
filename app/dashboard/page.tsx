@@ -94,6 +94,15 @@ function DashboardContent() {
   // handleToggleMovil puedan calcular "modo Todos" sin re-crearse en cada
   // cambio de filtros. Se asigna más abajo después de calcular movilesFiltered.
   const movilesFilteredRef = useRef<MovilData[]>([]);
+
+  // Cache de movilIds que ya verificamos como FUERA del scope del usuario actual
+  // (allowedEmpresas). Cuando llega un GPS de uno de estos móviles, hacemos
+  // bail-out inmediato sin fetch a /api/all-positions.
+  // Sin este cache, cada GPS de un móvil ajeno disparaba un fetch entero porque
+  // gps_latest_positions no incluye empresa_fletera_id en el payload del evento.
+  // Solo se cachean rechazos por allowedEmpresas (permission, estable), no por
+  // selectedEmpresas (filtro UI mutable). Se resetea cuando cambia allowedEmpresas.
+  const outOfScopeMovilIdsRef = useRef<Set<number>>(new Set());
   // Refs a las listas completas de pedidos/services del día. Se asignan más abajo
   // (después de calcular pedidosCompletos/servicesCompletos) para que callbacks
   // definidos antes (ej. handleShowPendientes) puedan leer la fuente de verdad
@@ -540,7 +549,12 @@ function DashboardContent() {
     loadEmpresas();
   }, [user?.allowedEmpresas]);
 
-
+  // Reset del cache outOfScopeMovilIds cuando cambia allowedEmpresas (cambio de
+  // usuario, refresh de permisos, etc). El cache solo tiene sentido para el set
+  // actual de empresas permitidas.
+  useEffect(() => {
+    outOfScopeMovilIdsRef.current = new Set();
+  }, [user?.allowedEmpresas]);
 
 
 
@@ -1129,14 +1143,24 @@ function DashboardContent() {
     // así que toda posición que llega por Realtime es vigente.
     dbg(`?? Actualización Realtime para móvil ${movilId}`);
     
+    // BAIL-OUT temprano si ya verificamos previamente que este móvil está
+    // fuera del scope del usuario. gps_latest_positions no trae empresa_fletera_id
+    // en el payload del evento, así que la única forma de saberlo era fetchear
+    // /api/all-positions y descartar después — eso provocaba 1 HTTP request por
+    // cada GPS de cada móvil ajeno. Cachear los descartes evita el round-trip.
+    if (outOfScopeMovilIdsRef.current.has(movilId)) {
+      dbg(`GPS bail-out (cache): movilId ${movilId} fuera de scope`);
+      return;
+    }
+
     setMoviles(prevMoviles => {
       // Buscar si el móvil ya existe en la lista
       const movilExists = prevMoviles.some(m => m.id === movilId);
-      
+
       if (!movilExists) {
         // ?? Móvil no existe en la lista - buscarlo en la API y agregarlo
         console.log(`?? Móvil ${movilId} no existe en lista, cargándolo desde API...`);
-        
+
         // Hacer fetch asíncrono del móvil
         fetch(`/api/all-positions?movilId=${movilId}`)
           .then(res => res.json())
@@ -1154,10 +1178,14 @@ function DashboardContent() {
               const allowedEmpresas = user?.allowedEmpresas;
               const hasRestriction = (allowedEmpresas?.length ?? 0) > 0;
               if (hasRestriction && allowedEmpresas && !allowedEmpresas.includes(movilData.empresa_fletera_id)) {
-                console.log(`?? Móvil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera de allowedEmpresas. No se agrega.`);
+                // Cachear el descarte para que el próximo GPS de este móvil no dispare otro fetch.
+                outOfScopeMovilIdsRef.current.add(movilId);
+                console.log(`?? Móvil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera de allowedEmpresas. No se agrega (cached).`);
                 return;
               }
               if (selectedEmpresas.length > 0 && !selectedEmpresas.includes(movilData.empresa_fletera_id)) {
+                // NO cachear acá — selectedEmpresas es filtro UI que el usuario puede cambiar.
+                // Si lo agregamos al cache, no se "vería" cuando se reactive la empresa.
                 console.log(`?? Móvil ${movilId} de empresa ${movilData.empresa_fletera_id} fuera del filtro UI actual. No se agrega.`);
                 return;
               }
