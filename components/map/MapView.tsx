@@ -1587,7 +1587,13 @@ const MapView = memo(function MapView({
     const borderStyle = isInactive ? '2px dashed rgba(255,255,255,0.8)' : '2px solid white';
     const opacity = isNoActivo ? '0.7' : '1';
     const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}-${movilHalo}`;
-    const haloShadow = movilHalo ? 'box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);' : '';
+    // Halo siguiendo la silueta del shape:
+    // - rectangulares (circle/square): box-shadow con spread (geometría compatible).
+    // - no rectangulares (triangle/diamond/hexagon/star): filter:drop-shadow apilado en 4 direcciones cardinales (respeta clip-path, border-trick y transforms).
+    const haloBoxShadow = movilHalo ? '0 0 0 2px white,0 0 0 3.5px rgba(0,0,0,0.5),' : '';
+    const haloFilter = movilHalo
+      ? 'drop-shadow(1.5px 0 0 white) drop-shadow(-1.5px 0 0 white) drop-shadow(0 1.5px 0 white) drop-shadow(0 -1.5px 0 white) drop-shadow(0 0 1.5px rgba(0,0,0,0.6)) '
+      : '';
 
     // Generate inner shape HTML based on movilShape preference
     const shapeSize = 18;
@@ -1595,17 +1601,17 @@ const MapView = memo(function MapView({
       const anim = isInactive ? 'animation: alarm-pulse 1.5s infinite;' : '';
       switch (movilShape) {
         case 'square':
-          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:3px;box-shadow:${haloBoxShadow}0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
         case 'triangle':
-          return `<div style="width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:16px solid ${effectiveColor};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+          return `<div style="width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:16px solid ${effectiveColor};filter:${haloFilter}drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
         case 'diamond':
-          return `<div style="width:13px;height:13px;background:${effectiveColor};border:${borderStyle};transform:rotate(45deg);box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+          return `<div style="width:13px;height:13px;background:${effectiveColor};${movilHalo ? '' : `border:${borderStyle};`}transform:rotate(45deg);filter:${haloFilter}drop-shadow(0 2px 4px rgba(0,0,0,0.3));${anim}"></div>`;
         case 'hexagon':
-          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:${haloFilter}drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
         case 'star':
-          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:${haloFilter}drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
         default: // circle
-          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:50%;box-shadow:${haloBoxShadow}0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
       }
     };
 
@@ -1623,7 +1629,6 @@ const MapView = memo(function MapView({
           align-items: center;
           justify-content: center;
           opacity: ${opacity};
-          ${haloShadow}
         ">
           ${getCompactShapeHtml()}
           ${movilId ? `
@@ -1655,7 +1660,6 @@ const MapView = memo(function MapView({
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
     const opacity = isNoActivo ? '0.6' : '1';
     const cacheKey = `mini-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}-${movilHalo}`;
-    const miniHaloStyle = movilHalo ? 'box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);' : '';
 
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
