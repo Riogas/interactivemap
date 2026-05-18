@@ -3,26 +3,30 @@ import { NextRequest, NextResponse } from 'next/server';
 /**
  * GET /api/admin/login-security/usuario-detalle?username=X
  *
- * Proxy al endpoint del SecuritySuite para obtener datos de un usuario por username.
+ * Proxy al endpoint del SecuritySuite que devuelve datos del usuario por username.
  * Gate: header x-track-isroot: 'S'
  *
- * ESTADO: El SecuritySuite no expone un endpoint GET /api/db/usuarios/por-username
- * (solo existen /por-empresa-fletera y /{userId}/permite-login).
- * Hasta que ese endpoint esté disponible, este route devuelve 501 NOT_IMPLEMENTED.
- * El cliente muestra "Detalle no disponible (endpoint upstream pendiente)" sin crashear.
+ * Spec del upstream (SecuritySuite):
+ *   GET /api/db/usuarios/por-username?username=jperez
+ *   200 — { success: true, item: { id, username, email, nombre, apellido,
+ *                                  estado, telefono, tipoUsuario, esRoot, ... } }
+ *   400 — falta username
+ *   404 — username no existe
+ *   500 — error de DB
  *
- * Cuando el SecuritySuite exponga el endpoint, descomentar la implementación
- * real en la sección marcada con TODO y eliminar el bloque 501.
+ * El match es exacto (columna username UNIQUE). Forwardea el token del usuario
+ * para que SecuritySuite haga su propio gate de permisos.
  *
- * Blocker documentado: SecuritySuite necesita implementar
- *   GET /api/db/usuarios/por-username?username=X
- * que devuelva { id, username, nombre, apellido, email, telefono, estado,
- *                tipoUsuario, esExterno, fechaCreacion, fechaUltimoLogin, empFletera, ... }
+ * Forma de respuesta de este proxy hacia el cliente:
+ *   200 — { success: true, usuario: <item del upstream> }
+ *   400 — { success: false, error: 'Parámetro username requerido' }
+ *   403 — { success: false, error: 'Acceso denegado' }
+ *   404 — { success: false, error: 'Usuario no encontrado', detail: <upstream> }
+ *   502 — { success: false, error: 'Error al conectar con SecuritySuite' }
+ *   <other> — passthrough del status code del upstream con detail.
  */
 
 const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
-// Suprimir warning de variable no usada hasta que se implemente la llamada real
-void SECURITY_SUITE_URL;
 
 function requireRoot(request: NextRequest): true | NextResponse {
   const isRoot = request.headers.get('x-track-isroot');
@@ -49,44 +53,64 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 501 — endpoint upstream pendiente de implementación en SecuritySuite
-  return NextResponse.json(
-    {
-      success: false,
-      error: 'Detalle no disponible (endpoint upstream pendiente)',
-      code: 'UPSTREAM_NOT_IMPLEMENTED',
-      detail:
-        'El SecuritySuite aún no expone GET /api/db/usuarios/por-username. ' +
-        'Implementar ese endpoint en SecuritySuite y actualizar este proxy.',
-      username: username.trim(),
-    },
-    { status: 501 }
+  const trimmed = username.trim();
+  const upstreamUrl = `${SECURITY_SUITE_URL}/api/db/usuarios/por-username?username=${encodeURIComponent(trimmed)}`;
+  const authHeader = request.headers.get('Authorization') ?? '';
+  const callerUser = request.headers.get('x-track-user') ?? 'unknown';
+
+  console.log(
+    `[usuario-detalle] GET upstream → ${upstreamUrl} (caller: ${callerUser})`,
   );
 
-  // TODO: cuando SecuritySuite implemente GET /api/db/usuarios/por-username,
-  // reemplazar el bloque 501 de arriba con:
-  //
-  // const upstreamUrl = `${SECURITY_SUITE_URL}/api/db/usuarios/por-username?username=${encodeURIComponent(username.trim())}`;
-  // const token = request.headers.get('Authorization') ?? '';
-  // try {
-  //   const res = await fetch(upstreamUrl, {
-  //     headers: { Authorization: token, 'Content-Type': 'application/json' },
-  //     signal: AbortSignal.timeout(8000),
-  //   });
-  //   if (!res.ok) {
-  //     const errBody = await res.json().catch(() => ({}));
-  //     return NextResponse.json(
-  //       { success: false, error: errBody.error || `Error upstream: ${res.status}`, code: 'UPSTREAM_ERROR' },
-  //       { status: res.status }
-  //     );
-  //   }
-  //   const data = await res.json();
-  //   return NextResponse.json({ success: true, usuario: data.usuario ?? data });
-  // } catch (err) {
-  //   console.error('[usuario-detalle] upstream fetch error:', err);
-  //   return NextResponse.json(
-  //     { success: false, error: 'Error al conectar con SecuritySuite', code: 'UPSTREAM_UNREACHABLE' },
-  //     { status: 502 }
-  //   );
-  // }
+  try {
+    const upstreamRes = await fetch(upstreamUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    const body = await upstreamRes.json().catch(() => null);
+
+    if (!upstreamRes.ok) {
+      console.error(
+        `[usuario-detalle] upstream ${upstreamRes.status}:`,
+        JSON.stringify(body),
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            upstreamRes.status === 404
+              ? 'Usuario no encontrado'
+              : 'Error del servicio upstream',
+          upstream_status: upstreamRes.status,
+          detail: body,
+        },
+        { status: upstreamRes.status },
+      );
+    }
+
+    // Spec del upstream: { success: true, item: { ... } }
+    // Mapeamos a nuestro shape: { success: true, usuario: { ... } } para que el
+    // cliente no tenga que conocer el rename. Aceptamos también `usuario` o un
+    // objeto plano como fallback defensivo.
+    type UpstreamShape = { success?: boolean; item?: unknown; usuario?: unknown };
+    const u = (body as UpstreamShape) ?? {};
+    const item = u.item ?? u.usuario ?? body;
+
+    return NextResponse.json({ success: true, usuario: item }, { status: 200 });
+  } catch (err) {
+    console.error('[usuario-detalle] excepción al llamar upstream:', err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Error al conectar con SecuritySuite',
+        code: 'UPSTREAM_UNREACHABLE',
+      },
+      { status: 502 },
+    );
+  }
 }
