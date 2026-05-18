@@ -338,7 +338,21 @@ export default function LoginBlocksPage() {
     }
   };
 
-  // ─── Estilos para estado de intentos ──────────────────────────────────────
+  // ─── Estado del intento: label legible + estilo ──────────────────────────
+  // Mapping de los 5 estados que se loguean en login_attempts.estado a un texto
+  // descriptivo en español. Los estados de la DB se mantienen como están
+  // (CHECK constraint), solo cambia la presentación.
+  const getEstadoLabel = (estado: string): string => {
+    switch (estado) {
+      case 'success': return 'Login exitoso';
+      case 'fail': return 'Credenciales inválidas';
+      case 'blocked_user': return 'Usuario bloqueado';
+      case 'blocked_ip': return 'IP bloqueada';
+      case 'user_eq_pass': return 'Usuario = contraseña';
+      default: return estado;
+    }
+  };
+
   const getEstadoBadgeClass = (estado: string) => {
     switch (estado) {
       case 'success': return 'bg-green-100 text-green-800 border-green-200';
@@ -411,7 +425,15 @@ export default function LoginBlocksPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+      <div className="max-w-[1600px] mx-auto px-6 py-6">
+        {/* Layout 2 columnas en pantallas grandes (lg+).
+            Izquierda: Configuración global + Bloqueos (apilados).
+            Derecha: Intentos de Login (tabla principal — más ancha).
+            En pantallas chicas vuelve a una sola columna. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(420px,1fr)_2fr] gap-6">
+
+        {/* ─── Columna izquierda: Config + Bloqueos ────────────────────────── */}
+        <div className="space-y-6 min-w-0">
 
         {/* ─── Panel: Configuración global ─────────────────────────────────── */}
         <div className="bg-white rounded-xl shadow-md p-6">
@@ -597,6 +619,12 @@ export default function LoginBlocksPage() {
           )}
         </div>
 
+        </div>
+        {/* ─── /Columna izquierda ──────────────────────────────────────────── */}
+
+        {/* ─── Columna derecha: Intentos de Login ──────────────────────────── */}
+        <div className="min-w-0">
+
         {/* ─── Panel: Intentos de login ─────────────────────────────────────── */}
         <div className="bg-white rounded-xl shadow-md p-6">
           <div className="flex items-center justify-between mb-4">
@@ -614,7 +642,7 @@ export default function LoginBlocksPage() {
           </div>
 
           {/* Filtros */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-3 mb-5">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Usuario</label>
               <input
@@ -643,11 +671,11 @@ export default function LoginBlocksPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Todos</option>
-                <option value="fail">Solo fallos</option>
-                <option value="blocked_user">Bloqueado (usuario)</option>
-                <option value="blocked_ip">Bloqueado (IP)</option>
-                <option value="success">Solo éxitos</option>
-                <option value="user_eq_pass">Usuario = Password</option>
+                <option value="success">Login exitoso</option>
+                <option value="fail">Credenciales inválidas</option>
+                <option value="blocked_user">Usuario bloqueado</option>
+                <option value="blocked_ip">IP bloqueada</option>
+                <option value="user_eq_pass">Usuario = contraseña</option>
               </select>
             </div>
             <div>
@@ -704,8 +732,11 @@ export default function LoginBlocksPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-700">{attempt.ip}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-medium rounded border ${getEstadoBadgeClass(attempt.estado)}`}>
-                          {attempt.estado}
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded border ${getEstadoBadgeClass(attempt.estado)}`}
+                          title={attempt.estado}
+                        >
+                          {getEstadoLabel(attempt.estado)}
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
@@ -727,6 +758,11 @@ export default function LoginBlocksPage() {
           )}
         </div>
 
+        </div>
+        {/* ─── /Columna derecha ────────────────────────────────────────────── */}
+
+        </div>
+        {/* ─── /Grid 2-col ─────────────────────────────────────────────────── */}
       </div>
     </div>
   );
