@@ -47,11 +47,11 @@ interface RealtimeContextType {
   /**
    * Callback que el dashboard inyecta para que el provider lo llame
    * cuando llega cualquier evento UPDATE/INSERT/DELETE en la tabla `moviles`.
-   * El dashboard usa esto para disparar un refetch debounced y reflejar cambios
-   * de estado/activo sin necesidad de F5 ni esperar el polling de 60s.
+   * Recibe el payload completo del evento para que el consumidor pueda hacer
+   * bail-out si los campos relevantes no cambiaron (perf: evita fetchPositions innecesarios).
    */
-  onMovilEvent: (() => void) | null;
-  setOnMovilEvent: (fn: (() => void) | null) => void;
+  onMovilEvent: ((payload: MovilSupabase) => void) | null;
+  setOnMovilEvent: (fn: ((payload: MovilSupabase) => void) | null) => void;
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined);
@@ -124,7 +124,9 @@ function RealtimeProviderActive({
   // Callback inyectado por el dashboard para fetchPositions al reconectar.
   const [onReconnect, setOnReconnect] = React.useState<(() => void) | null>(null);
   // Callback inyectado por el dashboard para refetch debounced al recibir eventos de moviles.
-  const [onMovilEvent, setOnMovilEvent] = React.useState<(() => void) | null>(null);
+  // Firma actualizada a (payload: MovilSupabase) => void para que el consumidor pueda
+  // evaluar el evento y hacer bail-out si no hay cambios relevantes (perf-round-4).
+  const [onMovilEvent, setOnMovilEvent] = React.useState<((payload: MovilSupabase) => void) | null>(null);
 
   // perf-round-3 Fix 1: buffer de posiciones GPS para debounce.
   // En lugar de llamar setLatestPosition en cada evento (que dispara un re-render
@@ -171,16 +173,18 @@ function RealtimeProviderActive({
 
   // onMovilEventRef permite que onMovilChange vea siempre la versión actual del callback
   // sin recrear onMovilChange (que causaría re-suscripción a Supabase).
-  const onMovilEventRef = React.useRef<(() => void) | null>(null);
+  // perf-round-4: tipo actualizado para pasar el payload al consumidor.
+  const onMovilEventRef = React.useRef<((payload: MovilSupabase) => void) | null>(null);
   onMovilEventRef.current = onMovilEvent;
 
   const onMovilChange = useCallback((movil: MovilSupabase) => {
     setLatestMovil(movil);
     lastEventAtRef.current = Date.now(); // Ref: sin setState, sin re-render
     // Notificar al dashboard de que hubo un cambio en la tabla moviles.
-    // El debounce vive en el consumidor (dashboard) — aquí solo disparamos el callback.
+    // Pasamos el payload completo para que el consumidor evalúe si requiere refetch.
+    // El debounce y bail-out viven en el consumidor (dashboard) — aquí solo disparamos.
     if (DEBUG_REALTIME) console.log('🚗 Cambio en tabla moviles detectado — refetch debounced');
-    if (onMovilEventRef.current) onMovilEventRef.current();
+    if (onMovilEventRef.current) onMovilEventRef.current(movil);
   }, []);
 
   // onReconnectRef permite que los hooks vean siempre la versión actual del callback
@@ -231,7 +235,8 @@ function RealtimeProviderActive({
   }, []);
 
   // setOnMovilEvent estable — mismo patrón que setOnReconnect
-  const setOnMovilEventStable = useCallback((fn: (() => void) | null) => {
+  // perf-round-4: tipo actualizado para (payload: MovilSupabase) => void
+  const setOnMovilEventStable = useCallback((fn: ((payload: MovilSupabase) => void) | null) => {
     setOnMovilEvent(fn ? () => fn : null);
   }, []);
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, MotionConfig } from 'framer-motion';
-import { MovilData, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters, PedidoFilters, ServiceFilters } from '@/types';
+import { MovilData, MovilSupabase, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters, PedidoFilters, ServiceFilters } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import RealtimeHealthBanner from '@/components/ui/RealtimeHealthBanner';
 import UserEqPassBanner from '@/components/ui/UserEqPassBanner';
@@ -918,9 +918,28 @@ function DashboardContent() {
   // llama a este callback. Usamos debounce 500ms via useRef para colapsar lotes (ej: 50
   // eventos en <1s -> 1 solo fetchPositions al final).
   const movileEventDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const debouncedFetchOnMovilEvent = useCallback(() => {
+  // perf-round-4: recibe el payload completo para hacer bail-out si los campos
+  // relevantes no cambiaron, evitando fetchPositions cuando el evento es un no-op.
+  const debouncedFetchOnMovilEvent = useCallback((payload: MovilSupabase) => {
     const today = todayMontevideo();
     if (selectedDate !== today) return; // gate: no spamear refetch en modo historico
+
+    // Bail-out: si el movil ya existe y los campos relevantes no cambiaron, no refetch.
+    // Campos que impactan la UI: estado_nro, empresa_fletera_id, capacidad.
+    const payloadId = Number(payload.id);
+    const existing = movilesRef.current.find(m => m.id === payloadId);
+    if (existing) {
+      const sameEstado = payload.estado_nro === (existing.estadoNro ?? null);
+      const sameEmpresa = payload.empresa_fletera_id === (existing.empresaFleteraId ?? null);
+      // existing.capacidad es number | undefined; payload.capacidad es number (non-nullable en Row)
+      const sameCapacidad = existing.capacidad == null || payload.capacidad === existing.capacidad;
+      if (sameEstado && sameEmpresa && sameCapacidad) {
+        // Movil ya en state con mismos datos relevantes — no refetch necesario
+        return;
+      }
+    }
+    // Movil nuevo (no esta en state) o con campos relevantes cambiados → programar debounce
+
     if (movileEventDebounceRef.current) clearTimeout(movileEventDebounceRef.current);
     movileEventDebounceRef.current = setTimeout(async () => {
       movileEventDebounceRef.current = null;
