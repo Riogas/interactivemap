@@ -813,9 +813,18 @@ function DashboardContent() {
         params.append('fecha', selectedDate);
       }
 
+      // server-scope: enviar empresas permitidas del usuario para filtrado server-side.
+      // Root no envia el param (el server lo trata como sin restriccion).
+      // Non-root sin allowedEmpresas -> fail-closed en el server (devuelve []).
+      if (!isRootUser && user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
+        params.append("empresas_fleteras", user.allowedEmpresas.join(","));
+      }
+
       const url = `/api/pedidos?${params.toString()}`;
-      
-      const response = await fetch(url);
+
+      const response = await fetch(url, {
+        headers: { "x-track-isroot": user?.isRoot ?? "N" },
+      });
       
       const result = await response.json();
 
@@ -835,7 +844,7 @@ function DashboardContent() {
     } finally {
       setIsLoadingPedidos(false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, isRootUser, user?.allowedEmpresas, user?.isRoot, escenarioId]);
 
   // Función para cargar TODOS los services del día desde API
   const fetchServices = useCallback(async () => {
@@ -849,8 +858,15 @@ function DashboardContent() {
         params.append('fecha', selectedDate);
       }
 
+      // server-scope: mismo patron que fetchPedidos.
+      if (!isRootUser && user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
+        params.append("empresas_fleteras", user.allowedEmpresas.join(","));
+      }
+
       const url = `/api/services?${params.toString()}`;
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: { "x-track-isroot": user?.isRoot ?? "N" },
+      });
       const result = await response.json();
 
       if (result.success) {
@@ -864,7 +880,7 @@ function DashboardContent() {
     } finally {
       setIsLoadingServices(false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, isRootUser, user?.allowedEmpresas, user?.isRoot, escenarioId]);
 
   // Mantener refs actualizadas para que los callbacks de reconexión siempre usen la versión más reciente
   useEffect(() => { fetchPedidosRef.current = fetchPedidos; }, [fetchPedidos]);

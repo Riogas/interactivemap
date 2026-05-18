@@ -70,12 +70,18 @@ function scheduleReconnect(
  * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
  *   El consumidor debe usarlo para hacer refetch del estado completo, ya que los
  *   eventos perdidos durante la desconexión no se reenvían.
+ * @param empresaIds - Array de IDs de empresa_fletera para filtrado server-side (opcional).
+ *   Si se provee, aplica filter en el canal Realtime de gps_latest_positions.
+ *   Requiere que la columna empresa_fletera_id exista en gps_latest_positions
+ *   (migration: docs/sqls/2026-05-18-gps-latest-empresa-fletera.sql).
+ *   Si es null/undefined (root o sin restricción): NO se aplica filtro server-side.
  */
 export function useGPSTracking(
   escenarioId: number = 1,
   movilIds?: string[],
   onUpdate?: (position: GPSTrackingSupabase) => void,
-  onReconnect?: () => void
+  onReconnect?: () => void,
+  empresaIds?: number[]
 ) {
   const [positions, setPositions] = useState<Map<string, GPSTrackingSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -95,6 +101,26 @@ export function useGPSTracking(
     let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
+
+    // Construir el filtro server-side para el canal Realtime.
+    // Replica el patrón de useMoviles (perf-round-2, commit 2391a4f):
+    //   - 1 empresa: 'empresa_fletera_id=eq.X'
+    //   - N empresas: 'empresa_fletera_id=in.(X,Y,Z)'
+    //   - null/undefined (root): sin filtro adicional (comportamiento original)
+    // NOTA: el filtro server-side reduce el tráfico de red, pero el filtrado
+    // client-side por movilIds se mantiene como segunda defensa.
+    const buildGpsFilter = (): string => {
+      if (empresaIds && empresaIds.length === 1) {
+        return `empresa_fletera_id=eq.${empresaIds[0]}`;
+      }
+      if (empresaIds && empresaIds.length > 1) {
+        return `empresa_fletera_id=in.(${empresaIds.join(',')})`;
+      }
+      // Root/sin restricción: filtrar solo por escenario
+      return `escenario_id=eq.${escenarioId}`;
+    };
+
+    const gpsFilter = buildGpsFilter();
 
     const setupChannel = () => {
       // Limpiar canal anterior si existe
@@ -122,7 +148,7 @@ export function useGPSTracking(
             event: 'INSERT',
             schema: 'public',
             table: 'gps_latest_positions',
-            filter: `escenario_id=eq.${escenarioId}`,
+            filter: gpsFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
@@ -130,7 +156,7 @@ export function useGPSTracking(
             dbg('📍 GPS INSERT:', (payload.new as any)?.movil_id);
             const newPosition = payload.new as GPSTrackingSupabase;
 
-            // Filtrar por móvil si se especifica
+            // Filtrar por móvil si se especifica (segunda defensa client-side)
             if (!movilIds || movilIds.includes(newPosition.movil_id)) {
               setPositions(prev => {
                 const updated = new Map(prev);
@@ -150,7 +176,7 @@ export function useGPSTracking(
             event: 'UPDATE',
             schema: 'public',
             table: 'gps_latest_positions',
-            filter: `escenario_id=eq.${escenarioId}`,
+            filter: gpsFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
@@ -158,6 +184,7 @@ export function useGPSTracking(
             dbg('📍 GPS UPDATE:', (payload.new as any)?.movil_id);
             const updatedPosition = payload.new as GPSTrackingSupabase;
 
+            // Filtrar por móvil si se especifica (segunda defensa client-side)
             if (!movilIds || movilIds.includes(updatedPosition.movil_id)) {
               setPositions(prev => {
                 const updated = new Map(prev);
@@ -226,7 +253,9 @@ export function useGPSTracking(
         supabase.removeChannel(channel);
       }
     };
-  }, [escenarioId, movilIds?.join(',')]); // Re-suscribir si cambian los filtros
+  // Re-suscribir si cambian los filtros (escenario, moviles, o empresas)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escenarioId, movilIds?.join(','), empresaIds?.join(',')]);
 
   return { positions, isConnected, error };
 }

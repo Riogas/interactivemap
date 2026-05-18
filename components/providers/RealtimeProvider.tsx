@@ -199,11 +199,16 @@ function RealtimeProviderActive({
   }, []);
 
   // Hook de GPS Tracking en tiempo real
+  // server-scope GPS round: pasar allowedEmpresaIds como 5to param para filtrado
+  // server-side en gps_latest_positions via empresa_fletera_id.
+  // Si allowedEmpresaIds es undefined (root), useGPSTracking recibe undefined → sin filtro de empresa.
+  // Requiere migration: docs/sqls/2026-05-18-gps-latest-empresa-fletera.sql
   const { positions, isConnected: gpsConnected, error: gpsError } = useGPSTracking(
     escenarioId,
     undefined,
     onNewPosition,
     onReconnectGps,
+    allowedEmpresaIds,
   );
 
   // Hook de Móviles en tiempo real (para detectar móviles nuevos)
