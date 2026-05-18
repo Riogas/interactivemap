@@ -929,10 +929,21 @@ function DashboardContent() {
     const payloadId = Number(payload.id);
     const existing = movilesRef.current.find(m => m.id === payloadId);
     if (existing) {
-      const sameEstado = payload.estado_nro === (existing.estadoNro ?? null);
-      const sameEmpresa = payload.empresa_fletera_id === (existing.empresaFleteraId ?? null);
-      // existing.capacidad es number | undefined; payload.capacidad es number (non-nullable en Row)
-      const sameCapacidad = existing.capacidad == null || payload.capacidad === existing.capacidad;
+      // Caso INICIALIZACION: si el state local tiene undefined en algun campo
+      // relevante, significa que enrichMovilesWithExtendedData aun no llego o no
+      // pudo poblarlo. El payload del Realtime viene a llenar esos huecos, NO es
+      // un cambio real. El otro handler (useEffect[latestMovil]) ya se encarga
+      // del merge local. Sin esto, los 276 moviles del escenario disparan 276
+      // fetchPositions en cascada al cargar.
+      const stateHasMissingFields =
+        existing.estadoNro === undefined ||
+        existing.empresaFleteraId == null ||
+        existing.capacidad === undefined;
+      if (stateHasMissingFields) return;
+
+      const sameEstado = payload.estado_nro === existing.estadoNro;
+      const sameEmpresa = payload.empresa_fletera_id === existing.empresaFleteraId;
+      const sameCapacidad = payload.capacidad === existing.capacidad;
       if (sameEstado && sameEmpresa && sameCapacidad) {
         // Movil ya en state con mismos datos relevantes — no refetch necesario
         return;
@@ -978,9 +989,13 @@ function DashboardContent() {
     const today = todayMontevideo();
     if (selectedDate !== today) return; // Solo en modo live, no para fechas históricas
 
-    // 0 / null / undefined -> usar default 60s. Solo -1 desactiva explicitamente.
+    // 0 / null / undefined -> usar default 180s (3 min). Solo -1 desactiva explicitamente.
+    // Antes era 60s pero quedaba muy agresivo: con el realtime + el polling de
+    // silencio cubriendo el caso 'WS muerto', la reconciliacion solo cubre
+    // edge cases (importer externo modifica DB sin avisar). 180s es defense
+    // suficiente sin saturar la API.
     const seconds = (preferences.realtimePollingReconcileSeconds == null || preferences.realtimePollingReconcileSeconds === 0)
-      ? 60
+      ? 180
       : preferences.realtimePollingReconcileSeconds;
     if (seconds === -1) return; // Desactivado explicitamente por el usuario
 
