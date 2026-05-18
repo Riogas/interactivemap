@@ -121,6 +121,45 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // El upstream del SecuritySuite SOLO acepta nombres (strings) como
+  // `?empresas=FLETERA_1,FLETERA_2`. Si el cliente nos mandó IDs numéricos
+  // (caso típico: root con allowedEmpresas pobladas en localStorage),
+  // traducimos IDs → nombres en Supabase antes de llamar al upstream.
+  const paramLooksNumeric = /^[\d,\s]+$/.test(empresasParam);
+  if (paramLooksNumeric) {
+    try {
+      const supabase = getServerSupabaseClient();
+      const ids = empresasParam
+        .split(',')
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => Number.isFinite(n));
+      const { data: rows, error } = await supabase
+        .from('empresas_fleteras')
+        .select('empresa_fletera_id, nombre')
+        .in('empresa_fletera_id', ids);
+      if (error) {
+        console.error('[usuarios-empresa] error traduciendo IDs a nombres:', error);
+      } else {
+        type EmpresaRow = { nombre: string | null };
+        const nombres = ((rows ?? []) as EmpresaRow[])
+          .map((e) => String(e?.nombre ?? '').trim())
+          .filter(Boolean);
+        if (nombres.length > 0) {
+          console.log(
+            `[usuarios-empresa] traduciendo ${ids.length} ID(s) → ${nombres.length} nombre(s): ${nombres.join(',')}`,
+          );
+          empresasParam = nombres.join(',');
+        } else {
+          console.warn(
+            `[usuarios-empresa] IDs ${ids.join(',')} no produjeron ningún nombre en Supabase — el upstream va a rechazar`,
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('[usuarios-empresa] excepción al traducir IDs a nombres:', e);
+    }
+  }
+
   // Forward del token del usuario al upstream (proxy con auth del usuario)
   const authHeader = request.headers.get('Authorization') ?? '';
 
@@ -148,35 +187,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Primer intento con el param tal como vino (típicamente nombres).
-    let attempt = await callUpstream(empresasParam);
-
-    // Fallback: si el upstream rechaza con 400 y el caller es root (que ya
-    // tiene auto-resolución), o el param parece contener nombres (no-numérico),
-    // probamos con los IDs equivalentes desde Supabase.
-    const paramLooksNonNumeric = !/^[\d,\s]+$/.test(empresasParam);
-    if (!attempt.ok && attempt.status === 400 && paramLooksNonNumeric) {
-      try {
-        const supabase = getServerSupabaseClient();
-        const nombres = empresasParam.split(',').map((s) => s.trim()).filter(Boolean);
-        const { data: rows } = await supabase
-          .from('empresas_fleteras')
-          .select('empresa_fletera_id, nombre')
-          .in('nombre', nombres);
-        type EmpresaRow = { empresa_fletera_id: number | null };
-        const ids = ((rows ?? []) as EmpresaRow[])
-          .map((e) => e?.empresa_fletera_id)
-          .filter((n): n is number => typeof n === 'number');
-        if (ids.length > 0) {
-          console.log(
-            `[usuarios-empresa] upstream 400 con nombres "${empresasParam}", reintentando con IDs: ${ids.join(',')}`,
-          );
-          attempt = await callUpstream(ids.map(String).join(','));
-        }
-      } catch (e) {
-        console.warn('[usuarios-empresa] no se pudo armar el fallback de IDs:', e);
-      }
-    }
+    const attempt = await callUpstream(empresasParam);
 
     if (!attempt.ok) {
       console.error(
