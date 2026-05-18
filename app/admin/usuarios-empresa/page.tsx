@@ -11,6 +11,8 @@ import { getEmpresasParamForUpstream, type EmpresaEntry } from '@/lib/empresas-d
 // TIPOS
 // ==============================================================================
 
+type EmpFletera = { Nombre?: string; Valor?: number; nombre?: string; valor?: number };
+
 type UsuarioEmpresa = {
   username: string;
   nombre?: string;
@@ -18,16 +20,16 @@ type UsuarioEmpresa = {
   email?: string;
   empresa?: string;
   empresa_fletera?: string;
-  // Estado del upstream del SecuritySuite: "A" = activo (habilitado), "I" = inactivo, etc.
+  // Array de empresas fleteras del usuario (shape real del SecuritySuite).
+  empFletera?: EmpFletera[];
+  // Estado del usuario en la plataforma: "A" = activo, "I" = inactivo, etc.
   estado?: string;
-  // Compat opcional con shape antiguo (mock) — el upstream real no los manda
+  // habilitado: boolean explícito del SecuritySuite (toggle de acceso a la app).
   habilitado?: boolean;
   enabled?: boolean;
-  // El upstream real usa fechaUltimoLogin; mantenemos los nombres legacy como fallback.
   fechaUltimoLogin?: string | null;
   ultima_actividad?: string | null;
   last_activity?: string | null;
-  // El upstream puede devolver más campos; los extras se ignoran en la UI.
   [key: string]: unknown;
 };
 
@@ -108,12 +110,13 @@ function parseAllowedEmpresasFromStorage(): number[] {
 }
 
 // Normaliza el estado habilitado del usuario.
-// El upstream real (SecuritySuite) usa `estado: "A"` (activo) o `"I"` (inactivo).
-// Mantenemos compat con shape antiguo (habilitado/enabled) por si vuelve el mock.
+// El upstream del SecuritySuite usa `habilitado: boolean` como toggle de acceso.
+// `estado: "A"/"I"` es otra cosa (estado del usuario en la plataforma) y NO debe
+// confundirse con habilitado/deshabilitado.
 function isUsuarioHabilitado(u: UsuarioEmpresa): boolean {
-  if (typeof u.estado === 'string') return u.estado.toUpperCase() === 'A';
   if (typeof u.habilitado === 'boolean') return u.habilitado;
   if (typeof u.enabled === 'boolean') return u.enabled;
+  if (typeof u.estado === 'string') return u.estado.toUpperCase() === 'A';
   return true;
 }
 
@@ -127,8 +130,24 @@ function getUltimaActividad(u: UsuarioEmpresa): string {
   }
 }
 
-function getEmpresaNombre(u: UsuarioEmpresa): string {
-  return String(u.empresa_fletera ?? u.empresa ?? '-');
+function getEmpresasNombres(u: UsuarioEmpresa): string[] {
+  // Shape real del SecuritySuite: empFletera es array de { Nombre, Valor }.
+  if (Array.isArray(u.empFletera) && u.empFletera.length > 0) {
+    return u.empFletera
+      .map((e) => String(e?.Nombre ?? e?.nombre ?? '').trim())
+      .filter(Boolean);
+  }
+  // Fallback compat con shapes anteriores.
+  const single = (u.empresa_fletera ?? u.empresa) as string | undefined;
+  if (typeof single === 'string' && single.trim()) return [single.trim()];
+  return [];
+}
+
+function getEmpresaNombreDisplay(u: UsuarioEmpresa): string {
+  const nombres = getEmpresasNombres(u);
+  if (nombres.length === 0) return '-';
+  if (nombres.length === 1) return nombres[0];
+  return `${nombres[0]} +${nombres.length - 1}`;
 }
 
 // ==============================================================================
@@ -193,6 +212,15 @@ export default function UsuariosEmpresaPage() {
 
   // Mock banner: visible mientras el toggle devuelva mock:true
   const [isMockMode, setIsMockMode] = useState(true);
+
+  // Modal de confirmación de toggle
+  const [confirmModal, setConfirmModal] = useState<{
+    username: string;
+    nombre: string;
+    empresas: string[];
+    currentlyEnabled: boolean;
+    newValue: boolean;
+  } | null>(null);
 
   // Roles del usuario para headers — memoizado para no invalidar useCallback en cada render
   const userRoles = useMemo(
@@ -275,7 +303,20 @@ export default function UsuariosEmpresaPage() {
     fetchUsuarios();
   }, [user, fetchUsuarios]);
 
-  // ─── Toggle habilitado/deshabilitado ─────────────────────────────────────────
+  // ─── Apertura del modal de confirmación al clickear el toggle ───────────────
+  const requestToggle = (u: UsuarioEmpresa, nuevoEstado: boolean) => {
+    if (toggling.has(u.username)) return;
+    const currentlyEnabled = isUsuarioHabilitado(u);
+    setConfirmModal({
+      username: u.username,
+      nombre: String(u.nombre ?? u.username),
+      empresas: getEmpresasNombres(u),
+      currentlyEnabled,
+      newValue: nuevoEstado,
+    });
+  };
+
+  // ─── Toggle habilitado/deshabilitado (ejecuta tras confirmación del modal) ──
   const handleToggle = async (username: string, nuevoEstado: boolean) => {
     if (toggling.has(username)) return;
 
@@ -350,8 +391,10 @@ export default function UsuariosEmpresaPage() {
   }, []);
 
   // ─── Filtrado client-side ─────────────────────────────────────────────────────
+  // Para "empresas disponibles" usamos el listado completo de empresas de cada usuario
+  // (un user puede pertenecer a varias), para que el filtro contemple todas.
   const empresasDisponibles = Array.from(
-    new Set(usuarios.map((u) => getEmpresaNombre(u)).filter((e) => e !== '-')),
+    new Set(usuarios.flatMap((u) => getEmpresasNombres(u))),
   ).sort();
 
   const usuariosFiltrados = usuarios.filter((u) => {
@@ -363,7 +406,7 @@ export default function UsuariosEmpresaPage() {
         String(u.email ?? '').toLowerCase().includes(term);
       if (!matchesSearch) return false;
     }
-    if (empresaFiltro !== 'todas' && getEmpresaNombre(u) !== empresaFiltro) return false;
+    if (empresaFiltro !== 'todas' && !getEmpresasNombres(u).includes(empresaFiltro)) return false;
     if (estadoFiltro === 'habilitados' && !isUsuarioHabilitado(u)) return false;
     if (estadoFiltro === 'deshabilitados' && isUsuarioHabilitado(u)) return false;
     return true;
@@ -561,15 +604,26 @@ export default function UsuariosEmpresaPage() {
                           {u.email ?? '-'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="px-2 py-1 text-xs font-medium rounded bg-teal-50 text-teal-700 border border-teal-200">
-                            {getEmpresaNombre(u)}
-                          </span>
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {getEmpresasNombres(u).length === 0 ? (
+                              <span className="text-xs text-gray-400">-</span>
+                            ) : (
+                              getEmpresasNombres(u).map((e) => (
+                                <span
+                                  key={e}
+                                  className="px-2 py-1 text-xs font-medium rounded bg-teal-50 text-teal-700 border border-teal-200"
+                                >
+                                  {e}
+                                </span>
+                              ))
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <ToggleSwitch
                               checked={habilitado}
-                              onChange={(v) => handleToggle(u.username, v)}
+                              onChange={(v) => requestToggle(u, v)}
                               disabled={isToggling}
                             />
                             <span className={`text-xs font-medium ${habilitado ? 'text-teal-700' : 'text-gray-400'}`}>
@@ -590,6 +644,105 @@ export default function UsuariosEmpresaPage() {
         </div>
 
       </div>
+
+      {/* ─── Modal de confirmación de habilitar/deshabilitar ──────────────────── */}
+      {confirmModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setConfirmModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header con icono */}
+            <div className={`px-6 py-5 ${confirmModal.newValue ? 'bg-gradient-to-r from-teal-600 to-cyan-700' : 'bg-gradient-to-r from-orange-500 to-red-600'}`}>
+              <div className="flex items-start gap-3">
+                <div className="bg-white/20 rounded-full p-2 flex-shrink-0">
+                  {confirmModal.newValue ? (
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">
+                    {confirmModal.newValue ? '¿Habilitar usuario?' : '¿Deshabilitar usuario?'}
+                  </h2>
+                  <p className="text-xs text-white/85 mt-0.5">
+                    Esta acción modifica el acceso del usuario a la plataforma.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-3">
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Usuario</div>
+                <div className="font-mono text-sm font-semibold text-gray-900">{confirmModal.username}</div>
+                <div className="text-sm text-gray-700 mt-0.5">{confirmModal.nombre}</div>
+              </div>
+
+              {confirmModal.empresas.length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                    {confirmModal.empresas.length === 1 ? 'Empresa fletera' : 'Empresas fleteras'}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {confirmModal.empresas.map((e) => (
+                      <span
+                        key={e}
+                        className="px-2 py-1 text-xs font-medium rounded bg-teal-50 text-teal-700 border border-teal-200"
+                      >
+                        {e}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className={`rounded-lg p-3 border ${confirmModal.newValue ? 'bg-teal-50 border-teal-200' : 'bg-orange-50 border-orange-200'}`}>
+                <p className={`text-sm font-medium ${confirmModal.newValue ? 'text-teal-800' : 'text-orange-800'}`}>
+                  {confirmModal.newValue
+                    ? 'El usuario podrá iniciar sesión y operar en la plataforma.'
+                    : 'El usuario perderá acceso a la plataforma hasta que sea habilitado nuevamente.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer con acciones */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { username, newValue } = confirmModal;
+                  setConfirmModal(null);
+                  void handleToggle(username, newValue);
+                }}
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-colors ${
+                  confirmModal.newValue
+                    ? 'bg-teal-600 hover:bg-teal-700'
+                    : 'bg-orange-600 hover:bg-orange-700'
+                }`}
+              >
+                {confirmModal.newValue ? 'Sí, habilitar' : 'Sí, deshabilitar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
