@@ -759,12 +759,13 @@ const MapView = memo(function MapView({
     const half = size / 2;
     const border = size > 12 ? 1.5 : 1;
     const bg = lightColor ? `linear-gradient(135deg,${color} 0%,${lightColor} 100%)` : color;
-    // halo: anillo blanco + anillo oscuro exterior. Para box-shadow shapes se antepone al shadow.
-    // Para clip-path/filter shapes (triangle, hexagon, star) se envuelve en un container.
+    // halo: anillo blanco + anillo oscuro exterior.
+    // - circle/square/pin: el halo se inyecta como box-shadow del mismo shape (su geometría natural lo soporta).
+    // - triangle/diamond/hexagon/star: el halo se agrega como elemento HERMANO previo (no padre, para no romper el contexto de posicionamiento absoluto del shape interior). Es un círculo detrás del shape.
     const haloCss = halo ? '0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45),' : '';
-    const haloWrap = (inner: string) => halo
-      ? `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;border-radius:50%;box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);">${inner}</div>`
-      : inner;
+    const haloSibling = halo
+      ? `<div style="position:absolute;left:-${half}px;top:-${half}px;width:${size}px;height:${size}px;border-radius:50%;box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);pointer-events:none;"></div>`
+      : '';
     switch (shape) {
       case 'circle':
         return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
@@ -773,17 +774,17 @@ const MapView = memo(function MapView({
       case 'triangle': {
         const bw = Math.round(half);
         const bh = Math.round(size * 0.9);
-        return haloWrap(`<div style="width:0;height:0;position:absolute;left:-${bw}px;top:-${half}px;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`);
+        return `${haloSibling}<div style="width:0;height:0;position:absolute;left:-${bw}px;top:-${half}px;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
       }
       case 'diamond': {
         const inner = Math.round(size * 0.72);
         const offset = Math.round(inner / 2);
-        return `<div style="width:${inner}px;height:${inner}px;position:absolute;left:-${offset}px;top:-${offset}px;background:${bg};border:${border}px solid white;transform:rotate(45deg);box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+        return `${haloSibling}<div style="width:${inner}px;height:${inner}px;position:absolute;left:-${offset}px;top:-${offset}px;background:${bg};border:${border}px solid white;transform:rotate(45deg);box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
       }
       case 'hexagon':
-        return haloWrap(`<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`);
+        return `${haloSibling}<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
       case 'star':
-        return haloWrap(`<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`);
+        return `${haloSibling}<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
       default:
         return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
     }
