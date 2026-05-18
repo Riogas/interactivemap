@@ -13,6 +13,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   ReactNode,
@@ -141,6 +142,19 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
   const chunksRef = useRef<BlobPart[]>([]);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const finalizedRef = useRef<boolean>(false);
+
+  // Object URL del blob para el preview. Se memoiza para que NO se regenere en
+  // cada render (cada keystroke en el textarea de descripción causaba un
+  // re-render → URL.createObjectURL(blob) nuevo → src cambiaba → el <video> se
+  // reiniciaba). Se revoca al desmontar o al cambiar el blob para evitar leaks.
+  const pendingBlobUrl = useMemo(
+    () => (pendingBlob ? URL.createObjectURL(pendingBlob) : null),
+    [pendingBlob],
+  );
+  useEffect(() => {
+    if (!pendingBlobUrl) return;
+    return () => URL.revokeObjectURL(pendingBlobUrl);
+  }, [pendingBlobUrl]);
   const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const available =
@@ -516,7 +530,9 @@ export function IncidentRecorderProvider({ children }: { children: ReactNode }) 
                 />
               </div>
               <div className="rounded-lg overflow-hidden bg-slate-900 aspect-video">
-                <video src={URL.createObjectURL(pendingBlob)} controls className="w-full h-full" />
+                {pendingBlobUrl && (
+                  <video src={pendingBlobUrl} controls className="w-full h-full" playsInline />
+                )}
               </div>
             </div>
             <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">

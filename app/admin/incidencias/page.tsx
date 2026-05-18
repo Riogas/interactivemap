@@ -295,7 +295,19 @@ export default function IncidenciasPage() {
                 {/* Player */}
                 <div className="rounded-xl overflow-hidden bg-slate-900 aspect-video">
                   {selected.video_url ? (
-                    <video src={selected.video_url} controls className="w-full h-full" autoPlay />
+                    <video
+                      key={selected.id}
+                      src={selected.video_url}
+                      controls
+                      autoPlay
+                      playsInline
+                      preload="auto"
+                      className="w-full h-full"
+                    >
+                      {selected.mime_type && (
+                        <source src={selected.video_url} type={selected.mime_type} />
+                      )}
+                    </video>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm">
                       Video no disponible
