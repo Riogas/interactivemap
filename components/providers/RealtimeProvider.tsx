@@ -99,6 +99,10 @@ function RealtimeProviderActive({
   children,
   escenarioId = 1000,
 }: RealtimeProviderProps) {
+  // Fix 3 perf-round-2: leer allowedEmpresas del user para pasarlas al useMoviles
+  // null = root/sin restricción (no aplica filtro); array = empresas permitidas del distribuidor
+  const { user: activeUser } = useAuth();
+  const allowedEmpresaIds = activeUser?.allowedEmpresas ?? undefined;
   const [latestPosition, setLatestPosition] = React.useState<GPSTrackingSupabase | null>(null);
   const [latestMovil, setLatestMovil] = React.useState<MovilSupabase | null>(null);
 
@@ -161,9 +165,11 @@ function RealtimeProviderActive({
   );
 
   // Hook de Móviles en tiempo real (para detectar móviles nuevos)
+  // Fix 3 perf-round-2: pasar allowedEmpresaIds para filtrar server-side en Supabase Realtime
+  // Si allowedEmpresaIds es undefined (root), useMoviles recibe undefined → sin filtro server-side
   const { isConnected: movilesConnected } = useMoviles(
     escenarioId,
-    undefined,
+    allowedEmpresaIds,
     onMovilChange,
     onReconnectMoviles,
   );

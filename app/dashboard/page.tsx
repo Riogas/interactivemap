@@ -2185,6 +2185,112 @@ function DashboardContent() {
     [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters],
   );
 
+  // ?? Fix 1 perf-round-2: pedidosForMap memoizado — evita invalidar React.memo del MapView en cada render
+  const pedidosForMap = useMemo((): PedidoSupabase[] => {
+    if (pedidosHidden) return [];
+    const isPendientes = pedidosFilters.vista !== 'finalizados';
+    const isEmpresaPartial = hideUnassigned;
+    const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
+    hiddenMovilIds.forEach(id => validMovilIds.add(id));
+    const targetEstado = isPendientes ? 1 : 2;
+    let base = pedidosCompletos.filter(p => {
+      if (Number(p.estado_nro) !== targetEstado) return false;
+      if (!p.movil || Number(p.movil) === 0) {
+        if (!canVerSinAsignarUnitario || !isPendientes) return false;
+        if (scope?.isRestricted && scope.scopedZonaIds) {
+          const zonaId = p.zona_nro != null ? Number(p.zona_nro) : null;
+          if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+        }
+        return true;
+      }
+      if (selectedMoviles.length > 0) {
+        if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
+        if (allMovilesSelected && hiddenMovilIds.has(Number(p.movil))) return true;
+        return false;
+      }
+      if (isPrivilegedUser) return false;
+      if (isEmpresaPartial) {
+        return validMovilIds.has(Number(p.movil));
+      }
+      return true;
+    });
+    base = base.filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud));
+    base = filterByDelay(base, isPendientes ? pedidosFilters.atraso : []);
+    if (isPendientes && pedidosFilters.tipoServicio.length > 0) base = base.filter(p => p.servicio_nombre && pedidosFilters.tipoServicio.includes(p.servicio_nombre));
+    if (pedidosFilters.zona !== null) base = base.filter(p => p.zona_nro === pedidosFilters.zona);
+    if (pedidosFilters.movil !== null) base = base.filter(p => Number(p.movil) === pedidosFilters.movil);
+    if (pedidosFilters.producto !== null) base = base.filter(p => p.producto_nom === pedidosFilters.producto);
+    if (pedidosFilters.asignacion === 'con_movil') base = base.filter(p => p.movil && Number(p.movil) !== 0);
+    else if (pedidosFilters.asignacion === 'sin_movil') base = base.filter(p => !p.movil || Number(p.movil) === 0);
+    if (pedidosFilters.entrega === 'entregados') base = base.filter(p => isPedidoEntregado(p));
+    else if (pedidosFilters.entrega === 'no_entregados') base = base.filter(p => !isPedidoEntregado(p));
+    if (pedidosFilters.soloSinCoords) base = base.filter(p => !p.latitud || !p.longitud);
+    if (pedidosFilters.search) { const sq = pedidosFilters.search.toLowerCase(); base = base.filter(p => p.id.toString().includes(sq) || (p.servicio_nombre && p.servicio_nombre.toLowerCase().includes(sq))); }
+    return base;
+  }, [
+    pedidosHidden, pedidosFilters, hideUnassigned, movilesFiltered, hiddenMovilIds,
+    pedidosCompletos, selectedMoviles, allMovilesSelected, canVerSinAsignarUnitario,
+    scope, isPrivilegedUser, isInUruguay, filterByDelay, isPedidoEntregado,
+  ]);
+
+  // ?? Fix 1 perf-round-2: servicesForMap memoizado — evita invalidar React.memo del MapView en cada render
+  const servicesForMap = useMemo((): ServiceSupabase[] => {
+    if (servicesHidden) return [];
+    const isPendientes = servicesFilters.vista !== 'finalizados';
+    const isEmpresaPartial = hideUnassigned;
+    const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
+    hiddenMovilIds.forEach(id => validMovilIds.add(id));
+    const targetEstado = isPendientes ? 1 : 2;
+    let base = servicesCompletos.filter(s => {
+      if (Number(s.estado_nro) !== targetEstado) return false;
+      if (!s.movil || Number(s.movil) === 0) {
+        if (!canVerSinAsignarUnitario || !isPendientes) return false;
+        if (scope?.isRestricted && scope.scopedZonaIds) {
+          const zonaId = s.zona_nro != null ? Number(s.zona_nro) : null;
+          if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+        }
+        return true;
+      }
+      if (selectedMoviles.length > 0) {
+        if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
+        if (allMovilesSelected && hiddenMovilIds.has(Number(s.movil))) return true;
+        return false;
+      }
+      if (isPrivilegedUser) return false;
+      if (isEmpresaPartial) {
+        return validMovilIds.has(Number(s.movil));
+      }
+      return true;
+    });
+    base = base.filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud));
+    base = filterByTipoServicio(filterByDelay(base, isPendientes ? servicesFilters.atraso : []), isPendientes ? servicesFilters.tipoServicio : 'all');
+    if (servicesFilters.zona !== null) base = base.filter(s => s.zona_nro === servicesFilters.zona);
+    if (servicesFilters.movil !== null) base = base.filter(s => Number(s.movil) === servicesFilters.movil);
+    if (servicesFilters.defecto !== null) base = base.filter(s => s.defecto === servicesFilters.defecto);
+    if (servicesFilters.asignacion === 'con_movil') base = base.filter(s => s.movil && Number(s.movil) !== 0);
+    else if (servicesFilters.asignacion === 'sin_movil') base = base.filter(s => !s.movil || Number(s.movil) === 0);
+    if (servicesFilters.entrega === 'entregados') base = base.filter(s => isServiceEntregado(s));
+    else if (servicesFilters.entrega === 'no_entregados') base = base.filter(s => !isServiceEntregado(s));
+    if (servicesFilters.soloSinCoords) base = base.filter(s => !s.latitud || !s.longitud);
+    if (servicesFilters.search) { const sq = servicesFilters.search.toLowerCase(); base = base.filter(s => s.id.toString().includes(sq) || (s.defecto && s.defecto.toLowerCase().includes(sq))); }
+    return base;
+  }, [
+    servicesHidden, servicesFilters, hideUnassigned, movilesFiltered, hiddenMovilIds,
+    servicesCompletos, selectedMoviles, allMovilesSelected, canVerSinAsignarUnitario,
+    scope, isPrivilegedUser, isInUruguay, filterByDelay, filterByTipoServicio, isServiceEntregado,
+  ]);
+
+  // ?? Fix 1 perf-round-2: callback estable para el 2do movil de animacion
+  const handleSecondaryAnimMovilChange = useCallback(async (movilId: number | undefined) => {
+    if (movilId) {
+      const movilData = moviles.find(m => m.id === movilId);
+      if (!movilData?.history || movilData.history.length === 0) {
+        await fetchMovilHistory(movilId);
+      }
+    }
+    setSelectedMovil2(movilId);
+  }, [moviles, fetchMovilHistory]);
+
   // Ref para rastrear el último key de pedidos y evitar loops infinitos
   const prevPedidosKeyRef = useRef<string>('');
   
@@ -3020,60 +3126,7 @@ function DashboardContent() {
                 onCloseAnimation={handleCloseAnimation}
                 onShowPendientes={handleShowPendientes}
                 onShowCompletados={handleShowCompletados}
-                pedidos={pedidosHidden ? [] : (() => {
-                  const isPendientes = pedidosFilters.vista !== 'finalizados';
-                  const isEmpresaPartial = hideUnassigned;
-                  const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
-                  hiddenMovilIds.forEach(id => validMovilIds.add(id));
-                  const targetEstado = isPendientes ? 1 : 2;
-                  let base = pedidosCompletos.filter(p => {
-                    if (Number(p.estado_nro) !== targetEstado) return false;
-                    // Sin asignar (movil null/0): pasa en 2 escenarios distintos:
-                    //   (a) modo "Todos"  todas empresas + todos moviles seleccionados,
-                    //       vista pendientes y empresas completas;
-                    //   (b) vista "solo sin asignar"  privilegiado con
-                    //       selectedMoviles=[] (handleClearAll) y empresas completas.
-                    if (!p.movil || Number(p.movil) === 0) {
-                      // Sin movil: requiere permiso 'Ped s/asignar unitarios' +
-                      // vista pendientes. Scope por zona aplica al distribuidor.
-                      if (!canVerSinAsignarUnitario || !isPendientes) return false;
-                      if (scope?.isRestricted && scope.scopedZonaIds) {
-                        const zonaId = p.zona_nro != null ? Number(p.zona_nro) : null;
-                        if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
-                      }
-                      return true;
-                    }
-                    if (selectedMoviles.length > 0) {
-                      // Subset de móviles: solo pasan los explicitamente
-                      // seleccionados. Los de móviles ocultos-pero-operativos
-                      // SOLO pasan en modo "Todos"  sino corresponden a un
-                      // segmento que el usuario no eligió ver.
-                      if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
-                      if (allMovilesSelected && hiddenMovilIds.has(Number(p.movil))) return true;
-                      return false;
-                    }
-                    // selectedMoviles = []: privilegiado solo ve sin-asignar
-                    // (manejado arriba). Aquí los pedidos CON móvil no pasan.
-                    if (isPrivilegedUser) return false;
-                    if (isEmpresaPartial) {
-                      return validMovilIds.has(Number(p.movil));
-                    }
-                    return true;
-                  });
-                  base = base.filter(p => !p.latitud || !p.longitud || isInUruguay(p.latitud, p.longitud));
-                  base = filterByDelay(base, isPendientes ? pedidosFilters.atraso : []);
-                  if (isPendientes && pedidosFilters.tipoServicio.length > 0) base = base.filter(p => p.servicio_nombre && pedidosFilters.tipoServicio.includes(p.servicio_nombre));
-                  if (pedidosFilters.zona !== null) base = base.filter(p => p.zona_nro === pedidosFilters.zona);
-                  if (pedidosFilters.movil !== null) base = base.filter(p => Number(p.movil) === pedidosFilters.movil);
-                  if (pedidosFilters.producto !== null) base = base.filter(p => p.producto_nom === pedidosFilters.producto);
-                  if (pedidosFilters.asignacion === 'con_movil') base = base.filter(p => p.movil && Number(p.movil) !== 0);
-                  else if (pedidosFilters.asignacion === 'sin_movil') base = base.filter(p => !p.movil || Number(p.movil) === 0);
-                  if (pedidosFilters.entrega === 'entregados') base = base.filter(p => isPedidoEntregado(p));
-                  else if (pedidosFilters.entrega === 'no_entregados') base = base.filter(p => !isPedidoEntregado(p));
-                  if (pedidosFilters.soloSinCoords) base = base.filter(p => !p.latitud || !p.longitud);
-                  if (pedidosFilters.search) { const sq = pedidosFilters.search.toLowerCase(); base = base.filter(p => p.id.toString().includes(sq) || (p.servicio_nombre && p.servicio_nombre.toLowerCase().includes(sq))); }
-                  return base;
-                })()}
+                pedidos={pedidosForMap}
                 allPedidos={pedidosCompletos}
                 onPedidoClick={handlePedidoClick}
                 popupPedido={popupPedido}
@@ -3081,55 +3134,7 @@ function DashboardContent() {
                 focusedServiceId={focusedServiceId}
                 focusedPuntoId={focusedPuntoId}
                 focusTrigger={focusTrigger}
-                services={servicesHidden ? [] : (() => {
-                  const isPendientes = servicesFilters.vista !== 'finalizados';
-                  const isEmpresaPartial = hideUnassigned;
-                  const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
-                  hiddenMovilIds.forEach(id => validMovilIds.add(id));
-                  const targetEstado = isPendientes ? 1 : 2;
-                  let base = servicesCompletos.filter(s => {
-                    if (Number(s.estado_nro) !== targetEstado) return false;
-                    // Sin asignar: pasa en 2 escenarios distintos:
-                    //   (a) modo "Todos" (todas empresas + todos moviles seleccionados);
-                    //   (b) vista "solo sin asignar"  privilegiado con selectedMoviles=[]
-                    //       (handleClearAll) y empresas completas.
-                    if (!s.movil || Number(s.movil) === 0) {
-                      // Sin movil: requiere permiso 'Ped s/asignar unitarios' +
-                      // vista pendientes. Scope por zona aplica al distribuidor.
-                      if (!canVerSinAsignarUnitario || !isPendientes) return false;
-                      if (scope?.isRestricted && scope.scopedZonaIds) {
-                        const zonaId = s.zona_nro != null ? Number(s.zona_nro) : null;
-                        if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
-                      }
-                      return true;
-                    }
-                    if (selectedMoviles.length > 0) {
-                      // Subset: solo pasan los seleccionados. Los de móviles
-                      // ocultos-pero-operativos SOLO pasan en modo "Todos".
-                      if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
-                      if (allMovilesSelected && hiddenMovilIds.has(Number(s.movil))) return true;
-                      return false;
-                    }
-                    // selectedMoviles = []: privilegiado solo ve sin-asignar.
-                    if (isPrivilegedUser) return false;
-                    if (isEmpresaPartial) {
-                      return validMovilIds.has(Number(s.movil));
-                    }
-                    return true;
-                  });
-                  base = base.filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud));
-                  base = filterByTipoServicio(filterByDelay(base, isPendientes ? servicesFilters.atraso : []), isPendientes ? servicesFilters.tipoServicio : 'all');
-                  if (servicesFilters.zona !== null) base = base.filter(s => s.zona_nro === servicesFilters.zona);
-                  if (servicesFilters.movil !== null) base = base.filter(s => Number(s.movil) === servicesFilters.movil);
-                  if (servicesFilters.defecto !== null) base = base.filter(s => s.defecto === servicesFilters.defecto);
-                  if (servicesFilters.asignacion === 'con_movil') base = base.filter(s => s.movil && Number(s.movil) !== 0);
-                  else if (servicesFilters.asignacion === 'sin_movil') base = base.filter(s => !s.movil || Number(s.movil) === 0);
-                  if (servicesFilters.entrega === 'entregados') base = base.filter(s => isServiceEntregado(s));
-                  else if (servicesFilters.entrega === 'no_entregados') base = base.filter(s => !isServiceEntregado(s));
-                  if (servicesFilters.soloSinCoords) base = base.filter(s => !s.latitud || !s.longitud);
-                  if (servicesFilters.search) { const sq = servicesFilters.search.toLowerCase(); base = base.filter(s => s.id.toString().includes(sq) || (s.defecto && s.defecto.toLowerCase().includes(sq))); }
-                  return base;
-                })()}
+                services={servicesForMap}
                 allServices={servicesCompletos}
                 onServiceClick={handleServiceClick}
                 popupService={popupService}
@@ -3140,16 +3145,7 @@ function DashboardContent() {
                 selectedDate={selectedDate}
                 selectedEmpresas={selectedEmpresas}
                 onMovilDateChange={handleTrackingConfirm}
-                onSecondaryAnimMovilChange={async (movilId) => {
-                  if (movilId) {
-                    // Cargar historial del 2do móvil si no está cargado
-                    const movilData = moviles.find(m => m.id === movilId);
-                    if (!movilData?.history || movilData.history.length === 0) {
-                      await fetchMovilHistory(movilId);
-                    }
-                  }
-                  setSelectedMovil2(movilId);
-                }}
+                onSecondaryAnimMovilChange={handleSecondaryAnimMovilChange}
                 zonas={showZonas ? zonasData : []}
                 markerStyle={preferences.markerStyle || 'normal'}
                 pedidosCluster={preferences.pedidosCluster !== undefined ? preferences.pedidosCluster : true}

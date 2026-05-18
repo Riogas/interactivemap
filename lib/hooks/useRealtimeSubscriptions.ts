@@ -277,6 +277,18 @@ export function useMoviles(
             event: '*', // INSERT, UPDATE, DELETE
             schema: 'public',
             table: 'moviles',
+            // Fix 3 perf-round-2: server-side filter por empresa.
+            // Supabase Realtime postgres_changes soporta filter con sintaxis PostgREST.
+            // Si empresaIds tiene exactamente 1 empresa: 'empresa_fletera_id=eq.X'
+            // Si tiene 2+: 'empresa_fletera_id=in.(1,2,3)'
+            // Si es null/undefined (root/sin restriccion): sin filter (comportamiento actual).
+            // IMPORTANTE: el filtro server-side reduce el trafico de red pero el
+            // filtrado client-side en el callback se mantiene como segunda defensa.
+            ...(empresaIds && empresaIds.length === 1
+              ? { filter: `empresa_fletera_id=eq.${empresaIds[0]}` }
+              : empresaIds && empresaIds.length > 1
+              ? { filter: `empresa_fletera_id=in.(${empresaIds.join(',')})` }
+              : {}),
           },
           (payload) => {
             if (!isComponentMounted) return;
