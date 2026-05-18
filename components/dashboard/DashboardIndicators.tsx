@@ -193,7 +193,10 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     loadZonasData();
     // Refrescar según el intervalo configurado en preferencias (mínimo 10s)
     const refreshMs = Math.max(10, zonasRefreshSeconds) * 1000;
-    const interval = setInterval(loadZonasData, refreshMs);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return; // Pestaña en background: skip
+      loadZonasData();
+    }, refreshMs);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escenarioIds, zonasRefreshSeconds, scopedEmpresasKey, scopedZonasKey]);

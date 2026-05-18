@@ -76,7 +76,7 @@ function DashboardContent() {
   const aplicaNocturno = escenarioSettings?.aplicaServNocturno ?? true;
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
-  const { latestPosition, latestMovil, isConnected, lastEventAt: lastMovilEventAt, setOnReconnect, setOnMovilEvent } = useRealtime();
+  const { latestPosition, latestMovil, isConnected, getLastEventAt: getLastMovilEventAt, setOnReconnect, setOnMovilEvent } = useRealtime();
   
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
@@ -934,6 +934,7 @@ function DashboardContent() {
     if (seconds === -1) return; // Desactivado explicitamente por el usuario
 
     const interval = setInterval(async () => {
+      if (typeof document !== 'undefined' && document.hidden) return; // Pestaña en background: skip
       console.log(`?? Polling reconciliación (${seconds}s)  sincronizando datos con la API`);
       fetchPedidos();
       fetchServices();
@@ -971,8 +972,9 @@ function DashboardContent() {
     const thresholdMs = seconds * 1000;
 
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return; // Pestaña en background: skip
       const now = Date.now();
-      const silenceMs = now - Math.max(lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt);
+      const silenceMs = now - Math.max(lastPedidoEventAt, lastServiceEventAt, getLastMovilEventAt());
       if (silenceMs > thresholdMs) {
         console.warn(`?? Silencio de WS > ${seconds}s (${Math.round(silenceMs / 1000)}s). Forzando refetch.`);
         fetchPedidos();
@@ -995,7 +997,7 @@ function DashboardContent() {
     }, checkMs);
 
     return () => clearInterval(interval);
-  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, lastMovilEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds, isRootUser]);
+  }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds, isRootUser, getLastMovilEventAt]);
 
   // ?? Mejora #3  Refetch al volver la pestaña a visible (admin / root).
   // Cuando la tab estuvo en background mucho tiempo, el WS puede haberse cerrado sin aviso
@@ -2266,34 +2268,10 @@ function DashboardContent() {
     setShowCompletados(false);
   }, [selectedDate, selectedEmpresas]);
 
-  // Auto-refresh de posiciones y historial del móvil seleccionado (solo si Tiempo Real está activado)
-  useEffect(() => {
-    // Si el modo Tiempo Real está desactivado, no hacer polling
-    if (!preferences.realtimeEnabled) {
-      console.log('?? Modo Tiempo Real desactivado - no hay auto-refresh');
-      return;
-    }
 
-    // Intervalo fijo de 30 segundos cuando Tiempo Real está activado
-    const REALTIME_INTERVAL = 30000; // 30 segundos
-    
-    const interval = setInterval(() => {
-      console.log(`?? Auto-refresh triggered (Realtime Mode). Selected móvil: ${selectedMovil || 'none'}`);
-      fetchPositions(); // Actualizar solo posiciones GPS
-      
-      // Si hay un móvil seleccionado, actualizar también su historial
-      if (selectedMovil) {
-        console.log(`?? Refreshing history for móvil ${selectedMovil}`);
-        fetchMovilHistory(selectedMovil);
-      }
-      if (selectedMovil2) {
-        console.log(`?? Refreshing history for 2nd móvil ${selectedMovil2}`);
-        fetchMovilHistory(selectedMovil2);
-      }
-    }, REALTIME_INTERVAL);
-
-    return () => clearInterval(interval);
-  }, [fetchPositions, preferences.realtimeEnabled, selectedMovil, selectedMovil2, fetchMovilHistory]);
+  // Auto-refresh de 30s eliminado — redundante con reconciliacion de 60s + realtime.
+  // fetchPositions se cubre por el polling de reconciliacion y por el WS de GPS.
+  // fetchMovilHistory se dispara al seleccionar un movil; no requiere polling propio.
 
   // Cargar pedidos pendientes cuando se seleccionan móviles O cuando se carga el dashboard
   useEffect(() => {

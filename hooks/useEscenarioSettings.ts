@@ -89,6 +89,7 @@ export function useEscenarioSettings(escenarioId: number | null): {
 
     // Revalidar periodicamente
     const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return; // Pestaña en background: skip
       doFetch(escenarioId, true);
     }, CACHE_TTL_MS);
 

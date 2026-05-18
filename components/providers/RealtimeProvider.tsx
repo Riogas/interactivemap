@@ -5,6 +5,10 @@ import { useGPSTracking, useMoviles } from '@/lib/hooks/useRealtimeSubscriptions
 import { useAuth } from '@/contexts/AuthContext';
 import type { GPSTrackingSupabase, MovilSupabase } from '@/types';
 
+// Guard para console.log en hot path de GPS/móviles.
+// Activar con: NEXT_PUBLIC_DEBUG_REALTIME=true en .env.local
+const DEBUG_REALTIME = process.env.NEXT_PUBLIC_DEBUG_REALTIME === 'true';
+
 interface RealtimeContextType {
   positions: Map<string, GPSTrackingSupabase>;
   isConnected: boolean;
@@ -12,8 +16,19 @@ interface RealtimeContextType {
   latestPosition: GPSTrackingSupabase | null;
   latestMovil: MovilSupabase | null;
   /**
-   * ms epoch del último evento Realtime recibido (gps_latest_positions o moviles).
-   * El dashboard lo usa para detectar silencio del WS y forzar refetch.
+   * Ref al ms epoch del último evento Realtime recibido (gps_latest_positions o moviles).
+   * Es un RefObject — no causa re-renders al cambiar. Leer via getLastEventAt().
+   */
+  lastEventAtRef: React.RefObject<number>;
+  /**
+   * Lectura on-demand del último evento Realtime (ms epoch).
+   * El dashboard lo usa en setInterval de silencio — cero re-renders.
+   */
+  getLastEventAt: () => number;
+  /**
+   * @deprecated Usar getLastEventAt() o lastEventAtRef.current.
+   * Mantenido para retrocompatibilidad — devuelve el mismo valor que getLastEventAt()
+   * pero no es reactivo (no causa re-renders en consumidores de useRealtime).
    */
   lastEventAt: number;
   /**
@@ -63,12 +78,16 @@ export function RealtimeProvider({ children, escenarioId = 1000 }: RealtimeProvi
   return <RealtimeProviderActive escenarioId={escenarioId}>{children}</RealtimeProviderActive>;
 }
 
+// Ref estable para el contexto noop — evitar crear nuevo objeto en cada render del noop path
+const _noopLastEventAtRef = { current: 0 } as React.RefObject<number>;
 const NOOP_CONTEXT: RealtimeContextType = {
   positions: new Map(),
   isConnected: false,
   error: null,
   latestPosition: null,
   latestMovil: null,
+  lastEventAtRef: _noopLastEventAtRef,
+  getLastEventAt: () => 0,
   lastEventAt: 0,
   onReconnect: null,
   setOnReconnect: () => undefined,
@@ -82,9 +101,16 @@ function RealtimeProviderActive({
 }: RealtimeProviderProps) {
   const [latestPosition, setLatestPosition] = React.useState<GPSTrackingSupabase | null>(null);
   const [latestMovil, setLatestMovil] = React.useState<MovilSupabase | null>(null);
-  // ms epoch del último evento Realtime recibido — sirve al dashboard para detectar
-  // silencio del WS de móviles/GPS y forzar refetch (paralelo al de pedidos/services).
-  const [lastEventAt, setLastEventAt] = React.useState<number>(() => Date.now());
+
+  // lastEventAt como useRef — NO useState.
+  // Razón: este valor se lee en un setInterval de silencio (polling), NO necesita
+  // disparar re-renders. Cambiarlo de useState a useRef elimina re-renders en cascada
+  // en TODOS los consumidores de useRealtime() en cada ping GPS/móvil.
+  const lastEventAtRef = React.useRef<number>(Date.now());
+
+  // Callback estable de lectura on-demand — no causa re-render al llamarse
+  const getLastEventAt = useCallback(() => lastEventAtRef.current, []);
+
   // Callback inyectado por el dashboard para fetchPositions al reconectar.
   const [onReconnect, setOnReconnect] = React.useState<(() => void) | null>(null);
   // Callback inyectado por el dashboard para refetch debounced al recibir eventos de moviles.
@@ -94,7 +120,7 @@ function RealtimeProviderActive({
   // que useGPSTracking/useMoviles rehagan la suscripción a Supabase innecesariamente.
   const onNewPosition = useCallback((newPosition: GPSTrackingSupabase) => {
     setLatestPosition(newPosition);
-    setLastEventAt(Date.now());
+    lastEventAtRef.current = Date.now(); // Ref: sin setState, sin re-render
   }, []);
 
   // onMovilEventRef permite que onMovilChange vea siempre la versión actual del callback
@@ -104,10 +130,10 @@ function RealtimeProviderActive({
 
   const onMovilChange = useCallback((movil: MovilSupabase) => {
     setLatestMovil(movil);
-    setLastEventAt(Date.now());
+    lastEventAtRef.current = Date.now(); // Ref: sin setState, sin re-render
     // Notificar al dashboard de que hubo un cambio en la tabla moviles.
     // El debounce vive en el consumidor (dashboard) — aquí solo disparamos el callback.
-    console.log('🚗 Cambio en tabla moviles detectado — refetch debounced');
+    if (DEBUG_REALTIME) console.log('🚗 Cambio en tabla moviles detectado — refetch debounced');
     if (onMovilEventRef.current) onMovilEventRef.current();
   }, []);
 
@@ -173,6 +199,9 @@ function RealtimeProviderActive({
   // Memoizar el valor del contexto: sin esto, cada render del provider crea un nuevo
   // objeto y fuerza re-render de todos los consumidores de useRealtime(), aunque los
   // valores no hayan cambiado.
+  // NOTA: lastEventAtRef y getLastEventAt son referencias estables — no se incluyen
+  // en las dependencias porque nunca cambian. lastEventAt se expone como alias
+  // legacy que lee lastEventAtRef.current (sin reactividad, solo para retrocompat).
   const contextValue = useMemo<RealtimeContextType>(
     () => ({
       positions,
@@ -180,13 +209,15 @@ function RealtimeProviderActive({
       error,
       latestPosition,
       latestMovil,
-      lastEventAt,
+      lastEventAtRef,
+      getLastEventAt,
+      lastEventAt: lastEventAtRef.current, // alias no-reactivo para retrocompat
       onReconnect,
       setOnReconnect: setOnReconnectStable,
       onMovilEvent,
       setOnMovilEvent: setOnMovilEventStable,
     }),
-    [positions, isConnected, error, latestPosition, latestMovil, lastEventAt, onReconnect, setOnReconnectStable, onMovilEvent, setOnMovilEventStable],
+    [positions, isConnected, error, latestPosition, latestMovil, getLastEventAt, onReconnect, setOnReconnectStable, onMovilEvent, setOnMovilEventStable],
   );
 
   return (
