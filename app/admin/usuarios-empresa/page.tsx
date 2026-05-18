@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { authStorage } from '@/lib/auth-storage';
@@ -186,8 +186,11 @@ export default function UsuariosEmpresaPage() {
   // Mock banner: visible mientras el toggle devuelva mock:true
   const [isMockMode, setIsMockMode] = useState(true);
 
-  // Roles del usuario para headers
-  const userRoles = user?.roles?.map((r) => r.RolNombre) ?? [];
+  // Roles del usuario para headers — memoizado para no invalidar useCallback en cada render
+  const userRoles = useMemo(
+    () => user?.roles?.map((r) => r.RolNombre) ?? [],
+    [user],
+  );
   const userIsRoot = isRoot(user);
 
   // ─── Gate de acceso ──────────────────────────────────────────────────────────
