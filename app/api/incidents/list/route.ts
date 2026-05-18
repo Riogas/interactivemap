@@ -6,8 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 
-const BUCKET = 'incident-videos';
-const SIGNED_URL_EXPIRES_S = 60 * 60; // 1 hora
 
 interface IncidentRow {
   id: number;
@@ -62,15 +60,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    // Generar signed URLs
-    const withUrls = await Promise.all(
-      (data ?? []).map(async (r) => {
-        const { data: signed } = await supabase.storage
-          .from(BUCKET)
-          .createSignedUrl(r.video_path, SIGNED_URL_EXPIRES_S);
-        return { ...r, video_url: signed?.signedUrl ?? null };
-      }),
-    );
+    // Servimos el video a través de un proxy local (/api/incidents/{id}/video)
+    // en vez de exponer un signed URL directo de Supabase Storage. Razones:
+    // - Algunos clientes (proxy corporativo / SSL interception) no pueden
+    //   conectarse al dominio de Storage (ERR_CERT_AUTHORITY_INVALID).
+    // - Mantenemos el bucket privado: el cliente nunca ve el video_path
+    //   real ni el token JWT del signed URL.
+    // - La autorización se controla acá (requireAuth en el endpoint /video).
+    const withUrls = (data ?? []).map((r) => ({
+      ...r,
+      video_url: `/api/incidents/${r.id}/video`,
+    }));
 
     return NextResponse.json({
       success: true,
