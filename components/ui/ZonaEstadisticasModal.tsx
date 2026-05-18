@@ -56,6 +56,10 @@ const TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE'] as const;
 /** servicio_nombre values que corresponden a "PEDIDOS" */
 const PEDIDOS_SERVICES = new Set(['URGENTE', 'NOCTURNO']);
 
+/** Sub-tipos disponibles cuando tipoPrincipal === 'PEDIDOS' */
+const PEDIDOS_SUB_TIPOS = ['TODOS', 'NOCTURNO', 'URGENTE'] as const;
+type PedidosSubTipo = typeof PEDIDOS_SUB_TIPOS[number];
+
 // ============= Component =============
 
 export default function ZonaEstadisticasModal({
@@ -78,8 +82,25 @@ export default function ZonaEstadisticasModal({
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [serviceFilter, setServiceFilter] = useState<string>('PEDIDOS');
+  // Primer combo: tipo principal (PEDIDOS / SERVICE)
+  const [tipoPrincipal, setTipoPrincipal] = useState<string>('PEDIDOS');
+  // Segundo combo: sub-tipo de PEDIDOS (solo visible cuando tipoPrincipal === 'PEDIDOS')
+  const [subTipoPedidos, setSubTipoPedidos] = useState<PedidosSubTipo>('TODOS');
   const [filters, setFilters] = useState<Partial<Record<SortKey | 'zonaText', string>>>({});
+
+  // Filtro efectivo que se pasa a filteredPedidos, filteredMovilesZonas y callbacks:
+  // - PEDIDOS + TODOS  → 'PEDIDOS'   (muestra todos los pedidos URGENTE+NOCTURNO)
+  // - PEDIDOS + sub    → sub         (ej: 'NOCTURNO')
+  // - SERVICE          → 'SERVICE'
+  // Calculado como useMemo para que esté disponible desde el primer render sin depender
+  // de ningún useEffect — esto garantiza que el segundo combo y la tabla sean consistentes
+  // en el render inicial.
+  const effectiveServiceFilter = useMemo(() => {
+    if (tipoPrincipal === 'PEDIDOS') {
+      return subTipoPedidos === 'TODOS' ? 'PEDIDOS' : subTipoPedidos;
+    }
+    return tipoPrincipal;
+  }, [tipoPrincipal, subTipoPedidos]);
 
   // Ocultar sin-asignar controlado únicamente por la funcionalidad 'Ped s/asignar x zona'
   // (hideSinAsignarOverride=true cuando el usuario no tiene la funcionalidad).
@@ -192,7 +213,7 @@ export default function ZonaEstadisticasModal({
   // con hideEntregadosSinMovil=true para que las estadísticas no incluyan entregados huérfanos
   // ni pedidos/services fuera del scope (móvil + zona).
   const filteredPedidos = useMemo(() => {
-    const upper = serviceFilter.toUpperCase();
+    const upper = effectiveServiceFilter.toUpperCase();
     let base: PedidoSupabase[];
     if (upper === 'SERVICE') {
       // Los services están en su propio array — aplicar scope con isServiceInScope antes del cast
@@ -213,11 +234,11 @@ export default function ZonaEstadisticasModal({
       base = base.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: true }));
     }
     return base;
-  }, [pedidos, services, serviceFilter, scope]);
+  }, [pedidos, services, effectiveServiceFilter, scope]);
 
   // Filter movilesZonasData by service type + active + not hidden-operativo
   const filteredMovilesZonas = useMemo(() => {
-    const upper = serviceFilter.toUpperCase();
+    const upper = effectiveServiceFilter.toUpperCase();
     return movilesZonasData.filter(r => {
       if (!r.activa) return false;
       const key = String(r.movil_id);
@@ -228,7 +249,7 @@ export default function ZonaEstadisticasModal({
       if (upper === 'PEDIDOS') return PEDIDOS_SERVICES.has(svc);
       return svc === upper;
     });
-  }, [movilesZonasData, serviceFilter, movilEstados, allHiddenMovilIds]);
+  }, [movilesZonasData, effectiveServiceFilter, movilEstados, allHiddenMovilIds]);
 
   const stats = useMemo(() => {
     // Build zona name map
@@ -445,9 +466,13 @@ export default function ZonaEstadisticasModal({
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                {/* Primer combo: tipo principal */}
                 <select
-                  value={serviceFilter}
-                  onChange={e => setServiceFilter(e.target.value)}
+                  value={tipoPrincipal}
+                  onChange={e => {
+                    setTipoPrincipal(e.target.value);
+                    setSubTipoPedidos('TODOS');
+                  }}
                   className="bg-black/30 text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-white/20 focus:outline-none focus:border-white/50 cursor-pointer appearance-none"
                   style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27white%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M7 10l5 5 5-5z%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center', backgroundSize: '18px', paddingRight: '28px' }}
                 >
@@ -455,6 +480,19 @@ export default function ZonaEstadisticasModal({
                     <option key={t} value={t} className="bg-slate-800 text-white">{t}</option>
                   ))}
                 </select>
+                {/* Segundo combo: sub-tipo de PEDIDOS — visible solo cuando tipoPrincipal === 'PEDIDOS' */}
+                {tipoPrincipal === 'PEDIDOS' && (
+                  <select
+                    value={subTipoPedidos}
+                    onChange={e => setSubTipoPedidos(e.target.value as PedidosSubTipo)}
+                    className="bg-black/30 text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-white/20 focus:outline-none focus:border-white/50 cursor-pointer appearance-none"
+                    style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27white%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M7 10l5 5 5-5z%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center', backgroundSize: '18px', paddingRight: '28px' }}
+                  >
+                    {PEDIDOS_SUB_TIPOS.map(t => (
+                      <option key={t} value={t} className="bg-slate-800 text-white">{t}</option>
+                    ))}
+                  </select>
+                )}
                 <button
                   onClick={onClose}
                   className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 flex items-center justify-center transition-colors"
@@ -539,7 +577,7 @@ export default function ZonaEstadisticasModal({
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: Math.min(idx * 0.02, 0.5) }}
                       className={`border-b border-white/5 hover:bg-white/5 transition-colors ${onZonaClick ? 'cursor-pointer' : ''}`}
-                      onClick={() => onZonaClick?.(z.zonaId, serviceFilter)}
+                      onClick={() => onZonaClick?.(z.zonaId, effectiveServiceFilter)}
                     >
                       <td className="py-1.5 px-2 text-left">
                         <span className="text-white font-semibold text-xs">{z.zonaNombre}</span>
@@ -598,7 +636,7 @@ export default function ZonaEstadisticasModal({
                                   .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito === 1)
                                   .map(r => Number(r.movil_id))
                               )];
-                              onMovsPrioClick(z.zonaId, movilIds, serviceFilter);
+                              onMovsPrioClick(z.zonaId, movilIds, effectiveServiceFilter);
                             }
                           }}
                         >
