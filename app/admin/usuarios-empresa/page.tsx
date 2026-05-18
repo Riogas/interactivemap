@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { authStorage } from '@/lib/auth-storage';
 import { isRoot } from '@/lib/auth-scope';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 import { getEmpresasParamForUpstream, type EmpresaEntry } from '@/lib/empresas-del-usuario';
 
 // ==============================================================================
@@ -41,7 +42,7 @@ type FiltroEstado = 'todos' | 'habilitados' | 'deshabilitados';
 // HELPERS DE FETCH CON AUTH HEADERS
 // ==============================================================================
 
-function getAuthHeaders(roles?: string[]): Record<string, string> {
+function getAuthHeaders(roles?: string[], funcionalidades?: string[]): Record<string, string> {
   if (typeof window === 'undefined') return {};
   const token = authStorage.getItem('trackmovil_token') ?? '';
   let isRootVal = 'N';
@@ -64,6 +65,9 @@ function getAuthHeaders(roles?: string[]): Record<string, string> {
 
   if (roles && roles.length > 0) {
     headers['x-track-roles'] = JSON.stringify(roles);
+  }
+  if (funcionalidades && funcionalidades.length > 0) {
+    headers['x-track-funcionalidades'] = JSON.stringify(funcionalidades);
   }
 
   return headers;
@@ -226,7 +230,20 @@ export default function UsuariosEmpresaPage() {
     () => user?.roles?.map((r) => r.RolNombre) ?? [],
     [user],
   );
+  // Funcionalidades acumuladas de todos los roles (nombres canónicos).
+  const userFuncionalidades = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (user?.roles ?? []).flatMap((r) =>
+            (r.funcionalidades ?? []).map((f) => String(f?.nombre ?? '').trim()),
+          ).filter(Boolean),
+        ),
+      ),
+    [user],
+  );
   const userIsRoot = isRoot(user);
+  const canGestionarUsuarios = userIsRoot || hasFuncionalidad(user?.roles, 'Gestion de Usuarios');
 
   // ─── Gate de acceso ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -234,13 +251,10 @@ export default function UsuariosEmpresaPage() {
       router.push('/');
       return;
     }
-    const isDistribuidor = user.roles?.some(
-      (r) => String(r.RolNombre).trim() === 'Distribuidor',
-    );
-    if (!userIsRoot && !isDistribuidor) {
-      // 403 visual — no redirect, mostrar mensaje
+    if (!canGestionarUsuarios) {
+      // 403 visual — no redirect, mostrar mensaje (manejado abajo en el JSX)
     }
-  }, [user, userIsRoot, router]);
+  }, [user, canGestionarUsuarios, router]);
 
   // ─── Carga de usuarios ────────────────────────────────────────────────────────
   const fetchUsuarios = useCallback(async () => {
@@ -265,7 +279,7 @@ export default function UsuariosEmpresaPage() {
       if (empresasParam) params.set('empresas', empresasParam);
 
       const res = await fetch(`/api/admin/usuarios-empresa?${params}`, {
-        headers: getAuthHeaders(userRoles),
+        headers: getAuthHeaders(userRoles, userFuncionalidades),
       });
 
       const json = await res.json();
@@ -295,7 +309,7 @@ export default function UsuariosEmpresaPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, userIsRoot, userRoles]);
+  }, [user, userIsRoot, userRoles, userFuncionalidades]);
 
   useEffect(() => {
     if (!user) return;
@@ -340,7 +354,7 @@ export default function UsuariosEmpresaPage() {
     try {
       const res = await fetch('/api/admin/usuarios-empresa/toggle', {
         method: 'POST',
-        headers: getAuthHeaders(userRoles),
+        headers: getAuthHeaders(userRoles, userFuncionalidades),
         body: JSON.stringify({ userId, username, enabled: nuevoEstado }),
       });
 
@@ -438,10 +452,7 @@ export default function UsuariosEmpresaPage() {
     );
   }
 
-  const isDistribuidor = user.roles?.some(
-    (r) => String(r.RolNombre).trim() === 'Distribuidor',
-  );
-  if (!userIsRoot && !isDistribuidor) {
+  if (!canGestionarUsuarios) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white rounded-xl shadow-md p-8 max-w-md text-center">
@@ -451,7 +462,7 @@ export default function UsuariosEmpresaPage() {
             </svg>
           </div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">Acceso restringido</h1>
-          <p className="text-gray-500 text-sm">Esta sección es solo para usuarios con rol Distribuidor o administradores root.</p>
+          <p className="text-gray-500 text-sm">Esta sección requiere la funcionalidad &quot;Gestión de Usuarios&quot;. Pedile al administrador que te asigne esa funcionalidad en alguno de tus roles.</p>
         </div>
       </div>
     );
@@ -471,7 +482,7 @@ export default function UsuariosEmpresaPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-white">Gestión de usuarios</h1>
-              <p className="text-xs text-teal-100">Solo Distribuidor / Root</p>
+              <p className="text-xs text-teal-100">Funcionalidad &quot;Gestión de Usuarios&quot; / Root</p>
             </div>
           </div>
           <button

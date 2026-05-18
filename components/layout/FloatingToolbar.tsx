@@ -33,11 +33,9 @@ export default function FloatingToolbar({
   // Cualquiera de los tres alcanza para habilitar el cambio de fecha.
   const canChangeDate = isRoot(user) || hasPermiso('date') || hasFuncionalidad(user?.roles, 'Ver Historico');
 
-  // Distribuidor: puede ver Gestión de usuarios (además de root)
-  const isDistribuidor = user?.roles?.some(
-    (r) => String(r.RolNombre ?? '').trim() === 'Distribuidor',
-  ) ?? false;
-  const canGestionarUsuarios = isRoot(user) || isDistribuidor;
+  // Gestión de usuarios: gate por funcionalidad "Gestion de Usuarios" (id 15 en SecuritySuite).
+  // Root siempre pasa.
+  const canGestionarUsuarios = isRoot(user) || hasFuncionalidad(user?.roles, 'Gestion de Usuarios');
 
   const router = useRouter();
   const panelRef = useRef<HTMLDivElement>(null);

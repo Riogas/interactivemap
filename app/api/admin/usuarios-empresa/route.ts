@@ -19,19 +19,21 @@ import { getServerSupabaseClient } from '@/lib/supabase';
 
 const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
 
-function requireDistribuidorOrRoot(request: NextRequest): true | NextResponse {
+function requireGestionUsuariosOrRoot(request: NextRequest): true | NextResponse {
   const isRoot = request.headers.get('x-track-isroot');
   if (isRoot === 'S') return true;
 
-  // El cliente serializa los roles en x-track-roles como JSON array de RolNombre
-  const rolesHeader = request.headers.get('x-track-roles');
-  if (rolesHeader) {
+  // Gate por funcionalidad: el cliente serializa los nombres de funcionalidades
+  // de todos los roles del usuario en x-track-funcionalidades (JSON array).
+  // Acceso permitido si tiene "Gestion de Usuarios" (funcionalidadId 15 en SecuritySuite).
+  const funcsHeader = request.headers.get('x-track-funcionalidades');
+  if (funcsHeader) {
     try {
-      const roles: string[] = JSON.parse(rolesHeader);
-      const isDistribuidor = roles.some(
-        (r) => String(r).trim() === 'Distribuidor',
+      const funcs: string[] = JSON.parse(funcsHeader);
+      const hasGestion = funcs.some(
+        (f) => String(f).trim() === 'Gestion de Usuarios',
       );
-      if (isDistribuidor) return true;
+      if (hasGestion) return true;
     } catch {
       // header malformado — denegamos acceso
     }
@@ -41,14 +43,14 @@ function requireDistribuidorOrRoot(request: NextRequest): true | NextResponse {
     {
       success: false,
       error: 'Acceso denegado',
-      code: 'REQUIRES_DISTRIBUIDOR_OR_ROOT',
+      code: 'REQUIRES_GESTION_USUARIOS',
     },
     { status: 403 },
   );
 }
 
 export async function GET(request: NextRequest) {
-  const gate = requireDistribuidorOrRoot(request);
+  const gate = requireGestionUsuariosOrRoot(request);
   if (gate !== true) return gate;
 
   const url = new URL(request.url);
