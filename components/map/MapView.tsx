@@ -761,10 +761,13 @@ const MapView = memo(function MapView({
     const bg = lightColor ? `linear-gradient(135deg,${color} 0%,${lightColor} 100%)` : color;
     // halo: anillo blanco + anillo oscuro exterior.
     // - circle/square/pin: el halo se inyecta como box-shadow del mismo shape (su geometría natural lo soporta).
-    // - triangle/diamond/hexagon/star: el halo se agrega como elemento HERMANO previo (no padre, para no romper el contexto de posicionamiento absoluto del shape interior). Es un círculo detrás del shape.
+    // - triangle/diamond/hexagon/star: el halo se agrega como elemento HERMANO previo (no padre, para no romper el contexto de posicionamiento absoluto del shape interior). Se agranda (size+padding) para que su anillo SOBRESALGA del shape por todos lados (sino el shape de la misma anchura cubre el ring).
     const haloCss = halo ? '0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45),' : '';
+    const haloPad = 4;
+    const haloSize = size + haloPad * 2;
+    const haloHalf = haloSize / 2;
     const haloSibling = halo
-      ? `<div style="position:absolute;left:-${half}px;top:-${half}px;width:${size}px;height:${size}px;border-radius:50%;box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);pointer-events:none;"></div>`
+      ? `<div style="position:absolute;left:-${haloHalf}px;top:-${haloHalf}px;width:${haloSize}px;height:${haloSize}px;border-radius:50%;box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45);pointer-events:none;"></div>`
       : '';
     switch (shape) {
       case 'circle':
