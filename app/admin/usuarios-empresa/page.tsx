@@ -14,11 +14,17 @@ import { getEmpresasParamForUpstream, type EmpresaEntry } from '@/lib/empresas-d
 type UsuarioEmpresa = {
   username: string;
   nombre?: string;
+  apellido?: string | null;
   email?: string;
   empresa?: string;
   empresa_fletera?: string;
+  // Estado del upstream del SecuritySuite: "A" = activo (habilitado), "I" = inactivo, etc.
+  estado?: string;
+  // Compat opcional con shape antiguo (mock) — el upstream real no los manda
   habilitado?: boolean;
   enabled?: boolean;
+  // El upstream real usa fechaUltimoLogin; mantenemos los nombres legacy como fallback.
+  fechaUltimoLogin?: string | null;
   ultima_actividad?: string | null;
   last_activity?: string | null;
   // El upstream puede devolver más campos; los extras se ignoran en la UI.
@@ -101,16 +107,18 @@ function parseAllowedEmpresasFromStorage(): number[] {
   }
 }
 
-// Normaliza el estado habilitado/enabled del usuario (el upstream puede usar distintos campos)
+// Normaliza el estado habilitado del usuario.
+// El upstream real (SecuritySuite) usa `estado: "A"` (activo) o `"I"` (inactivo).
+// Mantenemos compat con shape antiguo (habilitado/enabled) por si vuelve el mock.
 function isUsuarioHabilitado(u: UsuarioEmpresa): boolean {
+  if (typeof u.estado === 'string') return u.estado.toUpperCase() === 'A';
   if (typeof u.habilitado === 'boolean') return u.habilitado;
   if (typeof u.enabled === 'boolean') return u.enabled;
-  // Si no hay campo explícito, asumir habilitado
   return true;
 }
 
 function getUltimaActividad(u: UsuarioEmpresa): string {
-  const raw = u.ultima_actividad ?? u.last_activity ?? null;
+  const raw = u.fechaUltimoLogin ?? u.ultima_actividad ?? u.last_activity ?? null;
   if (!raw) return '-';
   try {
     return new Date(raw as string).toLocaleString('es-UY');
@@ -241,14 +249,17 @@ export default function UsuariosEmpresaPage() {
         return;
       }
 
-      // El upstream puede devolver un array directamente o { data: [...] }
+      // El upstream del SecuritySuite responde con shape `{ success, items, total, empresasFiltradas }`.
+      // Mantenemos compat con shapes alternativos (array directo / data / usuarios) por seguridad.
       const lista: UsuarioEmpresa[] = Array.isArray(json)
         ? json
-        : Array.isArray(json.data)
-          ? json.data
-          : Array.isArray(json.usuarios)
-            ? json.usuarios
-            : [];
+        : Array.isArray(json.items)
+          ? json.items
+          : Array.isArray(json.data)
+            ? json.data
+            : Array.isArray(json.usuarios)
+              ? json.usuarios
+              : [];
 
       setUsuarios(lista);
     } catch (err) {
