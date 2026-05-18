@@ -47,7 +47,7 @@ type UsuarioDetalle = {
   esExterno?: boolean;
   fechaCreacion?: string;
   fechaUltimoLogin?: string;
-  empFletera?: string | string[];
+  empFletera?: string | string[] | null;
   [key: string]: unknown;
 };
 
@@ -627,40 +627,96 @@ export default function LoginBlocksPage() {
                   </div>
                 </div>
               ) : detalleUsuario ? (
-                <div className="space-y-3">
-                  {[
-                    { label: 'ID', value: String(detalleUsuario.id ?? '-') },
-                    { label: 'Username', value: detalleUsuario.username as string ?? '-' },
-                    { label: 'Nombre completo', value: [detalleUsuario.nombre, detalleUsuario.apellido].filter(Boolean).join(' ') || '-' },
-                    { label: 'Email', value: detalleUsuario.email as string ?? '-' },
-                    { label: 'Teléfono', value: detalleUsuario.telefono as string ?? '-' },
-                    { label: 'Estado', value: detalleUsuario.estado as string ?? '-' },
-                    { label: 'Tipo', value: detalleUsuario.tipoUsuario as string ?? '-' },
-                    { label: 'Externo', value: detalleUsuario.esExterno != null ? (detalleUsuario.esExterno ? 'Sí' : 'No') : '-' },
-                    { label: 'Creación', value: detalleUsuario.fechaCreacion ? new Date(detalleUsuario.fechaCreacion as string).toLocaleString('es-UY') : '-' },
-                    { label: 'Último login', value: detalleUsuario.fechaUltimoLogin ? new Date(detalleUsuario.fechaUltimoLogin as string).toLocaleString('es-UY') : '-' },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex items-start gap-3 py-1.5 border-b border-gray-100 last:border-0">
-                      <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">{label}</span>
-                      <span className="text-sm text-gray-900 font-mono">{value}</span>
-                    </div>
-                  ))}
-                  {detalleUsuario.empFletera && (
-                    <div className="flex items-start gap-3 py-1.5">
-                      <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">Emp. Fletera</span>
-                      <div className="flex flex-wrap gap-1">
-                        {(Array.isArray(detalleUsuario.empFletera)
-                          ? detalleUsuario.empFletera
-                          : [detalleUsuario.empFletera]
-                        ).map((e, i) => (
-                          <span key={i} className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full font-medium">
-                            {String(e)}
-                          </span>
-                        ))}
+                (() => {
+                  // Helpers de decodificación de códigos del SecuritySuite
+                  const rawEstado = String(detalleUsuario.estado ?? '').trim().toUpperCase();
+                  const estadoLabel =
+                    rawEstado === 'A' ? 'Activo' :
+                    rawEstado === 'P' ? 'Pasivo' :
+                    rawEstado === 'I' ? 'Inactivo' :
+                    rawEstado || '-';
+                  const estadoBadge =
+                    rawEstado === 'A' ? 'bg-green-100 text-green-700 border-green-200' :
+                    rawEstado === 'P' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                    rawEstado === 'I' ? 'bg-gray-100 text-gray-600 border-gray-200' :
+                    'bg-gray-100 text-gray-600 border-gray-200';
+
+                  const rawTipo = String(detalleUsuario.tipoUsuario ?? '').trim().toUpperCase();
+                  const tipoLabel =
+                    rawTipo === 'L' ? 'Local' :
+                    rawTipo === 'A' ? 'AD/Externo' :
+                    rawTipo || '-';
+
+                  const empresas = detalleUsuario.empFletera == null
+                    ? []
+                    : Array.isArray(detalleUsuario.empFletera)
+                      ? detalleUsuario.empFletera
+                      : [detalleUsuario.empFletera];
+
+                  return (
+                    <div className="space-y-1">
+                      {[
+                        { label: 'ID', value: String(detalleUsuario.id ?? '-') },
+                        { label: 'Username', value: detalleUsuario.username as string ?? '-' },
+                        { label: 'Nombre completo', value: [detalleUsuario.nombre, detalleUsuario.apellido].filter(Boolean).join(' ') || '-' },
+                        { label: 'Email', value: detalleUsuario.email as string ?? '-' },
+                        { label: 'Teléfono', value: detalleUsuario.telefono as string ?? '-' },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex items-start gap-3 py-1.5 border-b border-gray-100">
+                          <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">{label}</span>
+                          <span className="text-sm text-gray-900 font-mono">{value}</span>
+                        </div>
+                      ))}
+                      {/* Estado (badge con color) */}
+                      <div className="flex items-center gap-3 py-1.5 border-b border-gray-100">
+                        <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">Estado</span>
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded border ${estadoBadge}`}
+                          title={rawEstado || 'desconocido'}
+                        >
+                          {estadoLabel}
+                        </span>
+                      </div>
+                      {/* Tipo de usuario (decoded) */}
+                      <div className="flex items-center gap-3 py-1.5 border-b border-gray-100">
+                        <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">Tipo</span>
+                        <span className="text-sm text-gray-900" title={rawTipo || 'desconocido'}>
+                          {tipoLabel}
+                        </span>
+                      </div>
+                      {[
+                        { label: 'Externo', value: detalleUsuario.esExterno != null ? (detalleUsuario.esExterno ? 'Sí' : 'No') : '-' },
+                        { label: 'Creación', value: detalleUsuario.fechaCreacion ? new Date(detalleUsuario.fechaCreacion as string).toLocaleString('es-UY') : '-' },
+                        { label: 'Último login', value: detalleUsuario.fechaUltimoLogin ? new Date(detalleUsuario.fechaUltimoLogin as string).toLocaleString('es-UY') : '-' },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex items-start gap-3 py-1.5 border-b border-gray-100">
+                          <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">{label}</span>
+                          <span className="text-sm text-gray-900 font-mono">{value}</span>
+                        </div>
+                      ))}
+                      {/* Empresas fleteras (array de strings) */}
+                      <div className="flex items-start gap-3 py-2">
+                        <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500 pt-0.5">
+                          {empresas.length > 1 ? 'Emp. Fleteras' : 'Emp. Fletera'}
+                        </span>
+                        {empresas.length === 0 ? (
+                          <span className="text-sm text-gray-400 italic">Sin empresas asignadas</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {empresas.map((e, i) => (
+                              <span
+                                key={`${String(e)}-${i}`}
+                                className="px-2 py-1 text-xs font-medium rounded bg-teal-50 text-teal-700 border border-teal-200"
+                              >
+                                {String(e)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-                </div>
+                  );
+                })()
               ) : null}
             </div>
             {/* Modal footer */}
