@@ -19,6 +19,7 @@ import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
 import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from './MapOptimizations';
+import { useViewportCullingWithAlwaysVisible } from './ViewportCulling';
 import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
@@ -650,6 +651,358 @@ function ZonaPatternDefs() {
     };
   }, []);
   return null;
+}
+
+
+// ---------------------------------------------------------------------------
+// Viewport-culled inner layer components
+// Each component lives inside MapContainer so it can call useMap() via
+// useViewportCullingWithAlwaysVisible. Props carry icon-creation callbacks
+// from the parent MapView to avoid duplicating logic.
+// ---------------------------------------------------------------------------
+
+interface CulledMovilesLayerProps {
+  moviles: MovilData[];
+  popupMovilId: number | undefined;
+  focusedMovilId: number | undefined;
+  markerStyle: 'normal' | 'compact' | 'mini';
+  createCustomIcon: (color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => L.DivIcon;
+  createCompactIcon: (color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => L.DivIcon;
+  createMiniIcon: (color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => L.DivIcon;
+  getMovilColor: (movil: MovilData) => string;
+  onMovilClick: ((movilId: number | undefined) => void) | undefined;
+  onPedidoServicioClose: () => void;
+}
+
+function CulledMovilesLayer({
+  moviles,
+  popupMovilId,
+  focusedMovilId,
+  markerStyle,
+  createCustomIcon,
+  createCompactIcon,
+  createMiniIcon,
+  getMovilColor,
+  onMovilClick,
+  onPedidoServicioClose,
+}: CulledMovilesLayerProps) {
+  const alwaysVisibleIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    if (popupMovilId !== undefined) ids.add(popupMovilId);
+    if (focusedMovilId !== undefined) ids.add(focusedMovilId);
+    return ids;
+  }, [popupMovilId, focusedMovilId]);
+
+  const getId = useCallback((m: MovilData) => m.id, []);
+  const getCoords = useCallback((m: MovilData) => {
+    if (!m.currentPosition) return null;
+    return { lat: m.currentPosition.coordX, lng: m.currentPosition.coordY };
+  }, []);
+
+  const visibleMoviles = useViewportCullingWithAlwaysVisible(moviles, getCoords, getId, alwaysVisibleIds);
+
+  return (
+    <>
+      {visibleMoviles.map((movil) => {
+        if (!movil.currentPosition) return null;
+        return (
+          <OptimizedMarker
+            key={movil.id}
+            position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
+            icon={
+              markerStyle === 'mini'
+                ? createMiniIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+                : markerStyle === 'compact'
+                ? createCompactIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+                : createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+            }
+            eventHandlers={{
+              click: () => {
+                onPedidoServicioClose();
+                if (onMovilClick) onMovilClick(movil.id);
+              },
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+interface CulledPedidosLayerProps {
+  pedidosFiltrados: PedidoSupabase[];
+  popupPedidoId: number | undefined;
+  pedidosVista: 'pendientes' | 'finalizados';
+  getPedidoIcon: (fchHoraMaxEntComp: string | null) => L.DivIcon;
+  getFinalizadoPedidoIcon: (entregado: boolean) => L.DivIcon;
+  onPedidoClick: ((pedidoId: number | undefined) => void) | undefined;
+  pedidosCluster: boolean;
+}
+
+function CulledPedidosLayer({
+  pedidosFiltrados,
+  popupPedidoId,
+  pedidosVista,
+  getPedidoIcon,
+  getFinalizadoPedidoIcon,
+  onPedidoClick,
+  pedidosCluster,
+}: CulledPedidosLayerProps) {
+  const alwaysVisibleIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    if (popupPedidoId !== undefined) ids.add(popupPedidoId);
+    return ids;
+  }, [popupPedidoId]);
+
+  const getId = useCallback((p: PedidoSupabase) => p.id, []);
+  const getCoords = useCallback((p: PedidoSupabase) => {
+    if (!p.latitud || !p.longitud) return null;
+    return { lat: p.latitud, lng: p.longitud };
+  }, []);
+
+  const visiblePedidos = useViewportCullingWithAlwaysVisible(pedidosFiltrados, getCoords, getId, alwaysVisibleIds);
+
+  const markers = visiblePedidos.map(pedido => {
+    const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
+    const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
+    const delayInfo = getDelayInfo(delayMins);
+    const iconFchHora = isSinAsignar ? null : pedido.fch_hora_max_ent_comp;
+    const esEntregado = isPedidoEntregado(pedido);
+    return (
+      <OptimizedMarker
+        key={`pedido-tabla-${pedido.id}`}
+        position={[pedido.latitud!, pedido.longitud!]}
+        icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon(esEntregado) : getPedidoIcon(iconFchHora)}
+        eventHandlers={{
+          click: () => { onPedidoClick && onPedidoClick(pedido.id); }
+        }}
+      >
+        <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+          <div className="text-xs">
+            <div className="font-bold">Pedido #{pedido.id}</div>
+            <div>{pedido.cliente_nombre}</div>
+            <div className="text-gray-600">{pedido.producto_nom}</div>
+            {isSinAsignar && (
+              <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
+            )}
+            {pedidosVista === 'finalizados' ? (
+              <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
+                {esEntregado ? 'Entregado' : 'No Entregado'}
+              </div>
+            ) : (
+              <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
+                {delayInfo.label}: {delayInfo.badgeText}
+              </div>
+            )}
+          </div>
+        </Tooltip>
+      </OptimizedMarker>
+    );
+  });
+
+  if (!markers.length) return null;
+  return pedidosCluster
+    ? <MarkerClusterGroup>{markers}</MarkerClusterGroup>
+    : <>{markers}</>;
+}
+
+interface CulledServicesLayerProps {
+  servicesFiltrados: ServiceSupabase[];
+  popupServiceId: number | undefined;
+  servicesVista: 'pendientes' | 'finalizados';
+  getServiceIcon: (fchHoraMaxEntComp: string | null) => L.DivIcon;
+  getFinalizadoServiceIcon: () => L.DivIcon;
+  onServiceClick: ((serviceId: number | undefined) => void) | undefined;
+  pedidosCluster: boolean;
+}
+
+function CulledServicesLayer({
+  servicesFiltrados,
+  popupServiceId,
+  servicesVista,
+  getServiceIcon,
+  getFinalizadoServiceIcon,
+  onServiceClick,
+  pedidosCluster,
+}: CulledServicesLayerProps) {
+  const alwaysVisibleIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    if (popupServiceId !== undefined) ids.add(popupServiceId);
+    return ids;
+  }, [popupServiceId]);
+
+  const getId = useCallback((s: ServiceSupabase) => s.id, []);
+  const getCoords = useCallback((s: ServiceSupabase) => {
+    if (!s.latitud || !s.longitud) return null;
+    return { lat: s.latitud, lng: s.longitud };
+  }, []);
+
+  const visibleServices = useViewportCullingWithAlwaysVisible(servicesFiltrados, getCoords, getId, alwaysVisibleIds);
+
+  const markers = visibleServices.map(service => {
+    const isSinAsignar = !service.movil || Number(service.movil) === 0;
+    const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
+    const delayInfo = getDelayInfo(delayMins);
+    const iconFchHora = isSinAsignar ? null : service.fch_hora_max_ent_comp;
+    return (
+      <OptimizedMarker
+        key={`service-tabla-${service.id}`}
+        position={[service.latitud!, service.longitud!]}
+        icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(iconFchHora)}
+        eventHandlers={{
+          click: () => { onServiceClick && onServiceClick(service.id); }
+        }}
+      >
+        <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+          <div className="text-xs">
+            <div className="font-bold">Service #{service.id}</div>
+            <div>{service.cliente_nombre}</div>
+            <div className="text-gray-600">{service.defecto}</div>
+            {isSinAsignar && (
+              <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
+            )}
+            {servicesVista === 'finalizados' ? (
+              <div style={{ color: '#2563eb', fontWeight: 'bold' }}>Finalizado</div>
+            ) : (
+              <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
+                {delayInfo.label}: {delayInfo.badgeText}
+              </div>
+            )}
+          </div>
+        </Tooltip>
+      </OptimizedMarker>
+    );
+  });
+
+  if (!markers.length) return null;
+  return pedidosCluster
+    ? <MarkerClusterGroup>{markers}</MarkerClusterGroup>
+    : <>{markers}</>;
+}
+
+interface CulledPoisLayerProps {
+  customMarkers: CustomMarker[];
+  focusedPuntoId: string | undefined;
+  poisHidden: boolean;
+  hiddenPoiIds: Set<string>;
+  hiddenPoiCategories: Set<string>;
+  poiMarkerSize: number;
+  poiDefaultIcon: string;
+}
+
+function CulledPoisLayer({
+  customMarkers,
+  focusedPuntoId,
+  poisHidden,
+  hiddenPoiIds,
+  hiddenPoiCategories,
+  poiMarkerSize,
+  poiDefaultIcon,
+}: CulledPoisLayerProps) {
+  const filteredMarkers = useMemo(() => {
+    if (poisHidden) return [];
+    return customMarkers.filter(m => {
+      if (!m.visible) return false;
+      if (hiddenPoiIds.size > 0 && hiddenPoiIds.has(m.id)) return false;
+      if (hiddenPoiCategories.size > 0) {
+        const cat = m.categoria || m.observacion?.match(/^\[([^\]]+)\]/)?.[1] || '';
+        if (cat && hiddenPoiCategories.has(cat)) return false;
+      }
+      return true;
+    });
+  }, [customMarkers, poisHidden, hiddenPoiIds, hiddenPoiCategories]);
+
+  const alwaysVisibleIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    if (focusedPuntoId) ids.add(focusedPuntoId);
+    return ids;
+  }, [focusedPuntoId]);
+
+  const getId = useCallback((m: CustomMarker) => m.id, []);
+  const getCoords = useCallback((m: CustomMarker) => {
+    if (!m.latitud || !m.longitud) return null;
+    return { lat: m.latitud, lng: m.longitud };
+  }, []);
+
+  const visiblePois = useViewportCullingWithAlwaysVisible(filteredMarkers, getCoords, getId, alwaysVisibleIds);
+
+  return (
+    <>
+      {visiblePois.map((marker) => {
+        const poiPx = poiMarkerSize === 1 ? 16 : poiMarkerSize === 3 ? 32 : 24;
+        const poiFontSize = poiMarkerSize === 1 ? 13 : poiMarkerSize === 3 ? 26 : 19;
+        const isPtoVenta = (marker.categoria || '').toLowerCase() === 'punto de venta';
+        const displayIcon = marker.icono || poiDefaultIcon;
+        const iconHtml = isPtoVenta
+          ? `<img src="/images/iconoptoventa.png" style="width:${poiPx}px;height:${poiPx}px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" />`
+          : `<div style="font-size:${poiFontSize}px;text-align:center;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">${displayIcon}</div>`;
+        const customIcon = L.divIcon({
+          html: iconHtml,
+          className: 'custom-marker-icon',
+          iconSize: [poiPx, poiPx],
+          iconAnchor: [poiPx / 2, poiPx],
+          popupAnchor: [0, -poiPx],
+        });
+
+        return (
+          <OptimizedMarker
+            key={marker.id}
+            position={[marker.latitud, marker.longitud]}
+            icon={customIcon}
+          >
+            <Popup minWidth={240} className="poi-popup">
+              <div style={{ margin: '-10px -14px', borderRadius: '8px', overflow: 'hidden', minWidth: '240px', fontFamily: 'inherit' }}>
+                <div style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '26px', lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
+                      {(marker.categoria || '').toLowerCase() === 'punto de venta'
+                        ? <img src="/images/iconoptoventa.png" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                        : displayIcon
+                      }
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>
+                        {marker.nombre}
+                      </div>
+                      {marker.categoria && (
+                        <span style={{ display: 'inline-block', marginTop: '3px', background: 'rgba(255,255,255,0.22)', color: 'white', fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                          {marker.categoria}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ background: '#18181b', padding: '8px 12px 10px' }}>
+                  {marker.telefono && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                      <span style={{ fontSize: '13px' }}>📞</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#d1fae5', letterSpacing: '0.04em' }}>
+                        {String(marker.telefono)}
+                      </span>
+                    </div>
+                  )}
+                  {marker.observacion && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                      <span style={{ fontSize: '13px', marginTop: '1px' }}>🏠</span>
+                      <span style={{ fontSize: '12px', color: '#d1d5db', lineHeight: '1.4' }}>
+                        {marker.observacion}
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', paddingTop: '6px' }}>
+                    <span style={{ fontSize: '12px' }}>📌</span>
+                    <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', letterSpacing: '0.03em' }}>
+                      {Number(marker.latitud).toFixed(6)}, {Number(marker.longitud).toFixed(6)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </Popup>
+          </OptimizedMarker>
+        );
+      })}
+    </>
+  );
 }
 
 const MapView = memo(function MapView({ 
@@ -2866,41 +3219,19 @@ const MapView = memo(function MapView({
               .filter(marker => marker !== null)}
           </>
         ) : (
-          // Mostrar móviles (todos o solo el enfocado)
-          <>
-            {movilesToShow.map((movil) => {
-              // Si no tiene posición GPS, no mostrar en el mapa
-              // TODO: Agregar panel lateral para móviles sin GPS
-              if (!movil.currentPosition) {
-                console.warn(`⚠️ Móvil ${movil.name} (ID: ${movil.id}) sin posición GPS para esta fecha`);
-                return null;
-              }
-              
-              return (
-                <OptimizedMarker
-                  key={movil.id}
-                  position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
-                  icon={
-                    markerStyle === 'mini'
-                      ? createMiniIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
-                      : markerStyle === 'compact'
-                      ? createCompactIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
-                      : createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
-                  }
-                  eventHandlers={{
-                    click: () => {
-                      // Cerrar popup de pedido/servicio si está abierto
-                      setSelectedPedidoServicio(null);
-                      // Abrir popup del móvil
-                      if (onMovilClick) {
-                        onMovilClick(movil.id);
-                      }
-                    },
-                  }}
-                />
-              );
-            })}
-          </>
+          // Mostrar móviles (todos o solo el enfocado) — viewport-culled
+          <CulledMovilesLayer
+            moviles={movilesToShow}
+            popupMovilId={popupMovil}
+            focusedMovilId={focusedMovil}
+            markerStyle={markerStyle}
+            createCustomIcon={createCustomIcon}
+            createCompactIcon={createCompactIcon}
+            createMiniIcon={createMiniIcon}
+            getMovilColor={getMovilColor}
+            onMovilClick={onMovilClick}
+            onPedidoServicioClose={() => setSelectedPedidoServicio(null)}
+          />
         )}
         
         {/* Marcadores de pedidos/servicios pendientes - solo si showPendientes está activo */}
@@ -2951,111 +3282,46 @@ const MapView = memo(function MapView({
           </>
         )}
         
-        {/* Marcadores de Pedidos desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
+        {/* Marcadores de Pedidos desde tabla — viewport-culled */}
         {(() => {
-          const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud).filter(p =>
+          const pedidosFiltrados = (pedidos ?? []).filter(p => p.latitud && p.longitud).filter(p =>
             (!p.movil || Number(p.movil) === 0)
               ? isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)
               : true
           );
-          if (!pedidosFiltrados?.length) return null;
-          
-          const pedidoMarkers = pedidosFiltrados.map(pedido => {
-            const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
-            const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
-            const delayInfo = getDelayInfo(delayMins);
-            // Sin asignar: siempre gris (forzar null para obtener icono gris)
-            const iconFchHora = isSinAsignar ? null : pedido.fch_hora_max_ent_comp;
-            const esEntregado = isPedidoEntregado(pedido);
-            return (
-              <OptimizedMarker
-                key={`pedido-tabla-${pedido.id}`}
-                position={[pedido.latitud!, pedido.longitud!]}
-                icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon(esEntregado) : getPedidoIcon(iconFchHora)}
-                eventHandlers={{
-                  click: () => {
-                    onPedidoClick && onPedidoClick(pedido.id);
-                  }
-                }}
-              >
-                <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
-                  <div className="text-xs">
-                    <div className="font-bold">Pedido #{pedido.id}</div>
-                    <div>{pedido.cliente_nombre}</div>
-                    <div className="text-gray-600">{pedido.producto_nom}</div>
-                    {isSinAsignar && (
-                      <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
-                    )}
-                    {pedidosVista === 'finalizados' ? (
-                      <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
-                        {esEntregado ? '✓ Entregado' : '✗ No Entregado'}
-                      </div>
-                    ) : (
-                      <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
-                        {delayInfo.label}: {delayInfo.badgeText}
-                      </div>
-                    )}
-                  </div>
-                </Tooltip>
-              </OptimizedMarker>
-            );
-          });
-          
-          return pedidosCluster 
-            ? <MarkerClusterGroup>{pedidoMarkers}</MarkerClusterGroup>
-            : <>{pedidoMarkers}</>;
+          if (!pedidosFiltrados.length) return null;
+          return (
+            <CulledPedidosLayer
+              pedidosFiltrados={pedidosFiltrados}
+              popupPedidoId={popupPedido}
+              pedidosVista={pedidosVista}
+              getPedidoIcon={getPedidoIcon}
+              getFinalizadoPedidoIcon={getFinalizadoPedidoIcon}
+              onPedidoClick={onPedidoClick}
+              pedidosCluster={pedidosCluster}
+            />
+          );
         })()}
 
-        {/* Marcadores de Services desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
+        {/* Marcadores de Services desde tabla — viewport-culled */}
         {(() => {
-          const servicesFiltrados = services && services.filter(s => s.latitud && s.longitud).filter(s =>
+          const servicesFiltrados = (services ?? []).filter(s => s.latitud && s.longitud).filter(s =>
             (!s.movil || Number(s.movil) === 0)
               ? isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)
               : true
           );
-          if (!servicesFiltrados?.length) return null;
-          
-          const serviceMarkers = servicesFiltrados.map(service => {
-            const isSinAsignar = !service.movil || Number(service.movil) === 0;
-            const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
-            const delayInfo = getDelayInfo(delayMins);
-            // Sin asignar: forzar fchHora=null para obtener icono gris (mismo patron que pedidos)
-            const iconFchHora = isSinAsignar ? null : service.fch_hora_max_ent_comp;
-            return (
-              <OptimizedMarker
-                key={`service-tabla-${service.id}`}
-                position={[service.latitud!, service.longitud!]}
-                icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(iconFchHora)}
-                eventHandlers={{
-                  click: () => {
-                    onServiceClick && onServiceClick(service.id);
-                  }
-                }}
-              >
-                <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
-                  <div className="text-xs">
-                    <div className="font-bold">Service #{service.id}</div>
-                    <div>{service.cliente_nombre}</div>
-                    <div className="text-gray-600">{service.defecto}</div>
-                    {isSinAsignar && (
-                      <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
-                    )}
-                    {servicesVista === 'finalizados' ? (
-                      <div style={{ color: '#2563eb', fontWeight: 'bold' }}>✓ Finalizado</div>
-                    ) : (
-                      <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
-                        {delayInfo.label}: {delayInfo.badgeText}
-                      </div>
-                    )}
-                  </div>
-                </Tooltip>
-              </OptimizedMarker>
-            );
-          });
-          
-          return pedidosCluster 
-            ? <MarkerClusterGroup>{serviceMarkers}</MarkerClusterGroup>
-            : <>{serviceMarkers}</>;
+          if (!servicesFiltrados.length) return null;
+          return (
+            <CulledServicesLayer
+              servicesFiltrados={servicesFiltrados}
+              popupServiceId={popupService}
+              servicesVista={servicesVista}
+              getServiceIcon={getServiceIcon}
+              getFinalizadoServiceIcon={getFinalizadoServiceIcon}
+              onServiceClick={onServiceClick}
+              pedidosCluster={pedidosCluster}
+            />
+          );
         })()}
         
         <MapUpdater
@@ -3094,99 +3360,16 @@ const MapView = memo(function MapView({
           }}
         />
 
-        {/* Renderizar marcadores personalizados (POIs) */}
-        {!poisHidden && customMarkers.filter(m => {
-          if (!m.visible) return false;
-          // Filtro individual por ID (selección de usuario)
-          if (hiddenPoiIds.size > 0 && hiddenPoiIds.has(m.id)) return false;
-          // Filtro por categoría
-          if (hiddenPoiCategories.size > 0) {
-            const cat = m.categoria || m.observacion?.match(/^\[([^\]]+)\]/)?.[1] || '';
-            if (cat && hiddenPoiCategories.has(cat)) return false;
-          }
-          return true;
-        }).map((marker) => {
-          // Crear icono, tamaño según poiMarkerSize: 1=chico(16), 2=mediano(24), 3=grande(32)
-          const poiPx = poiMarkerSize === 1 ? 16 : poiMarkerSize === 3 ? 32 : 24;
-          const poiFontSize = poiMarkerSize === 1 ? 13 : poiMarkerSize === 3 ? 26 : 19;
-          const isPtoVenta = (marker.categoria || '').toLowerCase() === 'punto de venta';
-          const displayIcon = marker.icono || poiDefaultIcon;
-          const iconHtml = isPtoVenta
-            ? `<img src="/images/iconoptoventa.png" style="width:${poiPx}px;height:${poiPx}px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" />`
-            : `<div style="font-size:${poiFontSize}px;text-align:center;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">${displayIcon}</div>`;
-          const customIcon = L.divIcon({
-            html: iconHtml,
-            className: 'custom-marker-icon',
-            iconSize: [poiPx, poiPx],
-            iconAnchor: [poiPx / 2, poiPx],
-            popupAnchor: [0, -poiPx],
-          });
-
-          return (
-            <OptimizedMarker
-              key={marker.id}
-              position={[marker.latitud, marker.longitud]}
-              icon={customIcon}
-            >
-              <Popup minWidth={240} className="poi-popup">
-                <div style={{ margin: '-10px -14px', borderRadius: '8px', overflow: 'hidden', minWidth: '240px', fontFamily: 'inherit' }}>
-                  {/* Header */}
-                  <div style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '26px', lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
-                        {(marker.categoria || '').toLowerCase() === 'punto de venta'
-                          ? <img src="/images/iconoptoventa.png" style={{ width: 26, height: 26, objectFit: 'contain' }} />
-                          : displayIcon
-                        }
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: 'white', fontWeight: 700, fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>
-                          {marker.nombre}
-                        </div>
-                        {marker.categoria && (
-                          <span style={{ display: 'inline-block', marginTop: '3px', background: 'rgba(255,255,255,0.22)', color: 'white', fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-                            {marker.categoria}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Body */}
-                  <div style={{ background: '#18181b', padding: '8px 12px 10px' }}>
-                    {/* Teléfono */}
-                    {marker.telefono && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                        <span style={{ fontSize: '13px' }}>📞</span>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#d1fae5', letterSpacing: '0.04em' }}>
-                          {String(marker.telefono)}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Descripción / Dirección */}
-                    {marker.observacion && (
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                        <span style={{ fontSize: '13px', marginTop: '1px' }}>🏠</span>
-                        <span style={{ fontSize: '12px', color: '#d1d5db', lineHeight: '1.4' }}>
-                          {marker.observacion}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Coordenadas */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', paddingTop: '6px' }}>
-                      <span style={{ fontSize: '12px' }}>📌</span>
-                      <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', letterSpacing: '0.03em' }}>
-                        {Number(marker.latitud).toFixed(6)}, {Number(marker.longitud).toFixed(6)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </Popup>
-            </OptimizedMarker>
-          );
-        })}
+        {/* Renderizar marcadores personalizados (POIs) — viewport-culled */}
+        <CulledPoisLayer
+          customMarkers={customMarkers}
+          focusedPuntoId={focusedPuntoId}
+          poisHidden={poisHidden}
+          hiddenPoiIds={hiddenPoiIds}
+          hiddenPoiCategories={hiddenPoiCategories}
+          poiMarkerSize={poiMarkerSize}
+          poiDefaultIcon={poiDefaultIcon}
+        />
 
         {/* Herramienta de medición de distancia (clic derecho) */}
         <DistanceMeasurement />
