@@ -1190,31 +1190,44 @@ function DashboardContent() {
         return prevMoviles;
       }
       
+      // perf-round-3 Fix 2: bail-out si el móvil no está en la vista filtrada actual.
+      // movilesFilteredRef.current refleja movilesFiltered sin meter el ref en deps.
+      // Si el móvil no está en el filtro activo (ej. empresa deseleccionada), ignorar
+      // el evento GPS — no vale la pena actualizar state que nadie va a leer.
+      const filteredIds = new Set(movilesFilteredRef.current.map(m => m.id));
+      if (filteredIds.size > 0 && !filteredIds.has(movilId)) {
+        dbg(`GPS bail-out: móvil ${movilId} fuera de movilesFiltered`);
+        return prevMoviles;
+      }
+
       // Móvil existe - actualizar su posición
-      return prevMoviles.map(movil => {
-        if (movil.id === movilId) {
-          // Actualizar posición actual
-          const newPosition = {
-            identificador: latestPosition.id,
-            origen: 'SUPABASE_REALTIME',
-            coordX: parseFloat(latestPosition.latitud.toString()),
-            coordY: parseFloat(latestPosition.longitud.toString()),
-            fechaInsLog: latestPosition.fecha_hora,
-            auxIn2: latestPosition.velocidad?.toString() || '0',
-            distRecorrida: latestPosition.distancia_recorrida || 0,
-          };
-          
-          return {
-            ...movil,
-            currentPosition: newPosition,
-            // Agregar a history si existe
-            history: movil.history 
-              ? [newPosition, ...movil.history]
-              : undefined
-          };
-        }
-        return movil;
+      // perf-round-3 Fix 3: shallow merge bail-out.
+      // Devolver prev si ningún móvil cambió → React skip re-render.
+      let changed = false;
+      const next = prevMoviles.map(movil => {
+        if (movil.id !== movilId) return movil; // misma referencia, no toca
+        // Actualizar posición actual
+        const newPosition = {
+          identificador: latestPosition.id,
+          origen: 'SUPABASE_REALTIME',
+          coordX: parseFloat(latestPosition.latitud.toString()),
+          coordY: parseFloat(latestPosition.longitud.toString()),
+          fechaInsLog: latestPosition.fecha_hora,
+          auxIn2: latestPosition.velocidad?.toString() || '0',
+          distRecorrida: latestPosition.distancia_recorrida || 0,
+        };
+        changed = true;
+        return {
+          ...movil,
+          currentPosition: newPosition,
+          // Agregar a history si existe
+          history: movil.history
+            ? [newPosition, ...movil.history]
+            : undefined,
+        };
       });
+      // Devolver prev si nada cambió (reference equality → React skip re-render)
+      return changed ? next : prevMoviles;
     });
     
     setLastUpdate(new Date());

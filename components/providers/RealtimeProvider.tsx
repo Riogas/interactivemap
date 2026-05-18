@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, ReactNode, useCallback, useMemo, useRef } from 'react';
 import { useGPSTracking, useMoviles } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useAuth } from '@/contexts/AuthContext';
 import type { GPSTrackingSupabase, MovilSupabase } from '@/types';
@@ -8,6 +8,12 @@ import type { GPSTrackingSupabase, MovilSupabase } from '@/types';
 // Guard para console.log en hot path de GPS/móviles.
 // Activar con: NEXT_PUBLIC_DEBUG_REALTIME=true en .env.local
 const DEBUG_REALTIME = process.env.NEXT_PUBLIC_DEBUG_REALTIME === 'true';
+
+// Tiempo de espera para coalescer eventos GPS consecutivos.
+// Con flotas activas pueden llegar decenas de eventos por minuto; sin debounce
+// cada uno dispara setLatestPosition → re-render del dashboard → map() de 200+ markers.
+// 250ms es imperceptible para el usuario y reduce los re-renders ~10x en carga alta.
+const GPS_DEBOUNCE_MS = 250;
 
 interface RealtimeContextType {
   positions: Map<string, GPSTrackingSupabase>;
@@ -120,11 +126,47 @@ function RealtimeProviderActive({
   // Callback inyectado por el dashboard para refetch debounced al recibir eventos de moviles.
   const [onMovilEvent, setOnMovilEvent] = React.useState<(() => void) | null>(null);
 
+  // perf-round-3 Fix 1: buffer de posiciones GPS para debounce.
+  // En lugar de llamar setLatestPosition en cada evento (que dispara un re-render
+  // completo del dashboard + map() de 200+ markers), acumulamos los eventos en un
+  // buffer y solo aplicamos el último al state después de GPS_DEBOUNCE_MS de silencio.
+  // Resultado: si llegan 10 eventos GPS en 250ms, solo hay 1 setLatestPosition → 1 re-render.
+  const gpsPendingRef = useRef<GPSTrackingSupabase | null>(null);
+  const gpsFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Callbacks estables — sin useCallback aquí se recrean en cada render y hacen
   // que useGPSTracking/useMoviles rehagan la suscripción a Supabase innecesariamente.
   const onNewPosition = useCallback((newPosition: GPSTrackingSupabase) => {
-    setLatestPosition(newPosition);
-    lastEventAtRef.current = Date.now(); // Ref: sin setState, sin re-render
+    // Actualizar lastEventAt inmediatamente (sin esperar el flush) para que el
+    // detector de silencio no marque el canal como caído durante el debounce.
+    lastEventAtRef.current = Date.now();
+
+    // Coalescer: guardar la posición más reciente y armar un solo flush.
+    // Si ya hay un timer pendiente, lo dejamos correr (solo se actualiza el buffer).
+    // El timer existente flusheará con la posición más reciente al expirar.
+    gpsPendingRef.current = newPosition;
+
+    if (gpsFlushTimerRef.current == null) {
+      gpsFlushTimerRef.current = setTimeout(() => {
+        gpsFlushTimerRef.current = null;
+        const latest = gpsPendingRef.current;
+        gpsPendingRef.current = null;
+        if (latest != null) {
+          if (DEBUG_REALTIME) console.log('📍 GPS flush debounced:', latest.movil_id);
+          setLatestPosition(latest);
+        }
+      }, GPS_DEBOUNCE_MS);
+    }
+  }, []);
+
+  // Limpiar el timer de GPS al desmontar para evitar setState tras unmount
+  React.useEffect(() => {
+    return () => {
+      if (gpsFlushTimerRef.current != null) {
+        clearTimeout(gpsFlushTimerRef.current);
+        gpsFlushTimerRef.current = null;
+      }
+    };
   }, []);
 
   // onMovilEventRef permite que onMovilChange vea siempre la versión actual del callback

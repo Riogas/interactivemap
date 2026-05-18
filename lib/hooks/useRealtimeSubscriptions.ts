@@ -16,6 +16,11 @@ import { recordRealtimeFailure } from '@/lib/realtime-health';
 const DEBUG_REALTIME = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
 const dbg = (...args: any[]) => { if (DEBUG_REALTIME) console.log(...args); };
 
+// perf-round-3: tiempo de debounce para coalescer eventos de pedidos/services.
+// 250ms es imperceptible para el usuario y reduce actualizaciones de state ~10x
+// cuando llegan ráfagas de eventos (ej. importación masiva, cambio de turno).
+const PEDIDOS_DEBOUNCE_MS = 250;
+
 /**
  * Programa una reconexión del canal Realtime respetando la visibilidad del
  * tab. Si el tab está oculto, NO reintenta inmediatamente — algunos
@@ -482,10 +487,17 @@ export function useEmpresasFleteras(
 }
 
 /**
- * Hook para suscribirse a cambios en tiempo real de pedidos pendientes
+ * Hook para escuchar cambios en tiempo real de pedidos pendientes.
+ *
+ * perf-round-3: los eventos Supabase Realtime se coalescen en un buffer debounced
+ * (PEDIDOS_DEBOUNCE_MS). Cuando llegan múltiples eventos en ráfaga (ej. asignación
+ * masiva), solo se emite UNA actualización del Map de state. Esto evita que el
+ * dashboard dispare N renders consecutivos con N setMoviles().
+ *
  * @param escenarioId - ID del escenario a monitorear
  * @param movilIds - Array de IDs de móviles a filtrar (opcional)
  * @param onUpdate - Callback cuando se recibe una actualización de pedido
+ * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
  */
 export function usePedidosRealtime(
   escenarioId: number = 1,
@@ -503,12 +515,61 @@ export function usePedidosRealtime(
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
 
+  // perf-round-3 Fix 1: buffer debounced para coalescer eventos de pedidos.
+  // En lugar de llamar setPedidos en cada evento (que dispara el useEffect del
+  // dashboard que hace setMoviles), acumulamos cambios y los aplicamos juntos.
+  // El flushRef guarda la función de flush actualizada (por closure) sin recrear el timer.
+  const pendingPatchesRef = useRef<Array<{ type: 'upsert' | 'delete'; pedido: PedidoSupabase }>>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     console.log('🔄 Suscripción pedidos realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
+
+    // Función de flush: aplica todos los patches pendientes al Map y llama setPedidos UNA vez.
+    const flushPending = () => {
+      flushTimerRef.current = null;
+      if (!isComponentMounted) return;
+      const patches = pendingPatchesRef.current;
+      if (patches.length === 0) return;
+      pendingPatchesRef.current = [];
+
+      setPedidos(prev => {
+        const updated = new Map(prev);
+        let changed = false;
+        for (const patch of patches) {
+          if (patch.type === 'upsert') {
+            const existing = updated.get(patch.pedido.id);
+            // Bail-out: si el objeto es idéntico (misma referencia o mismos campos clave),
+            // no reemplazar para evitar invalidar el useMemo downstream.
+            if (existing !== patch.pedido) {
+              updated.set(patch.pedido.id, patch.pedido);
+              changed = true;
+            }
+          } else {
+            if (updated.has(patch.pedido.id)) {
+              updated.delete(patch.pedido.id);
+              changed = true;
+            }
+          }
+        }
+        // Fix 3 shallow merge: si ningún patch cambió nada, devolver la referencia anterior.
+        return changed ? updated : prev;
+      });
+      setLastEventAt(Date.now());
+    };
+
+    // Encolar un patch y armar el timer de flush (si no existe ya).
+    const enqueuePatch = (type: 'upsert' | 'delete', pedido: PedidoSupabase) => {
+      pendingPatchesRef.current.push({ type, pedido });
+      if (flushTimerRef.current == null) {
+        flushTimerRef.current = setTimeout(flushPending, PEDIDOS_DEBOUNCE_MS);
+      }
+      // Si ya hay timer pendiente, solo actualizamos el buffer — el timer existente
+      // flusheará todos los patches acumulados al expirar.
+    };
 
     const setupChannel = () => {
       if (channel) {
@@ -538,12 +599,7 @@ export function usePedidosRealtime(
             const newPedido = payload.new as PedidoSupabase;
 
             if (!movilIds || movilIds.length === 0 || (newPedido.movil && movilIds.includes(newPedido.movil))) {
-              setPedidos(prev => {
-                const updated = new Map(prev);
-                updated.set(newPedido.id, newPedido);
-                return updated;
-              });
-              setLastEventAt(Date.now());
+              enqueuePatch('upsert', newPedido);
               if (onUpdate) onUpdate(newPedido, 'INSERT');
             }
           }
@@ -561,12 +617,7 @@ export function usePedidosRealtime(
             const updatedPedido = payload.new as PedidoSupabase;
 
             if (!movilIds || movilIds.length === 0 || (updatedPedido.movil && movilIds.includes(updatedPedido.movil))) {
-              setPedidos(prev => {
-                const updated = new Map(prev);
-                updated.set(updatedPedido.id, updatedPedido);
-                return updated;
-              });
-              setLastEventAt(Date.now());
+              enqueuePatch('upsert', updatedPedido);
               if (onUpdate) onUpdate(updatedPedido, 'UPDATE');
             }
           }
@@ -582,13 +633,7 @@ export function usePedidosRealtime(
           (payload) => {
             if (!isComponentMounted) return;
             const deletedPedido = payload.old as PedidoSupabase;
-
-            setPedidos(prev => {
-              const updated = new Map(prev);
-              updated.delete(deletedPedido.id);
-              return updated;
-            });
-            setLastEventAt(Date.now());
+            enqueuePatch('delete', deletedPedido);
             if (onUpdate) onUpdate(deletedPedido, 'DELETE');
           }
         )
@@ -634,6 +679,12 @@ export function usePedidosRealtime(
       isComponentMounted = false;
       if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
+      // Cancelar el timer de flush pendiente para evitar setState tras unmount
+      if (flushTimerRef.current != null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      pendingPatchesRef.current = [];
     };
   }, [escenarioId, movilIds?.join(',')]); // Recrear si cambian los móviles
 
@@ -646,7 +697,10 @@ export function usePedidosRealtime(
 }
 
 /**
- * Hook para escuchar cambios en services en tiempo real via Supabase Realtime
+ * Hook para escuchar cambios en services en tiempo real via Supabase Realtime.
+ *
+ * perf-round-3: misma estrategia de debounce que usePedidosRealtime — los eventos
+ * se coalescen en PEDIDOS_DEBOUNCE_MS antes de actualizar el state.
  */
 export function useServicesRealtime(
   escenarioId: number = 1,
@@ -658,11 +712,14 @@ export function useServicesRealtime(
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // lastEventAt: ms de epoch de la última novedad recibida por el WS.
-  // El dashboard lo usa para detectar "silencio" del canal (feature admin).
   const [lastEventAt, setLastEventAt] = useState<number>(Date.now());
   const wasConnectedRef = useRef(false);
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
+
+  // perf-round-3 Fix 1: buffer debounced para coalescer eventos de services.
+  const pendingPatchesRef = useRef<Array<{ type: 'upsert' | 'delete'; service: ServiceSupabase }>>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     console.log('🔄 Suscripción services realtime - escenario:', escenarioId);
@@ -670,6 +727,43 @@ export function useServicesRealtime(
     let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
+
+    const flushPending = () => {
+      flushTimerRef.current = null;
+      if (!isComponentMounted) return;
+      const patches = pendingPatchesRef.current;
+      if (patches.length === 0) return;
+      pendingPatchesRef.current = [];
+
+      setServices(prev => {
+        const updated = new Map(prev);
+        let changed = false;
+        for (const patch of patches) {
+          if (patch.type === 'upsert') {
+            const existing = updated.get(patch.service.id);
+            if (existing !== patch.service) {
+              updated.set(patch.service.id, patch.service);
+              changed = true;
+            }
+          } else {
+            if (updated.has(patch.service.id)) {
+              updated.delete(patch.service.id);
+              changed = true;
+            }
+          }
+        }
+        // Fix 3 shallow merge: devolver referencia anterior si nada cambió.
+        return changed ? updated : prev;
+      });
+      setLastEventAt(Date.now());
+    };
+
+    const enqueuePatch = (type: 'upsert' | 'delete', service: ServiceSupabase) => {
+      pendingPatchesRef.current.push({ type, service });
+      if (flushTimerRef.current == null) {
+        flushTimerRef.current = setTimeout(flushPending, PEDIDOS_DEBOUNCE_MS);
+      }
+    };
 
     const setupChannel = () => {
       if (channel) {
@@ -697,12 +791,7 @@ export function useServicesRealtime(
             if (!isComponentMounted) return;
             const newService = payload.new as ServiceSupabase;
             if (!movilIds || movilIds.length === 0 || (newService.movil && movilIds.includes(newService.movil))) {
-              setServices(prev => {
-                const updated = new Map(prev);
-                updated.set(newService.id, newService);
-                return updated;
-              });
-              setLastEventAt(Date.now());
+              enqueuePatch('upsert', newService);
               if (onUpdate) onUpdate(newService, 'INSERT');
             }
           }
@@ -719,12 +808,7 @@ export function useServicesRealtime(
             if (!isComponentMounted) return;
             const updatedService = payload.new as ServiceSupabase;
             if (!movilIds || movilIds.length === 0 || (updatedService.movil && movilIds.includes(updatedService.movil))) {
-              setServices(prev => {
-                const updated = new Map(prev);
-                updated.set(updatedService.id, updatedService);
-                return updated;
-              });
-              setLastEventAt(Date.now());
+              enqueuePatch('upsert', updatedService);
               if (onUpdate) onUpdate(updatedService, 'UPDATE');
             }
           }
@@ -740,12 +824,7 @@ export function useServicesRealtime(
           (payload) => {
             if (!isComponentMounted) return;
             const deletedService = payload.old as ServiceSupabase;
-            setServices(prev => {
-              const updated = new Map(prev);
-              updated.delete(deletedService.id);
-              return updated;
-            });
-            setLastEventAt(Date.now());
+            enqueuePatch('delete', deletedService);
             if (onUpdate) onUpdate(deletedService, 'DELETE');
           }
         )
@@ -787,6 +866,12 @@ export function useServicesRealtime(
       isComponentMounted = false;
       if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
+      // Cancelar el timer de flush pendiente para evitar setState tras unmount
+      if (flushTimerRef.current != null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      pendingPatchesRef.current = [];
     };
   }, [escenarioId, movilIds?.join(',')]);
 
