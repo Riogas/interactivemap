@@ -1,10 +1,11 @@
-﻿'use client';
+'use client';
 
 import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
+import { getRefColor } from '@/lib/visual-refs-catalog';
 
 export type PedidosZonaFilter = 'pendientes' | 'sin_asignar' | 'atrasados';
 
@@ -27,9 +28,9 @@ interface PedidosZonasLayerProps {
   onFilterChange: (f: PedidosZonaFilter) => void;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
-  /** Callback al hacer click en una zona (abre modal de móviles en zona) */
+  /** Callback al hacer click en una zona (abre modal de moviles en zona) */
   onZonaClick?: (zonaId: number) => void;
-  /** Si true, oculta la opción "Sin asignar" del select (distribuidor). */
+  /** Si true, oculta la opcion "Sin asignar" del select (distribuidor). */
   hideSinAsignarOption?: boolean;
   /** Mapa zona_id → demora info. activa===false → zona transparente con borde
       negro punteado (request 2026-05-07). */
@@ -39,10 +40,12 @@ interface PedidosZonasLayerProps {
   /** Callback para togglear las etiquetas desde la leyenda del mapa */
   onToggleLabels?: (next: boolean) => void;
   zonaPattern?: ZonaPattern;
+  /** Overrides de colores del usuario (de UserPreferences.visualRefs) */
+  visualRefs?: Record<string, string> | null;
 }
 
 /**
- * Calcula el centroide de un polígono usando la fórmula del área con signo.
+ * Calcula el centroide de un poligono usando la formula del area con signo.
  */
 function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, number] {
   if (pts.length < 3) {
@@ -70,19 +73,14 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
 }
 
 /**
- * Devuelve el color de relleno según la cantidad de pedidos.
- * 0        → verde muy claro
- * 1 – 3    → verde fuerte
- * 4 – 7    → amarillo
- * 8 – 11   → naranja
- * 12+      → rojo
+ * Devuelve el color de relleno segun la cantidad de pedidos.
  */
-function getPedidosColor(count: number): string {
-  if (count >= 12) return '#ef4444'; // rojo
-  if (count >= 8)  return '#f97316'; // naranja
-  if (count >= 4)  return '#eab308'; // amarillo
-  if (count >= 1)  return '#16a34a'; // verde fuerte
-  return '#bbf7d0';                  // verde muy claro (0)
+function getPedidosColor(count: number, visualRefs?: Record<string, string> | null): string {
+  if (count >= 12) return getRefColor('Ref#20', visualRefs);
+  if (count >= 8)  return getRefColor('Ref#19', visualRefs);
+  if (count >= 4)  return getRefColor('Ref#18', visualRefs);
+  if (count >= 1)  return getRefColor('Ref#17', visualRefs);
+  return getRefColor('Ref#16', visualRefs);
 }
 
 function getPedidosOpacity(count: number): number {
@@ -90,7 +88,7 @@ function getPedidosOpacity(count: number): number {
   if (count >= 8)  return 0.55;
   if (count >= 4)  return 0.50;
   if (count >= 1)  return 0.50;
-  return 0.25; // muy leve para zonas vacías
+  return 0.25; // muy leve para zonas vacias
 }
 
 function adjustOpacity(base: number, zonaOpacity: number): number {
@@ -136,7 +134,17 @@ function PedidosZonaFilterControl({ filter, onFilterChange, hideSinAsignarOption
 }
 
 /** Leyenda de pedidos por zona como control Leaflet (esquina inferior izquierda) */
-function PedidosZonasLegend({ filter, showLabels, onToggleLabels }: { filter: PedidosZonaFilter; showLabels: boolean; onToggleLabels?: (next: boolean) => void }) {
+function PedidosZonasLegend({
+  filter,
+  showLabels,
+  onToggleLabels,
+  visualRefs,
+}: {
+  filter: PedidosZonaFilter;
+  showLabels: boolean;
+  onToggleLabels?: (next: boolean) => void;
+  visualRefs?: Record<string, string> | null;
+}) {
   const map = useMap();
   const label = filter === 'sin_asignar' ? 'Sin asignar / zona' : filter === 'atrasados' ? 'Atrasados / zona' : 'Pendientes / zona';
   useEffect(() => {
@@ -157,11 +165,11 @@ function PedidosZonasLegend({ filter, showLabels, onToggleLabels }: { filter: Pe
           : '';
         div.innerHTML = `
           <div class="demora-legend-title">${label}</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#bbf7d0"></span><span class="demora-legend-label">0</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#16a34a"></span><span class="demora-legend-label">1 – 3</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">4 – 7</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">8 – 11</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">12+</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#16', visualRefs)}"></span><span class="demora-legend-label">0</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#16</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#17', visualRefs)}"></span><span class="demora-legend-label">1 – 3</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#17</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#18', visualRefs)}"></span><span class="demora-legend-label">4 – 7</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#18</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#19', visualRefs)}"></span><span class="demora-legend-label">8 – 11</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#19</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#20', visualRefs)}"></span><span class="demora-legend-label">12+</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#20</span></div>
           ${toggleHtml}
         `;
         L.DomEvent.disableClickPropagation(div);
@@ -186,11 +194,24 @@ function PedidosZonasLegend({ filter, showLabels, onToggleLabels }: { filter: Pe
     const legend = new LegendControl({ position: 'bottomleft' });
     legend.addTo(map);
     return () => { legend.remove(); };
-  }, [map, label, showLabels, onToggleLabels]);
+  }, [map, label, showLabels, onToggleLabels, visualRefs]);
   return null;
 }
 
-const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount, filter, onFilterChange, zonaOpacity = 50, onZonaClick, hideSinAsignarOption = false, demoras, showLabels = false, onToggleLabels, zonaPattern = 'liso' }: PedidosZonasLayerProps) {
+const PedidosZonasLayer = memo(function PedidosZonasLayer({
+  zonas,
+  pedidosCount,
+  filter,
+  onFilterChange,
+  zonaOpacity = 50,
+  onZonaClick,
+  hideSinAsignarOption = false,
+  demoras,
+  showLabels = false,
+  onToggleLabels,
+  zonaPattern = 'liso',
+  visualRefs,
+}: PedidosZonasLayerProps) {
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
     return zonas.map((zona) => {
@@ -219,7 +240,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
       const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
       const center: [number, number] = polygonCentroid(validGeo);
       const count = pedidosCount.get(zona.zona_id) ?? 0;
-      const fillColor = getPedidosColor(count);
+      const fillColor = getPedidosColor(count, visualRefs);
       const fillOpacity = getPedidosOpacity(count);
 
       return { zona, positions, center, fillColor, fillOpacity, count };
@@ -231,14 +252,14 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({ zonas, pedidosCount,
       fillOpacity: number;
       count: number;
     }>;
-  }, [zonas, pedidosCount]);
+  }, [zonas, pedidosCount, visualRefs]);
 
   if (items.length === 0) return null;
 
   return (
     <>
       <PedidosZonaFilterControl filter={filter} onFilterChange={onFilterChange} hideSinAsignarOption={hideSinAsignarOption} />
-      <PedidosZonasLegend filter={filter} showLabels={showLabels} onToggleLabels={onToggleLabels} />
+      <PedidosZonasLegend filter={filter} showLabels={showLabels} onToggleLabels={onToggleLabels} visualRefs={visualRefs} />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => {
         const isInactive = demoras?.get(zona.zona_id)?.activa === false || zona.activa === false;
         return (

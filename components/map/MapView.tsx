@@ -1,4 +1,4 @@
-Ôªø'use client';
+'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
@@ -40,10 +40,10 @@ import 'leaflet/dist/leaflet.css';
 import './MarkerCluster.css';
 import './MapAnimations.css';
 
-// üöÄ Lazy load del MarkerClusterGroup (solo se carga cuando se necesita)
+// ?? Lazy load del MarkerClusterGroup (solo se carga cuando se necesita)
 const MarkerClusterGroup = dynamic(() => import('./MarkerClusterGroup'), { ssr: false });
 
-// üöÄ Constantes para umbrales de rendimiento
+// ?? Constantes para umbrales de rendimiento
 const HIGH_DENSITY_THRESHOLD = 80; // Activar modo alta densidad con >80 marcadores totales
 const DISABLE_ANIMATIONS_THRESHOLD = 150; // Deshabilitar animaciones CSS con >150 marcadores
 
@@ -58,18 +58,18 @@ L.Icon.Default.mergeOptions({
 
 interface MapViewProps {
   moviles: MovilData[];
-  focusedMovil?: number; // M√≥vil enfocado desde la lista (solo visual)
-  selectedMovil?: number; // M√≥vil seleccionado para animaci√≥n
-  secondaryAnimMovil?: number; // Segundo m√≥vil para animaci√≥n dual (m√°x 2)
-  popupMovil?: number; // M√≥vil con popup abierto
+  focusedMovil?: number; // MÛvil enfocado desde la lista (solo visual)
+  selectedMovil?: number; // MÛvil seleccionado para animaciÛn
+  secondaryAnimMovil?: number; // Segundo mÛvil para animaciÛn dual (m·x 2)
+  popupMovil?: number; // MÛvil con popup abierto
   showPendientes?: boolean; // Mostrar marcadores de pendientes
-  showCompletados?: boolean; // Mostrar solo marcadores de completados (sin animaci√≥n)
-  selectedMovilesCount?: number; // N√∫mero de m√≥viles seleccionados en la lista
-  selectionVersion?: number; // Solo bumpea por acciones expl√≠citas del usuario sobre la selecci√≥n
+  showCompletados?: boolean; // Mostrar solo marcadores de completados (sin animaciÛn)
+  selectedMovilesCount?: number; // N˙mero de mÛviles seleccionados en la lista
+  selectionVersion?: number; // Solo bumpea por acciones explÌcitas del usuario sobre la selecciÛn
   defaultMapLayer?: 'streets' | 'satellite' | 'terrain' | 'cartodb' | 'dark' | 'light'; // Capa por defecto del mapa
   onMovilClick?: (movilId: number | undefined) => void;
   onShowAnimation?: (movilId: number) => void;
-  onCloseAnimation?: () => void; // Cerrar animaci√≥n
+  onCloseAnimation?: () => void; // Cerrar animaciÛn
   onShowPendientes?: () => void;
   onShowCompletados?: () => void;
   pedidos?: PedidoSupabase[]; // Nueva prop para mostrar pedidos en el mapa
@@ -83,41 +83,41 @@ interface MapViewProps {
   focusedPedidoId?: number; // ID del pedido a centralizar
   focusedServiceId?: number; // ID del service a centralizar
   focusTrigger?: number; // Trigger para forzar re-centrado
-  focusedPuntoId?: string; // ID del punto de inter√©s a centralizar
-  isPlacingMarker?: boolean; // Prop externa para controlar el modo de colocaci√≥n
+  focusedPuntoId?: string; // ID del punto de interÈs a centralizar
+  isPlacingMarker?: boolean; // Prop externa para controlar el modo de colocaciÛn
   onPlacingMarkerChange?: (isPlacing: boolean) => void; // Callback para notificar cambios
   onMarkersChange?: (markers: CustomMarker[]) => void; // Callback para notificar cambios en los marcadores
-  allMoviles?: MovilData[]; // Todos los m√≥viles (para selector en panel de animaci√≥n)
+  allMoviles?: MovilData[]; // Todos los mÛviles (para selector en panel de animaciÛn)
   selectedDate?: string; // Fecha seleccionada actual
-  onMovilDateChange?: (movilId: number, date: string) => void; // Cambiar m√≥vil/fecha desde panel animaci√≥n
-  onSecondaryAnimMovilChange?: (movilId: number | undefined) => void; // Cambiar 2do m√≥vil animaci√≥n
-  zonas?: ZonaMapData[]; // Zonas para dibujar pol√≠gonos en el mapa
+  onMovilDateChange?: (movilId: number, date: string) => void; // Cambiar mÛvil/fecha desde panel animaciÛn
+  onSecondaryAnimMovilChange?: (movilId: number | undefined) => void; // Cambiar 2do mÛvil animaciÛn
+  zonas?: ZonaMapData[]; // Zonas para dibujar polÌgonos en el mapa
   markerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores
   pedidosCluster?: boolean; // Agrupar pedidos en clusters
   pedidoMarkerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de pedidos
   serviceMarkerStyle?: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de services
-  movilShape?: MarkerShape; // Forma del marcador de m√≥viles (compact/mini)
+  movilShape?: MarkerShape; // Forma del marcador de mÛviles (compact/mini)
   pedidoShape?: MarkerShape; // Forma del marcador de pedidos (compact/mini)
   serviceShape?: MarkerShape; // Forma del marcador de services (compact/mini)
-  dataViewMode?: DataViewMode; // Capas de Informaci√≥n activa
+  dataViewMode?: DataViewMode; // Capas de InformaciÛn activa
   onDataViewChange?: (mode: DataViewMode) => void; // Callback cambio de vista
   isToday?: boolean; // True si selectedDate === hoy. Si false, las capas dependientes de datos en vivo se deshabilitan.
-  /** Si true, oculta la opci√≥n "Cap. Entrega" (saturacion) del control de capas.
+  /** Si true, oculta la opciÛn "Cap. Entrega" (saturacion) del control de capas.
    *  Gate por funcionalidad "Capa Capacidad de Entrega" del rol del usuario. */
   hideCapEntrega?: boolean;
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
   pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
   onPedidosZonaFilterChange?: (f: PedidosZonaFilter) => void;
-  /** Hora del servidor sincronizada ‚Äî usada para el filtro de ventana SA. */
+  /** Hora del servidor sincronizada ó usada para el filtro de ventana SA. */
   serverNow?: Date;
   /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
   minutosAntesSa?: number | null;
-  hideSinAsignarOption?: boolean; // Si true, oculta opci√≥n "Sin asignar" del select pedidos/zona (distribuidor)
+  hideSinAsignarOption?: boolean; // Si true, oculta opciÛn "Sin asignar" del select pedidos/zona (distribuidor)
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
   onMovilesZonasServiceFilterChange?: (f: MovilesZonasServiceFilter) => void; // Callback cambio filtro
-  saturacionData?: Map<number, SaturacionZonaStats>; // Mapa zona_id ‚Üí stats de saturaci√≥n
+  saturacionData?: Map<number, SaturacionZonaStats>; // Mapa zona_id ? stats de saturaciÛn
   tiposServicioDisponibles?: string[]; // Valores distintos de servicio_nombre
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
@@ -129,25 +129,27 @@ interface MapViewProps {
   zonaOpacity?: number; // Opacidad de las capas de zonas (0-100)
   reloadMarkersTrigger?: number; // Incrementar para forzar recarga de marcadores (ej. tras import OSM)
   poisHidden?: boolean; // Ocultar todos los POIs del mapa
-  hiddenPoiCategories?: Set<string>; // Categor√≠as de POI ocultas
+  hiddenPoiCategories?: Set<string>; // CategorÌas de POI ocultas
   hiddenPoiIds?: Set<string>; // IDs individuales de POI ocultos
-  poiMarkerSize?: number; // Tama√±o del marcador POI: 1=chico, 2=mediano, 3=grande
+  poiMarkerSize?: number; // TamaÒo del marcador POI: 1=chico, 2=mediano, 3=grande
   poiDefaultIcon?: string; // Emoji por defecto para POIs sin icono propio
   pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
-  allMovilEstados?: Map<string, number>; // Mapa completo movil_nro ‚Üí estadoNro (todos los moviles)
-  allHiddenMovilIds?: Set<string>; // IDs de m√≥viles ocultos-pero-operativos (capa m√≥viles-zonas los excluye)
-  /** Usuario autenticado ‚Äî usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
+  allMovilEstados?: Map<string, number>; // Mapa completo movil_nro ? estadoNro (todos los moviles)
+  allHiddenMovilIds?: Set<string>; // IDs de mÛviles ocultos-pero-operativos (capa mÛviles-zonas los excluye)
+  /** Usuario autenticado ó usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
   user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>; allowedEmpresas?: number[] | null } | null;
   /** Callback invocado en moveend/zoomend para capturar el estado del mapa (view-state). */
   onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
-  /** IDs de empresas fleteras seleccionadas ‚Äî se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
+  /** IDs de empresas fleteras seleccionadas ó se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
   selectedEmpresas?: number[];
   movilHalo?: boolean;
   pedidoHalo?: boolean;
   serviceHalo?: boolean;
   zonaPattern?: ZonaPattern;
+  /** Overrides de colores del usuario para las refs visuales Ref#1..Ref#26 */
+  visualRefs?: Record<string, string> | null;
 }
 
 
@@ -200,9 +202,9 @@ function MapUpdater({
   focusedMovil?: number;
   selectedMovil?: number;
   selectedMovilesCount?: number;
-  /** Versi√≥n que solo se incrementa por acciones expl√≠citas del usuario sobre la
-      selecci√≥n de m√≥viles (toggle, select-all, clear-all, filtro). El re-fit de
-      bounds ocurre SOLO cuando esta versi√≥n cambia, no cuando cambia el count
+  /** VersiÛn que solo se incrementa por acciones explÌcitas del usuario sobre la
+      selecciÛn de mÛviles (toggle, select-all, clear-all, filtro). El re-fit de
+      bounds ocurre SOLO cuando esta versiÛn cambia, no cuando cambia el count
       por updates de realtime. */
   selectionVersion?: number;
   focusedPedidoId?: number;
@@ -267,7 +269,7 @@ function MapUpdater({
     }
   }, [map, focusTrigger, focusedPedidoId, focusedServiceId, pedidos, services, allPedidos, allServices]);
 
-  // ‚úÖ Efecto para centrar el mapa en un punto de inter√©s y abrir su popup.
+  // ? Efecto para centrar el mapa en un punto de interÈs y abrir su popup.
   // Re-corre cuando focusedPuntoId cambia O cuando focusTrigger se incrementa
   // (permite re-abrir el mismo POI clickeando varias veces en la sidebar).
   useEffect(() => {
@@ -277,8 +279,8 @@ function MapUpdater({
     }
     const sameId = focusedPuntoId === lastFocusedPuntoId.current;
     lastFocusedPuntoId.current = focusedPuntoId;
-    // Si es el mismo id, solo re-disparamos cuando focusTrigger cambi√≥
-    // (lastFocusTriggerPoi es exclusivo de este efecto ‚Äî no comparte estado
+    // Si es el mismo id, solo re-disparamos cuando focusTrigger cambiÛ
+    // (lastFocusTriggerPoi es exclusivo de este efecto ó no comparte estado
     // con el efecto de pedidos/services que mira otra ref).
     if (sameId && focusTrigger === lastFocusTriggerPoi.current) return;
     lastFocusTriggerPoi.current = focusTrigger ?? 0;
@@ -298,7 +300,7 @@ function MapUpdater({
       if (Math.abs(ll.lng - punto.longitud) > 1e-9) return;
       const icon: any = layer.getIcon();
       if (icon?.options?.className !== 'custom-marker-icon') return;
-      // Peque√±o delay para que el setView termine y autoPan no compita
+      // PequeÒo delay para que el setView termine y autoPan no compita
       setTimeout(() => layer.openPopup(), 250);
     });
   }, [map, focusedPuntoId, focusTrigger, customMarkers]);
@@ -310,7 +312,7 @@ function MapUpdater({
 
     const allBounds: [number, number][] = [];
 
-    // Agregar m√≥viles con posici√≥n
+    // Agregar mÛviles con posiciÛn
     moviles.filter(m => m.currentPosition).forEach(m => {
       allBounds.push([m.currentPosition!.coordX, m.currentPosition!.coordY]);
     });
@@ -322,7 +324,7 @@ function MapUpdater({
       });
     }
 
-    // Agregar puntos de inter√©s
+    // Agregar puntos de interÈs
     if (customMarkers) {
       customMarkers.filter(m => m.latitud && m.longitud).forEach(m => {
         allBounds.push([m.latitud, m.longitud]);
@@ -336,20 +338,20 @@ function MapUpdater({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, moviles.length, pedidos, customMarkers]);
 
-  // Efecto para centrar el mapa SOLO cuando el usuario cambi√≥ la selecci√≥n
-  // expl√≠citamente (toggle, select-all, clear-all, filtro de actividad).
-  // Updates de realtime que modifican selectedMoviles (m√≥vil que aparece/desaparece
-  // por cambio de estado) NO disparan este efecto: solo los cambios expl√≠citos
+  // Efecto para centrar el mapa SOLO cuando el usuario cambiÛ la selecciÛn
+  // explÌcitamente (toggle, select-all, clear-all, filtro de actividad).
+  // Updates de realtime que modifican selectedMoviles (mÛvil que aparece/desaparece
+  // por cambio de estado) NO disparan este efecto: solo los cambios explÌcitos
   // bumpean selectionVersion en el dashboard.
   useEffect(() => {
     if (selectionVersion === undefined) return;
     if (selectionVersion === lastSelectionVersion.current) return;
     lastSelectionVersion.current = selectionVersion;
 
-    // Resetear flag de interacci√≥n del usuario cuando cambia la selecci√≥n
+    // Resetear flag de interacciÛn del usuario cuando cambia la selecciÛn
     userHasInteracted.current = false;
 
-    // No ajustar si hay animaci√≥n activa
+    // No ajustar si hay animaciÛn activa
     if (selectedMovil) {
       return;
     }
@@ -357,19 +359,19 @@ function MapUpdater({
     const movilesConPosicion = moviles.filter(m => m.currentPosition);
 
     if (movilesConPosicion.length > 1) {
-      // M√∫ltiples m√≥viles seleccionados: ajustar bounds para mostrar todos
+      // M˙ltiples mÛviles seleccionados: ajustar bounds para mostrar todos
       const bounds = movilesConPosicion.map(m => 
         [m.currentPosition!.coordX, m.currentPosition!.coordY] as [number, number]
       );
       map.fitBounds(bounds, { padding: [80, 80], maxZoom: 15 });
     } else if (movilesConPosicion.length === 1) {
-      // Un solo m√≥vil: centrar en √©l
+      // Un solo mÛvil: centrar en Èl
       const movil = movilesConPosicion[0];
       map.setView([movil.currentPosition!.coordX, movil.currentPosition!.coordY], 15, {
         animate: true,
       });
     } else {
-      // Sin m√≥viles seleccionados: centrar en pedidos + POIs visibles
+      // Sin mÛviles seleccionados: centrar en pedidos + POIs visibles
       const allBounds: [number, number][] = [];
 
       // Agregar pedidos con coordenadas
@@ -381,7 +383,7 @@ function MapUpdater({
         });
       }
 
-      // Agregar puntos de inter√©s
+      // Agregar puntos de interÈs
       if (customMarkers) {
         customMarkers.forEach(m => {
           if (m.latitud && m.longitud) {
@@ -395,11 +397,11 @@ function MapUpdater({
       }
     }
   // Solo dep de selectionVersion. moviles/pedidos/customMarkers se leen al
-  // momento del fire (snapshot) ‚Äî no deber√≠a re-disparar cuando llega data.
+  // momento del fire (snapshot) ó no deberÌa re-disparar cuando llega data.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, selectionVersion]);
 
-  // Efecto para centrar el mapa cuando se enfoca un m√≥vil desde la lista
+  // Efecto para centrar el mapa cuando se enfoca un mÛvil desde la lista
   useEffect(() => {
     if (focusedMovil !== lastFocusedMovil.current) {
       lastFocusedMovil.current = focusedMovil;
@@ -407,7 +409,7 @@ function MapUpdater({
       if (focusedMovil && moviles.length > 0) {
         const movil = moviles.find(m => m.id === focusedMovil);
         if (movil?.currentPosition) {
-          console.log('üìç Centrando mapa en m√≥vil enfocado:', movil.id);
+          console.log('?? Centrando mapa en mÛvil enfocado:', movil.id);
           map.setView([movil.currentPosition.coordX, movil.currentPosition.coordY], 15, {
             animate: true,
           });
@@ -416,28 +418,28 @@ function MapUpdater({
     }
   }, [map, focusedMovil, moviles]);
 
-  // Efecto para centrar el mapa SOLO cuando CAMBIA la selecci√≥n de m√≥vil (animaci√≥n)
+  // Efecto para centrar el mapa SOLO cuando CAMBIA la selecciÛn de mÛvil (animaciÛn)
   useEffect(() => {
-    // Solo centrar si la selecci√≥n realmente cambi√≥ (no en actualizaciones de datos)
+    // Solo centrar si la selecciÛn realmente cambiÛ (no en actualizaciones de datos)
     if (selectedMovil !== lastSelectedMovil.current) {
       lastSelectedMovil.current = selectedMovil;
       
       if (selectedMovil && moviles.length > 0) {
         const movil = moviles.find(m => m.id === selectedMovil);
         if (movil?.currentPosition) {
-          console.log('üìç Centrando mapa en m√≥vil para animaci√≥n:', movil.id);
+          console.log('?? Centrando mapa en mÛvil para animaciÛn:', movil.id);
           map.setView([movil.currentPosition.coordX, movil.currentPosition.coordY], 15, {
             animate: true,
           });
         }
       }
     }
-  }, [map, selectedMovil, moviles]); // Se ejecuta en cambios, pero solo centra si selectedMovil cambi√≥
+  }, [map, selectedMovil, moviles]); // Se ejecuta en cambios, pero solo centra si selectedMovil cambiÛ
 
   return null;
 }
 
-// Componente para seguir la animaci√≥n
+// Componente para seguir la animaciÛn
 interface AnimationFollowerProps {
   moviles: MovilData[];
   selectedMovil?: number;
@@ -462,13 +464,13 @@ function AnimationFollower({
   const map = useMap();
   const hasCenteredRef = useRef<boolean>(false);
 
-  // Centrar el mapa UNA vez al iniciar animaci√≥n: fitBounds en TODO el recorrido
+  // Centrar el mapa UNA vez al iniciar animaciÛn: fitBounds en TODO el recorrido
   useEffect(() => {
     if (!isAnimating) {
       hasCenteredRef.current = false;
       return;
     }
-    if (hasCenteredRef.current) return; // Ya centr√≥
+    if (hasCenteredRef.current) return; // Ya centrÛ
 
     const timeFilter = (history: any[]) => history.filter((coord: any) => {
       if (!coord.fechaInsLog) return true;
@@ -483,7 +485,7 @@ function AnimationFollower({
       }
     });
 
-    // Recopilar TODOS los puntos de todos los m√≥viles seleccionados
+    // Recopilar TODOS los puntos de todos los mÛviles seleccionados
     const allPoints: [number, number][] = [];
     const movilIds = [selectedMovil, secondaryMovil].filter(Boolean) as number[];
 
@@ -508,8 +510,8 @@ function AnimationFollower({
 }
 
 /**
- * Observa cambios de tama√±o en el contenedor del mapa y llama invalidateSize().
- * Resuelve el bug cl√°sico de Leaflet donde al colapsar/expandir el sidebar
+ * Observa cambios de tamaÒo en el contenedor del mapa y llama invalidateSize().
+ * Resuelve el bug cl·sico de Leaflet donde al colapsar/expandir el sidebar
  * el mapa no se re-renderiza correctamente (tiles grises, zonas cortadas).
  */
 function MapResizer() {
@@ -522,11 +524,11 @@ function MapResizer() {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const observer = new ResizeObserver(() => {
-      // Debounce: esperar a que la animaci√≥n termine y luego invalidar
+      // Debounce: esperar a que la animaciÛn termine y luego invalidar
       if (timer) clearTimeout(timer);
-      // Invalidar r√°pido para feedback visual
+      // Invalidar r·pido para feedback visual
       map.invalidateSize({ animate: false });
-      // Y otra vez con delay para capturar el final de la animaci√≥n spring
+      // Y otra vez con delay para capturar el final de la animaciÛn spring
       timer = setTimeout(() => {
         map.invalidateSize({ animate: false });
       }, 350);
@@ -560,9 +562,9 @@ function MapClickHandler({
   return null;
 }
 
-// Funci√≥n de comparaci√≥n para React.memo
+// FunciÛn de comparaciÛn para React.memo
 const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
-  // Solo re-renderizar si cambian datos cr√≠ticos
+  // Solo re-renderizar si cambian datos crÌticos
   return (
     prev.moviles.length === next.moviles.length &&
     prev.selectedMovil === next.selectedMovil &&
@@ -581,7 +583,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.focusedServiceId === next.focusedServiceId &&
     prev.focusTrigger === next.focusTrigger &&
     prev.focusedPuntoId === next.focusedPuntoId &&
-    // üöÄ Comparar pedidos por cantidad (evitar deep comparison costosa)
+    // ?? Comparar pedidos por cantidad (evitar deep comparison costosa)
     (prev.pedidos?.length ?? 0) === (next.pedidos?.length ?? 0) &&
     (prev.allPedidos?.length ?? 0) === (next.allPedidos?.length ?? 0) &&
     (prev.services?.length ?? 0) === (next.services?.length ?? 0) &&
@@ -614,9 +616,9 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.hiddenPoiIds?.size === next.hiddenPoiIds?.size &&
     prev.poiMarkerSize === next.poiMarkerSize &&
     prev.poiDefaultIcon === next.poiDefaultIcon &&
-    // Comparaci√≥n de IDs de m√≥viles (m√°s barato que deep equal)
+    // ComparaciÛn de IDs de mÛviles (m·s barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
-    // Detectar cuando se carga el historial de un m√≥vil (history pasa de undefined/vac√≠o a tener datos)
+    // Detectar cuando se carga el historial de un mÛvil (history pasa de undefined/vacÌo a tener datos)
     prev.moviles.every((m, i) => (m.history?.length ?? 0) === (next.moviles[i]?.history?.length ?? 0))
   );
 };
@@ -628,7 +630,7 @@ function ZonaPatternDefs() {
   useEffect(() => {
     // Inyectar <defs> en un SVG oculto a nivel document.body.
     // SVG url(#id) funciona desde cualquier SVG del documento cuando el <defs>
-    // esta en el mismo documento ‚Äî incluso si Leaflet usa Canvas para otros layers.
+    // esta en el mismo documento ó incluso si Leaflet usa Canvas para otros layers.
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const DEFS_ID = 'zona-pattern-defs-root';
     let svgEl = document.getElementById(DEFS_ID) as SVGSVGElement | null;
@@ -975,7 +977,7 @@ function CulledPoisLayer({
                 <div style={{ background: '#18181b', padding: '8px 12px 10px' }}>
                   {marker.telefono && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                      <span style={{ fontSize: '13px' }}>üìû</span>
+                      <span style={{ fontSize: '13px' }}>??</span>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: '#d1fae5', letterSpacing: '0.04em' }}>
                         {String(marker.telefono)}
                       </span>
@@ -983,14 +985,14 @@ function CulledPoisLayer({
                   )}
                   {marker.observacion && (
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                      <span style={{ fontSize: '13px', marginTop: '1px' }}>üè†</span>
+                      <span style={{ fontSize: '13px', marginTop: '1px' }}>??</span>
                       <span style={{ fontSize: '12px', color: '#d1d5db', lineHeight: '1.4' }}>
                         {marker.observacion}
                       </span>
                     </div>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px', paddingTop: '6px' }}>
-                    <span style={{ fontSize: '12px' }}>üìå</span>
+                    <span style={{ fontSize: '12px' }}>??</span>
                     <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', letterSpacing: '0.03em' }}>
                       {Number(marker.latitud).toFixed(6)}, {Number(marker.longitud).toFixed(6)}
                     </span>
@@ -1075,7 +1077,7 @@ const MapView = memo(function MapView({
   hiddenPoiCategories = new Set(),
   hiddenPoiIds = new Set<string>(),
   poiMarkerSize = 2,
-  poiDefaultIcon = 'üè¢',
+  poiDefaultIcon = '??',
   pedidosVista = 'pendientes',
   servicesVista = 'pendientes',
   onZonaClick,
@@ -1090,11 +1092,12 @@ const MapView = memo(function MapView({
   pedidoHalo = false,
   serviceHalo = false,
   zonaPattern = 'liso',
+  visualRefs,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
 
-  // Toggle etiquetas de conteo en m√≥viles-zonas (por defecto ocultas)
+  // Toggle etiquetas de conteo en mÛviles-zonas (por defecto ocultas)
   const [showCountLabels, setShowCountLabels] = useState(false);
 
   const movilEstadosMap = useMemo(() => {
@@ -1107,7 +1110,7 @@ const MapView = memo(function MapView({
     return m;
   }, [moviles, allMovilEstados]);
 
-  // ÔøΩüî∑ Generador de HTML para formas geom√©tricas (compact/mini)
+  // ??? Generador de HTML para formas geomÈtricas (compact/mini)
   const getShapeHtml = useCallback((shape: MarkerShape, size: number, color: string, lightColor?: string, halo = false) => {
     const half = size / 2;
     const border = size > 12 ? 1.5 : 1;
@@ -1144,39 +1147,39 @@ const MapView = memo(function MapView({
     }
   }, []);
 
-  // DEBUG eliminado: este useEffect corr√≠a en cada cambio de referencia del array
+  // DEBUG eliminado: este useEffect corrÌa en cada cambio de referencia del array
   // services y generaba console.log en hot path. Causaba ruido en devtools y
   // costo de CPU por filter() + JSON marshal a stdout en cada GPS/pedidos update.
   // Reactivable poniendo NEXT_PUBLIC_DEBUG_MAPVIEW=true y descomentando el bloque.
   // useEffect(() => {
   //   if (process.env.NEXT_PUBLIC_DEBUG_MAPVIEW !== 'true') return;
   //   const conCoords = services.filter(s => s.latitud && s.longitud);
-  //   console.log(`üîß MapView: ${services.length} services recibidos, ${conCoords.length} con coordenadas`);
+  //   console.log(`?? MapView: ${services.length} services recibidos, ${conCoords.length} con coordenadas`);
   // }, [services]);
   
-  // Estado para controlar la animaci√≥n del recorrido
+  // Estado para controlar la animaciÛn del recorrido
   const [isAnimating, setIsAnimating] = useState(false);
   const [animationProgress, setAnimationProgress] = useState(0);
   const [animationSpeed, setAnimationSpeed] = useState(1); // 1x, 2x, 4x, etc.
   const [startTime, setStartTime] = useState('00:00');
   const [endTime, setEndTime] = useState('23:59');
-  const [simplifiedPath, setSimplifiedPath] = useState(true); // Mostrar solo √∫ltimas 3 l√≠neas
+  const [simplifiedPath, setSimplifiedPath] = useState(true); // Mostrar solo ˙ltimas 3 lÌneas
   const [selectedPedidoServicio, setSelectedPedidoServicio] = useState<PedidoServicio | null>(null);
   
   // ===== MARCADORES PERSONALIZADOS =====
   const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempMarkerPosition, setTempMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
-  const [editingMarker, setEditingMarker] = useState<CustomMarker | null>(null); // Nuevo: para edici√≥n
+  const [editingMarker, setEditingMarker] = useState<CustomMarker | null>(null); // Nuevo: para ediciÛn
   
   // Usar el estado externo si se proporciona, sino usar estado interno
   const isPlacingMarker = externalIsPlacingMarker;
   
   const animationRef = useRef<number | null>(null);
-  const animationStartTime = useRef<number>(0); // Timestamp de inicio de animaci√≥n
-  const lastProgressUpdate = useRef<number>(0); // √öltimo progreso guardado
+  const animationStartTime = useRef<number>(0); // Timestamp de inicio de animaciÛn
+  const lastProgressUpdate = useRef<number>(0); // ⁄ltimo progreso guardado
 
-  // üöÄ Registrar Service Worker para cache de tiles (reduce CPU y network)
+  // ?? Registrar Service Worker para cache de tiles (reduce CPU y network)
   useEffect(() => {
     registerTileCacheServiceWorker();
   }, []);
@@ -1187,7 +1190,7 @@ const MapView = memo(function MapView({
       // Obtener email del usuario desde localStorage (trackmovil_user)
       const userStr = authStorage.getItem('trackmovil_user');
       if (!userStr) {
-        console.warn('‚ö†Ô∏è No hay usuario logueado, cargando desde localStorage');
+        console.warn('?? No hay usuario logueado, cargando desde localStorage');
         const savedMarkers = localStorage.getItem('customMarkers');
         if (savedMarkers) {
           setCustomMarkers(JSON.parse(savedMarkers));
@@ -1195,13 +1198,13 @@ const MapView = memo(function MapView({
         return;
       }
 
-      // Parse defensivo: si el JSON est√° corrupto, no caemos al cache de
-      // localStorage (podr√≠a tener POIs privados de otra sesi√≥n sin filtrar).
+      // Parse defensivo: si el JSON est· corrupto, no caemos al cache de
+      // localStorage (podrÌa tener POIs privados de otra sesiÛn sin filtrar).
       let user: any = null;
       try {
         user = JSON.parse(userStr);
       } catch {
-        console.warn('‚ö†Ô∏è trackmovil_user corrupto, limpiando marcadores');
+        console.warn('?? trackmovil_user corrupto, limpiando marcadores');
         setCustomMarkers([]);
         return;
       }
@@ -1210,7 +1213,7 @@ const MapView = memo(function MapView({
         const usuario_email = user.email || user.username;
 
         if (!usuario_email) {
-          console.warn('‚ö†Ô∏è Usuario sin email, usando localStorage');
+          console.warn('?? Usuario sin email, usando localStorage');
           const savedMarkers = localStorage.getItem('customMarkers');
           if (savedMarkers) {
             const cachedMarkers: CustomMarker[] = JSON.parse(savedMarkers);
@@ -1236,7 +1239,7 @@ const MapView = memo(function MapView({
           params.set('scope_empresas', scopeEmpresas.join(','));
         }
 
-        console.log('üìç Cargando puntos para usuario:', usuario_email, 'scope:', scopeRole);
+        console.log('?? Cargando puntos para usuario:', usuario_email, 'scope:', scopeRole);
 
         // Cargar desde API
         const response = await fetch(`/api/puntos-interes?${params.toString()}`);
@@ -1265,10 +1268,10 @@ const MapView = memo(function MapView({
           setCustomMarkers(scopedMarkers);
           // Guardar backup en localStorage
           localStorage.setItem('customMarkers', JSON.stringify(scopedMarkers));
-          console.log(`‚úÖ ${scopedMarkers.length}/${markers.length} marcadores cargados (post-scope)`);
+          console.log(`? ${scopedMarkers.length}/${markers.length} marcadores cargados (post-scope)`);
         } else {
-          console.warn('‚ö†Ô∏è No se pudieron cargar los marcadores, usando modo offline');
-          toast.error('‚ö†Ô∏è No se pudieron cargar los puntos desde el servidor. Usando datos locales.');
+          console.warn('?? No se pudieron cargar los marcadores, usando modo offline');
+          toast.error('?? No se pudieron cargar los puntos desde el servidor. Usando datos locales.');
           // Fallback a localStorage si la API falla
           const savedMarkers = localStorage.getItem('customMarkers');
           if (savedMarkers) {
@@ -1277,9 +1280,9 @@ const MapView = memo(function MapView({
           }
         }
       } catch (error) {
-        console.error('‚ùå Error al cargar marcadores:', error);
-        toast.error('‚ùå Error al cargar los puntos. Usando datos locales.');
-        // Fallback a localStorage ‚Äî re-filtrar por scope para evitar leaks de POIs privados.
+        console.error('? Error al cargar marcadores:', error);
+        toast.error('? Error al cargar los puntos. Usando datos locales.');
+        // Fallback a localStorage ó re-filtrar por scope para evitar leaks de POIs privados.
         const savedMarkers = localStorage.getItem('customMarkers');
         if (savedMarkers) {
           const cachedMarkers: CustomMarker[] = JSON.parse(savedMarkers);
@@ -1291,11 +1294,11 @@ const MapView = memo(function MapView({
     loadMarkers();
   }, [reloadMarkersTrigger]);
 
-  // ÔøΩ DEBUG: Solo log m√≠nimo en desarrollo
+  // ? DEBUG: Solo log mÌnimo en desarrollo
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && pedidos?.length > 0) {
       const conCoordenadas = pedidos.filter(p => p.latitud && p.longitud);
-      console.log(`üì¶ MapView: ${pedidos.length} pedidos (${conCoordenadas.length} con coords)`);
+      console.log(`?? MapView: ${pedidos.length} pedidos (${conCoordenadas.length} con coords)`);
     }
   }, [pedidos?.length]);
 
@@ -1310,7 +1313,7 @@ const MapView = memo(function MapView({
   const handleSaveMarker = async (data: { nombre: string; observacion: string; icono: string }) => {
     if (!tempMarkerPosition) return;
 
-    const toastId = toast.loading('üíæ Guardando punto...');
+    const toastId = toast.loading('?? Guardando punto...');
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
@@ -1321,9 +1324,9 @@ const MapView = memo(function MapView({
         try {
           const user = JSON.parse(userStr);
           usuario_email = user.email || user.username || usuario_email;
-          console.log('üë§ Usuario guardando marcador:', usuario_email);
+          console.log('?? Usuario guardando marcador:', usuario_email);
         } catch (e) {
-          console.warn('‚ö†Ô∏è Error parseando usuario, usando email por defecto');
+          console.warn('?? Error parseando usuario, usando email por defecto');
         }
       }
 
@@ -1367,25 +1370,25 @@ const MapView = memo(function MapView({
       setCustomMarkers(prev => [...prev, newMarker]);
       setTempMarkerPosition(null);
       
-      // Tambi√©n guardar en localStorage como backup
+      // TambiÈn guardar en localStorage como backup
       const updatedMarkers = [...customMarkers, newMarker];
       localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
       
-      console.log('‚úÖ Marcador guardado exitosamente en Supabase');
-      toast.success('‚úÖ Punto guardado correctamente', { id: toastId });
+      console.log('? Marcador guardado exitosamente en Supabase');
+      toast.success('? Punto guardado correctamente', { id: toastId });
       
       if (onPlacingMarkerChange) {
         onPlacingMarkerChange(false);
       }
     } catch (error) {
-      console.error('‚ùå Error al guardar marcador:', error);
-      toast.error('‚ùå Error al guardar el punto. Por favor intenta nuevamente.', { id: toastId });
+      console.error('? Error al guardar marcador:', error);
+      toast.error('? Error al guardar el punto. Por favor intenta nuevamente.', { id: toastId });
     }
   };
 
   // Eliminar marcador
   const handleDeleteMarker = async (markerId: string) => {
-    const toastId = toast.loading('üóëÔ∏è Eliminando punto...');
+    const toastId = toast.loading('??? Eliminando punto...');
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
@@ -1397,7 +1400,7 @@ const MapView = memo(function MapView({
           const user = JSON.parse(userStr);
           usuario_email = user.email || user.username || usuario_email;
         } catch (e) {
-          console.warn('‚ö†Ô∏è Error parseando usuario');
+          console.warn('?? Error parseando usuario');
         }
       }
 
@@ -1414,15 +1417,15 @@ const MapView = memo(function MapView({
       // Actualizar estado local
       setCustomMarkers(prev => prev.filter(m => m.id !== markerId));
       
-      // Tambi√©n actualizar localStorage
+      // TambiÈn actualizar localStorage
       const updatedMarkers = customMarkers.filter(m => m.id !== markerId);
       localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
       
-      console.log('‚úÖ Marcador eliminado exitosamente');
-      toast.success('‚úÖ Punto eliminado correctamente', { id: toastId });
+      console.log('? Marcador eliminado exitosamente');
+      toast.success('? Punto eliminado correctamente', { id: toastId });
     } catch (error) {
-      console.error('‚ùå Error al eliminar marcador:', error);
-      toast.error('‚ùå Error al eliminar el punto. Por favor intenta nuevamente.', { id: toastId });
+      console.error('? Error al eliminar marcador:', error);
+      toast.error('? Error al eliminar el punto. Por favor intenta nuevamente.', { id: toastId });
     }
   };
 
@@ -1430,7 +1433,7 @@ const MapView = memo(function MapView({
   const handleEditMarker = async (data: { nombre: string; observacion: string; icono: string }) => {
     if (!editingMarker) return;
 
-    const toastId = toast.loading('üîÑ Actualizando punto...');
+    const toastId = toast.loading('?? Actualizando punto...');
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
@@ -1442,7 +1445,7 @@ const MapView = memo(function MapView({
           const user = JSON.parse(userStr);
           usuario_email = user.email || user.username || usuario_email;
         } catch (e) {
-          console.warn('‚ö†Ô∏è Error parseando usuario');
+          console.warn('?? Error parseando usuario');
         }
       }
 
@@ -1480,7 +1483,7 @@ const MapView = memo(function MapView({
           : m
       ));
 
-      // Tambi√©n actualizar localStorage
+      // TambiÈn actualizar localStorage
       const updatedMarkers = customMarkers.map(m => 
         m.id === editingMarker.id 
           ? {
@@ -1493,18 +1496,18 @@ const MapView = memo(function MapView({
       );
       localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
       
-      console.log('‚úÖ Marcador actualizado exitosamente');
-      toast.success('‚úÖ Punto actualizado correctamente', { id: toastId });
+      console.log('? Marcador actualizado exitosamente');
+      toast.success('? Punto actualizado correctamente', { id: toastId });
       
       setEditingMarker(null);
     } catch (error) {
-      console.error('‚ùå Error al actualizar marcador:', error);
-      toast.error('‚ùå Error al actualizar el punto. Por favor intenta nuevamente.', { id: toastId });
+      console.error('? Error al actualizar marcador:', error);
+      toast.error('? Error al actualizar el punto. Por favor intenta nuevamente.', { id: toastId });
     }
   };
 
   // Extraer pedidos/servicios completados del historial de coordenadas
-  // Ahora los completados est√°n en LOGCOORDMOVIL con ORIGEN='UPDPEDIDOS' o 'DYLPEDIDOS'
+  // Ahora los completados est·n en LOGCOORDMOVIL con ORIGEN='UPDPEDIDOS' o 'DYLPEDIDOS'
   const pedidosCompletados = useMemo(() => {
     const animMovilIds = [selectedMovil, secondaryAnimMovil].filter(Boolean) as number[];
     if (animMovilIds.length === 0) return [];
@@ -1575,7 +1578,7 @@ const MapView = memo(function MapView({
     return deduplicados;
   }, [moviles, selectedMovil, secondaryAnimMovil]);
 
-  // Extraer pedidos completados del m√≥vil enfocado (para mostrar sin animaci√≥n)
+  // Extraer pedidos completados del mÛvil enfocado (para mostrar sin animaciÛn)
   const pedidosCompletadosFocused = useMemo(() => {
     if (!focusedMovil || !showCompletados) {
       return [];
@@ -1643,30 +1646,30 @@ const MapView = memo(function MapView({
     return deduplicados;
   }, [moviles, focusedMovil, showCompletados]);
 
-  // M√≥vil actual del popup (buscar en moviles filtrados primero, luego en allMoviles)
+  // MÛvil actual del popup (buscar en moviles filtrados primero, luego en allMoviles)
   // Usar Number() porque movil.id puede llegar como string desde Supabase
   const movilActual = popupMovil ? (moviles.find(m => Number(m.id) === Number(popupMovil)) || allMoviles?.find(m => Number(m.id) === Number(popupMovil)) || null) : null;
   
-  // M√≥vil seleccionado para mostrar pendientes
+  // MÛvil seleccionado para mostrar pendientes
   const movilConPendientes = (popupMovil || focusedMovil) ? moviles.find(m => Number(m.id) === Number(popupMovil || focusedMovil)) : null;
   
-  // M√≥vil con completados para mostrar (cuando showCompletados est√° activo)
+  // MÛvil con completados para mostrar (cuando showCompletados est· activo)
   const movilConCompletados = focusedMovil ? moviles.find(m => Number(m.id) === Number(focusedMovil)) : null;
   
-  // Los m√≥viles ya vienen filtrados desde page.tsx seg√∫n la selecci√≥n m√∫ltiple
-  // No necesitamos filtrar aqu√≠ nuevamente
+  // Los mÛviles ya vienen filtrados desde page.tsx seg˙n la selecciÛn m˙ltiple
+  // No necesitamos filtrar aquÌ nuevamente
   const movilesToShow = moviles;
 
-  // üé® NUEVO: Calcular color del m√≥vil basado en capacidad del lote
+  // ?? NUEVO: Calcular color del mÛvil basado en capacidad del lote
   const getMovilColor = useCallback((movil: MovilData) => {
-    // üÜï Si el m√≥vil NO est√° activo (estado_nro 3), color gris
+    // ?? Si el mÛvil NO est· activo (estado_nro 3), color gris
     const estadoNro = movil.estadoNro;
     if (estadoNro === 3) {
       return '#9CA3AF'; // Gris (NO ACTIVO)
     }
-    // üÜï Si el m√≥vil est√° en BAJA MOMENT√ÅNEA (estado_nro 4), color naranja
+    // ?? Si el mÛvil est· en BAJA MOMENT¡NEA (estado_nro 4), color naranja
     if (estadoNro === 4) {
-      return '#8B5CF6'; // Violeta (BAJA MOMENT√ÅNEA)
+      return '#8B5CF6'; // Violeta (BAJA MOMENT¡NEA)
     }
 
     // Lote completo o SOBREPASADO (ej. 6/4): negro. Mismo criterio que el
@@ -1679,27 +1682,27 @@ const MapView = memo(function MapView({
       return '#1F2937'; // Negro/Gris oscuro
     }
 
-    // Si no hay lote definido, usar default 6 para el c√°lculo de %.
+    // Si no hay lote definido, usar default 6 para el c·lculo de %.
     const tamanoForPct = tamanoLoteReal || 6;
     const capacidadRestante = tamanoForPct - pedidosAsignados;
     const porcentajeDisponible = (capacidadRestante / tamanoForPct) * 100;
 
     // Amarillo - Capacidad < 50% (poco espacio)
     if (porcentajeDisponible < 50) {
-      return '#F59E0B'; // Amarillo/√Åmbar
+      return '#F59E0B'; // Amarillo/¡mbar
     }
 
     // Verde - Capacidad >= 50% (buen espacio)
     return '#22C55E'; // Verde
   }, []);
 
-  // üöÄ OPTIMIZACI√ìN: Usar useCallback para funciones de creaci√≥n de iconos
+  // ?? OPTIMIZACI”N: Usar useCallback para funciones de creaciÛn de iconos
   const createCustomIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
     const cacheKey = `custom-${color}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilHalo}`;
     const normalHaloStyle = movilHalo ? 'box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45),0 4px 8px rgba(0,0,0,0.3);' : 'box-shadow: 0 4px 8px rgba(0,0,0,0.3);';
     
     return getCachedIcon(cacheKey, () => {
-      // üÜï Si el m√≥vil tiene BAJA MOMENT√ÅNEA (estado_nro 4), √≠cono naranja con pausa
+      // ?? Si el mÛvil tiene BAJA MOMENT¡NEA (estado_nro 4), Ìcono naranja con pausa
       if (isBajaMomentanea) {
         return L.divIcon({
           className: '',
@@ -1715,7 +1718,7 @@ const MapView = memo(function MapView({
               align-items: center;
               justify-content: center;
             ">
-              <!-- C√≠rculo principal naranja con √≠cono de pausa -->
+              <!-- CÌrculo principal naranja con Ìcono de pausa -->
               <div style="
                 width: 40px;
                 height: 40px;
@@ -1732,7 +1735,7 @@ const MapView = memo(function MapView({
                   <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
                 </svg>
               </div>
-              <!-- Badge con n√∫mero del m√≥vil -->
+              <!-- Badge con n˙mero del mÛvil -->
               ${movilId ? `
               <div style="
                 position: absolute;
@@ -1757,7 +1760,7 @@ const MapView = memo(function MapView({
         });
       }
 
-      // üÜï Si el m√≥vil tiene estado NO ACTIVO (estado_nro 3), √≠cono gris con X
+      // ?? Si el mÛvil tiene estado NO ACTIVO (estado_nro 3), Ìcono gris con X
       if (isNoActivo) {
         return L.divIcon({
           className: '',
@@ -1773,7 +1776,7 @@ const MapView = memo(function MapView({
               align-items: center;
               justify-content: center;
             ">
-              <!-- C√≠rculo principal gris con √≠cono de pausa -->
+              <!-- CÌrculo principal gris con Ìcono de pausa -->
               <div style="
                 width: 40px;
                 height: 40px;
@@ -1790,7 +1793,7 @@ const MapView = memo(function MapView({
                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                 </svg>
               </div>
-              <!-- Badge con n√∫mero del m√≥vil -->
+              <!-- Badge con n˙mero del mÛvil -->
               ${movilId ? `
               <div style="
                 position: absolute;
@@ -1815,7 +1818,7 @@ const MapView = memo(function MapView({
         });
       }
 
-      // Si el m√≥vil est√° inactivo, mostramos un √≠cono de alarma parpadeante
+      // Si el mÛvil est· inactivo, mostramos un Ìcono de alarma parpadeante
       if (isInactive) {
         return L.divIcon({
           className: '', // Sin className para evitar conflictos CSS
@@ -1831,7 +1834,7 @@ const MapView = memo(function MapView({
               align-items: center;
               justify-content: center;
             ">
-              <!-- C√≠rculo principal con √≠cono de alarma -->
+              <!-- CÌrculo principal con Ìcono de alarma -->
               <div style="
                 width: 40px;
                 height: 40px;
@@ -1848,7 +1851,7 @@ const MapView = memo(function MapView({
                   <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
                 </svg>
               </div>
-              <!-- Badge con n√∫mero del m√≥vil -->
+              <!-- Badge con n˙mero del mÛvil -->
               ${movilId ? `
               <div style="
                 position: absolute;
@@ -1874,7 +1877,7 @@ const MapView = memo(function MapView({
         });
       }
 
-      // √çcono normal para m√≥viles activos
+      // Õcono normal para mÛviles activos
       return L.divIcon({
         className: '', // Sin className para evitar conflictos CSS
         html: `
@@ -1889,7 +1892,7 @@ const MapView = memo(function MapView({
             align-items: center;
             justify-content: center;
           ">
-            <!-- C√≠rculo principal con √≠cono del auto -->
+            <!-- CÌrculo principal con Ìcono del auto -->
             <div style="
               width: 40px;
               height: 40px;
@@ -1906,7 +1909,7 @@ const MapView = memo(function MapView({
                 <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
               </svg>
             </div>
-            <!-- Badge con n√∫mero del m√≥vil -->
+            <!-- Badge con n˙mero del mÛvil -->
             ${movilId ? `
             <div style="
               position: absolute;
@@ -1932,14 +1935,14 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // ÔøΩ COMPACTO: Punto peque√±o (24px) con n√∫mero
+  // ? COMPACTO: Punto pequeÒo (24px) con n˙mero
   const createCompactIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
     const borderStyle = isInactive ? '2px dashed rgba(255,255,255,0.8)' : '2px solid white';
     const opacity = isNoActivo ? '0.7' : '1';
     const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}-${movilHalo}`;
     // Halo siguiendo la silueta del shape:
-    // - rectangulares (circle/square): box-shadow con spread (geometr√≠a compatible).
+    // - rectangulares (circle/square): box-shadow con spread (geometrÌa compatible).
     // - no rectangulares (triangle/diamond/hexagon/star): filter:drop-shadow apilado en 4 direcciones cardinales (respeta clip-path, border-trick y transforms).
     const haloBoxShadow = movilHalo ? '0 0 0 2px white,0 0 0 3.5px rgba(0,0,0,0.5),' : '';
     const haloFilter = movilHalo
@@ -2006,7 +2009,7 @@ const MapView = memo(function MapView({
     }));
   }, [movilShape, movilHalo]);
 
-  // üîπ MINI: Solo punto diminuto (14px), sin n√∫mero
+  // ?? MINI: Solo punto diminuto (14px), sin n˙mero
   const createMiniIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
     const opacity = isNoActivo ? '0.6' : '1';
@@ -2020,7 +2023,7 @@ const MapView = memo(function MapView({
     }));
   }, [movilShape, movilHalo, getShapeHtml]);
 
-  // ÔøΩüöÄ OPTIMIZACI√ìN: Iconos con cache
+  // ??? OPTIMIZACI”N: Iconos con cache
   const createPedidoIcon = useCallback(() => {
     return getCachedIcon('pedido-legacy', () => L.divIcon({
       className: '',
@@ -2043,14 +2046,14 @@ const MapView = memo(function MapView({
           transition: transform 0.2s;
         " 
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">üì¶</div>
+        onmouseout="this.style.transform='scale(1)'">??</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // üöÄ OPTIMIZACI√ìN: Iconos para pedidos desde tabla - por atraso/demora
+  // ?? OPTIMIZACI”N: Iconos para pedidos desde tabla - por atraso/demora
   const createPedidoIconByDelay = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
@@ -2079,7 +2082,7 @@ const MapView = memo(function MapView({
             transition: transform 0.2s;
           " 
           onmouseover="this.style.transform='scale(1.15)'"
-          onmouseout="this.style.transform='scale(1)'">üì¶</div>
+          onmouseout="this.style.transform='scale(1)'">??</div>
         `,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
@@ -2087,7 +2090,7 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // üöÄ OPTIMIZACI√ìN: Iconos para servicios con cache
+  // ?? OPTIMIZACI”N: Iconos para servicios con cache
   const createServicioIcon = useCallback(() => {
     return getCachedIcon('servicio-legacy', () => L.divIcon({
       className: '',
@@ -2110,14 +2113,14 @@ const MapView = memo(function MapView({
           transition: transform 0.2s;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">üîß</div>
+        onmouseout="this.style.transform='scale(1)'">??</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // ÔøΩ Iconos para services desde tabla - por atraso/demora (llavecita)
+  // ? Iconos para services desde tabla - por atraso/demora (llavecita)
   const createServiceIconByDelay = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
@@ -2145,7 +2148,7 @@ const MapView = memo(function MapView({
             transition: transform 0.2s;
           " 
           onmouseover="this.style.transform='scale(1.15)'"
-          onmouseout="this.style.transform='scale(1)'">üîß</div>
+          onmouseout="this.style.transform='scale(1)'">??</div>
         `,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
@@ -2153,7 +2156,7 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // üì¶ Iconos COMPACTOS para pedidos (forma configurable con color de demora)
+  // ?? Iconos COMPACTOS para pedidos (forma configurable con color de demora)
   const createPedidoIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
@@ -2166,7 +2169,7 @@ const MapView = memo(function MapView({
     }));
   }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
-  // üì¶ Iconos MINI para pedidos (forma configurable m√≠nima)
+  // ?? Iconos MINI para pedidos (forma configurable mÌnima)
   const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
@@ -2179,7 +2182,7 @@ const MapView = memo(function MapView({
     }));
   }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
-  // üîß Iconos COMPACTOS para services (forma configurable)
+  // ?? Iconos COMPACTOS para services (forma configurable)
   const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
@@ -2192,7 +2195,7 @@ const MapView = memo(function MapView({
     }));
   }, [serviceShape, serviceHalo, getShapeHtml]);
 
-  // üîß Iconos MINI para services (forma configurable m√≠nima)
+  // ?? Iconos MINI para services (forma configurable mÌnima)
   const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
     const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
     const info = getDelayInfo(delayMinutes);
@@ -2205,7 +2208,7 @@ const MapView = memo(function MapView({
     }));
   }, [serviceShape, serviceHalo, getShapeHtml]);
 
-  // üöÄ Funciones selectoras de icono por estilo de pedido
+  // ?? Funciones selectoras de icono por estilo de pedido
   const getPedidoIcon = useCallback((fchHoraMaxEntComp: string | null) => {
     if (pedidoMarkerStyle === 'mini') return createPedidoIconByDelayMini(fchHoraMaxEntComp);
     if (pedidoMarkerStyle === 'compact') return createPedidoIconByDelayCompact(fchHoraMaxEntComp);
@@ -2218,12 +2221,12 @@ const MapView = memo(function MapView({
     return createServiceIconByDelay(fchHoraMaxEntComp);
   }, [serviceMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
 
-  // ‚úÖ Iconos para PEDIDOS FINALIZADOS - verde (entregado) o rojo (no entregado)
+  // ? Iconos para PEDIDOS FINALIZADOS - verde (entregado) o rojo (no entregado)
   const createFinalizadoPedidoIcon = useCallback((entregado: boolean) => {
     const cacheKey = entregado ? 'pedido-finalizado-ok' : 'pedido-finalizado-no';
     const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
     const shadow = entregado ? 'rgba(22, 163, 74, 0.3)' : 'rgba(220, 38, 38, 0.3)';
-    const symbol = entregado ? '‚úì' : '‚úó';
+    const symbol = entregado ? '?' : '?';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `
@@ -2254,11 +2257,11 @@ const MapView = memo(function MapView({
     }));
   }, []);
 
-  // ‚úÖ Iconos COMPACTOS para pedidos finalizados
+  // ? Iconos COMPACTOS para pedidos finalizados
   const createFinalizadoPedidoIconCompact = useCallback((entregado: boolean) => {
     const cacheKey = `pedido-finalizado-compact-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
     const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
-    const symbol = entregado ? '‚úì' : '‚úó';
+    const symbol = entregado ? '?' : '?';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `<div style="
@@ -2274,7 +2277,7 @@ const MapView = memo(function MapView({
     }));
   }, [pedidoShape]);
 
-  // ‚úÖ Iconos MINI para pedidos finalizados
+  // ? Iconos MINI para pedidos finalizados
   const createFinalizadoPedidoIconMini = useCallback((entregado: boolean) => {
     const cacheKey = `pedido-finalizado-mini-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
     const color = entregado ? '#16a34a' : '#dc2626';
@@ -2290,7 +2293,7 @@ const MapView = memo(function MapView({
     }));
   }, [pedidoShape]);
 
-  // üîµ Iconos para SERVICES FINALIZADOS - azul con tick
+  // ?? Iconos para SERVICES FINALIZADOS - azul con tick
   const createFinalizadoServiceIcon = useCallback(() => {
     return getCachedIcon('service-finalizado', () => L.divIcon({
       className: '',
@@ -2315,14 +2318,14 @@ const MapView = memo(function MapView({
           font-weight: bold;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">‚úì</div>
+        onmouseout="this.style.transform='scale(1)'">?</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // üîµ Iconos COMPACTOS para services finalizados (azul con tick)
+  // ?? Iconos COMPACTOS para services finalizados (azul con tick)
   const createFinalizadoServiceIconCompact = useCallback(() => {
     const cacheKey = `service-finalizado-compact-${serviceShape}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
@@ -2334,13 +2337,13 @@ const MapView = memo(function MapView({
         box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         display: flex; align-items: center; justify-content: center;
         font-size: 9px; color: white; font-weight: bold; cursor: pointer;
-      ">‚úì</div>`,
+      ">?</div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
   }, [serviceShape]);
 
-  // üîµ Iconos MINI para services finalizados (azul)
+  // ?? Iconos MINI para services finalizados (azul)
   const createFinalizadoServiceIconMini = useCallback(() => {
     const cacheKey = `service-finalizado-mini-${serviceShape}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
@@ -2355,7 +2358,7 @@ const MapView = memo(function MapView({
     }));
   }, [serviceShape]);
 
-  // üöÄ Funciones selectoras de icono finalizado por estilo
+  // ?? Funciones selectoras de icono finalizado por estilo
   const getFinalizadoPedidoIcon = useCallback((entregado: boolean) => {
     if (pedidoMarkerStyle === 'mini') return createFinalizadoPedidoIconMini(entregado);
     if (pedidoMarkerStyle === 'compact') return createFinalizadoPedidoIconCompact(entregado);
@@ -2368,12 +2371,12 @@ const MapView = memo(function MapView({
     return createFinalizadoServiceIcon();
   }, [serviceMarkerStyle, createFinalizadoServiceIcon, createFinalizadoServiceIconCompact, createFinalizadoServiceIconMini]);
 
-  // üöÄ OPTIMIZACI√ìN: Iconos para pedidos/servicios COMPLETADOS con cache
+  // ?? OPTIMIZACI”N: Iconos para pedidos/servicios COMPLETADOS con cache
   const createCompletadoIcon = useCallback((tipo: 'PEDIDO' | 'SERVICIO') => {
     const cacheKey = `completado-${tipo}`;
     
     return getCachedIcon(cacheKey, () => {
-      const emoji = tipo === 'PEDIDO' ? '‚úÖ' : '‚úîÔ∏è';
+      const emoji = tipo === 'PEDIDO' ? '?' : '??';
       return L.divIcon({
         className: '',
         html: `
@@ -2405,7 +2408,7 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // Funciones de control de animaci√≥n
+  // Funciones de control de animaciÛn
   const handlePlayPause = () => {
     setIsAnimating(!isAnimating);
   };
@@ -2424,14 +2427,14 @@ const MapView = memo(function MapView({
   const handleTimeRangeChange = (newStartTime: string, newEndTime: string) => {
     setStartTime(newStartTime);
     setEndTime(newEndTime);
-    // Resetear animaci√≥n cuando cambia el rango
+    // Resetear animaciÛn cuando cambia el rango
     setIsAnimating(false);
     setAnimationProgress(0);
     lastProgressUpdate.current = 0;
     animationStartTime.current = 0;
   };
 
-  // Funci√≥n para filtrar historial por rango de tiempo
+  // FunciÛn para filtrar historial por rango de tiempo
   const filterHistoryByTime = (history: any[]) => {
     if (!history || history.length === 0) return history;
     
@@ -2451,11 +2454,11 @@ const MapView = memo(function MapView({
     });
   };
 
-  // üïê Rango de tiempo unificado para animaci√≥n sincronizada de 2 m√≥viles
-  // Recorre los historiales de ambos m√≥viles y calcula el minTime/maxTime global
+  // ?? Rango de tiempo unificado para animaciÛn sincronizada de 2 mÛviles
+  // Recorre los historiales de ambos mÛviles y calcula el minTime/maxTime global
   const unifiedTimeRange = useMemo(() => {
     const animMovilIds = [selectedMovil, secondaryAnimMovil].filter(Boolean) as number[];
-    if (animMovilIds.length < 2) return null; // Solo necesario para 2 m√≥viles
+    if (animMovilIds.length < 2) return null; // Solo necesario para 2 mÛviles
 
     let minTime = Infinity;
     let maxTime = -Infinity;
@@ -2478,13 +2481,13 @@ const MapView = memo(function MapView({
     return { minTime, maxTime };
   }, [moviles, selectedMovil, secondaryAnimMovil, startTime, endTime]);
 
-  // Tiempo actual de la animaci√≥n (derivado del progreso y rango unificado)
+  // Tiempo actual de la animaciÛn (derivado del progreso y rango unificado)
   const currentAnimTime = useMemo(() => {
     if (!unifiedTimeRange) return null;
     return unifiedTimeRange.minTime + (animationProgress / 100) * (unifiedTimeRange.maxTime - unifiedTimeRange.minTime);
   }, [unifiedTimeRange, animationProgress]);
 
-  // String formateado para mostrar en el control de animaci√≥n
+  // String formateado para mostrar en el control de animaciÛn
   const currentAnimTimeStr = useMemo(() => {
     if (currentAnimTime === null) return '';
     try {
@@ -2493,7 +2496,7 @@ const MapView = memo(function MapView({
     } catch { return ''; }
   }, [currentAnimTime]);
 
-  // Efecto de animaci√≥n
+  // Efecto de animaciÛn
   useEffect(() => {
     if (!isAnimating) {
       if (animationRef.current) {
@@ -2518,13 +2521,13 @@ const MapView = memo(function MapView({
     const baseDuration = 10000; // 10 segundos en velocidad 1x
     const duration = baseDuration / animationSpeed;
 
-    // Si ya hay una animaci√≥n en curso, continuar desde donde estaba
+    // Si ya hay una animaciÛn en curso, continuar desde donde estaba
     if (animationRef.current) {
-      // Ya est√° animando, no reiniciar
+      // Ya est· animando, no reiniciar
       return;
     }
 
-    // Iniciar nueva animaci√≥n o reanudar
+    // Iniciar nueva animaciÛn o reanudar
     const currentProgress = lastProgressUpdate.current;
     animationStartTime.current = Date.now() - (currentProgress / 100 * duration);
 
@@ -2554,8 +2557,8 @@ const MapView = memo(function MapView({
     };
   }, [isAnimating, animationSpeed, moviles, selectedMovil, startTime, endTime]);
 
-  // Resetear animaci√≥n cuando cambia el m√≥vil PRIMARIO seleccionado
-  // NO incluir secondaryAnimMovil ‚Äî agregar un 2do no debe resetear la animaci√≥n
+  // Resetear animaciÛn cuando cambia el mÛvil PRIMARIO seleccionado
+  // NO incluir secondaryAnimMovil ó agregar un 2do no debe resetear la animaciÛn
   useEffect(() => {
     setIsAnimating(false);
     setAnimationProgress(0);
@@ -2563,7 +2566,7 @@ const MapView = memo(function MapView({
     animationStartTime.current = 0;
   }, [selectedMovil]);
 
-  // üöÄ OPTIMIZACI√ìN: Calcular densidad total de marcadores para adaptar rendimiento
+  // ?? OPTIMIZACI”N: Calcular densidad total de marcadores para adaptar rendimiento
   const totalMarkerCount = useMemo(() => {
     const movilesCount = moviles.filter(m => m.currentPosition).length;
     const pedidosCount = pedidos?.filter(p => p.latitud && p.longitud).length ?? 0;
@@ -2574,7 +2577,7 @@ const MapView = memo(function MapView({
   const isHighDensity = totalMarkerCount > HIGH_DENSITY_THRESHOLD;
   const shouldDisableAnimations = totalMarkerCount > DISABLE_ANIMATIONS_THRESHOLD;
 
-  // üéØ getBounds para el bot√≥n de centrado ‚Äî todos los puntos visibles (m√≥viles + pedidos + zonas)
+  // ?? getBounds para el botÛn de centrado ó todos los puntos visibles (mÛviles + pedidos + zonas)
   const getMapBounds = useCallback((): [number, number][] | null => {
     const pts: [number, number][] = [];
     moviles.filter(m => m.currentPosition).forEach(m => {
@@ -2600,68 +2603,68 @@ const MapView = memo(function MapView({
         maxZoom={19}
         className={`h-full w-full ${isPlacingMarker ? 'cursor-crosshair' : ''} ${isHighDensity ? 'high-density' : ''}`}
         zoomControl={true}
-        // üöÄ OPTIMIZACIONES DE PERFORMANCE
-        preferCanvas={true}        // Usar Canvas en lugar de SVG (2-3x m√°s r√°pido con muchos marcadores)
-        zoomAnimation={!shouldDisableAnimations} // Deshabilitar animaci√≥n de zoom en alta densidad
+        // ?? OPTIMIZACIONES DE PERFORMANCE
+        preferCanvas={true}        // Usar Canvas en lugar de SVG (2-3x m·s r·pido con muchos marcadores)
+        zoomAnimation={!shouldDisableAnimations} // Deshabilitar animaciÛn de zoom en alta densidad
         fadeAnimation={false}      // Deshabilitar fade (ahorra GPU)
-        markerZoomAnimation={false} // Deshabilitar animaci√≥n de marcadores (ahorra CPU)
+        markerZoomAnimation={false} // Deshabilitar animaciÛn de marcadores (ahorra CPU)
         zoomSnap={0.5}            // Granularidad de zoom
         zoomDelta={0.5}           // Delta de zoom con botones
         wheelPxPerZoomLevel={120} // Sensibilidad de scroll
       >
-        {/* Control de capas base (calles, sat√©lite, terreno, etc.) */}
+        {/* Control de capas base (calles, satÈlite, terreno, etc.) */}
         <LayersControl defaultLayer={defaultMapLayer} />
 
-        {/* üîÑ Recalcular tama√±o del mapa cuando el contenedor cambia (sidebar collapse) */}
+        {/* ?? Recalcular tamaÒo del mapa cuando el contenedor cambia (sidebar collapse) */}
         <MapResizer />
 
-        {/* üéØ Bot√≥n de centrado ‚Äî fitBounds sobre todo el contenido visible */}
+        {/* ?? BotÛn de centrado ó fitBounds sobre todo el contenido visible */}
         <CenterMapControl getBounds={getMapBounds} />
 
-        {/* ‚õ∂ Bot√≥n de pantalla completa */}
+        {/* ? BotÛn de pantalla completa */}
         <FullscreenControl />
 
-        {/* üìä Control de Capas de Informaci√≥n (Normal / Demoras / M√≥viles en Zonas) */}
+        {/* ?? Control de Capas de InformaciÛn (Normal / Demoras / MÛviles en Zonas) */}
         {onDataViewChange && (
           <DataViewControl value={dataViewMode} onChange={onDataViewChange} isToday={isToday} hideCapEntrega={hideCapEntrega} />
         )}
 
-        {/* üó∫Ô∏è Capa de zonas (pol√≠gonos con tooltip hover) ‚Äî solo en modo Normal */}
-        {/* SVG <defs> para patrones de zonas ‚Äî solo cuando hay patron activo */}
+        {/* ??? Capa de zonas (polÌgonos con tooltip hover) ó solo en modo Normal */}
+        {/* SVG <defs> para patrones de zonas ó solo cuando hay patron activo */}
         {zonaPattern !== 'liso' && <ZonaPatternDefs />}
 
         {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} zonaOpacity={zonaOpacity} demoras={demorasData} />}
 
-        {/* üèòÔ∏è Capa de Distribuci√≥n (pol√≠gonos con color de tabla + identificador de zona) */}
+        {/* ??? Capa de DistribuciÛn (polÌgonos con color de tabla + identificador de zona) */}
         {dataViewMode === 'distribucion' && (allZonas.length > 0 || zonas.length > 0) && (
           <DistribucionZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} />
         )}
 
-        {/* ‚è±Ô∏è Capa de Demoras (pol√≠gonos + etiquetas fijas con nro zona y minutos) */}
+        {/* ?? Capa de Demoras (polÌgonos + etiquetas fijas con nro zona y minutos) */}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} />
+          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} zonaPattern={zonaPattern} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
-        {/* üöõ Capa de Cantidad de M√≥viles en Zonas (pol√≠gonos + etiquetas fijas con conteo) */}
+        {/* ?? Capa de Cantidad de MÛviles en Zonas (polÌgonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} zonaPattern={zonaPattern} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
-        {/* ‚úÖ Capa de Zonas Activas (verde/rojo seg√∫n campo activa de demoras) */}
+        {/* ? Capa de Zonas Activas (verde/rojo seg˙n campo activa de demoras) */}
         {dataViewMode === 'zonas-activas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <ZonasActivasLayer zonas={allZonas.length > 0 ? allZonas : zonas} demoras={demorasData} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} />
+          <ZonasActivasLayer zonas={allZonas.length > 0 ? allZonas : zonas} demoras={demorasData} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
-        {/* üü• Capa de Saturaci√≥n (pedidos sin asignar vs capacidad prorat.) */}
+        {/* ?? Capa de SaturaciÛn (pedidos sin asignar vs capacidad prorat.) */}
         {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} zonaPattern={zonaPattern} />
+          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
-          // Mostrar los m√≥viles seleccionados con su recorrido
+          // Mostrar los mÛviles seleccionados con su recorrido
           <>
             {moviles
               .filter(m => m.id === selectedMovil || m.id === secondaryAnimMovil)
@@ -2669,7 +2672,7 @@ const MapView = memo(function MapView({
                 // Determinar si es el primario o secundario
                 const isPrimary = movil.id === selectedMovil;
                 const hasTwoMoviles = !!(selectedMovil && secondaryAnimMovil);
-                // Colores diferenciados para cada ruta cuando hay 2 m√≥viles
+                // Colores diferenciados para cada ruta cuando hay 2 mÛviles
                 const routeColor = hasTwoMoviles
                   ? (isPrimary ? '#3b82f6' : '#f97316') // Azul vs Naranja
                   : movil.color;
@@ -2677,7 +2680,7 @@ const MapView = memo(function MapView({
                   ? (isPrimary ? '#2563eb' : '#ea580c')
                   : movil.color;
 
-                // Si no tiene posici√≥n actual, no renderizar nada
+                // Si no tiene posiciÛn actual, no renderizar nada
                 if (!movil.currentPosition) return null;
                 
                 // Filtrar historial por rango de tiempo
@@ -2700,7 +2703,7 @@ const MapView = memo(function MapView({
                             <strong>Estado:</strong> {movil.currentPosition.auxIn2}
                           </p>
                           <p className="text-sm text-yellow-600 font-semibold mt-2">
-                            ‚ö†Ô∏è Sin historial para esta fecha
+                            ?? Sin historial para esta fecha
                           </p>
                         </div>
                       </Popup>
@@ -2708,10 +2711,10 @@ const MapView = memo(function MapView({
                   );
                 }
                 
-                // Dibujar la l√≠nea del recorrido si tiene historial
+                // Dibujar la lÌnea del recorrido si tiene historial
                 const fullPathCoordinates = filteredHistory.map(coord => [coord.coordX, coord.coordY] as [number, number]);
 
-                // üöÄ OPTIMIZACI√ìN: Simplificar el path completo para mejorar rendimiento
+                // ?? OPTIMIZACI”N: Simplificar el path completo para mejorar rendimiento
                 const optimizedFullPath = fullPathCoordinates.length > 300
                   ? optimizePath(fullPathCoordinates, 200)
                   : fullPathCoordinates;
@@ -2719,19 +2722,19 @@ const MapView = memo(function MapView({
                 const totalPoints = optimizedFullPath.length;
                 const duringAnimation = isAnimating || animationProgress > 0;
 
-                // ========== C√ÅLCULO DE VISIBILIDAD ==========
-                // Si hay rango unificado (2 m√≥viles), usar tiempo real; sino, porcentaje
+                // ========== C¡LCULO DE VISIBILIDAD ==========
+                // Si hay rango unificado (2 mÛviles), usar tiempo real; sino, porcentaje
                 let visiblePointsCount: number;
                 let pathCoordinates: [number, number][];
                 let animatedCurrentCoord: [number, number] | null = null;
                 let filteredHistoryAnimatedIndex: number = 0;
-                let movilVisible = true; // ¬øEl m√≥vil ya apareci√≥ en la l√≠nea de tiempo?
+                let movilVisible = true; // øEl mÛvil ya apareciÛ en la lÌnea de tiempo?
 
                 if (duringAnimation && currentAnimTime !== null) {
-                  // === MODO TIEMPO REAL (2 m√≥viles) ===
-                  // filteredHistory est√° ordenado: index 0 = m√°s reciente, last = m√°s antiguo
-                  // Contar cu√°ntas coordenadas tienen timestamp <= currentAnimTime
-                  // (o sea, ya "sucedieron" en la l√≠nea de tiempo)
+                  // === MODO TIEMPO REAL (2 mÛviles) ===
+                  // filteredHistory est· ordenado: index 0 = m·s reciente, last = m·s antiguo
+                  // Contar cu·ntas coordenadas tienen timestamp <= currentAnimTime
+                  // (o sea, ya "sucedieron" en la lÌnea de tiempo)
                   const filteredHistoryTotal = filteredHistory.length;
                   let visibleHistoryCount = 0;
                   for (let i = filteredHistoryTotal - 1; i >= 0; i--) {
@@ -2744,13 +2747,13 @@ const MapView = memo(function MapView({
                   }
 
                   if (visibleHistoryCount === 0) {
-                    // Este m√≥vil a√∫n no tiene coordenadas en el tiempo actual
+                    // Este mÛvil a˙n no tiene coordenadas en el tiempo actual
                     movilVisible = false;
                     visiblePointsCount = 0;
                     pathCoordinates = [];
                     filteredHistoryAnimatedIndex = filteredHistoryTotal;
                   } else {
-                    // Mapear la proporci√≥n de historial visible a optimizedFullPath
+                    // Mapear la proporciÛn de historial visible a optimizedFullPath
                     const ratio = visibleHistoryCount / filteredHistoryTotal;
                     visiblePointsCount = Math.max(1, Math.ceil(ratio * totalPoints));
                     pathCoordinates = optimizedFullPath.slice(Math.max(0, totalPoints - visiblePointsCount));
@@ -2763,7 +2766,7 @@ const MapView = memo(function MapView({
                     filteredHistoryAnimatedIndex = Math.max(0, filteredHistoryTotal - visibleHistoryCount);
                   }
                 } else if (duringAnimation) {
-                  // === MODO PORCENTAJE (1 m√≥vil) ===
+                  // === MODO PORCENTAJE (1 mÛvil) ===
                   visiblePointsCount = Math.max(1, Math.ceil((animationProgress / 100) * totalPoints));
                   pathCoordinates = optimizedFullPath.slice(Math.max(0, totalPoints - visiblePointsCount));
                   const animatedPointIndex = totalPoints - visiblePointsCount;
@@ -2773,7 +2776,7 @@ const MapView = memo(function MapView({
                   const filteredHistoryTotal = filteredHistory.length;
                   filteredHistoryAnimatedIndex = Math.max(0, filteredHistoryTotal - Math.ceil((animationProgress / 100) * filteredHistoryTotal));
                 } else {
-                  // === SIN ANIMACI√ìN ===
+                  // === SIN ANIMACI”N ===
                   visiblePointsCount = totalPoints;
                   pathCoordinates = optimizedFullPath;
                 }
@@ -2790,16 +2793,16 @@ const MapView = memo(function MapView({
                   }
                 }
 
-                // Si el m√≥vil a√∫n no apareci√≥ en la l√≠nea de tiempo, no renderizar nada
+                // Si el mÛvil a˙n no apareciÛ en la lÌnea de tiempo, no renderizar nada
                 if (!movilVisible) return null;
 
                 return (
                   <div key={movil.id}>
-                    {/* L√≠nea del recorrido - SIMPLIFICADA O COMPLETA seg√∫n switch */}
+                    {/* LÌnea del recorrido - SIMPLIFICADA O COMPLETA seg˙n switch */}
                     {pathCoordinates.length > 1 && (
                       <>
                         {simplifiedPath ? (
-                          /* MODO SIMPLIFICADO: Solo √∫ltimas 3 l√≠neas desde el punto actual hacia atr√°s */
+                          /* MODO SIMPLIFICADO: Solo ˙ltimas 3 lÌneas desde el punto actual hacia atr·s */
                           <>
                             {pathCoordinates.map((coord, index) => {
                               if (index === pathCoordinates.length - 1) return null;
@@ -2807,8 +2810,8 @@ const MapView = memo(function MapView({
                               const nextCoord = pathCoordinates[index + 1];
                               const totalLines = pathCoordinates.length - 1;
                               
-                              // Mostrar solo las √∫ltimas 3 l√≠neas (desde el punto actual hacia atr√°s)
-                              // index >= totalLines - 3 significa las √∫ltimas 3 l√≠neas
+                              // Mostrar solo las ˙ltimas 3 lÌneas (desde el punto actual hacia atr·s)
+                              // index >= totalLines - 3 significa las ˙ltimas 3 lÌneas
                               if (index < totalLines - 3) return null;
                               
                               return (
@@ -2824,7 +2827,7 @@ const MapView = memo(function MapView({
                                       lineJoin: 'round',
                                     }}
                                   />
-                                  {/* L√≠nea principal */}
+                                  {/* LÌnea principal */}
                                   <OptimizedPolyline
                                     positions={[coord, nextCoord]}
                                     pathOptions={{
@@ -2841,9 +2844,9 @@ const MapView = memo(function MapView({
                             })}
                           </>
                         ) : (
-                          /* MODO COMPLETO: Todas las l√≠neas con difuminado progresivo */
+                          /* MODO COMPLETO: Todas las lÌneas con difuminado progresivo */
                           <>
-                            {/* L√≠nea base (sombra) muy sutil */}
+                            {/* LÌnea base (sombra) muy sutil */}
                             <OptimizedPolyline
                               positions={pathCoordinates}
                               pathOptions={{
@@ -2861,11 +2864,11 @@ const MapView = memo(function MapView({
                               const nextCoord = pathCoordinates[index + 1];
                               const totalLines = pathCoordinates.length - 1;
                               
-                              // Las √∫ltimas 3 l√≠neas (desde el punto actual hacia atr√°s) son n√≠tidas
+                              // Las ˙ltimas 3 lÌneas (desde el punto actual hacia atr·s) son nÌtidas
                               const distanceFromEnd = totalLines - index;
                               const isRecent = distanceFromEnd <= 3;
                               
-                              // Opacidad: √∫ltimas 3 = 0.9, anteriores con gradiente suave
+                              // Opacidad: ˙ltimas 3 = 0.9, anteriores con gradiente suave
                               const opacity = isRecent 
                                 ? 0.9 
                                 : Math.max(0.08, 0.25 * (index / (totalLines - 3)));
@@ -2893,7 +2896,7 @@ const MapView = memo(function MapView({
                       </>
                     )}
                     
-                    {/* Marcador animado EN RUTA ‚Äî renderizado desde optimizedFullPath para sync con mapa */}
+                    {/* Marcador animado EN RUTA ó renderizado desde optimizedFullPath para sync con mapa */}
                     {animatedCurrentCoord && (
                       <OptimizedMarker
                         key={`${movil.id}-animated-current`}
@@ -2940,7 +2943,7 @@ const MapView = memo(function MapView({
                                 box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                                 pointer-events: none;
                                 font-family: system-ui, -apple-system, sans-serif;
-                              ">üöó #${movil.id}${animatedCurrentTimeStr ? ' - ' + animatedCurrentTimeStr : ''}</div>
+                              ">?? #${movil.id}${animatedCurrentTimeStr ? ' - ' + animatedCurrentTimeStr : ''}</div>
                             </div>
                           `,
                           iconSize: [18, 18],
@@ -2951,29 +2954,29 @@ const MapView = memo(function MapView({
 
                     {/* Marcadores del historial (puntos recorridos) */}
                     {filteredHistory.map((coord, index) => {
-                      // Durante la animaci√≥n, solo mostrar puntos ya "recorridos"
+                      // Durante la animaciÛn, solo mostrar puntos ya "recorridos"
                       const duringAnimation = isAnimating || animationProgress > 0;
                       if (duringAnimation && index < filteredHistoryAnimatedIndex) {
-                        return null; // No mostrar este punto a√∫n
+                        return null; // No mostrar este punto a˙n
                       }
 
-                      const isFirst = index === 0; // M√°s reciente
-                      const isLast = index === filteredHistory.length - 1; // Inicio del d√≠a
+                      const isFirst = index === 0; // M·s reciente
+                      const isLast = index === filteredHistory.length - 1; // Inicio del dÌa
                       const totalPoints = filteredHistory.length;
                       
-                      // üöÄ OPTIMIZACI√ìN: Mostrar solo puntos importantes o cada N puntos
+                      // ?? OPTIMIZACI”N: Mostrar solo puntos importantes o cada N puntos
                       const skipInterval = totalPoints > 100 ? 15 : 10;
                       const shouldShow = isFirst || isLast || index % skipInterval === 0;
                       
                       if (!shouldShow) return null;
                       
-                      // Tama√±o progresivo
+                      // TamaÒo progresivo
                       const size = isFirst ? 16 : isLast ? 14 : 8;
                       
-                      // Opacidad que decrece con antig√ºedad
+                      // Opacidad que decrece con antig¸edad
                       const opacity = 0.5 + (0.5 * (totalPoints - index) / totalPoints);
                       
-                      // Mostrar etiqueta: siempre en primero/√∫ltimo
+                      // Mostrar etiqueta: siempre en primero/˙ltimo
                       const showLabel = isFirst || isLast;
                       const pointNumber = totalPoints - index;
                       
@@ -2985,7 +2988,7 @@ const MapView = memo(function MapView({
                             className: '',
                             html: `
                               <div style="position: relative;">
-                                <!-- C√≠rculo principal -->
+                                <!-- CÌrculo principal -->
                                 <div style="
                                   width: ${size}px;
                                   height: ${size}px;
@@ -3020,7 +3023,7 @@ const MapView = memo(function MapView({
                                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                                     pointer-events: none;
                                     font-family: system-ui, -apple-system, sans-serif;
-                                  ">${isFirst ? `üéØ #${movil.id} ACTUAL` : isLast ? `üèÅ #${movil.id} INICIO` : `#${pointNumber}`}</div>
+                                  ">${isFirst ? `?? #${movil.id} ACTUAL` : isLast ? `?? #${movil.id} INICIO` : `#${pointNumber}`}</div>
                                 ` : ''}
                               </div>
                             `,
@@ -3037,21 +3040,21 @@ const MapView = memo(function MapView({
                                   isLast ? 'bg-yellow-500 text-white' : 
                                   'bg-gray-200 text-gray-700'
                                 }`}>
-                                  {isFirst ? 'üéØ Posici√≥n Actual' : isLast ? 'üèÅ Inicio del D√≠a' : `Punto #${pointNumber}`}
+                                  {isFirst ? '?? PosiciÛn Actual' : isLast ? '?? Inicio del DÌa' : `Punto #${pointNumber}`}
                                 </span>
                               </h3>
                               <div className="text-xs space-y-1 text-gray-700">
                                 <p>
-                                  <strong>ÔøΩ Hora:</strong> {new Date(coord.fechaInsLog).toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' })}
+                                  <strong>? Hora:</strong> {new Date(coord.fechaInsLog).toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' })}
                                 </p>
                                 <p>
-                                  <strong>üìÖ Fecha:</strong> {new Date(coord.fechaInsLog).toLocaleDateString('es-UY')}
+                                  <strong>?? Fecha:</strong> {new Date(coord.fechaInsLog).toLocaleDateString('es-UY')}
                                 </p>
                                 <p>
-                                  <strong>üîÑ Estado:</strong> {coord.auxIn2}
+                                  <strong>?? Estado:</strong> {coord.auxIn2}
                                 </p>
                                 <p>
-                                  <strong>üìç Distancia:</strong> {coord.distRecorrida.toFixed(2)} km
+                                  <strong>?? Distancia:</strong> {coord.distRecorrida.toFixed(2)} km
                                 </p>
                                 <p className="text-xs text-gray-500 mt-2 pt-1 border-t border-gray-200">
                                   Punto {pointNumber} de {totalPoints} registros (cada ~3 min)
@@ -3063,7 +3066,7 @@ const MapView = memo(function MapView({
                       );
                     })}
                     
-                    {/* Marcador principal (posici√≥n actual) */}
+                    {/* Marcador principal (posiciÛn actual) */}
                     <OptimizedMarker
                       position={[movil.currentPosition!.coordX, movil.currentPosition!.coordY]}
                       icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)}
@@ -3087,7 +3090,7 @@ const MapView = memo(function MapView({
                           </p>
                           {movil.history && (
                             <p className="text-xs text-blue-600 mt-2 font-semibold">
-                              üìç {movil.history.length} coordenadas en el recorrido
+                              ?? {movil.history.length} coordenadas en el recorrido
                             </p>
                           )}
                         </div>
@@ -3097,12 +3100,12 @@ const MapView = memo(function MapView({
                 );
               })}
 
-            {/* Marcadores de Pedidos y Servicios Pendientes para m√≥vil seleccionado */}
+            {/* Marcadores de Pedidos y Servicios Pendientes para mÛvil seleccionado */}
             {moviles
               .filter(m => (m.id === selectedMovil || m.id === secondaryAnimMovil) && m.pendientes && m.pendientes.length > 0)
               .map((movil) => (
                 movil.pendientes!.map((item) => {
-                  // Validar que tenga coordenadas v√°lidas
+                  // Validar que tenga coordenadas v·lidas
                   if (!item.x || !item.y) return null;
 
                   return (
@@ -3112,7 +3115,7 @@ const MapView = memo(function MapView({
                       icon={item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon()}
                       eventHandlers={{
                         click: () => {
-                          // Cerrar popup del m√≥vil si est√° abierto
+                          // Cerrar popup del mÛvil si est· abierto
                           if (onMovilClick) {
                             onMovilClick(undefined);
                           }
@@ -3125,15 +3128,15 @@ const MapView = memo(function MapView({
                 })
               ))}
 
-            {/* Marcadores de Pedidos/Servicios durante animaci√≥n */}
-            {/* Mostrar pedidos que ya han sido "visitados" en la animaci√≥n */}
+            {/* Marcadores de Pedidos/Servicios durante animaciÛn */}
+            {/* Mostrar pedidos que ya han sido "visitados" en la animaciÛn */}
             {/* DYLPEDIDOS = naranja (en ruta), UPDPEDIDOS = verde (completado) */}
             {pedidosCompletados
               .map((item) => {
-                // Validar que tenga coordenadas v√°lidas
+                // Validar que tenga coordenadas v·lidas
                 if (!item.x || !item.y) return null;
                 
-                // Obtener el m√≥vil fuente de este pedido
+                // Obtener el mÛvil fuente de este pedido
                 const sourceId = (item as any).sourceMovilId;
                 const movilData = sourceId
                   ? moviles.find(m => m.id === sourceId)
@@ -3142,27 +3145,27 @@ const MapView = memo(function MapView({
                   return null;
                 }
                 
-                // Filtrar historial por rango de tiempo (igual que la animaci√≥n)
+                // Filtrar historial por rango de tiempo (igual que la animaciÛn)
                 const filteredHistory = filterHistoryByTime(movilData.history);
                 if (filteredHistory.length === 0) return null;
                 
-                // Calcular hasta qu√© √≠ndice del historial ha llegado la animaci√≥n
+                // Calcular hasta quÈ Ìndice del historial ha llegado la animaciÛn
                 const totalPoints = filteredHistory.length;
                 const currentIndex = Math.floor((animationProgress / 100) * (totalPoints - 1));
                 
-                // Determinar el estado del pedido seg√∫n los puntos ya recorridos
+                // Determinar el estado del pedido seg˙n los puntos ya recorridos
                 let estado: 'oculto' | 'en-ruta' | 'completado' = 'oculto';
                 
-                // Si la animaci√≥n no ha empezado (0%), ocultar
+                // Si la animaciÛn no ha empezado (0%), ocultar
                 if (animationProgress === 0) {
                   return null;
                 }
                 
-                // Si la animaci√≥n termin√≥ (100%), mostrar todos como completados
+                // Si la animaciÛn terminÛ (100%), mostrar todos como completados
                 if (animationProgress === 100) {
                   estado = 'completado';
                 } else {
-                  // Buscar en el historial ya recorrido qu√© registros tiene este pedido
+                  // Buscar en el historial ya recorrido quÈ registros tiene este pedido
                   let tieneDYLPEDIDOS = false;
                   let tieneUPDPEDIDOS = false;
                   
@@ -3178,22 +3181,22 @@ const MapView = memo(function MapView({
                     }
                   }
                   
-                  // Determinar estado basado en lo que se encontr√≥
+                  // Determinar estado basado en lo que se encontrÛ
                   if (tieneUPDPEDIDOS) {
                     estado = 'completado'; // Verde - ya fue completado
                   } else if (tieneDYLPEDIDOS) {
-                    estado = 'en-ruta'; // Naranja - asignado pero a√∫n no completado
+                    estado = 'en-ruta'; // Naranja - asignado pero a˙n no completado
                   } else {
-                    return null; // No se ha llegado a este pedido a√∫n
+                    return null; // No se ha llegado a este pedido a˙n
                   }
                 }
                 
-                // Determinar el √≠cono seg√∫n el estado
+                // Determinar el Ìcono seg˙n el estado
                 let icon;
                 if (estado === 'completado') {
-                  icon = createCompletadoIcon(item.tipo); // Verde ‚úÖ
+                  icon = createCompletadoIcon(item.tipo); // Verde ?
                 } else if (estado === 'en-ruta') {
-                  icon = item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon(); // Naranja üì¶ o rojo üîß
+                  icon = item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon(); // Naranja ?? o rojo ??
                 } else {
                   return null;
                 }
@@ -3205,7 +3208,7 @@ const MapView = memo(function MapView({
                     icon={icon}
                     eventHandlers={{
                       click: () => {
-                        // Cerrar popup del m√≥vil si est√° abierto
+                        // Cerrar popup del mÛvil si est· abierto
                         if (onMovilClick) {
                           onMovilClick(undefined);
                         }
@@ -3219,7 +3222,7 @@ const MapView = memo(function MapView({
               .filter(marker => marker !== null)}
           </>
         ) : (
-          // Mostrar m√≥viles (todos o solo el enfocado) ‚Äî viewport-culled
+          // Mostrar mÛviles (todos o solo el enfocado) ó viewport-culled
           <CulledMovilesLayer
             moviles={movilesToShow}
             popupMovilId={popupMovil}
@@ -3234,7 +3237,7 @@ const MapView = memo(function MapView({
           />
         )}
         
-        {/* Marcadores de pedidos/servicios pendientes - solo si showPendientes est√° activo */}
+        {/* Marcadores de pedidos/servicios pendientes - solo si showPendientes est· activo */}
         {showPendientes && moviles && (
           <>
             {moviles.flatMap(movil => 
@@ -3259,7 +3262,7 @@ const MapView = memo(function MapView({
           </>
         )}
 
-        {/* Marcadores de pedidos/servicios completados - solo si showCompletados est√° activo */}
+        {/* Marcadores de pedidos/servicios completados - solo si showCompletados est· activo */}
         {showCompletados && pedidosCompletadosFocused.length > 0 && (
           <>
             {pedidosCompletadosFocused.map((item) => {
@@ -3282,7 +3285,7 @@ const MapView = memo(function MapView({
           </>
         )}
         
-        {/* Marcadores de Pedidos desde tabla ‚Äî viewport-culled */}
+        {/* Marcadores de Pedidos desde tabla ó viewport-culled */}
         {(() => {
           const pedidosFiltrados = (pedidos ?? []).filter(p => p.latitud && p.longitud).filter(p =>
             (!p.movil || Number(p.movil) === 0)
@@ -3303,7 +3306,7 @@ const MapView = memo(function MapView({
           );
         })()}
 
-        {/* Marcadores de Services desde tabla ‚Äî viewport-culled */}
+        {/* Marcadores de Services desde tabla ó viewport-culled */}
         {(() => {
           const servicesFiltrados = (services ?? []).filter(s => s.latitud && s.longitud).filter(s =>
             (!s.movil || Number(s.movil) === 0)
@@ -3360,7 +3363,7 @@ const MapView = memo(function MapView({
           }}
         />
 
-        {/* Renderizar marcadores personalizados (POIs) ‚Äî viewport-culled */}
+        {/* Renderizar marcadores personalizados (POIs) ó viewport-culled */}
         <CulledPoisLayer
           customMarkers={customMarkers}
           focusedPuntoId={focusedPuntoId}
@@ -3371,12 +3374,12 @@ const MapView = memo(function MapView({
           poiDefaultIcon={poiDefaultIcon}
         />
 
-        {/* Herramienta de medici√≥n de distancia (clic derecho) */}
+        {/* Herramienta de mediciÛn de distancia (clic derecho) */}
         <DistanceMeasurement />
         {onMapStateChange && <MapStateCapture onMapStateChange={onMapStateChange} />}
       </MapContainer>
       
-      {/* Control de animaci√≥n (solo visible cuando hay un m√≥vil seleccionado con historial) */}
+      {/* Control de animaciÛn (solo visible cuando hay un mÛvil seleccionado con historial) */}
       {selectedMovil && moviles.find(m => m.id === selectedMovil)?.history && (
         <RouteAnimationControl
           isPlaying={isAnimating}
@@ -3402,7 +3405,7 @@ const MapView = memo(function MapView({
         />
       )}
 
-      {/* Popup de informaci√≥n del m√≥vil */}
+      {/* Popup de informaciÛn del mÛvil */}
       {popupMovil && movilActual && (
         <MovilInfoPopup 
           movil={movilActual} 
@@ -3417,7 +3420,7 @@ const MapView = memo(function MapView({
             }
           }}
           onShowAnimation={() => {
-            // Cerrar popup y activar la animaci√≥n
+            // Cerrar popup y activar la animaciÛn
             if (popupMovil && onShowAnimation) {
               onShowAnimation(popupMovil);
             }
@@ -3431,7 +3434,7 @@ const MapView = memo(function MapView({
         />
       )}
 
-      {/* Popup de informaci√≥n del pedido */}
+      {/* Popup de informaciÛn del pedido */}
       {popupPedido && (
         <PedidoInfoPopup 
           pedido={(allPedidos.length > 0 ? allPedidos : pedidos).find(p => p.id === popupPedido) || null}
@@ -3443,7 +3446,7 @@ const MapView = memo(function MapView({
         />
       )}
 
-      {/* Popup de informaci√≥n del service */}
+      {/* Popup de informaciÛn del service */}
       {popupService && (
         <ServiceInfoPopup 
           service={(allServices.length > 0 ? allServices : services).find(s => s.id === popupService) || null}

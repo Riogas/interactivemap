@@ -8,6 +8,7 @@ import { authStorage } from '@/lib/auth-storage';
 import * as XLSX from 'xlsx';
 import { NIGHT_START_HOUR, DAY_START_HOUR } from '@/lib/horario-servicio';
 import { ZonaPattern, ZONA_PATTERN_OPTIONS } from '@/lib/zona-patterns';
+import { VISUAL_REFS_CATALOG } from '@/lib/visual-refs-catalog';
 
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'star';
 
@@ -70,6 +71,8 @@ export interface UserPreferences {
   //     realtimeStaleIndicatorEnabled: boolean;
   //     realtimeStaleIndicatorThresholdSeconds: number; // cuánto tiempo sin eventos hasta marcar stale
   //   Visual: badge "🟡 Datos desactualizados hace Xs" + botón refresh.
+  // ===== Configuracion Visual: colores de refs Ref#1..Ref#26 =====
+  visualRefs?: Record<string, string>;
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -114,6 +117,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   pedidoHalo: false,
   serviceHalo: false,
   zonaPattern: 'liso' as ZonaPattern,
+  visualRefs: {},
+  // Conf. Visual -- vacio por defecto (usa defaults del catalogo)
 };
 
 interface PreferencesModalProps {
@@ -141,6 +146,10 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
   const [auditEnabled, setAuditEnabled] = useState<boolean | null>(null);
   const [auditMeta, setAuditMeta] = useState<{ updated_at: string; updated_by: string | null } | null>(null);
   const [auditToggling, setAuditToggling] = useState(false);
+
+  // ===== Estado para Conf. Visual =====
+  const [confVisualOpen, setConfVisualOpen] = useState(false);
+  const [visualRefsLocal, setVisualRefsLocal] = useState<Record<string, string>>({});
 
   const handleAuditToggle = async () => {
     if (auditToggling || auditEnabled === null) return;
@@ -1137,6 +1146,124 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                     </div>
                   )}
                 </div>
+              )}
+
+
+              {/* ==================================================
+                  SECCION: Conf. Visual — Colores de Refs
+                  ================================================== */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-bold text-gray-800 uppercase tracking-wide">
+                      <span>&#127912;</span> Conf. Visual
+                    </h3>
+                    <p className="text-xs text-gray-500">Personaliza los colores de las referencias en las leyendas del mapa</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisualRefsLocal({ ...(preferences.visualRefs ?? {}) });
+                      setConfVisualOpen(true);
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-all shadow"
+                  >
+                    Editar colores
+                  </button>
+                </div>
+              </div>
+
+              {/* Sub-modal Conf. Visual */}
+              {confVisualOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 bg-black/40 z-[80]"
+                    onClick={() => setConfVisualOpen(false)}
+                  />
+                  <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg max-h-[85vh] overflow-y-auto bg-white rounded-2xl shadow-2xl z-[90] flex flex-col">
+                    <div className="sticky top-0 bg-indigo-600 text-white px-5 py-3 rounded-t-2xl flex items-center justify-between">
+                      <h3 className="font-bold text-base">Conf. Visual &#8212; Colores de Referencias</h3>
+                      <button onClick={() => setConfVisualOpen(false)} className="hover:bg-white/20 rounded-lg p-1">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+                      {(() => {
+                        const layers = Array.from(new Set(VISUAL_REFS_CATALOG.map((r) => r.layer)));
+                        return layers.map((layer) => (
+                          <div key={layer} className="space-y-2">
+                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide border-b border-gray-100 pb-1">{layer}</h4>
+                            {VISUAL_REFS_CATALOG.filter((r) => r.layer === layer).map((ref) => {
+                              const currentColor = visualRefsLocal[ref.id] ?? ref.defaultColor;
+                              return (
+                                <div key={ref.id} className="flex items-center gap-3 py-1">
+                                  <code className="text-[10px] font-mono text-gray-400 w-12 shrink-0">{ref.id}</code>
+                                  <span
+                                    className="w-7 h-6 rounded border border-gray-200 shrink-0 inline-block"
+                                    style={{ backgroundColor: currentColor }}
+                                  />
+                                  <input
+                                    type="color"
+                                    value={currentColor.length === 7 ? currentColor : ref.defaultColor}
+                                    onChange={(e) => setVisualRefsLocal((prev) => ({ ...prev, [ref.id]: e.target.value }))}
+                                    className="w-8 h-7 rounded border border-gray-200 cursor-pointer shrink-0"
+                                    title={`Color para ${ref.id}`}
+                                  />
+                                  <input
+                                    type="text"
+                                    value={currentColor}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setVisualRefsLocal((prev) => ({ ...prev, [ref.id]: v }));
+                                    }}
+                                    className="w-24 text-xs font-mono border border-gray-200 rounded px-2 py-1 shrink-0"
+                                    maxLength={7}
+                                    placeholder="#RRGGBB"
+                                  />
+                                  <span className="text-xs text-gray-600 flex-1">{ref.label}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setVisualRefsLocal((prev) => { const n = { ...prev }; delete n[ref.id]; return n; })}
+                                    className="text-[10px] text-gray-400 hover:text-red-500 shrink-0"
+                                    title="Restablecer al color por defecto"
+                                  >Reset</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                    <div className="sticky bottom-0 bg-gray-50 px-4 py-3 rounded-b-2xl border-t border-gray-200 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setVisualRefsLocal({})}
+                        className="text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-all"
+                      >
+                        Restablecer todos
+                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setConfVisualOpen(false)}
+                          className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg"
+                        >
+                          Cerrar sin guardar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPreferences((prev) => ({ ...prev, visualRefs: { ...visualRefsLocal } }));
+                            setConfVisualOpen(false);
+                          }}
+                          className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+                        >
+                          Guardar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 

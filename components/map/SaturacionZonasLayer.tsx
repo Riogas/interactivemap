@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
@@ -7,10 +7,11 @@ import type { LatLngExpression } from 'leaflet';
 import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
 import { isPrivilegedForCapEntrega } from '@/lib/auth-scope';
 import { getCapEntregaColor } from '@/lib/cap-entrega-color';
+import { getRefColor } from '@/lib/visual-refs-catalog';
 import type { SaturacionZonaStats } from '@/lib/cap-entrega-color';
 export type { SaturacionZonaStats } from '@/lib/cap-entrega-color';
 
-// ──────────────────────────── tipos públicos ──────────────────────────────
+// ──────────────────────────── tipos publicos ──────────────────────────────
 
 export interface SaturacionZonaData {
   zona_id: number;
@@ -29,7 +30,7 @@ interface ScopedUser {
 
 interface SaturacionZonasLayerProps {
   zonas: SaturacionZonaData[];
-  /** Map de zona_id → estadísticas de saturación */
+  /** Map de zona_id → estadisticas de saturacion */
   saturacionData: Map<number, SaturacionZonaStats>;
   /** Usuario autenticado — se usa para derivar isPrivilegedForCapEntrega y mostrar
       el valor negativo real en lugar de "Sin Cap." para roles operativos. */
@@ -50,11 +51,13 @@ interface SaturacionZonasLayerProps {
   /** Callback para togglear las etiquetas desde la leyenda del mapa */
   onToggleLabels?: (next: boolean) => void;
   zonaPattern?: ZonaPattern;
+  /** Overrides de colores del usuario (de UserPreferences.visualRefs) */
+  visualRefs?: Record<string, string> | null;
 }
 
 // ──────────────────────────── helpers ────────────────────────────────────
 
-/** Centroide de polígono */
+/** Centroide de poligono */
 function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, number] {
   if (pts.length < 3) {
     return [pts.reduce((s, p) => s + p.lat, 0) / pts.length, pts.reduce((s, p) => s + p.lng, 0) / pts.length];
@@ -94,7 +97,15 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
 // ──────────────────────── leyenda (control Leaflet) ──────────────────────
 
 /** Leyenda de Cap. Entrega con toggle opcional "Ver etiqueta" (espejo de DemorasLegend) */
-function SaturacionLegend({ showLabels, onToggleLabels }: { showLabels: boolean; onToggleLabels?: (next: boolean) => void }) {
+function SaturacionLegend({
+  showLabels,
+  onToggleLabels,
+  visualRefs,
+}: {
+  showLabels: boolean;
+  onToggleLabels?: (next: boolean) => void;
+  visualRefs?: Record<string, string> | null;
+}) {
   const map = useMap();
   useEffect(() => {
     const showToggle = typeof onToggleLabels === 'function';
@@ -114,12 +125,12 @@ function SaturacionLegend({ showLabels, onToggleLabels }: { showLabels: boolean;
           : '';
         div.innerHTML = `
           <div class="demora-legend-title">Cap. Entrega</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#92400e"></span><span class="demora-legend-label">Sin Cap. (&lt; 0)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">0 (capacidad máx.)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">1</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">2 – 3</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">&gt; 3 (sobrante)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#d1d5db"></span><span class="demora-legend-label">Sin datos</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#21', visualRefs)}"></span><span class="demora-legend-label">Sin Cap. (&lt; 0)</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#21</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#22', visualRefs)}"></span><span class="demora-legend-label">0 (capacidad máx.)</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#22</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#23', visualRefs)}"></span><span class="demora-legend-label">1</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#23</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#24', visualRefs)}"></span><span class="demora-legend-label">2 – 3</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#24</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#25', visualRefs)}"></span><span class="demora-legend-label">&gt; 3 (sobrante)</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#25</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#26', visualRefs)}"></span><span class="demora-legend-label">Sin datos</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#26</span></div>
           ${toggleHtml}
         `;
         L.DomEvent.disableClickPropagation(div);
@@ -144,7 +155,7 @@ function SaturacionLegend({ showLabels, onToggleLabels }: { showLabels: boolean;
     const legend = new LegendCtrl({ position: 'bottomleft' });
     legend.addTo(map);
     return () => { legend.remove(); };
-  }, [map, showLabels, onToggleLabels]);
+  }, [map, showLabels, onToggleLabels, visualRefs]);
   return null;
 }
 
@@ -195,6 +206,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   showLabels = false,
   onToggleLabels,
   zonaPattern = 'liso' as ZonaPattern,
+  visualRefs,
 }: SaturacionZonasLayerProps) {
   // Derivar privilegio UNA vez por render de la capa (no por zona).
   const isPrivileged = isPrivilegedForCapEntrega(user ?? null);
@@ -228,23 +240,23 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       const stats = saturacionData.get(zona.zona_id);
       const defaultStats: SaturacionZonaStats = { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
       const s = stats ?? defaultStats;
-      const { color, label, capEntrega } = getCapEntregaColor(s, isPrivileged);
+      const { color, label, capEntrega } = getCapEntregaColor(s, isPrivileged, visualRefs);
       const fillOpacity = getCapEntregaOpacity(capEntrega);
 
       // Tooltip detallado
       const tooltipLines = [
         `<b>Zona ${zona.zona_id}${zona.nombre ? ` — ${zona.nombre}` : ''}</b>`,
         `Pedidos sin asignar: <b>${s.sinAsignar}</b>`,
-        `Móviles en zona: <b>${s.movilesEnZona}</b>${s.movilesCompartidos > 0 ? ` (${s.movilesCompartidos} compartidos)` : ''}`,
+        `Moviles en zona: <b>${s.movilesEnZona}</b>${s.movilesCompartidos > 0 ? ` (${s.movilesCompartidos} compartidos)` : ''}`,
         `Cap. total (prorat.): <b>${s.capacidadTotal.toFixed(1)}</b>`,
         `Cap. libre (prorat.): <b>${s.capacidadDisponible.toFixed(1)}</b>`,
-        capEntrega === -999 ? '⚠️ Sin cobertura (0 móviles)'
+        capEntrega === -999 ? 'Sin cobertura (0 moviles)'
           : capEntrega === -1000 ? '— Sin datos'
           : `Cap. Entrega: <b>${capEntrega < 0 ? capEntrega : capEntrega}</b>`,
         s.movilesCompartidos > 0 ? '<i style="color:#6b7280;font-size:10px">Capacidad con prorrateo por zonas compartidas</i>' : '',
       ].filter(Boolean);
 
-      // Mostrar label siempre excepto para casos sin datos y valores muy positivos (>3 solo número)
+      // Mostrar label siempre excepto para casos sin datos y valores muy positivos (>3 solo numero)
       const showLabel = capEntrega !== -1000;
 
       return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity, tooltipHTML: tooltipLines.join('<br/>') };
@@ -257,13 +269,13 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       fillOpacity: number;
       tooltipHTML: string;
     }>;
-  }, [zonas, saturacionData, isPrivileged]);
+  }, [zonas, saturacionData, isPrivileged, visualRefs]);
 
   if (items.length === 0) return null;
 
   return (
     <>
-      <SaturacionLegend showLabels={showLabels} onToggleLabels={onToggleLabels} />
+      <SaturacionLegend showLabels={showLabels} onToggleLabels={onToggleLabels} visualRefs={visualRefs} />
       {onServiceFilterChange && (
         <SaturacionFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
       )}

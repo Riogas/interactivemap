@@ -1,10 +1,11 @@
-﻿'use client';
+'use client';
 
 import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
+import { getRefColor } from '@/lib/visual-refs-catalog';
 
 export interface DemoraZonaData {
   zona_id: number;
@@ -27,11 +28,13 @@ interface DemorasZonasLayerProps {
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
   zonaPattern?: ZonaPattern;
+  /** Overrides de colores del usuario (de UserPreferences.visualRefs) */
+  visualRefs?: Record<string, string> | null;
 }
 
 /**
- * Calcula el centroide de un polígono usando la fórmula del área con signo.
- * Mucho más preciso que el promedio simple para formas complejas / irregulares.
+ * Calcula el centroide de un poligono usando la formula del area con signo.
+ * Mucho mas preciso que el promedio simple para formas complejas / irregulares.
  */
 function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, number] {
   if (pts.length < 3) {
@@ -53,7 +56,7 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
   }
   area *= 0.5;
   if (Math.abs(area) < 1e-12) {
-    // Polígono degenerado, usar promedio
+    // Poligono degenerado, usar promedio
     const latS = pts.reduce((s, p) => s + p.lat, 0);
     const lngS = pts.reduce((s, p) => s + p.lng, 0);
     return [latS / pts.length, lngS / pts.length];
@@ -63,16 +66,17 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
 }
 
 /**
- * Devuelve el color de relleno según los minutos de demora.
+ * Devuelve el color de relleno segun los minutos de demora.
+ * Usa getRefColor para respetar overrides del usuario.
  */
-function getDemoraColor(minutos: number): string {
-  if (minutos >= 151) return '#ef4444';   // rojo
-  if (minutos >= 91)  return '#f97316';   // naranja
-  if (minutos >= 61)  return '#eab308';   // amarillo fuerte
-  if (minutos >= 46)  return '#fde047';   // amarillo claro
-  if (minutos >= 31)  return '#16a34a';   // verde fuerte
-  if (minutos >= 1)   return '#86efac';   // verde claro
-  return '#9ca3af';                       // gris medio punteado (0 min)
+function getDemoraColor(minutos: number, visualRefs?: Record<string, string> | null): string {
+  if (minutos >= 151) return getRefColor('Ref#7', visualRefs);
+  if (minutos >= 91)  return getRefColor('Ref#6', visualRefs);
+  if (minutos >= 61)  return getRefColor('Ref#5', visualRefs);
+  if (minutos >= 46)  return getRefColor('Ref#4', visualRefs);
+  if (minutos >= 31)  return getRefColor('Ref#3', visualRefs);
+  if (minutos >= 1)   return getRefColor('Ref#2', visualRefs);
+  return getRefColor('Ref#1', visualRefs);
 }
 
 function getDemoraOpacity(minutos: number): number {
@@ -82,7 +86,7 @@ function getDemoraOpacity(minutos: number): number {
   if (minutos >= 46)  return 0.45;
   if (minutos >= 31)  return 0.55;
   if (minutos >= 1)   return 0.45;
-  return 0.12; // bajo pero visible, el patrón SVG da el efecto punteado
+  return 0.12; // bajo pero visible, el patron SVG da el efecto punteado
 }
 
 /** Inyecta un SVG <pattern> en el mapa para el relleno punteado de zonas con 0 min */
@@ -108,7 +112,7 @@ function useDottedPattern() {
     pattern.setAttribute('patternUnits', 'userSpaceOnUse');
     pattern.setAttribute('width', '8');
     pattern.setAttribute('height', '8');
-    // Fondo blanco translúcido
+    // Fondo blanco translucido
     const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('width', '8');
     rect.setAttribute('height', '8');
@@ -128,7 +132,15 @@ function useDottedPattern() {
 }
 
 /** Leyenda de colores de demoras como control Leaflet (esquina inferior izquierda) */
-function DemorasLegend({ showLabels, onToggleLabels }: { showLabels: boolean; onToggleLabels?: (next: boolean) => void }) {
+function DemorasLegend({
+  showLabels,
+  onToggleLabels,
+  visualRefs,
+}: {
+  showLabels: boolean;
+  onToggleLabels?: (next: boolean) => void;
+  visualRefs?: Record<string, string> | null;
+}) {
   const map = useMap();
   useEffect(() => {
     const showToggle = typeof onToggleLabels === 'function';
@@ -148,13 +160,13 @@ function DemorasLegend({ showLabels, onToggleLabels }: { showLabels: boolean; on
           : '';
         div.innerHTML = `
           <div class="demora-legend-title">Demoras (min)</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch dotted"></span><span class="demora-legend-label">0</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#86efac"></span><span class="demora-legend-label">1 – 30</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#16a34a"></span><span class="demora-legend-label">31 – 45</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#fde047"></span><span class="demora-legend-label">46 – 60</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">61 – 90</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">91 – 150</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">151+</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch dotted"></span><span class="demora-legend-label">0</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#1</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#2', visualRefs)}"></span><span class="demora-legend-label">1 – 30</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#2</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#3', visualRefs)}"></span><span class="demora-legend-label">31 – 45</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#3</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#4', visualRefs)}"></span><span class="demora-legend-label">46 – 60</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#4</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#5', visualRefs)}"></span><span class="demora-legend-label">61 – 90</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#5</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#6', visualRefs)}"></span><span class="demora-legend-label">91 – 150</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#6</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#7', visualRefs)}"></span><span class="demora-legend-label">151+</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#7</span></div>
           ${toggleHtml}
         `;
         L.DomEvent.disableClickPropagation(div);
@@ -179,23 +191,31 @@ function DemorasLegend({ showLabels, onToggleLabels }: { showLabels: boolean; on
     const legend = new LegendControl({ position: 'bottomleft' });
     legend.addTo(map);
     return () => { legend.remove(); };
-  }, [map, showLabels, onToggleLabels]);
+  }, [map, showLabels, onToggleLabels, visualRefs]);
   return null;
 }
 
 /**
- * Capa de zonas con información de demoras.
- * Muestra todas las zonas pintadas según minutos, con etiqueta de nro de zona y demora.
+ * Capa de zonas con informacion de demoras.
+ * Muestra todas las zonas pintadas segun minutos, con etiqueta de nro de zona y demora.
  */
-// Ajusta opacidad base: 50%=valor original, 100%=sólido (1.0), <50%=más transparente
+// Ajusta opacidad base: 50%=valor original, 100%=solido (1.0), <50%=mas transparente
 function adjustOpacity(base: number, zonaOpacity: number): number {
   const f = zonaOpacity / 50;
   if (f <= 1) return base * f;
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, showLabels = false, onToggleLabels, zonaOpacity = 50, zonaPattern = 'liso' }: DemorasZonasLayerProps) {
-  // Inyectar patrón SVG para zonas con 0 minutos
+const DemorasZonasLayer = memo(function DemorasZonasLayer({
+  zonas,
+  demoras,
+  showLabels = false,
+  onToggleLabels,
+  zonaOpacity = 50,
+  zonaPattern = 'liso',
+  visualRefs,
+}: DemorasZonasLayerProps) {
+  // Inyectar patron SVG para zonas con 0 minutos
   useDottedPattern();
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
@@ -218,7 +238,7 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
 
       if (!Array.isArray(geo) || geo.length < 3) return null;
 
-      // Filtrar puntos válidos (lat/lng pueden venir como string desde la DB)
+      // Filtrar puntos validos (lat/lng pueden venir como string desde la DB)
       const validGeo = geo
         .map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }))
         .filter((p: any) => isFinite(p.lat) && isFinite(p.lng));
@@ -226,7 +246,7 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
 
       const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
 
-      // Calcular centroide del polígono (fórmula del área con signo)
+      // Calcular centroide del poligono (formula del area con signo)
       const center: [number, number] = polygonCentroid(validGeo);
 
       // Demora: primero buscar en tabla demoras, sino usar demora_minutos de la zona
@@ -234,7 +254,7 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
       const minutos = demoraInfo?.minutos ?? zona.demora_minutos ?? 0;
       const demoraActiva = demoraInfo?.activa ?? true;
 
-      const fillColor = getDemoraColor(minutos);
+      const fillColor = getDemoraColor(minutos, visualRefs);
       const fillOpacity = getDemoraOpacity(minutos);
       const isDotted = minutos === 0;
 
@@ -250,13 +270,13 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({ zonas, demoras, show
       isDotted: boolean;
     }>;
     return result;
-  }, [zonas, demoras]);
+  }, [zonas, demoras, visualRefs]);
 
   if (items.length === 0) return null;
 
   return (
     <>
-      <DemorasLegend showLabels={showLabels} onToggleLabels={onToggleLabels} />
+      <DemorasLegend showLabels={showLabels} onToggleLabels={onToggleLabels} visualRefs={visualRefs} />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, minutos, demoraActiva, isDotted }) => (
         <React.Fragment key={zona.zona_id}>
           <Polygon
