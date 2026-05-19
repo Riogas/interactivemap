@@ -133,6 +133,7 @@ interface MapViewProps {
   hiddenPoiIds?: Set<string>; // IDs individuales de POI ocultos
   poiMarkerSize?: number; // Tamaño del marcador POI: 1=chico, 2=mediano, 3=grande
   poiDefaultIcon?: string; // Emoji por defecto para POIs sin icono propio
+  poiCategoryIcons?: Record<string, string>; // Override de iconos por categoria de POI
   pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
@@ -616,6 +617,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.hiddenPoiIds?.size === next.hiddenPoiIds?.size &&
     prev.poiMarkerSize === next.poiMarkerSize &&
     prev.poiDefaultIcon === next.poiDefaultIcon &&
+    JSON.stringify(prev.poiCategoryIcons) === JSON.stringify(next.poiCategoryIcons) &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -890,6 +892,7 @@ interface CulledPoisLayerProps {
   hiddenPoiCategories: Set<string>;
   poiMarkerSize: number;
   poiDefaultIcon: string;
+  poiCategoryIcons?: Record<string, string>;
 }
 
 function CulledPoisLayer({
@@ -900,6 +903,7 @@ function CulledPoisLayer({
   hiddenPoiCategories,
   poiMarkerSize,
   poiDefaultIcon,
+  poiCategoryIcons,
 }: CulledPoisLayerProps) {
   const filteredMarkers = useMemo(() => {
     if (poisHidden) return [];
@@ -934,7 +938,7 @@ function CulledPoisLayer({
         const poiPx = poiMarkerSize === 1 ? 16 : poiMarkerSize === 3 ? 32 : 24;
         const poiFontSize = poiMarkerSize === 1 ? 13 : poiMarkerSize === 3 ? 26 : 19;
         const isPtoVenta = (marker.categoria || '').toLowerCase() === 'punto de venta';
-        const displayIcon = marker.icono || poiDefaultIcon;
+        const displayIcon = (poiCategoryIcons?.[marker.categoria ?? '']) || marker.icono || poiDefaultIcon;
         const iconHtml = isPtoVenta
           ? `<img src="/images/iconoptoventa.png" style="width:${poiPx}px;height:${poiPx}px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" />`
           : `<div style="font-size:${poiFontSize}px;text-align:center;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">${displayIcon}</div>`;
@@ -1078,6 +1082,7 @@ const MapView = memo(function MapView({
   hiddenPoiIds = new Set<string>(),
   poiMarkerSize = 2,
   poiDefaultIcon = '??',
+  poiCategoryIcons,
   pedidosVista = 'pendientes',
   servicesVista = 'pendientes',
   onZonaClick,
@@ -3372,6 +3377,7 @@ const MapView = memo(function MapView({
           hiddenPoiCategories={hiddenPoiCategories}
           poiMarkerSize={poiMarkerSize}
           poiDefaultIcon={poiDefaultIcon}
+          poiCategoryIcons={poiCategoryIcons}
         />
 
         {/* Herramienta de medición de distancia (clic derecho) */}

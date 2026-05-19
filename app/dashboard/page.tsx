@@ -197,6 +197,20 @@ function DashboardContent() {
     const next = current.includes(category) ? current.filter((c: string) => c !== category) : [...current, category];
     updatePreference('hiddenPoiCategories', next);
   }, [preferences.hiddenPoiCategories, updatePreference]);
+
+  // Callback para setear/resetear icono de categoria POI (Parte B/C)
+  const setPoiCategoryIcon = useCallback((category: string, icon: string | null) => {
+    const current = (preferences.poiCategoryIcons as Record<string, string>) || {};
+    const next = { ...current };
+    if (icon === null) {
+      delete next[category];
+    } else {
+      // Limite de 50 overrides para no saturar el JSONB
+      if (Object.keys(next).length >= 50 && !(category in next)) return;
+      next[category] = icon;
+    }
+    updatePreference('poiCategoryIcons', next);
+  }, [preferences.poiCategoryIcons, updatePreference]);
   
   // Estado para puntos de interés
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
@@ -3162,6 +3176,8 @@ function DashboardContent() {
                   onTogglePoisHidden={() => setPoisHidden(!poisHidden)}
                   hiddenPoiCategories={hiddenPoiCategories}
                   onTogglePoiCategory={togglePoiCategory}
+                  poiCategoryIcons={preferences.poiCategoryIcons}
+                  onSetPoiCategoryIcon={setPoiCategoryIcon}
                   selectedPois={selectedPois}
                   onTogglePoi={handleTogglePoi}
                   onSelectCategoryPois={handleSelectCategoryPois}
@@ -3304,6 +3320,7 @@ function DashboardContent() {
                 hiddenPoiIds={hiddenPoiIds}
                 poiMarkerSize={preferences.poiMarkerSize ?? 2}
                 poiDefaultIcon={preferences.poiDefaultIcon ?? '??'}
+                poiCategoryIcons={preferences.poiCategoryIcons}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
                 onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : dataViewMode === 'saturacion' ? setSaturacionModalZonaId : undefined}

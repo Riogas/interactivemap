@@ -7,6 +7,7 @@ import { getEstadoDescripcion, isPedidoEntregado, isServiceEntregado } from '@/u
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import clsx from 'clsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import FilterBar from './FilterBar';
 import { VirtualList } from './VirtualList';
 import MapGuideModal from './MapGuideModal';
@@ -14,6 +15,140 @@ import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicato
 import type { LastSyncState } from '@/lib/realtime-drift';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import type { ScopeFilter } from '@/lib/scope-filter';
+
+
+// Lista de emojis predefinidos para categorias de mapa
+const POI_EMOJI_PRESETS = [
+  '🏢', '🏥', '🏦', '🏨', '🏫',
+  '🏙', '🏪', '🍽', '⛪', '🛒',
+  '⛽', '🅿', '🏭', '📍', '⚓',
+  '✈', '🚉', '🚏', '🌳', '💊',
+  '🔧', '🚒', '🚓', '🏡', '🎭',
+];
+
+interface EmojiPickerPopoverProps {
+  category: string;
+  currentIcon: string;
+  anchor: { x: number; y: number };
+  onSelect: (category: string, icon: string | null) => void;
+  onClose: () => void;
+}
+
+function EmojiPickerPopover({ category, currentIcon, anchor, onSelect, onClose }: EmojiPickerPopoverProps) {
+  const [inputValue, setInputValue] = useState(currentIcon);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar al hacer click fuera
+  useEffect(() => {
+    function handleMouseDown(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [onClose]);
+
+  const top = Math.min(anchor.y, (typeof window !== 'undefined' ? window.innerHeight : 800) - 290);
+  const left = Math.min(anchor.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 240);
+
+  const popoverStyle: React.CSSProperties = {
+    position: 'fixed',
+    top,
+    left,
+    zIndex: 9999,
+    background: 'white',
+    border: '1px solid #e5e7eb',
+    borderRadius: '8px',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+    padding: '10px',
+    width: '230px',
+  };
+
+  return createPortal(
+    <div ref={popoverRef} style={popoverStyle} onClick={(e) => e.stopPropagation()}>
+      <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 12, color: '#6b7280' }}>
+        Ícono para &quot;{category}&quot;
+      </div>
+      {/* Grid de emojis predefinidos */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 8 }}>
+        {POI_EMOJI_PRESETS.map((emoji) => (
+          <button
+            key={emoji}
+            onClick={() => { setInputValue(emoji); onSelect(category, emoji); }}
+            style={{
+              fontSize: 20,
+              padding: '4px',
+              borderRadius: 6,
+              border: inputValue === emoji ? '2px solid #8b5cf6' : '2px solid transparent',
+              background: inputValue === emoji ? '#f5f3ff' : 'transparent',
+              cursor: 'pointer',
+              lineHeight: 1,
+            }}
+            title={emoji}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+      {/* Input libre para pegar emoji personalizado */}
+      <div style={{ marginBottom: 8 }}>
+        <input
+          type="text"
+          maxLength={4}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          placeholder="Pegar emoji..."
+          style={{
+            width: '100%',
+            border: '1px solid #d1d5db',
+            borderRadius: 6,
+            padding: '4px 8px',
+            fontSize: 14,
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={() => { if (inputValue.trim()) onSelect(category, inputValue.trim()); else onClose(); }}
+          style={{
+            flex: 1,
+            padding: '5px 8px',
+            background: '#8b5cf6',
+            color: 'white',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Aplicar
+        </button>
+        <button
+          onClick={() => onSelect(category, null)}
+          style={{
+            flex: 1,
+            padding: '5px 8px',
+            background: '#f3f4f6',
+            color: '#6b7280',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+          title="Volver al icono original del POI"
+        >
+          Reset
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 interface MovilSelectorProps {
   moviles: MovilData[];
@@ -43,6 +178,8 @@ interface MovilSelectorProps {
   onTogglePoisHidden?: () => void; // Toggle visibilidad global de POIs
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
   onTogglePoiCategory?: (category: string) => void; // Toggle visibilidad de una categoría de POI
+  poiCategoryIcons?: Record<string, string>; // Override de iconos por categoría de POI
+  onSetPoiCategoryIcon?: (category: string, icon: string | null) => void; // null = reset al ícono original
   selectedPois?: Set<string>; // IDs de POIs seleccionados (visibles en mapa)
   onTogglePoi?: (id: string) => void; // Toggle individual de un POI
   onSelectCategoryPois?: (ids: string[]) => void; // Seleccionar todos los POIs de una categoría
@@ -131,6 +268,8 @@ export default function MovilSelector({
   onTogglePoisHidden,
   hiddenPoiCategories = new Set(),
   onTogglePoiCategory,
+  poiCategoryIcons = {},
+  onSetPoiCategoryIcon,
   selectedPois,
   onTogglePoi,
   onSelectCategoryPois,
@@ -172,6 +311,27 @@ export default function MovilSelector({
 
   // Estado para sub-categorías expandidas dentro de POIs
   const [expandedPoiCategories, setExpandedPoiCategories] = useState<Set<string>>(new Set());
+
+  // Estado para el picker de íconos de categoría POI
+  const [iconPickerCategory, setIconPickerCategory] = useState<string | null>(null);
+  const [iconPickerAnchor, setIconPickerAnchor] = useState<{ x: number; y: number } | null>(null);
+  const openIconPicker = useCallback((category: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setIconPickerAnchor({ x: rect.left, y: rect.bottom + 4 });
+    setIconPickerCategory(category);
+  }, []);
+
+  const closeIconPicker = useCallback(() => {
+    setIconPickerCategory(null);
+    setIconPickerAnchor(null);
+  }, []);
+
+  const applyIcon = useCallback((category: string, icon: string | null) => {
+    onSetPoiCategoryIcon?.(category, icon);
+    closeIconPicker();
+  }, [onSetPoiCategoryIcon, closeIconPicker]);
+
 
   // Agrupar POIs por campo categoria (con fallback a prefijo [Label] en observacion)
   const poiByCategory = useMemo(() => {
@@ -786,6 +946,7 @@ export default function MovilSelector({
   const contextualFilters = getContextualFilters();
 
   return (
+    <>
     <div className="bg-white rounded-xl shadow-lg p-6 h-full flex flex-col">
 
       {/* Badges de filtros activos - siempre visibles */}
@@ -1693,7 +1854,7 @@ export default function MovilSelector({
                                     <span className="text-sm flex-shrink-0">
                                       {group.label.toLowerCase() === 'punto de venta'
                                         ? <img src="/images/iconoptoventa.png" style={{ width: 16, height: 16, objectFit: 'contain' }} alt="Punto de Venta" />
-                                        : group.icono}
+                                        : ((poiCategoryIcons as Record<string, string>)[group.label] || group.icono)}
                                     </span>
                                     <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate flex-1">
                                       {group.label}
@@ -1724,6 +1885,26 @@ export default function MovilSelector({
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                           </svg>
                                         )}
+                                      </span>
+                                    )}
+                                    {/* Botón cambiar ícono de categoría */}
+                                    {onSetPoiCategoryIcon && group.label.toLowerCase() !== 'punto de venta' && (
+                                      <span
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={(e) => { e.stopPropagation(); openIconPicker(group.label, e); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); openIconPicker(group.label, e as any); } }}
+                                        className={clsx(
+                                          'p-0.5 rounded-full transition-colors flex-shrink-0',
+                                          (poiCategoryIcons as Record<string, string>)[group.label]
+                                            ? 'bg-purple-100 dark:bg-purple-900/40 hover:bg-purple-200'
+                                            : 'hover:bg-purple-100 dark:hover:bg-purple-900/30'
+                                        )}
+                                        title={'Cambiar icono de ' + group.label}
+                                      >
+                                        <svg className="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                        </svg>
                                       </span>
                                     )}
                                     {/* Seleccionar todos/ninguno por categoría */}
@@ -1835,5 +2016,16 @@ export default function MovilSelector({
         category={guideCategory || 'moviles'}
       />
     </div>
+    {/* Popover selector de icono de categoria POI — usa createPortal para evitar problemas con transform en ancestros */}
+    {iconPickerCategory && iconPickerAnchor && (
+      <EmojiPickerPopover
+        category={iconPickerCategory}
+        currentIcon={(poiCategoryIcons as Record<string, string>)[iconPickerCategory] || ''}
+        anchor={iconPickerAnchor}
+        onSelect={applyIcon}
+        onClose={closeIconPicker}
+      />
+    )}
+    </>
   );
 }

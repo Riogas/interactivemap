@@ -74,6 +74,8 @@ export interface UserPreferences {
   //   Visual: badge "🟡 Datos desactualizados hace Xs" + botón refresh.
   // ===== Configuracion Visual: colores de refs Ref#1..Ref#26 =====
   visualRefs?: Record<string, string>;
+  /** Override de iconos por categoria de POI. Key = nombre de categoria (ej "Cementerio"). Value = emoji a usar. Si la categoria no esta en este map, el POI muestra su icono original (por punto). Maximo 50 overrides. */
+  poiCategoryIcons?: Record<string, string>;
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -120,6 +122,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   zonaPattern: 'liso' as ZonaPattern,
   visualRefs: {},
   // Conf. Visual -- vacio por defecto (usa defaults del catalogo)
+  poiCategoryIcons: {},
 };
 
 interface PreferencesModalProps {
