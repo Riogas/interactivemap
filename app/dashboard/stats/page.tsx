@@ -257,9 +257,25 @@ function StatsContent() {
       setIsLoading(true);
       setError(null);
       try {
+        // Auth scope para /api/pedidos y /api/services
+        // Ambos endpoints usan fail-closed server-side:
+        //   Si x-track-isroot != S y empresas_fleteras ausente devuelve [].
+        // Patron identico al de app/dashboard/page.tsx (fetchPedidos/fetchServices).
+        const isRootUser = isRoot(user);
+        const authHeaders: Record<string, string> = {
+          'x-track-isroot': user?.isRoot ?? 'N',
+        };
+        const pedidosParams = new URLSearchParams({ fecha: date });
+        const servicesParams = new URLSearchParams({ fecha: date });
+        if (!isRootUser && user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
+          const empresasStr = user.allowedEmpresas.join(',');
+          pedidosParams.set('empresas_fleteras', empresasStr);
+          servicesParams.set('empresas_fleteras', empresasStr);
+        }
+
         const [pRes, sRes, eRes, mRes, gRes] = await Promise.all([
-          fetch(`/api/pedidos?fecha=${date}`),
-          fetch(`/api/services?fecha=${date}`),
+          fetch(`/api/pedidos?${pedidosParams.toString()}`, { headers: authHeaders }),
+          fetch(`/api/services?${servicesParams.toString()}`, { headers: authHeaders }),
           fetch(`/api/empresas`),
           fetch(`/api/moviles-extended`),
           fetch(`/api/all-positions`),
@@ -293,7 +309,7 @@ function StatsContent() {
       }
     };
     load();
-  }, [date, refreshTick]);
+  }, [date, refreshTick, user]);
 
   // ─── Auto-refresh ──────────────────────────────────────────────────────────
   useEffect(() => {
