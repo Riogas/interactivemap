@@ -261,35 +261,41 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
         return;
       }
 
-      // Columnas esperadas: Categoria* | ID* | Visibilidad | Nombre Corto | Nombre Largo | CoordX | CoordY | Telefono | Direccion | Observaciones
+      // Columnas esperadas: Categoria* | ID* | Visibilidad | Nombre Corto | CoordX | CoordY | Telefono | Direccion | Observaciones | escenario_id | empresa_fletera_id
       const headers: string[] = (raw[0] as string[]).map(h => String(h ?? '').trim());
       const idx = (name: string) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
 
-      const iCategoria = idx('Categoria');
-      const iId        = idx('ID');
-      const iVisib     = idx('Visibilidad');
-      const iNombre    = idx('Nombre Corto');
-      const iCoordX    = idx('CoordX');
-      const iCoordY    = idx('CoordY');
-      const iTelefono  = idx('Telefono');
-      const iDireccion = idx('Direccion');
+      const iCategoria   = idx('Categoria');
+      const iId          = idx('ID');
+      const iVisib       = idx('Visibilidad');
+      const iNombre      = idx('Nombre Corto');
+      const iCoordX      = idx('CoordX');
+      const iCoordY      = idx('CoordY');
+      const iTelefono    = idx('Telefono');
+      const iDireccion   = idx('Direccion');
+      const iObs         = idx('Observaciones');
+      const iEscenario   = idx('escenario');
+      const iEmpresa     = idx('empresa');
 
       const email = user?.email || user?.username || 'admin@trackmovil';
 
       const rows = raw.slice(1).filter(r => r[iId] != null).map(r => {
         const visib = String(r[iVisib] ?? '').toLowerCase();
         return {
-          id:            Number(r[iId]),
-          nombre:        String(r[iNombre] ?? '').trim(),
-          categoria:     iCategoria >= 0 ? String(r[iCategoria] ?? '').trim() || null : null,
-          latitud:       Number(r[iCoordX]),
-          longitud:      Number(r[iCoordY]),
-          telefono:      r[iTelefono] ? Number(r[iTelefono]) : null,
-          descripcion:   iDireccion >= 0 ? String(r[iDireccion] ?? '').trim() || null : null,
-          visible:       visib === 'publico' || visib === 'true' || visib === '1',
-          tipo:          visib === 'publico' ? 'publico' : 'privado',
-          icono:         '📍',
-          usuario_email: email,
+          id:                 Number(r[iId]),
+          nombre:             String(r[iNombre] ?? '').trim(),
+          categoria:          iCategoria >= 0 ? String(r[iCategoria] ?? '').trim() || null : null,
+          latitud:            Number(r[iCoordX]),
+          longitud:           Number(r[iCoordY]),
+          telefono:           r[iTelefono] ? Number(r[iTelefono]) : null,
+          descripcion:        iDireccion >= 0 ? String(r[iDireccion] ?? '').trim() || null : null,
+          observaciones:      iObs >= 0 && r[iObs] != null ? String(r[iObs]).trim() || null : null,
+          visible:            visib === 'publico' || visib === 'true' || visib === '1',
+          tipo:               visib === 'publico' ? 'publico' : 'privado',
+          icono:              '📍',
+          usuario_email:      email,
+          escenario_id:       iEscenario >= 0 && r[iEscenario] != null ? Number(r[iEscenario]) : null,
+          empresa_fletera_id: iEmpresa >= 0 && r[iEmpresa] != null ? Number(r[iEmpresa]) : null,
         };
       });
 
@@ -1129,6 +1135,57 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                     Importa o actualiza los puntos de venta desde un archivo Excel&nbsp;(.xlsx). Los registros existentes serán sobreescritos por ID.
                   </p>
 
+                  {/* Formato esperado PTV */}
+                  <details className="rounded-lg border border-gray-200 bg-gray-50">
+                    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-gray-600 select-none">📋 Ver formato Excel esperado</summary>
+                    <div className="px-4 pb-4 pt-2 space-y-3">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="text-left px-2 py-1 border border-gray-200">Columna</th>
+                            <th className="text-left px-2 py-1 border border-gray-200">Tipo</th>
+                            <th className="text-left px-2 py-1 border border-gray-200">Requerido</th>
+                            <th className="text-left px-2 py-1 border border-gray-200">Ejemplo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { col: 'ID',                 tipo: 'número',  req: true,  ej: '12345' },
+                            { col: 'Nombre',             tipo: 'texto',    req: true,  ej: 'RIOGAS SUCURSAL X' },
+                            { col: 'Direccion',          tipo: 'texto',    req: false, ej: 'Av. Italia 1234' },
+                            { col: 'CoordX',             tipo: 'número',  req: false, ej: '-34.901' },
+                            { col: 'CoordY',             tipo: 'número',  req: false, ej: '-56.165' },
+                            { col: 'Telefono',           tipo: 'número',  req: false, ej: '24001234' },
+                            { col: 'escenario_id',       tipo: 'número',  req: false, ej: '1000' },
+                            { col: 'empresa_fletera_id', tipo: 'número',  req: false, ej: '70' },
+                          ].map(({ col, tipo, req, ej }) => (
+                            <tr key={col} className="even:bg-white odd:bg-gray-50">
+                              <td className="px-2 py-1 border border-gray-200 font-mono">{col}</td>
+                              <td className="px-2 py-1 border border-gray-200 text-gray-500">{tipo}</td>
+                              <td className="px-2 py-1 border border-gray-200">{req ? <span className="text-red-500 font-bold">✓</span> : <span className="text-gray-400">–</span>}</td>
+                              <td className="px-2 py-1 border border-gray-200 text-gray-500">{ej}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-all"
+                          onClick={() => {
+                            const hdrs = ['ID','Nombre','Direccion','CoordX','CoordY','Telefono','escenario_id','empresa_fletera_id'];
+                            const wb = XLSX.utils.book_new();
+                            const ws = XLSX.utils.aoa_to_sheet([hdrs]);
+                            XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
+                            XLSX.writeFile(wb, 'plantilla-puntos-venta.xlsx');
+                          }}
+                        >
+                          ⬇ Descargar plantilla
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+
                   <div
                     className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all"
                     onClick={() => ptvFileInputRef.current?.click()}
@@ -1157,6 +1214,106 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                         : 'bg-red-50 border-red-200 text-red-700'
                     }`}>
                       {importResultPTV.msg}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ===== Importar Puntos de Interés — requiere permiso updptsventa ===== */}
+              {canUpdPtsVenta && (
+                <div className="space-y-4">
+                  <hr className="border-gray-200" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📍</span>
+                    <span className="text-sm font-bold text-gray-800">Importar Puntos de Interés</span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-blue-100 text-blue-700">ADMIN</span>
+                  </div>
+                  <p className="text-xs text-gray-500 -mt-2">
+                    Importa o actualiza los puntos de interés desde un archivo Excel&nbsp;(.xlsx). Los registros existentes serán sobreescritos por ID.
+                  </p>
+
+                  {/* Formato esperado POI */}
+                  <details className="rounded-lg border border-gray-200 bg-gray-50">
+                    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-gray-600 select-none">📋 Ver formato Excel esperado</summary>
+                    <div className="px-4 pb-4 pt-2 space-y-3">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="text-left px-2 py-1 border border-gray-200">Columna</th>
+                            <th className="text-left px-2 py-1 border border-gray-200">Tipo</th>
+                            <th className="text-left px-2 py-1 border border-gray-200">Requerido</th>
+                            <th className="text-left px-2 py-1 border border-gray-200">Ejemplo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { col: 'ID',                 tipo: 'número',         req: true,  ej: '100' },
+                            { col: 'Categoria',          tipo: 'texto',            req: false, ej: 'GASODOMESTICO' },
+                            { col: 'Visibilidad',        tipo: 'publico/privado',  req: false, ej: 'publico' },
+                            { col: 'Nombre Corto',       tipo: 'texto',            req: true,  ej: 'Suc 5' },
+                            { col: 'CoordX',             tipo: 'número',         req: true,  ej: '-34.872' },
+                            { col: 'CoordY',             tipo: 'número',         req: true,  ej: '-56.207' },
+                            { col: 'Telefono',           tipo: 'número',         req: false, ej: '24001234' },
+                            { col: 'Direccion',          tipo: 'texto',            req: false, ej: 'Bvar Artigas 4321' },
+                            { col: 'Observaciones',      tipo: 'texto',            req: false, ej: 'Atiende solo mañanas' },
+                            { col: 'escenario_id',       tipo: 'número',         req: false, ej: '1000' },
+                            { col: 'empresa_fletera_id', tipo: 'número',         req: false, ej: '70' },
+                          ].map(({ col, tipo, req, ej }) => (
+                            <tr key={col} className="even:bg-white odd:bg-gray-50">
+                              <td className="px-2 py-1 border border-gray-200 font-mono">{col}</td>
+                              <td className="px-2 py-1 border border-gray-200 text-gray-500">{tipo}</td>
+                              <td className="px-2 py-1 border border-gray-200">{req ? <span className="text-red-500 font-bold">✓</span> : <span className="text-gray-400">–</span>}</td>
+                              <td className="px-2 py-1 border border-gray-200 text-gray-500">{ej}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all"
+                          onClick={() => {
+                            const hdrs = ['ID','Categoria','Visibilidad','Nombre Corto','CoordX','CoordY','Telefono','Direccion','Observaciones','escenario_id','empresa_fletera_id'];
+                            const wb = XLSX.utils.book_new();
+                            const ws = XLSX.utils.aoa_to_sheet([hdrs]);
+                            XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
+                            XLSX.writeFile(wb, 'plantilla-puntos-interes.xlsx');
+                          }}
+                        >
+                          ⬇ Descargar plantilla
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+
+                  <div
+                    className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                    onClick={() => poiFileInputRef.current?.click()}
+                  >
+                    <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-sm text-gray-600 font-medium">
+                      {importingPOI ? 'Procesando...' : 'Seleccionar archivo .xlsx'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">Haz clic para elegir el archivo</p>
+                    <input
+                      ref={poiFileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={handleImportPOI}
+                      disabled={importingPOI}
+                    />
+                  </div>
+
+                  {importResultPOI && (
+                    <div className={`text-sm px-4 py-3 rounded-lg border ${
+                      importResultPOI.ok
+                        ? 'bg-green-50 border-green-200 text-green-700'
+                        : 'bg-red-50 border-red-200 text-red-700'
+                    }`}>
+                      {importResultPOI.msg}
                     </div>
                   )}
                 </div>
@@ -1270,8 +1427,26 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                         <button
                           type="button"
                           onClick={() => {
-                            setPreferences((prev) => ({ ...prev, visualRefs: { ...visualRefsLocal } }));
+                            // Aplicar los colores y PERSISTIR (sin esto el cambio solo
+                            // queda en memoria del modal y al cerrar+reabrir vuelve al
+                            // anterior — bug reportado).
+                            const newPrefs = { ...preferences, visualRefs: { ...visualRefsLocal } };
+                            setPreferences(newPrefs);
+                            try {
+                              localStorage.setItem('userPreferences', JSON.stringify(newPrefs));
+                            } catch { /* localStorage lleno o privado — no bloquear */ }
+                            // onSave dispara el PUT a Supabase via el callback del parent.
+                            onSave(newPrefs);
+                            // Cerrar el sub-modal siempre.
                             setConfVisualOpen(false);
+                            // Si el usuario entro al sub-modal directamente desde un Ref#N
+                            // (autoOpenConfVisual=true), tambien cerrar el modal padre —
+                            // no le interesa quedarse en Preferencias, vino solo por el color.
+                            // Si entro via Preferencias > Conf. Visual, dejar el modal padre
+                            // abierto para que siga editando otras cosas.
+                            if (autoOpenConfVisual) {
+                              onClose();
+                            }
                           }}
                           className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
                         >
