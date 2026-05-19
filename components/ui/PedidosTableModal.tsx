@@ -249,16 +249,18 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     //        el bloque `if (isFinalizados)` lo salteaba y mostraba TODO).
     if (preFilterMovil || preFilterZona) {
       // Pre-filtro activo — el dropdown interno se encarga.
+    } else if (isFinalizados) {
+      // NOTA (2026-05-19, opcion C): la vista de FINALIZADOS NO filtra por
+      // selectedMoviles. El total debe coincidir con el navbar / modal
+      // Estadisticas por Zona: TODOS los finalizados del dia de las empresas
+      // seleccionadas, sin importar el subset de moviles del sidebar. Esto
+      // incluye los huerfanos tipo "ENTR. SIN 1710" (estado=2, sub=19) que
+      // privilegiados deben ver. Distribuidores ya quedaron filtrados por
+      // scope arriba (linea 243).
+      // El filtro de movil sigue activo en VISTA PENDIENTES (rama else-if abajo).
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
       result = result.filter(p => {
         if (!p.movil || Number(p.movil) === 0) {
-          // Finalizados sin móvil (huérfanos tipo "ENTR. SIN 1710"): solo pasan
-          // en modo "Todos" Y para usuarios privilegiados (despacho/root/
-          // supervisor/dashboard). Distribuidores nunca los ven, y con subset
-          // de móviles tampoco — no corresponden al recorte del usuario.
-          if (isFinalizados) {
-            return allMovilesSelected && privilegedUser;
-          }
           // Pendientes sin móvil: pasa si tiene permiso "Ped s/asignar
           // unitarios". La scope por zona ya se aplicó vía isPedidoInScope
           // arriba (línea 243). Los gates legacy (hideUnassigned,

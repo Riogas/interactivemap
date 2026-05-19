@@ -2226,7 +2226,7 @@ const MapView = memo(function MapView({
     const cacheKey = entregado ? 'pedido-finalizado-ok' : 'pedido-finalizado-no';
     const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
     const shadow = entregado ? 'rgba(22, 163, 74, 0.3)' : 'rgba(220, 38, 38, 0.3)';
-    const symbol = entregado ? '?' : '?';
+    const symbol = entregado ? '✓' : '✗';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `
@@ -2261,7 +2261,7 @@ const MapView = memo(function MapView({
   const createFinalizadoPedidoIconCompact = useCallback((entregado: boolean) => {
     const cacheKey = `pedido-finalizado-compact-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
     const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
-    const symbol = entregado ? '?' : '?';
+    const symbol = entregado ? '✓' : '✗';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `<div style="
