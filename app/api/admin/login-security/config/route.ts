@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLoginSecurityConfig, setLoginSecurityConfig } from '@/lib/login-security-config';
 
 /**
- * GET  /api/admin/login-security/config — Leer config global de límites de bloqueo
+ * GET  /api/admin/login-security/config — Leer config global de limites de bloqueo
  * PUT  /api/admin/login-security/config — Actualizar config global
  *
- * Gate: header x-track-isroot: 'S' (mismo patrón que todos los endpoints admin)
+ * Gate: header x-track-isroot: 'S' (mismo patron que todos los endpoints admin)
  */
 
 function requireRoot(request: NextRequest): true | NextResponse {
@@ -31,11 +31,13 @@ export async function GET(request: NextRequest) {
       success: true,
       maxIntentosUsuario: config.maxIntentosUsuario,
       maxIntentosIp: config.maxIntentosIp,
+      tiempoBloqueoMinutos: config.tiempoBloqueoMinutos,
+      mensajeBloqueo: config.mensajeBloqueo,
     });
   } catch (error) {
     console.error('[api/admin/login-security/config] GET error:', error);
     return NextResponse.json(
-      { success: false, error: 'Error al leer configuración' },
+      { success: false, error: 'Error al leer configuracion' },
       { status: 500 }
     );
   }
@@ -52,12 +54,12 @@ export async function PUT(request: NextRequest) {
     body = await request.json();
   } catch {
     return NextResponse.json(
-      { success: false, error: 'Body inválido' },
+      { success: false, error: 'Body invalido' },
       { status: 400 }
     );
   }
 
-  const { maxIntentosUsuario, maxIntentosIp } = body as Record<string, unknown>;
+  const { maxIntentosUsuario, maxIntentosIp, tiempoBloqueoMinutos, mensajeBloqueo } = body as Record<string, unknown>;
 
   // Validar maxIntentosUsuario
   if (
@@ -85,19 +87,54 @@ export async function PUT(request: NextRequest) {
     );
   }
 
+  // Validar tiempoBloqueoMinutos
+  if (
+    typeof tiempoBloqueoMinutos !== 'number' ||
+    !Number.isInteger(tiempoBloqueoMinutos) ||
+    tiempoBloqueoMinutos < 1 ||
+    tiempoBloqueoMinutos > 1440
+  ) {
+    return NextResponse.json(
+      { success: false, error: 'tiempoBloqueoMinutos debe ser un entero entre 1 y 1440' },
+      { status: 400 }
+    );
+  }
+
+  // Validar mensajeBloqueo
+  if (
+    typeof mensajeBloqueo !== 'string' ||
+    mensajeBloqueo.trim().length === 0 ||
+    mensajeBloqueo.trim().length > 500
+  ) {
+    return NextResponse.json(
+      { success: false, error: 'mensajeBloqueo debe ser un texto de 1 a 500 caracteres' },
+      { status: 400 }
+    );
+  }
+
   try {
     const updatedBy = request.headers.get('x-track-user') ?? null;
-    await setLoginSecurityConfig({ maxIntentosUsuario, maxIntentosIp }, updatedBy);
+    await setLoginSecurityConfig(
+      {
+        maxIntentosUsuario,
+        maxIntentosIp,
+        tiempoBloqueoMinutos,
+        mensajeBloqueo: mensajeBloqueo.trim(),
+      },
+      updatedBy
+    );
 
     return NextResponse.json({
       success: true,
       maxIntentosUsuario,
       maxIntentosIp,
+      tiempoBloqueoMinutos,
+      mensajeBloqueo: mensajeBloqueo.trim(),
     });
   } catch (error) {
     console.error('[api/admin/login-security/config] PUT error:', error);
     return NextResponse.json(
-      { success: false, error: 'Error al guardar configuración' },
+      { success: false, error: 'Error al guardar configuracion' },
       { status: 500 }
     );
   }

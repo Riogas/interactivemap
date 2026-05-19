@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { authStorage } from '@/lib/auth-storage';
 import { supabase } from '@/lib/supabase';
+import { todayMontevideo } from '@/lib/date-utils';
 
 // ==============================================================================
 // TIPOS
@@ -31,6 +33,10 @@ type LoginAttempt = {
   estado: 'success' | 'fail' | 'blocked_user' | 'blocked_ip' | 'user_eq_pass';
   whitelisted: boolean;
   escenario_id: number | null;
+  // Campos enriquecidos: poblados tras resolver usuario-detalle
+  nombre_completo?: string | null;
+  emp_fletera?: string[] | null;
+  _resolving?: boolean; // true mientras se esta resolviendo el usuario
 };
 
 type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';
@@ -44,10 +50,11 @@ type UsuarioDetalle = {
   telefono?: string;
   estado?: string;
   tipoUsuario?: string;
+  esRoot?: boolean;
   esExterno?: boolean;
   fechaCreacion?: string;
   fechaUltimoLogin?: string;
-  empFletera?: string | string[] | null;
+  empFletera?: { Nombre?: string; Valor?: string } | { Nombre?: string; Valor?: string }[] | string | string[] | null;
   [key: string]: unknown;
 };
 
@@ -77,7 +84,34 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 // ==============================================================================
-// PÁGINA PRINCIPAL
+// HELPER: extraer array de nombres de empresa fletera
+// ==============================================================================
+
+function extractEmpFletera(empFletera: UsuarioDetalle['empFletera']): string[] {
+  if (!empFletera) return [];
+  // Array de objetos {Nombre, Valor}
+  if (Array.isArray(empFletera)) {
+    return empFletera.map((e) => {
+      if (typeof e === 'string') return e;
+      if (typeof e === 'object' && e !== null) {
+        const obj = e as { Nombre?: string; Valor?: string };
+        return obj.Nombre || obj.Valor || JSON.stringify(e);
+      }
+      return String(e);
+    }).filter(Boolean);
+  }
+  // Objeto unico {Nombre, Valor}
+  if (typeof empFletera === 'object' && empFletera !== null) {
+    const obj = empFletera as { Nombre?: string; Valor?: string };
+    return [obj.Nombre || obj.Valor || ''].filter(Boolean);
+  }
+  // String
+  if (typeof empFletera === 'string') return [empFletera].filter(Boolean);
+  return [];
+}
+
+// ==============================================================================
+// PAGINA PRINCIPAL
 // ==============================================================================
 
 export default function LoginBlocksPage() {
@@ -87,6 +121,10 @@ export default function LoginBlocksPage() {
   // ─── Estado: config global ──────────────────────────────────────────────────
   const [configUsuario, setConfigUsuario] = useState<number>(3);
   const [configIp, setConfigIp] = useState<number>(5);
+  const [configTiempoBloqueo, setConfigTiempoBloqueo] = useState<number>(15);
+  const [configMensajeBloqueo, setConfigMensajeBloqueo] = useState<string>(
+    'Tu acceso esta bloqueado temporalmente. Contacta al administrador.'
+  );
   const [configLoading, setConfigLoading] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
   const [configToast, setConfigToast] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -109,9 +147,18 @@ export default function LoginBlocksPage() {
   const [usernameFilter, setUsernameFilter] = useState('');
   const [ipFilter, setIpFilter] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  // Parte A: inicializar con fecha de hoy en timezone Montevideo
+  const todayStr = todayMontevideo();
+  const [dateFrom, setDateFrom] = useState(todayStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [attemptsLimit] = useState(200);
+
+  // ─── Estado: export Excel ───────────────────────────────────────────────────
+  const [exporting, setExporting] = useState(false);
+
+  // ─── Cache de usuario-detalle ────────────────────────────────────────────────
+  // key: username, value: UsuarioDetalle o null (404)
+  const userDetailCacheRef = useRef<Map<string, UsuarioDetalle | null>>(new Map());
 
   // ─── Estado: modal detalle de usuario ───────────────────────────────────────
   const [detalleModalOpen, setDetalleModalOpen] = useState(false);
@@ -147,6 +194,12 @@ export default function LoginBlocksPage() {
       if (json.success) {
         setConfigUsuario(json.maxIntentosUsuario);
         setConfigIp(json.maxIntentosIp);
+        if (typeof json.tiempoBloqueoMinutos === 'number') {
+          setConfigTiempoBloqueo(json.tiempoBloqueoMinutos);
+        }
+        if (typeof json.mensajeBloqueo === 'string') {
+          setConfigMensajeBloqueo(json.mensajeBloqueo);
+        }
       }
     } catch (err) {
       console.error('[login-blocks] fetchConfig error:', err);
@@ -178,6 +231,78 @@ export default function LoginBlocksPage() {
     }
   }, [blocksShowAll]);
 
+  // ─── Helper: resolver detalle de usuario (con cache) ─────────────────────
+  const resolveUsuarioDetalle = useCallback(async (username: string): Promise<UsuarioDetalle | null> => {
+    const cache = userDetailCacheRef.current;
+    if (cache.has(username)) {
+      return cache.get(username) ?? null;
+    }
+    try {
+      const res = await fetch(
+        `/api/admin/login-security/usuario-detalle?username=${encodeURIComponent(username)}`,
+        { headers: getAuthHeaders() }
+      );
+      if (!res.ok) {
+        cache.set(username, null);
+        return null;
+      }
+      const json = await res.json();
+      if (json.success && json.usuario) {
+        const detalle = json.usuario as UsuarioDetalle;
+        cache.set(username, detalle);
+        return detalle;
+      }
+      cache.set(username, null);
+      return null;
+    } catch {
+      cache.set(username, null);
+      return null;
+    }
+  }, []);
+
+  // ─── Enriquecer intentos con nombre y empresa fletera (batched, concurrencia 5) ──
+  const enrichAttempts = useCallback(async (rawAttempts: LoginAttempt[]) => {
+    // Deduplicar usernames que no esten en cache
+    const uniqueUsernames = [...new Set(rawAttempts.map(a => a.username))].filter(
+      u => !userDetailCacheRef.current.has(u)
+    );
+
+    // Marcar como _resolving = true para mostrar spinner
+    if (uniqueUsernames.length > 0) {
+      setAttempts(prev => prev.map(a =>
+        uniqueUsernames.includes(a.username) ? { ...a, _resolving: true } : a
+      ));
+    }
+
+    // Fetch batched con concurrencia limitada a 5
+    const CONCURRENCY = 5;
+    for (let i = 0; i < uniqueUsernames.length; i += CONCURRENCY) {
+      const batch = uniqueUsernames.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(u => resolveUsuarioDetalle(u)));
+    }
+
+    // Merge nombres y empresas en el state de attempts
+    setAttempts(prev => prev.map(attempt => {
+      const cached = userDetailCacheRef.current.get(attempt.username);
+      if (cached === undefined) {
+        // Todavia no resuelto (no deberia pasar, pero defensivo)
+        return attempt;
+      }
+      if (cached === null) {
+        // 404 — usuario no encontrado
+        return { ...attempt, nombre_completo: null, emp_fletera: null, _resolving: false };
+      }
+      const nombre_completo = [cached.nombre, cached.apellido].filter(Boolean).join(' ') || null;
+      const emp_fletera = extractEmpFletera(cached.empFletera);
+      return {
+        ...attempt,
+        nombre_completo,
+        emp_fletera: emp_fletera.length > 0 ? emp_fletera : null,
+        _resolving: false,
+      };
+    }));
+  }, [resolveUsuarioDetalle]);
+
   // ─── Fetch: intentos ───────────────────────────────────────────────────────
   const fetchAttempts = useCallback(async () => {
     setAttemptsLoading(true);
@@ -195,15 +320,18 @@ export default function LoginBlocksPage() {
       });
       const json = await res.json();
       if (json.attempts) {
-        setAttempts(json.attempts as LoginAttempt[]);
-        setAttemptsTotal(json.total ?? json.attempts.length);
+        const raw = json.attempts as LoginAttempt[];
+        setAttempts(raw);
+        setAttemptsTotal(json.total ?? raw.length);
+        // Disparar resolucion batched en background (no bloquea el render inicial)
+        enrichAttempts(raw);
       }
     } catch (err) {
       console.error('[login-blocks] fetchAttempts error:', err);
     } finally {
       setAttemptsLoading(false);
     }
-  }, [usernameFilter, ipFilter, estadoFilter, dateFrom, dateTo, attemptsLimit]);
+  }, [usernameFilter, ipFilter, estadoFilter, dateFrom, dateTo, attemptsLimit, enrichAttempts]);
 
   // ─── Fetch inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -225,7 +353,7 @@ export default function LoginBlocksPage() {
     fetchBlocks();
   }, [blocksShowAll, fetchBlocks, user]);
 
-  // ─── Realtime: suscripción a login_blocks + login_attempts ────────────────
+  // ─── Realtime: suscripcion a login_blocks + login_attempts ────────────────
   useEffect(() => {
     if (user?.isRoot !== 'S') return;
 
@@ -321,11 +449,13 @@ export default function LoginBlocksPage() {
         body: JSON.stringify({
           maxIntentosUsuario: configUsuario,
           maxIntentosIp: configIp,
+          tiempoBloqueoMinutos: configTiempoBloqueo,
+          mensajeBloqueo: configMensajeBloqueo,
         }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
-        setConfigToast({ ok: true, msg: 'Configuración guardada correctamente.' });
+        setConfigToast({ ok: true, msg: 'Configuracion guardada correctamente.' });
         // Cerrar el modal tras guardado exitoso
         if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
         toastTimerRef.current = window.setTimeout(() => {
@@ -345,7 +475,7 @@ export default function LoginBlocksPage() {
 
   // ─── Desbloquear usuario o IP ──────────────────────────────────────────────
   const handleUnblock = async (type: 'user' | 'ip', value: string, displayName: string) => {
-    if (!confirm(`¿Confirmar desbloqueo de ${type === 'user' ? 'usuario' : 'IP'} "${displayName}"?`)) return;
+    if (!confirm(`Confirmar desbloqueo de ${type === 'user' ? 'usuario' : 'IP'} "${displayName}"?`)) return;
 
     try {
       const res = await fetch('/api/admin/login-security/unblock', {
@@ -392,17 +522,88 @@ export default function LoginBlocksPage() {
     }
   }, []);
 
+  // ─── Exportar a Excel ─────────────────────────────────────────────────────
+  const handleExportExcel = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+
+    try {
+      // Resolver usernames que aun no esten en cache
+      const missing = [...new Set(attempts.map(a => a.username))].filter(
+        u => !userDetailCacheRef.current.has(u)
+      );
+      if (missing.length > 0) {
+        const CONCURRENCY = 5;
+        for (let i = 0; i < missing.length; i += CONCURRENCY) {
+          const batch = missing.slice(i, i + CONCURRENCY);
+          await Promise.all(batch.map(u => resolveUsuarioDetalle(u)));
+        }
+      }
+
+      // Construir filas del Excel
+      const rows = attempts.map(a => {
+        const detalle = userDetailCacheRef.current.get(a.username) ?? null;
+        const nombre = detalle
+          ? [detalle.nombre, detalle.apellido].filter(Boolean).join(' ')
+          : '';
+        const empFletera = detalle
+          ? extractEmpFletera(detalle.empFletera).join(', ')
+          : '';
+        return {
+          'ID': a.id,
+          'Fecha/Hora': new Date(a.ts).toLocaleString('es-UY'),
+          'Username': a.username,
+          'Nombre Completo': nombre,
+          'Email': detalle?.email ?? '',
+          'Telefono': detalle?.telefono ?? '',
+          'Estado Login': a.estado,
+          'Estado Usuario': detalle?.estado ?? '',
+          'Tipo Usuario': detalle?.tipoUsuario ?? '',
+          'Es Root': detalle?.esRoot != null ? (detalle.esRoot ? 'Si' : 'No') : '',
+          'IP': a.ip,
+          'User Agent': a.user_agent ?? '',
+          'Escenario': a.escenario_id ?? '',
+          'Empresa Fletera': empFletera,
+          'Whitelisted': a.whitelisted ? 'Si' : 'No',
+          'Fecha Creacion Usuario': detalle?.fechaCreacion
+            ? new Date(detalle.fechaCreacion).toLocaleString('es-UY')
+            : '',
+          'Ultimo Login Usuario': detalle?.fechaUltimoLogin
+            ? new Date(detalle.fechaUltimoLogin).toLocaleString('es-UY')
+            : '',
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Intentos de Login');
+
+      // Nombre de archivo con fecha y hora actual
+      const now = new Date();
+      const fechaStr = todayMontevideo(now);
+      const horaStr = now.toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '');
+      const filename = `intentos-login_${fechaStr}_${horaStr}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
+    } catch (err) {
+      console.error('[login-blocks] export error:', err);
+      alert('Error al generar el Excel. Intenta de nuevo.');
+    } finally {
+      setExporting(false);
+    }
+  }, [attempts, exporting, resolveUsuarioDetalle]);
+
   // ─── Estado del intento: label legible + estilo ──────────────────────────
   // Mapping de los 5 estados que se loguean en login_attempts.estado a un texto
-  // descriptivo en español. Los estados de la DB se mantienen como están
-  // (CHECK constraint), solo cambia la presentación.
+  // descriptivo en espanol. Los estados de la DB se mantienen como estan
+  // (CHECK constraint), solo cambia la presentacion.
   const getEstadoLabel = (estado: string): string => {
     switch (estado) {
       case 'success': return 'Login exitoso';
-      case 'fail': return 'Credenciales inválidas';
+      case 'fail': return 'Credenciales invalidas';
       case 'blocked_user': return 'Usuario bloqueado';
       case 'blocked_ip': return 'IP bloqueada';
-      case 'user_eq_pass': return 'Usuario = contraseña';
+      case 'user_eq_pass': return 'Usuario = contrasena';
       default: return estado;
     }
   };
@@ -425,7 +626,7 @@ export default function LoginBlocksPage() {
       if (!b.key.toLowerCase().includes(term)) return false;
     }
     // El endpoint ya filtra server-side: activos cuando !showAll, todos cuando showAll.
-    // Aquí solo filtramos client-side el texto de búsqueda.
+    // Aqui solo filtramos client-side el texto de busqueda.
     return true;
   });
 
@@ -440,7 +641,7 @@ export default function LoginBlocksPage() {
 
   return (
     // FIX (Issue 1 — scroll): body tiene overflow-hidden en layout.tsx (necesario para el mapa).
-    // Para que esta página scrollee, el root div debe ser h-full overflow-y-auto,
+    // Para que esta pagina scrollee, el root div debe ser h-full overflow-y-auto,
     // creando su propio scroll context dentro del body con overflow-hidden.
     <div className="h-full overflow-y-auto bg-gray-50">
       {/* ─── Header ──────────────────────────────────────────────────────────── */}
@@ -454,10 +655,10 @@ export default function LoginBlocksPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-white">Bloqueos de Login</h1>
-              <p className="text-xs text-red-100">Panel de administración — Solo root</p>
+              <p className="text-xs text-red-100">Panel de administracion — Solo root</p>
             </div>
           </div>
-          {/* Indicador de estado realtime + botón settings */}
+          {/* Indicador de estado realtime + boton settings */}
           <div className="flex items-center gap-3">
             {realtimeStatus === 'connected' ? (
               <span className="flex items-center gap-1.5 text-xs text-green-200 font-medium">
@@ -475,10 +676,10 @@ export default function LoginBlocksPage() {
                 Reconectando (polling 30s)
               </span>
             )}
-            {/* Botón ruedita de settings */}
+            {/* Boton ruedita de settings */}
             <button
               onClick={() => setSettingsModalOpen(true)}
-              title="Configuración global de límites"
+              title="Configuracion global de limites"
               className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors text-white"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -489,7 +690,7 @@ export default function LoginBlocksPage() {
         </div>
       </div>
 
-      {/* ─── Modal: Configuración global de límites ───────────────────────────── */}
+      {/* ─── Modal: Configuracion global de limites ───────────────────────────── */}
       {settingsModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -502,7 +703,7 @@ export default function LoginBlocksPage() {
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
-                <h2 className="text-base font-semibold text-white">Configuración Global de Límites</h2>
+                <h2 className="text-base font-semibold text-white">Configuracion Global de Limites</h2>
                 <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-red-800/50 text-red-100">ADMIN</span>
               </div>
               <button
@@ -517,12 +718,12 @@ export default function LoginBlocksPage() {
             {/* Modal body */}
             <div className="p-6">
               <p className="text-sm text-gray-500 mb-5">
-                Define cuántos intentos fallidos se permiten antes de bloquear. Los cambios aplican de inmediato al próximo intento de login.
+                Define los limites de intentos de login y el comportamiento del bloqueo. Los cambios aplican de inmediato al proximo intento.
               </p>
               {configLoading ? (
                 <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
                   <div className="animate-spin w-4 h-4 rounded-full border-2 border-gray-300 border-t-gray-600" />
-                  Cargando configuración...
+                  Cargando configuracion...
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -551,6 +752,43 @@ export default function LoginBlocksPage() {
                       onChange={(e) => setConfigIp(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
                       className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
                     />
+                  </div>
+                  {/* Parte E.3: tiempo de bloqueo */}
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Tiempo de bloqueo (minutos)
+                    </label>
+                    <p className="text-xs text-gray-400 mb-1">
+                      Cuanto dura el bloqueo despues de superar los intentos permitidos. Rango: 1-1440 min.
+                    </p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={configTiempoBloqueo}
+                      onChange={(e) => setConfigTiempoBloqueo(Math.max(1, Math.min(1440, parseInt(e.target.value) || 1)))}
+                      className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
+                    />
+                  </div>
+                  {/* Parte E.3: mensaje de bloqueo */}
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Mensaje de bloqueo
+                    </label>
+                    <p className="text-xs text-gray-400 mb-1">
+                      Texto que se muestra al usuario cuando intenta login y esta bloqueado. Max 500 caracteres.
+                    </p>
+                    <textarea
+                      rows={3}
+                      maxLength={500}
+                      value={configMensajeBloqueo}
+                      onChange={(e) => setConfigMensajeBloqueo(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm resize-none"
+                      placeholder="Mensaje que ve el usuario al intentar login bloqueado..."
+                    />
+                    <p className="text-xs text-gray-400 text-right">
+                      {configMensajeBloqueo.length}/500
+                    </p>
                   </div>
                 </div>
               )}
@@ -628,7 +866,7 @@ export default function LoginBlocksPage() {
                 </div>
               ) : detalleUsuario ? (
                 (() => {
-                  // Helpers de decodificación de códigos del SecuritySuite
+                  // Helpers de decodificacion de codigos del SecuritySuite
                   const rawEstado = String(detalleUsuario.estado ?? '').trim().toUpperCase();
                   const estadoLabel =
                     rawEstado === 'A' ? 'Activo' :
@@ -647,11 +885,7 @@ export default function LoginBlocksPage() {
                     rawTipo === 'A' ? 'AD/Externo' :
                     rawTipo || '-';
 
-                  const empresas = detalleUsuario.empFletera == null
-                    ? []
-                    : Array.isArray(detalleUsuario.empFletera)
-                      ? detalleUsuario.empFletera
-                      : [detalleUsuario.empFletera];
+                  const empresas = extractEmpFletera(detalleUsuario.empFletera);
 
                   return (
                     <div className="space-y-1">
@@ -660,7 +894,7 @@ export default function LoginBlocksPage() {
                         { label: 'Username', value: detalleUsuario.username as string ?? '-' },
                         { label: 'Nombre completo', value: [detalleUsuario.nombre, detalleUsuario.apellido].filter(Boolean).join(' ') || '-' },
                         { label: 'Email', value: detalleUsuario.email as string ?? '-' },
-                        { label: 'Teléfono', value: detalleUsuario.telefono as string ?? '-' },
+                        { label: 'Telefono', value: detalleUsuario.telefono as string ?? '-' },
                       ].map(({ label, value }) => (
                         <div key={label} className="flex items-start gap-3 py-1.5 border-b border-gray-100">
                           <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">{label}</span>
@@ -685,9 +919,9 @@ export default function LoginBlocksPage() {
                         </span>
                       </div>
                       {[
-                        { label: 'Externo', value: detalleUsuario.esExterno != null ? (detalleUsuario.esExterno ? 'Sí' : 'No') : '-' },
-                        { label: 'Creación', value: detalleUsuario.fechaCreacion ? new Date(detalleUsuario.fechaCreacion as string).toLocaleString('es-UY') : '-' },
-                        { label: 'Último login', value: detalleUsuario.fechaUltimoLogin ? new Date(detalleUsuario.fechaUltimoLogin as string).toLocaleString('es-UY') : '-' },
+                        { label: 'Externo', value: detalleUsuario.esExterno != null ? (detalleUsuario.esExterno ? 'Si' : 'No') : '-' },
+                        { label: 'Creacion', value: detalleUsuario.fechaCreacion ? new Date(detalleUsuario.fechaCreacion as string).toLocaleString('es-UY') : '-' },
+                        { label: 'Ultimo login', value: detalleUsuario.fechaUltimoLogin ? new Date(detalleUsuario.fechaUltimoLogin as string).toLocaleString('es-UY') : '-' },
                       ].map(({ label, value }) => (
                         <div key={label} className="flex items-start gap-3 py-1.5 border-b border-gray-100">
                           <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500">{label}</span>
@@ -768,7 +1002,6 @@ export default function LoginBlocksPage() {
               )}
             </div>
             <div className="flex items-center gap-3">
-              {/* Filtros DENTRO del colapsable (visibles en el header para fácil acceso) */}
               <span
                 className="text-xs text-gray-500"
                 onClick={(e) => e.stopPropagation()}
@@ -796,7 +1029,7 @@ export default function LoginBlocksPage() {
                     onChange={(e) => setBlocksShowAll(e.target.checked)}
                     className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
                   />
-                  Ver histórico
+                  Ver historico
                 </label>
                 <input
                   type="text"
@@ -825,7 +1058,7 @@ export default function LoginBlocksPage() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario / IP</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bloqueado hasta</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Creado</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Razón</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Razon</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                       </tr>
@@ -908,6 +1141,27 @@ export default function LoginBlocksPage() {
                 </span>
               )}
             </div>
+            {/* Parte D: Boton exportar Excel */}
+            <button
+              onClick={handleExportExcel}
+              disabled={exporting || attemptsLoading || attempts.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={attempts.length === 0 ? 'No hay registros para exportar' : 'Exportar registros actuales a Excel'}
+            >
+              {exporting ? (
+                <>
+                  <div className="animate-spin w-4 h-4 rounded-full border-2 border-white/30 border-t-white" />
+                  Generando...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Exportar Excel
+                </>
+              )}
+            </button>
           </div>
 
           {/* Filtros */}
@@ -941,10 +1195,10 @@ export default function LoginBlocksPage() {
               >
                 <option value="">Todos</option>
                 <option value="success">Login exitoso</option>
-                <option value="fail">Credenciales inválidas</option>
+                <option value="fail">Credenciales invalidas</option>
                 <option value="blocked_user">Usuario bloqueado</option>
                 <option value="blocked_ip">IP bloqueada</option>
-                <option value="user_eq_pass">Usuario = contraseña</option>
+                <option value="user_eq_pass">Usuario = contrasena</option>
               </select>
             </div>
             <div>
@@ -981,56 +1235,110 @@ export default function LoginBlocksPage() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha/Hora</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
+                    {/* Parte B: columna Nombre */}
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Escenario</th>
+                    {/* Parte C: columnas empresa fletera */}
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Empresa Fletera</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User-Agent</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {attempts.map((attempt) => (
-                    <tr
-                      key={attempt.id}
-                      className="hover:bg-blue-50 transition-colors cursor-pointer"
-                      onClick={(e) => {
-                        // Evitar abrir detalle al clickear sobre el badge WL o el badge de estado
-                        const target = e.target as HTMLElement;
-                        if (target.tagName === 'SPAN' && (target.classList.contains('wl-chip') || target.classList.contains('estado-badge'))) return;
-                        handleOpenDetalle(attempt.username);
-                      }}
-                      title={`Ver detalle de ${attempt.username}`}
-                    >
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(attempt.ts).toLocaleString('es-UY')}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {attempt.username}
-                        {attempt.whitelisted && (
-                          <span className="wl-chip ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded">WL</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-700">{attempt.ip}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span
-                          className={`estado-badge px-2 py-1 text-xs font-medium rounded border ${getEstadoBadgeClass(attempt.estado)}`}
-                          title={attempt.estado}
-                        >
-                          {getEstadoLabel(attempt.estado)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {attempt.escenario_id || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-400 max-w-xs truncate">
-                        {attempt.user_agent || '-'}
-                      </td>
-                    </tr>
-                  ))}
+                  {attempts.map((attempt) => {
+                    // Empresa fletera: chips con "+N" si hay 4 o mas
+                    const empresas = attempt.emp_fletera ?? [];
+                    const MAX_CHIPS = 3;
+                    const visibleEmpresas = empresas.slice(0, MAX_CHIPS);
+                    const hiddenCount = empresas.length - MAX_CHIPS;
+
+                    return (
+                      <tr
+                        key={attempt.id}
+                        className="hover:bg-blue-50 transition-colors cursor-pointer"
+                        onClick={(e) => {
+                          // Evitar abrir detalle al clickear sobre el badge WL o el badge de estado
+                          const target = e.target as HTMLElement;
+                          if (target.tagName === 'SPAN' && (target.classList.contains('wl-chip') || target.classList.contains('estado-badge'))) return;
+                          handleOpenDetalle(attempt.username);
+                        }}
+                        title={`Ver detalle de ${attempt.username}`}
+                      >
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(attempt.ts).toLocaleString('es-UY')}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {attempt.username}
+                          {attempt.whitelisted && (
+                            <span className="wl-chip ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-green-100 text-green-700 rounded">WL</span>
+                          )}
+                        </td>
+                        {/* Parte B: celda Nombre con spinner */}
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                          {attempt._resolving ? (
+                            <div className="flex items-center gap-1 text-gray-400">
+                              <div className="animate-spin w-3 h-3 rounded-full border border-gray-300 border-t-gray-500" />
+                              <span className="text-xs">...</span>
+                            </div>
+                          ) : attempt.nombre_completo ? (
+                            <span>{attempt.nombre_completo}</span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-700">{attempt.ip}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span
+                            className={`estado-badge px-2 py-1 text-xs font-medium rounded border ${getEstadoBadgeClass(attempt.estado)}`}
+                            title={attempt.estado}
+                          >
+                            {getEstadoLabel(attempt.estado)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                          {attempt.escenario_id || '-'}
+                        </td>
+                        {/* Parte C: empresa fletera con chips y "+N" */}
+                        <td className="px-4 py-3">
+                          {attempt._resolving ? (
+                            <div className="flex items-center gap-1 text-gray-400">
+                              <div className="animate-spin w-3 h-3 rounded-full border border-gray-300 border-t-gray-500" />
+                            </div>
+                          ) : empresas.length === 0 ? (
+                            <span className="text-gray-400 text-sm">—</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {visibleEmpresas.map((emp, i) => (
+                                <span
+                                  key={`${emp}-${i}`}
+                                  className="px-1.5 py-0.5 text-[11px] font-medium rounded bg-teal-50 text-teal-700 border border-teal-200 whitespace-nowrap"
+                                >
+                                  {emp}
+                                </span>
+                              ))}
+                              {hiddenCount > 0 && (
+                                <span
+                                  className="px-1.5 py-0.5 text-[11px] font-medium rounded bg-gray-100 text-gray-600 border border-gray-200 cursor-help"
+                                  title={empresas.slice(MAX_CHIPS).join(', ')}
+                                >
+                                  +{hiddenCount}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-400 max-w-xs truncate">
+                          {attempt.user_agent || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {attemptsTotal > attempts.length && (
                 <p className="text-xs text-gray-400 mt-3 px-4">
-                  Mostrando {attempts.length} de {attemptsTotal} registros. Usá los filtros para acotar la búsqueda.
+                  Mostrando {attempts.length} de {attemptsTotal} registros. Usa los filtros para acotar la busqueda.
                 </p>
               )}
             </div>

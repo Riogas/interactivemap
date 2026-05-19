@@ -1,11 +1,14 @@
 /**
- * Sistema de seguridad de login: auditoría + bloqueo anti-bruteforce
+ * Sistema de seguridad de login: auditoria + bloqueo anti-bruteforce
  *
  * Reglas de bloqueo:
- * - Usuario: 3 fails en 10 min → bloqueo de 10 min
- * - IP: 5 intentos TOTALES fallidos en 10 min → bloqueo de 15 min (Opción A — total, no distincts)
+ * - Usuario: 3 fails en 10 min → bloqueo configurable (default 15 min)
+ * - IP: 5 intentos TOTALES fallidos en 10 min → bloqueo configurable (default 15 min)
  * - Username === password: rechazado sin penalty
  * - IPs whitelisted: nunca se bloquean (pero se registran)
+ *
+ * La duracion del bloqueo y el mensaje al usuario se leen desde login_security_config
+ * (campos tiempo_bloqueo_minutos y mensaje_bloqueo).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -17,15 +20,13 @@ import { getLoginSecurityConfig } from '@/lib/login-security-config';
 // ==============================================================================
 // NOTA: USER_FAIL_THRESHOLD e IP_FAIL_THRESHOLD ahora se leen desde
 // la tabla login_security_config via getLoginSecurityConfig() en evaluateAndApplyBlocks.
-// Las constantes se mantienen aquí solo como referencia/documentación de los defaults.
+// Las constantes se mantienen aqui solo como referencia/documentacion de los defaults.
 
 const USER_FAIL_THRESHOLD = 3;       // Default: ver login_security_config.max_intentos_usuario
 const USER_FAIL_WINDOW_MINUTES = 10;
-const USER_BLOCK_MINUTES = 10;
 
 const IP_FAIL_THRESHOLD = 5;         // Default: ver login_security_config.max_intentos_ip (total intentos, no distincts)
 const IP_FAIL_WINDOW_MINUTES = 10;
-const IP_BLOCK_MINUTES = 15;
 
 // ==============================================================================
 // TIPOS
@@ -38,6 +39,7 @@ export interface CheckBlockResult {
   type?: 'user' | 'ip';
   reason?: string;
   retryAfterSeconds?: number;
+  mensajeBloqueo?: string;
 }
 
 export interface RecordLoginAttemptInput {
@@ -58,13 +60,13 @@ export interface RecordLoginAttemptInput {
 // Copiadas de lib/rate-limit.ts para evitar dependencia circular
 
 /**
- * Lista explícita de IPs internas (sin bloqueo)
+ * Lista explicita de IPs internas (sin bloqueo)
  */
 const WHITELISTED_IPS = [
   '127.0.0.1',           // Localhost
   '::1',                 // Localhost IPv6
   '192.168.7.13',        // Track server (self)
-  '192.168.7.12',        // SGM server (importación masiva)
+  '192.168.7.12',        // SGM server (importacion masiva)
 ];
 
 /**
@@ -82,8 +84,8 @@ function normalizeIp(ip: string): string {
 }
 
 /**
- * Verificar si una IP está en la whitelist
- * (incluye lista explícita + rangos privados)
+ * Verificar si una IP esta en la whitelist
+ * (incluye lista explicita + rangos privados)
  */
 function isWhitelistedIp(ip: string): boolean {
   const normalizedIp = normalizeIp(ip);
@@ -102,18 +104,18 @@ function isWhitelistedIp(ip: string): boolean {
 /**
  * Obtener la IP del cliente desde el request.
  *
- * FIX: La versión anterior rechazaba IPs whitelisted (privadas RFC1918) del header
- * x-forwarded-for como mitigación anti-spoofing, causando que usuarios en la red
+ * FIX: La version anterior rechazaba IPs whitelisted (privadas RFC1918) del header
+ * x-forwarded-for como mitigacion anti-spoofing, causando que usuarios en la red
  * corporativa (192.168.x.x) siempre cayeran al fallback 127.0.0.1.
  *
- * La nueva versión confía en el primer IP no-vacío de x-forwarded-for sin filtrar
- * por whitelist. El check de whitelist sigue aplicándose correctamente en
+ * La nueva version confia en el primer IP no-vacio de x-forwarded-for sin filtrar
+ * por whitelist. El check de whitelist sigue aplicandose correctamente en
  * recordLoginAttempt (campo whitelisted) y evaluateAndApplyBlocks (skip de bloqueo IP).
  *
- * ASUNCIÓN DE DEPLOY: la app corre detrás de nginx que sanitiza/reescribe el header
+ * ASUNCION DE DEPLOY: la app corre detras de nginx que sanitiza/reescribe el header
  * x-forwarded-for (escribe solo la IP real del cliente, descartando lo que el
- * cliente pudiera haber enviado). Si en algún momento se quiere defensa-en-profundidad
- * sin nginx, usar el ÚLTIMO IP del header (los proxies confiables van anteponiendo).
+ * cliente pudiera haber enviado). Si en algun momento se quiere defensa-en-profundidad
+ * sin nginx, usar el ULTIMO IP del header (los proxies confiables van anteponiendo).
  */
 function getClientIp(request: NextRequest): string {
   const forwardedFor = request.headers.get('x-forwarded-for');
@@ -132,21 +134,27 @@ function getClientIp(request: NextRequest): string {
 // ==============================================================================
 
 /**
- * Verifica si username o IP están actualmente bloqueados.
+ * Verifica si username o IP estan actualmente bloqueados.
  *
  * FIX: filtra por is_active=true para respetar desbloqueos manuales.
  * Un row con is_active=false fue desbloqueado por admin — no bloquear aunque blocked_until sea futuro.
+ *
+ * Incluye mensajeBloqueo en el resultado (leido desde config) para que el caller
+ * pueda usarlo en la respuesta HTTP en lugar de un hardcoded.
  */
 export async function checkLoginBlock(username: string, ip: string): Promise<CheckBlockResult> {
   try {
     // Cast a any: la inferencia de tipos del cliente Supabase falla para las
-    // tablas login_attempts/login_blocks (patrón consistente con otros lib/ del repo).
+    // tablas login_attempts/login_blocks (patron consistente con otros lib/ del repo).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client = getServerSupabaseClient() as any;
     const now = new Date();
 
     // Normalizar IP
     const normalizedIp = normalizeIp(ip);
+
+    // Leer mensaje de bloqueo desde config (para incluirlo en la respuesta)
+    const config = await getLoginSecurityConfig();
 
     // Buscar bloqueo de usuario activo (query 1)
     // FIX: agregar .eq('is_active', true) para respetar desbloqueos manuales
@@ -167,6 +175,7 @@ export async function checkLoginBlock(username: string, ip: string): Promise<Che
         type: 'user',
         reason: userBlock.reason || 'too_many_failed_attempts',
         retryAfterSeconds,
+        mensajeBloqueo: config.mensajeBloqueo,
       };
     }
 
@@ -189,6 +198,7 @@ export async function checkLoginBlock(username: string, ip: string): Promise<Che
         type: 'ip',
         reason: ipBlock.reason || 'too_many_failed_attempts',
         retryAfterSeconds,
+        mensajeBloqueo: config.mensajeBloqueo,
       };
     }
 
@@ -229,21 +239,24 @@ export async function recordLoginAttempt(input: RecordLoginAttemptInput): Promis
 }
 
 /**
- * Evalúa si hay que aplicar bloqueos y los crea si corresponde.
+ * Evalua si hay que aplicar bloqueos y los crea si corresponde.
  *
- * FIX (Opción A — Issue 3): el threshold de IP ahora es el TOTAL de intentos
- * fallidos desde esa IP (no usernames distintos). Así, 5 intentos con el mismo
+ * FIX (Opcion A — Issue 3): el threshold de IP ahora es el TOTAL de intentos
+ * fallidos desde esa IP (no usernames distintos). Asi, 5 intentos con el mismo
  * username desde la misma IP ya disparan el bloqueo de IP.
  *
- * FIX (Issue 4): el upsert ahora siempre setea is_active=true explícitamente,
+ * FIX (Issue 4): el upsert ahora siempre setea is_active=true explicitamente,
  * asegurando que un bloqueo nuevo no herede un is_active=false de un row previo
  * desbloqueado (el ON CONFLICT actualiza todos los campos especificados).
  *
- * FIX (Opción C — reset de contador al desbloquear): al contar fails del usuario,
- * se busca el último unblocked_at en login_blocks para ese username. Si existe,
- * solo se cuentan fails POSTERIORES a ese timestamp. Así, un admin-unblock
- * actúa como "punto cero" sin modificar el histórico de login_attempts.
- * Lo mismo aplica para el conteo de IP: se busca el último unblocked_at de esa IP.
+ * FIX (Opcion C — reset de contador al desbloquear): al contar fails del usuario,
+ * se busca el ultimo unblocked_at en login_blocks para ese username. Si existe,
+ * solo se cuentan fails POSTERIORES a ese timestamp. Asi, un admin-unblock
+ * actua como "punto cero" sin modificar el historico de login_attempts.
+ * Lo mismo aplica para el conteo de IP: se busca el ultimo unblocked_at de esa IP.
+ *
+ * FIX (nuevo): la duracion del bloqueo ahora se lee desde config.tiempoBloqueoMinutos
+ * en lugar de estar hardcoded a 10/15 min.
  *
  * Retorna info de bloqueos aplicados
  */
@@ -263,10 +276,10 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
 
     let userBlocked, ipBlocked;
 
-    // FIX (Opción C): buscar el último unblocked_at para el username.
-    // Solo se cuentan fails posteriores a ese timestamp (el más reciente entre
-    // windowStart y el último unblocked_at). Esto garantiza que un desbloqueo
-    // manual actúa como "punto cero" del contador sin alterar el histórico.
+    // FIX (Opcion C): buscar el ultimo unblocked_at para el username.
+    // Solo se cuentan fails posteriores a ese timestamp (el mas reciente entre
+    // windowStart y el ultimo unblocked_at). Esto garantiza que un desbloqueo
+    // manual actua como "punto cero" del contador sin alterar el historico.
     const { data: lastUserUnblock } = await client
       .from('login_blocks')
       .select('unblocked_at')
@@ -295,7 +308,9 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
     console.log(`[login-security] user=${username} ip=${normalizedIp} user_fails=${userFailCount ?? 0} max_user=${config.maxIntentosUsuario} count_from=${userCountFrom}`);
 
     if (userFailCount && userFailCount >= config.maxIntentosUsuario) {
-      const blockedUntil = new Date(now.getTime() + USER_BLOCK_MINUTES * 60 * 1000);
+      // Usar tiempo de bloqueo configurable en lugar del hardcoded
+      const blockMinutes = config.tiempoBloqueoMinutos;
+      const blockedUntil = new Date(now.getTime() + blockMinutes * 60 * 1000);
       await client
         .from('login_blocks')
         .upsert({
@@ -303,16 +318,16 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
           key: username,
           blocked_until: blockedUntil.toISOString(),
           reason: 'too_many_failed_attempts',
-          is_active: true,  // FIX: setear explícitamente para reactivar si fue desbloqueado manualmente
+          is_active: true,  // FIX: setear explicitamente para reactivar si fue desbloqueado manualmente
         }, { onConflict: 'block_type,key' });
       userBlocked = { until: blockedUntil };
-      console.log(`[login-security] user=${username} ip=${normalizedIp} attempts=${userFailCount} max=${config.maxIntentosUsuario} → DECISION=block-user until=${blockedUntil.toISOString()}`);
+      console.log(`[login-security] user=${username} ip=${normalizedIp} attempts=${userFailCount} max=${config.maxIntentosUsuario} blockMin=${blockMinutes} → DECISION=block-user until=${blockedUntil.toISOString()}`);
     }
 
-    // 2. Contar TOTAL de intentos fallidos desde la IP en los últimos 10 min
-    // FIX (Opción A): cambiado de "usernames distintos" a "total intentos"
-    // FIX (Opción C): igual que para usuario, respetar el último unblocked_at de la IP
-    // IMPORTANTE: Solo si la IP NO está whitelisted
+    // 2. Contar TOTAL de intentos fallidos desde la IP en los ultimos 10 min
+    // FIX (Opcion A): cambiado de "usernames distintos" a "total intentos"
+    // FIX (Opcion C): igual que para usuario, respetar el ultimo unblocked_at de la IP
+    // IMPORTANTE: Solo si la IP NO esta whitelisted
     if (!isWhitelistedIp(normalizedIp)) {
       const { data: lastIpUnblock } = await client
         .from('login_blocks')
@@ -341,7 +356,9 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
       console.log(`[login-security] user=${username} ip=${normalizedIp} ip_fails=${ipFailCount ?? 0} max_ip=${config.maxIntentosIp} count_from=${ipCountFrom}`);
 
       if (ipFailCount && ipFailCount >= config.maxIntentosIp) {
-        const blockedUntil = new Date(now.getTime() + IP_BLOCK_MINUTES * 60 * 1000);
+        // Usar tiempo de bloqueo configurable en lugar del hardcoded
+        const blockMinutes = config.tiempoBloqueoMinutos;
+        const blockedUntil = new Date(now.getTime() + blockMinutes * 60 * 1000);
         await client
           .from('login_blocks')
           .upsert({
@@ -349,10 +366,10 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
             key: normalizedIp,
             blocked_until: blockedUntil.toISOString(),
             reason: 'too_many_failed_attempts',
-            is_active: true,  // FIX: setear explícitamente para reactivar si fue desbloqueado manualmente
+            is_active: true,  // FIX: setear explicitamente para reactivar si fue desbloqueado manualmente
           }, { onConflict: 'block_type,key' });
         ipBlocked = { until: blockedUntil };
-        console.log(`[login-security] user=${username} ip=${normalizedIp} ip_attempts=${ipFailCount} max=${config.maxIntentosIp} → DECISION=block-ip until=${blockedUntil.toISOString()}`);
+        console.log(`[login-security] user=${username} ip=${normalizedIp} ip_attempts=${ipFailCount} max=${config.maxIntentosIp} blockMin=${blockMinutes} → DECISION=block-ip until=${blockedUntil.toISOString()}`);
       }
     }
 
@@ -369,12 +386,12 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
 
 /**
  * Limpia los contadores tras un login exitoso
- * (Opcional - implementación simple: no hacer nada)
+ * (Opcional - implementacion simple: no hacer nada)
  */
 export async function onSuccessfulLogin(username: string): Promise<void> {
   void username;
-  // Implementación simple: dejar que la ventana de 10 min "olvide" naturalmente los fails
-  // Si se requiere borrar explícitamente, descomentar:
+  // Implementacion simple: dejar que la ventana de 10 min "olvide" naturalmente los fails
+  // Si se requiere borrar explicitamente, descomentar:
   // const client = getServerSupabaseClient();
   // await client.from('login_attempts').delete().eq('username', username).eq('estado', 'fail');
 }
@@ -397,7 +414,7 @@ export async function onSuccessfulLogin(username: string): Promise<void> {
  * 8. Si error de red: registrar fail + extra
  *
  * @param req - NextRequest
- * @param upstreamFn - Función que llama al backend de autenticación
+ * @param upstreamFn - Funcion que llama al backend de autenticacion
  * @returns NextResponse listo para devolver
  */
 export async function runLoginSecurity(
@@ -426,8 +443,8 @@ export async function runLoginSecurity(
     const escenarioId = EscenarioId ? Number(EscenarioId) : null;
 
     // Paso 3: Check user==pass — NO bloquea, solo flagea warning.
-    // El doc lo pide como alerta (no impedimento) y "no se contará como
-    // inicio de sesión incorrecto", así que tampoco dispara bloqueo aunque
+    // El doc lo pide como alerta (no impedimento) y "no se contara como
+    // inicio de sesion incorrecto", asi que tampoco dispara bloqueo aunque
     // el upstream falle. El frontend muestra la alerta post-login.
     const userEqualsPassword = (UserName === Password);
 
@@ -444,9 +461,12 @@ export async function runLoginSecurity(
       });
 
       const mins = blockCheck.retryAfterSeconds ? Math.ceil(blockCheck.retryAfterSeconds / 60) : 10;
-      const message = blockCheck.type === 'user'
-        ? `Usuario bloqueado temporalmente. Intentá de nuevo en ${mins} minutos.`
-        : `Demasiados intentos desde esta IP. Probá de nuevo en ${mins} minutos.`;
+      // Usar mensajeBloqueo de config si esta disponible, sino fallback a mensaje generico
+      const message = blockCheck.mensajeBloqueo
+        ? blockCheck.mensajeBloqueo
+        : blockCheck.type === 'user'
+          ? `Usuario bloqueado temporalmente. Intenta de nuevo en ${mins} minutos.`
+          : `Demasiados intentos desde esta IP. Proba de nuevo en ${mins} minutos.`;
 
       return NextResponse.json(
         {
@@ -475,7 +495,7 @@ export async function runLoginSecurity(
         extra: { error: error instanceof Error ? error.message : 'Unknown error' },
       });
       return NextResponse.json(
-        { success: false, message: 'Error al conectar con el servidor de autenticación' },
+        { success: false, message: 'Error al conectar con el servidor de autenticacion' },
         { status: 500 }
       );
     }
@@ -502,7 +522,7 @@ export async function runLoginSecurity(
     // Paso 7: Si upstream FAIL
     // Si user==pass: registrar como 'user_eq_pass' (no como 'fail') y NO disparar
     // bloqueos — el doc dice que el caso "user==pass" no cuenta como inicio de
-    // sesión incorrecto a efectos de rate-limit / lockout.
+    // sesion incorrecto a efectos de rate-limit / lockout.
     await recordLoginAttempt({
       username: UserName,
       ip,
@@ -518,7 +538,7 @@ export async function runLoginSecurity(
     return NextResponse.json(
       {
         success: false,
-        message: upstreamResult.message || 'Usuario o contraseña inválidos',
+        message: upstreamResult.message || 'Usuario o contrasena invalidos',
         code: 'INVALID_CREDENTIALS',
       },
       { status: 401 }
@@ -543,5 +563,4 @@ export async function runLoginSecurity(
 
 // Keep unused constants referenced to avoid TS/ESLint unused-variable errors
 void USER_FAIL_THRESHOLD;
-void IP_FAIL_THRESHOLD;
 void IP_FAIL_WINDOW_MINUTES;

@@ -20,6 +20,13 @@ import { getLoginSecurityConfig, setLoginSecurityConfig } from '@/lib/login-secu
 const mockGetConfig = vi.mocked(getLoginSecurityConfig);
 const mockSetConfig = vi.mocked(setLoginSecurityConfig);
 
+const DEFAULT_CONFIG = {
+  maxIntentosUsuario: 3,
+  maxIntentosIp: 5,
+  tiempoBloqueoMinutos: 15,
+  mensajeBloqueo: 'Tu acceso esta bloqueado temporalmente.',
+};
+
 // ==============================================================================
 // HELPERS
 // ==============================================================================
@@ -45,7 +52,7 @@ function makeRequest(method: string, body?: unknown, isRoot: 'S' | 'N' = 'S', us
 describe('GET /api/admin/login-security/config', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetConfig.mockResolvedValue({ maxIntentosUsuario: 3, maxIntentosIp: 5 });
+    mockGetConfig.mockResolvedValue(DEFAULT_CONFIG);
   });
 
   it('retorna config cuando isRoot=S', async () => {
@@ -57,6 +64,8 @@ describe('GET /api/admin/login-security/config', () => {
     expect(json.success).toBe(true);
     expect(json.maxIntentosUsuario).toBe(3);
     expect(json.maxIntentosIp).toBe(5);
+    expect(json.tiempoBloqueoMinutos).toBe(15);
+    expect(typeof json.mensajeBloqueo).toBe('string');
   });
 
   it('retorna 403 cuando isRoot != S', async () => {
@@ -89,7 +98,12 @@ describe('PUT /api/admin/login-security/config', () => {
   });
 
   it('guarda config valida y retorna 200', async () => {
-    const req = makeRequest('PUT', { maxIntentosUsuario: 7, maxIntentosIp: 12 });
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 7,
+      maxIntentosIp: 12,
+      tiempoBloqueoMinutos: 20,
+      mensajeBloqueo: 'Bloqueado.',
+    });
     const res = await PUT(req);
     const json = await res.json();
 
@@ -97,14 +111,21 @@ describe('PUT /api/admin/login-security/config', () => {
     expect(json.success).toBe(true);
     expect(json.maxIntentosUsuario).toBe(7);
     expect(json.maxIntentosIp).toBe(12);
+    expect(json.tiempoBloqueoMinutos).toBe(20);
+    expect(json.mensajeBloqueo).toBe('Bloqueado.');
     expect(mockSetConfig).toHaveBeenCalledWith(
-      { maxIntentosUsuario: 7, maxIntentosIp: 12 },
+      { maxIntentosUsuario: 7, maxIntentosIp: 12, tiempoBloqueoMinutos: 20, mensajeBloqueo: 'Bloqueado.' },
       'testadmin'
     );
   });
 
   it('retorna 403 cuando isRoot != S', async () => {
-    const req = makeRequest('PUT', { maxIntentosUsuario: 5, maxIntentosIp: 8 }, 'N');
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 5,
+      maxIntentosIp: 8,
+      tiempoBloqueoMinutos: 15,
+      mensajeBloqueo: 'Bloqueado.',
+    }, 'N');
     const res = await PUT(req);
 
     expect(res.status).toBe(403);
@@ -112,7 +133,12 @@ describe('PUT /api/admin/login-security/config', () => {
   });
 
   it('retorna 400 para maxIntentosUsuario < 1', async () => {
-    const req = makeRequest('PUT', { maxIntentosUsuario: 0, maxIntentosIp: 5 });
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 0,
+      maxIntentosIp: 5,
+      tiempoBloqueoMinutos: 15,
+      mensajeBloqueo: 'Bloqueado.',
+    });
     const res = await PUT(req);
     const json = await res.json();
 
@@ -122,14 +148,60 @@ describe('PUT /api/admin/login-security/config', () => {
   });
 
   it('retorna 400 para maxIntentosUsuario > 100', async () => {
-    const req = makeRequest('PUT', { maxIntentosUsuario: 101, maxIntentosIp: 5 });
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 101,
+      maxIntentosIp: 5,
+      tiempoBloqueoMinutos: 15,
+      mensajeBloqueo: 'Bloqueado.',
+    });
     const res = await PUT(req);
 
     expect(res.status).toBe(400);
   });
 
   it('retorna 400 para maxIntentosIp no entero', async () => {
-    const req = makeRequest('PUT', { maxIntentosUsuario: 5, maxIntentosIp: 3.5 });
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 5,
+      maxIntentosIp: 3.5,
+      tiempoBloqueoMinutos: 15,
+      mensajeBloqueo: 'Bloqueado.',
+    });
+    const res = await PUT(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('retorna 400 para tiempoBloqueoMinutos < 1', async () => {
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 5,
+      maxIntentosIp: 10,
+      tiempoBloqueoMinutos: 0,
+      mensajeBloqueo: 'Bloqueado.',
+    });
+    const res = await PUT(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('retorna 400 para tiempoBloqueoMinutos > 1440', async () => {
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 5,
+      maxIntentosIp: 10,
+      tiempoBloqueoMinutos: 1441,
+      mensajeBloqueo: 'Bloqueado.',
+    });
+    const res = await PUT(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('retorna 400 para mensajeBloqueo vacio', async () => {
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 5,
+      maxIntentosIp: 10,
+      tiempoBloqueoMinutos: 15,
+      mensajeBloqueo: '   ',
+    });
     const res = await PUT(req);
 
     expect(res.status).toBe(400);
@@ -148,7 +220,12 @@ describe('PUT /api/admin/login-security/config', () => {
 
   it('retorna 500 si setLoginSecurityConfig lanza error', async () => {
     mockSetConfig.mockRejectedValueOnce(new Error('DB error'));
-    const req = makeRequest('PUT', { maxIntentosUsuario: 5, maxIntentosIp: 10 });
+    const req = makeRequest('PUT', {
+      maxIntentosUsuario: 5,
+      maxIntentosIp: 10,
+      tiempoBloqueoMinutos: 15,
+      mensajeBloqueo: 'Bloqueado.',
+    });
     const res = await PUT(req);
 
     expect(res.status).toBe(500);
