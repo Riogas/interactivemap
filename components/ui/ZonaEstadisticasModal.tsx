@@ -499,8 +499,13 @@ export default function ZonaEstadisticasModal({
                     <option key={t} value={t} className="bg-slate-800 text-white">{t}</option>
                   ))}
                 </select>
-                {/* Segundo combo: sub-tipo de PEDIDOS — visible solo cuando tipoPrincipal === 'PEDIDOS' */}
-                {tipoPrincipal === 'PEDIDOS' && (
+                {/* Segundo combo: sub-tipo de PEDIDOS — visible cuando tipoPrincipal NO es SERVICE.
+                    Usamos !== 'SERVICE' en vez de === 'PEDIDOS' como guard defensivo:
+                    si por algun edge case el initial state queda en string vacio o un valor
+                    inesperado, igual se muestra el combo (que es lo deseado en estadisticas
+                    por zona, donde el flujo default es PEDIDOS). Bug reportado: el segundo
+                    combo no aparecia en el primer render hasta cambiar a Services y volver. */}
+                {tipoPrincipal !== 'SERVICE' && (
                   <select
                     value={subTipoPedidos}
                     onChange={e => setSubTipoPedidos(e.target.value as PedidosSubTipo)}
