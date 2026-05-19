@@ -38,11 +38,11 @@ export const VISUAL_REFS_CATALOG: VisualRefEntry[] = [
   { id: 'Ref#15', layer: 'Zonas Activas', label: 'Sin dato', defaultColor: '#9ca3af' },
 
   // ── Capa 4: Pendientes / zona ────────────────────────────────────────────
-  { id: 'Ref#16', layer: 'Pendientes / zona', label: '0',      defaultColor: '#bbf7d0' },
-  { id: 'Ref#17', layer: 'Pendientes / zona', label: '1 – 3',  defaultColor: '#16a34a' },
-  { id: 'Ref#18', layer: 'Pendientes / zona', label: '4 – 7',  defaultColor: '#eab308' },
-  { id: 'Ref#19', layer: 'Pendientes / zona', label: '8 – 11', defaultColor: '#f97316' },
-  { id: 'Ref#20', layer: 'Pendientes / zona', label: '12+',   defaultColor: '#ef4444' },
+  { id: 'Ref#16', layer: 'Pedidos / Zona', label: '0',      defaultColor: '#bbf7d0' },
+  { id: 'Ref#17', layer: 'Pedidos / Zona', label: '1 – 3',  defaultColor: '#16a34a' },
+  { id: 'Ref#18', layer: 'Pedidos / Zona', label: '4 – 7',  defaultColor: '#eab308' },
+  { id: 'Ref#19', layer: 'Pedidos / Zona', label: '8 – 11', defaultColor: '#f97316' },
+  { id: 'Ref#20', layer: 'Pedidos / Zona', label: '12+',   defaultColor: '#ef4444' },
 
   // ── Capa 5: Cap. Entrega ─────────────────────────────────────────────────
   { id: 'Ref#21', layer: 'Cap. Entrega', label: 'Sin Cap. (< 0)',       defaultColor: '#92400e' },
