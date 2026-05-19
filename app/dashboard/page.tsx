@@ -18,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado, isServiceEntregado, filterPedidosVisibles } from '@/utils/estadoPedido';
 import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
@@ -2000,6 +2000,10 @@ function DashboardContent() {
       if (!p.fch_para && !p.fch_hora_para) return true;
       return false;
     });
+
+    // Filtro defensivo client-side: excluir REG. HISTORICO (estado_nro=2, sub_estado_nro=17).
+    // Backup por si algun pedido historico llega via realtime o por otro endpoint no cubierto.
+    resultado = filterPedidosVisibles(resultado);
 
     // ?? "Empresas: Ninguna" (selección explícita de cero empresas con empresas cargadas)
     // ? no mostrar ningún pedido (ni asignados ni sin-asignar). El usuario eligió ver nada.

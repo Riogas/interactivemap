@@ -3,8 +3,8 @@
  * Fuente: tabla de estados del sistema AS400/GeneXus.
  *
  * sub_estado_nro = primera columna (1 = pendientes, 2 = finalizados)
- * sub_estado_desc = segunda columna (código numérico como string)
- * Valor = descripción legible
+ * sub_estado_desc = segunda columna (codigo numerico como string)
+ * Valor = descripcion legible
  */
 
 type EstadoKey = `${number}-${string}`;
@@ -43,15 +43,15 @@ const ESTADO_MAP: Record<EstadoKey, string> = {
 };
 
 /**
- * Obtiene la descripción legible a partir de sub_estado_nro y sub_estado_desc.
- * Algunos registros guardan el sub-código en sub_estado_nro (p.ej. 19) y otros
+ * Obtiene la descripcion legible a partir de sub_estado_nro y sub_estado_desc.
+ * Algunos registros guardan el sub-codigo en sub_estado_nro (p.ej. 19) y otros
  * lo guardan en sub_estado_desc (string). Si se recibe estadoNro como tercer
- * argumento, también se prueba la key `${estadoNro}-${subEstadoNro}` como fallback.
+ * argumento, tambien se prueba la key `${estadoNro}-${subEstadoNro}` como fallback.
  *
- * @param subEstadoNro - Categoría (1|2) o sub-código según el registro
- * @param subEstadoDesc - Sub-código como string, o vacío
- * @param estadoNro - Categoría principal (1|2). Opcional, mejora la resolución.
- * @returns Descripción textual o fallback.
+ * @param subEstadoNro - Categoria (1|2) o sub-codigo segun el registro
+ * @param subEstadoDesc - Sub-codigo como string, o vacio
+ * @param estadoNro - Categoria principal (1|2). Opcional, mejora la resolucion.
+ * @returns Descripcion textual o fallback.
  */
 export function getEstadoDescripcion(
   subEstadoNro: number | null | undefined,
@@ -98,11 +98,28 @@ export function isServiceEntregado(s: EntregadoCheckable): boolean {
 }
 
 /**
- * Devuelve solo la descripción del estado principal (sin sub-estado).
+ * Devuelve solo la descripcion del estado principal (sin sub-estado).
  */
 export function getEstadoPrincipalLabel(subEstadoNro: number | null | undefined): string {
   if (subEstadoNro == null) return 'Sin estado';
   if (subEstadoNro === 1) return 'Pendiente';
   if (subEstadoNro === 2) return 'Finalizado';
   return `Estado ${subEstadoNro}`;
+}
+
+/**
+ * Devuelve true si el pedido debe excluirse completamente del sistema.
+ * Hoy cubre REG. HISTORICO (estado_nro=2, sub_estado_nro=17).
+ * Estos pedidos NO aparecen en mapa, conteos, listas, indicadores ni estadisticas.
+ */
+export function isPedidoExcluido(p: EntregadoCheckable): boolean {
+  return Number(p.estado_nro) === 2 && Number(p.sub_estado_nro) === 17;
+}
+
+/**
+ * Filtra un array de pedidos descartando los excluidos del sistema (isPedidoExcluido).
+ * Usar en el punto de ingreso de datos para cubrir todos los consumidores downstream.
+ */
+export function filterPedidosVisibles<T extends EntregadoCheckable>(arr: T[]): T[] {
+  return arr.filter((p) => !isPedidoExcluido(p));
 }

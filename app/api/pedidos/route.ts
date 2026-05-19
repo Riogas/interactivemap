@@ -6,8 +6,8 @@ import { requireAuth } from '@/lib/auth-middleware';
  * GET /api/pedidos
  * Obtener pedidos con filtros opcionales
  * Query params:
- * - escenario: número de escenario
- * - movil: ID del móvil
+ * - escenario: numero de escenario
+ * - movil: ID del movil
  * - estado: estado del pedido
  * - fecha: fecha del pedido (formato YYYY-MM-DD)
  * - empresa_fletera_id: ID de empresa fletera (single, legacy)
@@ -17,10 +17,14 @@ import { requireAuth } from '@/lib/auth-middleware';
  * Scoping server-side por empresa:
  * - Si x-track-isroot === 'S': sin filtro de empresa (root ve todo).
  * - Si NO es root y empresas_fleteras llega con IDs: filtrar por esos IDs.
- * - Si NO es root y empresas_fleteras está vacío/ausente: fail-closed → devuelve lista vacía.
+ * - Si NO es root y empresas_fleteras esta vacio/ausente: fail-closed -> devuelve lista vacia.
+ *
+ * Exclusion global:
+ * - estado_nro=2 && sub_estado_nro=17 (REG. HISTORICO) se excluye siempre.
+ *   Estos registros no deben aparecer en ningun conteo, mapa ni lista.
  */
 export async function GET(request: NextRequest) {
-  // 🔒 AUTENTICACIÓN REQUERIDA
+  // AUTENTICACION REQUERIDA
   const authResult = await requireAuth(request);
   if (authResult instanceof NextResponse) return authResult;
 
@@ -36,38 +40,38 @@ export async function GET(request: NextRequest) {
     const empresasFleteras = searchParams.get('empresas_fleteras');   // multi (preferido)
     const conCoordenadas = searchParams.get('conCoordenadas') === 'true';
 
-    // ── Scope server-side por empresa ──────────────────────────────────────────
+    // Scope server-side por empresa
     // El header x-track-isroot viene del cliente (page.tsx) cuando el usuario
-    // tiene acceso total. Si es 'S' → sin restricción. Si no → aplicar empresas.
+    // tiene acceso total. Si es 'S' -> sin restriccion. Si no -> aplicar empresas.
     const callerIsRoot = request.headers.get('x-track-isroot') === 'S';
 
     // Parsear empresas_fleteras (multi) primero; si no, usar empresa_fletera_id (single legacy)
-    let scopeEmpresaIds: number[] | null = null; // null = sin restricción (root)
+    let scopeEmpresaIds: number[] | null = null; // null = sin restriccion (root)
     if (!callerIsRoot) {
       if (empresasFleteras !== null) {
-        // Param presente (aunque sea vacío string)
+        // Param presente (aunque sea vacio string)
         const parsed = empresasFleteras
           .split(',')
           .map((v) => parseInt(v.trim(), 10))
           .filter((n) => Number.isFinite(n));
-        scopeEmpresaIds = parsed; // puede ser [] → fail-closed
+        scopeEmpresaIds = parsed; // puede ser [] -> fail-closed
       } else if (empresaFleteraId !== null) {
         // Compat legacy: single empresa_fletera_id
         const n = parseInt(empresaFleteraId, 10);
         scopeEmpresaIds = Number.isFinite(n) ? [n] : [];
       } else {
-        // No root, sin param → fail-closed
+        // No root, sin param -> fail-closed
         scopeEmpresaIds = [];
       }
     }
 
-    // Fail-closed: no-root sin empresas válidas → devolver vacío
+    // Fail-closed: no-root sin empresas validas -> devolver vacio
     if (scopeEmpresaIds !== null && scopeEmpresaIds.length === 0) {
-      console.log('📦 GET /api/pedidos - fail-closed: no-root sin empresas_fleteras → []');
+      console.log('GET /api/pedidos - fail-closed: no-root sin empresas_fleteras -> []');
       return NextResponse.json({ success: true, count: 0, data: [] });
     }
 
-    console.log('📦 GET /api/pedidos - Parámetros:', {
+    console.log('GET /api/pedidos - Parametros:', {
       escenario,
       movil,
       moviles,
@@ -84,7 +88,13 @@ export async function GET(request: NextRequest) {
       .from('pedidos')
       .select('*');
 
-    // ── Filtro de empresa (scope server-side) ──────────────────────────────────
+    // Exclusion global: REG. HISTORICO (estado_nro=2 && sub_estado_nro=17).
+    // Se aplica antes que cualquier otro filtro para garantizar consistencia.
+    // Logica: NOT (estado_nro=2 AND sub_estado_nro=17)
+    //         = estado_nro != 2 OR sub_estado_nro != 17
+    query = query.or('estado_nro.neq.2,sub_estado_nro.neq.17');
+
+    // Filtro de empresa (scope server-side)
     if (scopeEmpresaIds !== null && scopeEmpresaIds.length > 0) {
       if (scopeEmpresaIds.length === 1) {
         query = query.eq('empresa_fletera_id', scopeEmpresaIds[0]);
@@ -99,7 +109,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (moviles) {
-      // Soporte para múltiples móviles: moviles=472,473,474
+      // Soporte para multiples moviles: moviles=472,473,474
       const movilesArray = moviles.split(',').map(m => parseInt(m)).filter(m => !isNaN(m));
       if (movilesArray.length > 0) {
         query = query.in('movil', movilesArray);
@@ -112,13 +122,13 @@ export async function GET(request: NextRequest) {
       query = query.eq('estado_nro', parseInt(estado));
     }
 
-    // ✅ Filtrar por fecha: usar OR para capturar pedidos por fch_hora_para (timestamp) O fch_para (date)
-    // Los pedidos finalizados (estado_nro=2) pueden no tener fch_hora_para pero sí fch_para
+    // Filtrar por fecha: usar OR para capturar pedidos por fch_hora_para (timestamp) O fch_para (date)
+    // Los pedidos finalizados (estado_nro=2) pueden no tener fch_hora_para pero si fch_para
     // NOTA: fch_para se almacena como YYYYMMDD (sin guiones) en la BD
     if (fecha) {
       const fechaInicio = `${fecha}T00:00:00`;
       const fechaFin = `${fecha}T23:59:59`;
-      const fechaSinGuiones = fecha.replace(/-/g, ''); // '2026-02-17' → '20260217'
+      const fechaSinGuiones = fecha.replace(/-/g, ''); // '2026-02-17' -> '20260217'
       query = query.or(`and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${fechaSinGuiones}`);
     }
 
@@ -133,7 +143,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
-      console.error('❌ Error al obtener pedidos:', error);
+      console.error('Error al obtener pedidos:', error);
       return NextResponse.json(
         {
           success: false,
@@ -144,7 +154,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`✅ ${data?.length || 0} pedidos obtenidos`);
+    console.log(`${data?.length || 0} pedidos obtenidos`);
 
     return NextResponse.json({
       success: true,
@@ -152,7 +162,7 @@ export async function GET(request: NextRequest) {
       data: data || [],
     });
   } catch (error: any) {
-    console.error('❌ Error inesperado:', error);
+    console.error('Error inesperado:', error);
     return NextResponse.json(
       {
         success: false,
