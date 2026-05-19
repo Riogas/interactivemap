@@ -142,11 +142,6 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
   const [importingPOI, setImportingPOI] = useState(false);
   const [importResultPOI, setImportResultPOI] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  // ===== Estado para importar/actualizar Puntos de Venta =====
-  const ptvFileInputRef = useRef<HTMLInputElement>(null);
-  const [importingPTV, setImportingPTV] = useState(false);
-  const [importResultPTV, setImportResultPTV] = useState<{ ok: boolean; msg: string } | null>(null);
-
   // ===== Estado para Auditoría (solo root) =====
   const [auditEnabled, setAuditEnabled] = useState<boolean | null>(null);
   const [auditMeta, setAuditMeta] = useState<{ updated_at: string; updated_by: string | null } | null>(null);
@@ -209,37 +204,6 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
       setAuditToggling(false);
     }
   };
-
-  const handleImportPTV = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (ptvFileInputRef.current) ptvFileInputRef.current.value = '';
-
-    setImportingPTV(true);
-    setImportResultPTV(null);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('usuario', user?.username || 'admin');
-
-      const res = await fetch('/api/import/puntos-venta', {
-        method: 'POST',
-        body: formData,
-      });
-      const json = await res.json();
-
-      if (res.ok && json.success) {
-        setImportResultPTV({ ok: true, msg: `✅ ${json.count ?? 'N'} punto(s) de venta actualizados correctamente.` });
-      } else {
-        setImportResultPTV({ ok: false, msg: `❌ Error: ${json.error || 'Respuesta inesperada del servidor'}` });
-      }
-    } catch (err: any) {
-      setImportResultPTV({ ok: false, msg: `❌ Error al procesar el archivo: ${err.message}` });
-    } finally {
-      setImportingPTV(false);
-    }
-  }, [user]);
 
   const handleImportPOI = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1176,106 +1140,13 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
               <hr className="border-gray-200" />
 
-              {/* ===== Actualizar Puntos de Venta — requiere permiso updptsventa ===== */}
+              {/* ===== Importar Puntos de Interés — requiere permiso updptsventa =====
+                  Los puntos de venta son una categoria DENTRO de puntos de interes,
+                  asi que no hay seccion separada para PTV. Si se necesita importar PTV
+                  sin tocar el resto de POIs, filtrar por la columna 'Categoria' en el
+                  Excel y subir solo esas filas. */}
               {canUpdPtsVenta && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🏪</span>
-                    <span className="text-sm font-bold text-gray-800">Actualizar Puntos de Venta</span>
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-green-100 text-green-700">ADMIN</span>
-                  </div>
-                  <p className="text-xs text-gray-500 -mt-2">
-                    Importa o actualiza los puntos de venta desde un archivo Excel&nbsp;(.xlsx). Los registros existentes serán sobreescritos por ID.
-                  </p>
-
-                  {/* Formato esperado PTV */}
-                  <details className="rounded-lg border border-gray-200 bg-gray-50">
-                    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-gray-600 select-none">📋 Ver formato Excel esperado</summary>
-                    <div className="px-4 pb-4 pt-2 space-y-3">
-                      <table className="w-full text-xs border-collapse">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="text-left px-2 py-1 border border-gray-200">Columna</th>
-                            <th className="text-left px-2 py-1 border border-gray-200">Tipo</th>
-                            <th className="text-left px-2 py-1 border border-gray-200">Requerido</th>
-                            <th className="text-left px-2 py-1 border border-gray-200">Ejemplo</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[
-                            { col: 'ID',                 tipo: 'número',  req: true,  ej: '12345' },
-                            { col: 'Nombre',             tipo: 'texto',    req: true,  ej: 'RIOGAS SUCURSAL X' },
-                            { col: 'Direccion',          tipo: 'texto',    req: false, ej: 'Av. Italia 1234' },
-                            { col: 'CoordX',             tipo: 'número',  req: false, ej: '-34.901' },
-                            { col: 'CoordY',             tipo: 'número',  req: false, ej: '-56.165' },
-                            { col: 'Telefono',           tipo: 'número',  req: false, ej: '24001234' },
-                            { col: 'escenario_id',       tipo: 'número',  req: false, ej: '1000' },
-                            { col: 'empresa_fletera_id', tipo: 'número',  req: false, ej: '70' },
-                          ].map(({ col, tipo, req, ej }) => (
-                            <tr key={col} className="even:bg-white odd:bg-gray-50">
-                              <td className="px-2 py-1 border border-gray-200 font-mono">{col}</td>
-                              <td className="px-2 py-1 border border-gray-200 text-gray-500">{tipo}</td>
-                              <td className="px-2 py-1 border border-gray-200">{req ? <span className="text-red-500 font-bold">✓</span> : <span className="text-gray-400">–</span>}</td>
-                              <td className="px-2 py-1 border border-gray-200 text-gray-500">{ej}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-all"
-                          onClick={() => {
-                            const hdrs = ['ID','Nombre','Direccion','CoordX','CoordY','Telefono','escenario_id','empresa_fletera_id'];
-                            const wb = XLSX.utils.book_new();
-                            const ws = XLSX.utils.aoa_to_sheet([hdrs]);
-                            XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
-                            XLSX.writeFile(wb, 'plantilla-puntos-venta.xlsx');
-                          }}
-                        >
-                          ⬇ Descargar plantilla
-                        </button>
-                      </div>
-                    </div>
-                  </details>
-
-                  <div
-                    className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all"
-                    onClick={() => ptvFileInputRef.current?.click()}
-                  >
-                    <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <p className="text-sm text-gray-600 font-medium">
-                      {importingPTV ? 'Procesando...' : 'Seleccionar archivo .xlsx'}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">Haz clic para elegir el archivo</p>
-                    <input
-                      ref={ptvFileInputRef}
-                      type="file"
-                      accept=".xlsx,.xls"
-                      className="hidden"
-                      onChange={handleImportPTV}
-                      disabled={importingPTV}
-                    />
-                  </div>
-
-                  {importResultPTV && (
-                    <div className={`text-sm px-4 py-3 rounded-lg border ${
-                      importResultPTV.ok
-                        ? 'bg-green-50 border-green-200 text-green-700'
-                        : 'bg-red-50 border-red-200 text-red-700'
-                    }`}>
-                      {importResultPTV.msg}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ===== Importar Puntos de Interés — requiere permiso updptsventa ===== */}
-              {canUpdPtsVenta && (
-                <div className="space-y-4">
-                  <hr className="border-gray-200" />
                   <div className="flex items-center gap-2">
                     <span className="text-lg">📍</span>
                     <span className="text-sm font-bold text-gray-800">Importar Puntos de Interés</span>
