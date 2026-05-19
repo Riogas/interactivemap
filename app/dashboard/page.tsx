@@ -951,6 +951,25 @@ function DashboardContent() {
     }
     // Movil nuevo (no esta en state) o con campos relevantes cambiados ? programar debounce
 
+    // ── DECISION (2026-05-19): NO disparar fetchPositions() en cascada ──
+    // El handler primario useEffect[latestMovil] ya hace merge in-place del
+    // movil afectado (estado/empresa/capacidad). El fetch completo era
+    // defense-in-depth para captar cambios en cascada (otros moviles afectados
+    // por el mismo cambio en DB, ej: importer que toca varios a la vez).
+    // El usuario observo que en operacion normal eso es overhead — la mayoria
+    // de los cambios son aislados al movil del evento, y el polling de
+    // reconciliacion de 180s ya cubre el caso edge.
+    //
+    // Si en algun escenario se desincroniza la lista (movil nuevo que nunca
+    // aparece, baja que no se refleja), activar AGAIN via env var:
+    //   NEXT_PUBLIC_AGGRESSIVE_MOVIL_REFETCH=true   (rebuild requerido)
+    //
+    // El polling de 180s + el de silencio + el GPS realtime son suficientes
+    // para mantener la lista al dia sin este path.
+    if (process.env.NEXT_PUBLIC_AGGRESSIVE_MOVIL_REFETCH !== 'true') {
+      return;
+    }
+
     if (movileEventDebounceRef.current) clearTimeout(movileEventDebounceRef.current);
     movileEventDebounceRef.current = setTimeout(async () => {
       movileEventDebounceRef.current = null;
