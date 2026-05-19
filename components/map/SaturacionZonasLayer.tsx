@@ -301,13 +301,13 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
             <Polygon
               positions={positions}
               renderer={L.svg()}
+              interactive={false}
               pathOptions={{
                 fillColor: getPatternFillUrl(zonaPattern)!,
                 fillOpacity: 0.85,
                 stroke: false,
                 color: 'transparent',
                 weight: 0,
-                interactive: false,
               }}
             />
           )}
