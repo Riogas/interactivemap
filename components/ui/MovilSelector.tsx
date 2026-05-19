@@ -1338,11 +1338,9 @@ export default function MovilSelector({
                           {filteredMoviles.length === 0 ? null : (
                             <VirtualList
                               items={filteredMoviles}
-                              // itemHeight 60: el button mide ~52-56px (py-2 + border-2 + 2 lineas
-                              // de texto). Antes era 72 -> dejaba 16-20px de espacio en blanco
-                              // entre items, que el usuario reporto como "separacion no deseada".
-                              height={Math.min(filteredMoviles.length * 60, Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 300))}
-                              itemHeight={60}
+                              // itemHeight 55: button real ~54px (py-2 + border-2 + 2 lineas) + 1px gap.
+                              height={Math.min(filteredMoviles.length * 55, Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 300))}
+                              itemHeight={55}
                               overscanCount={5}
                               renderItem={(movil) => {
                                 const isSelected = selectedMoviles.includes(movil.id);
