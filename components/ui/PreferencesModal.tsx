@@ -281,6 +281,12 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
       const rows = raw.slice(1).filter(r => r[iId] != null).map(r => {
         const visib = String(r[iVisib] ?? '').toLowerCase();
+        // NOTA: la tabla puntos_interes NO tiene columna 'observaciones'. Combinamos
+        // 'Direccion' y 'Observaciones' del Excel en el campo unico 'descripcion'
+        // separados por ' — '. Si solo hay una, se usa esa.
+        const direccion     = iDireccion >= 0 ? String(r[iDireccion] ?? '').trim() : '';
+        const observaciones = iObs >= 0 ? String(r[iObs] ?? '').trim() : '';
+        const descripcionFinal = [direccion, observaciones].filter(Boolean).join(' — ') || null;
         return {
           id:                 Number(r[iId]),
           nombre:             String(r[iNombre] ?? '').trim(),
@@ -288,8 +294,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
           latitud:            Number(r[iCoordX]),
           longitud:           Number(r[iCoordY]),
           telefono:           r[iTelefono] ? Number(r[iTelefono]) : null,
-          descripcion:        iDireccion >= 0 ? String(r[iDireccion] ?? '').trim() || null : null,
-          observaciones:      iObs >= 0 && r[iObs] != null ? String(r[iObs]).trim() || null : null,
+          descripcion:        descripcionFinal,
           visible:            visib === 'publico' || visib === 'true' || visib === '1',
           tipo:               visib === 'publico' ? 'publico' : 'privado',
           icono:              '📍',
