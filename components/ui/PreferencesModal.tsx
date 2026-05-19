@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { isRoot } from '@/lib/auth-scope';
@@ -1173,8 +1174,11 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                 </div>
               </div>
 
-              {/* Sub-modal Conf. Visual */}
-              {confVisualOpen && (
+              {/* Sub-modal Conf. Visual — portaled a document.body para escapar del
+                  contenedor padre que tiene transform (translate-x/y), lo cual rompe
+                  el position:fixed de los hijos (los ata al ancestro con transform,
+                  no al viewport). Sin portal el sub-modal queda invisible/recortado. */}
+              {confVisualOpen && typeof document !== 'undefined' && createPortal(
                 <>
                   <div
                     className="fixed inset-0 bg-black/40 z-[80]"
@@ -1263,7 +1267,8 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
                       </div>
                     </div>
                   </div>
-                </>
+                </>,
+                document.body
               )}
             </div>
 
