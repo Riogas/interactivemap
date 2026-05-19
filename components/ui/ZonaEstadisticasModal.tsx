@@ -9,6 +9,7 @@ import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import { isPedidoInScope, isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { filterFinalizadosByMovil, filterPedidosByEmpresa } from '@/lib/dashboard-indicators-filter';
 
 // ============= Types =============
 
@@ -43,6 +44,10 @@ interface ZonaEstadisticasModalProps {
   serverNow?: Date;
   /** Minutos de anticipacion del escenario. null = sin filtro (backwards-compat). */
   minutosAntesSa?: number | null;
+  /** Móviles seleccionados en el sidebar (filtra entregados/pendientes igual que DashboardIndicators). */
+  selectedMoviles?: number[];
+  /** Empresas seleccionadas en el header (filtra pedidos por empresa_fletera_id). */
+  selectedEmpresas?: number[];
   /** Ocultar la columna/sección sin-asignar.
    *  Controlado desde el caller según la funcionalidad 'Ped s/asignar x zona'
    *  (true = sin permiso, false = con permiso). Root siempre false.
@@ -78,6 +83,8 @@ export default function ZonaEstadisticasModal({
   hideSinAsignarOverride = false,
   serverNow,
   minutosAntesSa = null,
+  selectedMoviles = [],
+  selectedEmpresas = [],
 }: ZonaEstadisticasModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
@@ -232,9 +239,20 @@ export default function ZonaEstadisticasModal({
     }
     if (scope?.isRestricted) {
       base = base.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: true }));
+    } else if (selectedMoviles.length > 0) {
+      // Mismo criterio que DashboardIndicators del navbar: filtrar finalizados
+      // (estado_nro === 2) por movil seleccionado. Sin esto el modal cuenta
+      // entregados de TODOS los moviles del escenario y diverge del navbar.
+      const finalizadosFiltrados = filterFinalizadosByMovil(base.filter(p => Number(p.estado_nro) === 2), selectedMoviles);
+      const pendientesYOtros = base.filter(p => Number(p.estado_nro) !== 2);
+      base = [...pendientesYOtros, ...finalizadosFiltrados];
+    }
+    // Filtro por empresa fletera (aplica sobre todos los estados, igual que el navbar).
+    if (!scope?.isRestricted && selectedEmpresas.length > 0) {
+      base = filterPedidosByEmpresa(base, selectedEmpresas);
     }
     return base;
-  }, [pedidos, services, effectiveServiceFilter, scope]);
+  }, [pedidos, services, effectiveServiceFilter, scope, selectedMoviles, selectedEmpresas]);
 
   // Filter movilesZonasData by service type + active + not hidden-operativo
   const filteredMovilesZonas = useMemo(() => {

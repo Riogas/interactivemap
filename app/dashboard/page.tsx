@@ -3032,6 +3032,8 @@ function DashboardContent() {
         hideSinAsignarOverride={!canVerSinAsigPorZona}
         serverNow={serverNow}
         minutosAntesSa={minutosAntesSa}
+        selectedMoviles={selectedMoviles}
+        selectedEmpresas={selectedEmpresas}
         onZonaClick={(zonaId, svcFilter) => {
           setIsZonaEstadisticasOpen(false);
           setPreFilterZona(zonaId);

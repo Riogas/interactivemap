@@ -977,7 +977,7 @@ function CulledPoisLayer({
                 <div style={{ background: '#18181b', padding: '8px 12px 10px' }}>
                   {marker.telefono && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                      <span style={{ fontSize: '13px' }}>??</span>
+                      <span style={{ fontSize: '13px' }}>📞</span>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: '#d1fae5', letterSpacing: '0.04em' }}>
                         {String(marker.telefono)}
                       </span>
@@ -985,14 +985,14 @@ function CulledPoisLayer({
                   )}
                   {marker.observacion && (
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                      <span style={{ fontSize: '13px', marginTop: '1px' }}>??</span>
+                      <span style={{ fontSize: '13px', marginTop: '1px' }}>🏠</span>
                       <span style={{ fontSize: '12px', color: '#d1d5db', lineHeight: '1.4' }}>
                         {marker.observacion}
                       </span>
                     </div>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px', paddingTop: '6px' }}>
-                    <span style={{ fontSize: '12px' }}>??</span>
+                    <span style={{ fontSize: '12px' }}>📌</span>
                     <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', letterSpacing: '0.03em' }}>
                       {Number(marker.latitud).toFixed(6)}, {Number(marker.longitud).toFixed(6)}
                     </span>
@@ -2046,7 +2046,7 @@ const MapView = memo(function MapView({
           transition: transform 0.2s;
         " 
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">??</div>
+        onmouseout="this.style.transform='scale(1)'">📦</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
@@ -2082,7 +2082,7 @@ const MapView = memo(function MapView({
             transition: transform 0.2s;
           " 
           onmouseover="this.style.transform='scale(1.15)'"
-          onmouseout="this.style.transform='scale(1)'">??</div>
+          onmouseout="this.style.transform='scale(1)'">📦</div>
         `,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
@@ -2113,7 +2113,7 @@ const MapView = memo(function MapView({
           transition: transform 0.2s;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">??</div>
+        onmouseout="this.style.transform='scale(1)'">🔧</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
@@ -2148,7 +2148,7 @@ const MapView = memo(function MapView({
             transition: transform 0.2s;
           " 
           onmouseover="this.style.transform='scale(1.15)'"
-          onmouseout="this.style.transform='scale(1)'">??</div>
+          onmouseout="this.style.transform='scale(1)'">🔧</div>
         `,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
