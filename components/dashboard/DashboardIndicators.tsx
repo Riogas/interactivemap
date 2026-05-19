@@ -77,13 +77,17 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       // Distribuidor: hideEntregadosSinMovil=true (no puede ver entregados huérfanos),
       // y los finalizados con móvil deben pertenecer a su scope (móvil + zona).
       finalizados = finalizados.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: true }));
-    } else if (selectedMoviles.length > 0) {
-      // Filtro estricto por móvil seleccionado: cuenta SOLO los pedidos
-      // cuyo movil esta en selectedMoviles. Pedidos huérfanos (sin movil)
-      // y de móviles ocultos-pero-operativos NO pasan — el indicador refleja
-      // exactamente lo que el usuario filtró.
-      finalizados = filterFinalizadosByMovil(finalizados, selectedMoviles);
     }
+    // NOTA (2026-05-19): el filtro por selectedMoviles ya NO se aplica a los
+    // contadores globales del navbar (Entregados, %Entregados). Decision del
+    // usuario: el contador debe reflejar TODOS los finalizados de las empresas
+    // fleteras seleccionadas en el header, independientemente de los moviles
+    // marcados en el sidebar. El filtro por movil es para vistas detalladas
+    // (modal de movil especifico), no para totales agregados.
+    // Si necesitas reactivarlo en algun caso, descomentar:
+    // else if (selectedMoviles.length > 0) {
+    //   finalizados = filterFinalizadosByMovil(finalizados, selectedMoviles);
+    // }
 
     // Filtro por empresa fletera seleccionada en la UI (aplica sobre sinAsignar y finalizados).
     // Pedidos sin empresa_fletera_id (null) no pasan cuando hay selección activa.
