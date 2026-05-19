@@ -22,7 +22,29 @@ export default function FloatingToolbar({
 }: FloatingToolbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+  // Si true, PreferencesModal abre automaticamente el sub-modal de Conf. Visual.
+  // Lo dispara el evento global 'open-conf-visual' (click en un Ref#N de cualquier leyenda).
+  const [autoOpenConfVisual, setAutoOpenConfVisual] = useState(false);
   const { user, escenarioId, logout, hasPermiso } = useAuth();
+
+  // Listener global: cuando alguien clickea en un .demora-legend-ref de cualquier
+  // leyenda del mapa (renderizada por Leaflet con innerHTML, no JSX), dispatch
+  // un CustomEvent que aca recogemos. Abrimos el modal de Preferencias con la
+  // seccion Conf. Visual ya abierta, sin obligar al usuario a navegar.
+  useEffect(() => {
+    const onLegendRefClick = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const ref = target.closest('.demora-legend-ref');
+      if (!ref) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setAutoOpenConfVisual(true);
+      setIsPreferencesOpen(true);
+    };
+    document.addEventListener('click', onLegendRefClick);
+    return () => document.removeEventListener('click', onLegendRefClick);
+  }, []);
   // canChangeDate: el usuario puede navegar a fechas anteriores en el selector.
   // Pasa si:
   //   - es root (bypass), o
@@ -349,8 +371,12 @@ export default function FloatingToolbar({
       {/* Modal de Preferencias */}
       <PreferencesModal
         isOpen={isPreferencesOpen}
-        onClose={() => setIsPreferencesOpen(false)}
+        onClose={() => {
+          setIsPreferencesOpen(false);
+          setAutoOpenConfVisual(false);
+        }}
         onSave={handlePreferencesSave}
+        autoOpenConfVisual={autoOpenConfVisual}
       />
     </>
   );

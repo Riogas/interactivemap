@@ -26,11 +26,11 @@ export const VISUAL_REFS_CATALOG: VisualRefEntry[] = [
   { id: 'Ref#7',  layer: 'Demoras (min)',      label: '151+',           defaultColor: '#ef4444' },
 
   // ── Capa 2: Moviles prioridad ────────────────────────────────────────────
-  { id: 'Ref#8',  layer: 'Móviles prioridad', label: '0 móviles',  defaultColor: '#ef4444' },
-  { id: 'Ref#9',  layer: 'Móviles prioridad', label: '1 móvil',    defaultColor: '#86efac' },
-  { id: 'Ref#10', layer: 'Móviles prioridad', label: '2 móviles',  defaultColor: '#22c55e' },
-  { id: 'Ref#11', layer: 'Móviles prioridad', label: '3 móviles',  defaultColor: '#06b6d4' },
-  { id: 'Ref#12', layer: 'Móviles prioridad', label: '4+ móviles', defaultColor: '#8b5cf6' },
+  { id: 'Ref#8',  layer: 'Móviles / Zona', label: '0 móviles',  defaultColor: '#ef4444' },
+  { id: 'Ref#9',  layer: 'Móviles / Zona', label: '1 móvil',    defaultColor: '#86efac' },
+  { id: 'Ref#10', layer: 'Móviles / Zona', label: '2 móviles',  defaultColor: '#22c55e' },
+  { id: 'Ref#11', layer: 'Móviles / Zona', label: '3 móviles',  defaultColor: '#06b6d4' },
+  { id: 'Ref#12', layer: 'Móviles / Zona', label: '4+ móviles', defaultColor: '#8b5cf6' },
 
   // ── Capa 3: Zonas Activas ────────────────────────────────────────────────
   { id: 'Ref#13', layer: 'Zonas Activas', label: 'Activa',   defaultColor: '#22c55e' },

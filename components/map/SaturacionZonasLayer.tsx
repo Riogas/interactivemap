@@ -125,12 +125,12 @@ function SaturacionLegend({
           : '';
         div.innerHTML = `
           <div class="demora-legend-title">Cap. Entrega</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#21', visualRefs)}"></span><span class="demora-legend-label">Sin Cap. (&lt; 0)</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#21</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#22', visualRefs)}"></span><span class="demora-legend-label">0 (capacidad máx.)</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#22</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#23', visualRefs)}"></span><span class="demora-legend-label">1</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#23</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#24', visualRefs)}"></span><span class="demora-legend-label">2 – 3</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#24</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#25', visualRefs)}"></span><span class="demora-legend-label">&gt; 3 (sobrante)</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#25</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#26', visualRefs)}"></span><span class="demora-legend-label">Sin datos</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#26</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#21', visualRefs)}"></span><span class="demora-legend-label">Sin Cap. (&lt; 0)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#21</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#22', visualRefs)}"></span><span class="demora-legend-label">0 (capacidad máx.)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#22</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#23', visualRefs)}"></span><span class="demora-legend-label">1</span><span class="demora-legend-ref" title="Click para editar este color">Ref#23</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#24', visualRefs)}"></span><span class="demora-legend-label">2 – 3</span><span class="demora-legend-ref" title="Click para editar este color">Ref#24</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#25', visualRefs)}"></span><span class="demora-legend-label">&gt; 3 (sobrante)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#25</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#26', visualRefs)}"></span><span class="demora-legend-label">Sin datos</span><span class="demora-legend-ref" title="Click para editar este color">Ref#26</span></div>
           ${toggleHtml}
         `;
         L.DomEvent.disableClickPropagation(div);

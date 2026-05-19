@@ -160,13 +160,13 @@ function DemorasLegend({
           : '';
         div.innerHTML = `
           <div class="demora-legend-title">Demoras (min)</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch dotted"></span><span class="demora-legend-label">0</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#1</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#2', visualRefs)}"></span><span class="demora-legend-label">1 – 30</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#2</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#3', visualRefs)}"></span><span class="demora-legend-label">31 – 45</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#3</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#4', visualRefs)}"></span><span class="demora-legend-label">46 – 60</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#4</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#5', visualRefs)}"></span><span class="demora-legend-label">61 – 90</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#5</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#6', visualRefs)}"></span><span class="demora-legend-label">91 – 150</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#6</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#7', visualRefs)}"></span><span class="demora-legend-label">151+</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#7</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch dotted"></span><span class="demora-legend-label">0</span><span class="demora-legend-ref" title="Click para editar este color">Ref#1</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#2', visualRefs)}"></span><span class="demora-legend-label">1 – 30</span><span class="demora-legend-ref" title="Click para editar este color">Ref#2</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#3', visualRefs)}"></span><span class="demora-legend-label">31 – 45</span><span class="demora-legend-ref" title="Click para editar este color">Ref#3</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#4', visualRefs)}"></span><span class="demora-legend-label">46 – 60</span><span class="demora-legend-ref" title="Click para editar este color">Ref#4</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#5', visualRefs)}"></span><span class="demora-legend-label">61 – 90</span><span class="demora-legend-ref" title="Click para editar este color">Ref#5</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#6', visualRefs)}"></span><span class="demora-legend-label">91 – 150</span><span class="demora-legend-ref" title="Click para editar este color">Ref#6</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#7', visualRefs)}"></span><span class="demora-legend-label">151+</span><span class="demora-legend-ref" title="Click para editar este color">Ref#7</span></div>
           ${toggleHtml}
         `;
         L.DomEvent.disableClickPropagation(div);

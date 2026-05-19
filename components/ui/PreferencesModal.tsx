@@ -126,9 +126,13 @@ interface PreferencesModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (preferences: UserPreferences) => void;
+  /** Si true al montar/abrir, abre automaticamente el sub-modal Conf. Visual.
+   *  Lo usa FloatingToolbar cuando el usuario clickea un Ref#N en una leyenda
+   *  del mapa para saltar directo a la edicion de colores. */
+  autoOpenConfVisual?: boolean;
 }
 
-export default function PreferencesModal({ isOpen, onClose, onSave }: PreferencesModalProps) {
+export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConfVisual = false }: PreferencesModalProps) {
   const { user, hasPermiso } = useAuth();
   const canUpdPtsVenta = hasPermiso('updptsventa');
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
@@ -151,6 +155,15 @@ export default function PreferencesModal({ isOpen, onClose, onSave }: Preference
   // ===== Estado para Conf. Visual =====
   const [confVisualOpen, setConfVisualOpen] = useState(false);
   const [visualRefsLocal, setVisualRefsLocal] = useState<Record<string, string>>({});
+
+  // Auto-abrir el sub-modal de Conf. Visual cuando se nos pide via prop
+  // (caso: click en Ref#N de una leyenda dispara la apertura directa).
+  useEffect(() => {
+    if (isOpen && autoOpenConfVisual) {
+      setVisualRefsLocal({ ...(preferences.visualRefs ?? {}) });
+      setConfVisualOpen(true);
+    }
+  }, [isOpen, autoOpenConfVisual, preferences.visualRefs]);
 
   const handleAuditToggle = async () => {
     if (auditToggling || auditEnabled === null) return;

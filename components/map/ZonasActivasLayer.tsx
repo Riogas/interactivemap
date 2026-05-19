@@ -93,9 +93,9 @@ function ZonasActivasLegend({ visualRefs }: { visualRefs?: Record<string, string
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
           <div class="demora-legend-title">Zonas Activas</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#13', visualRefs)}"></span><span class="demora-legend-label">Activa</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#13</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#14', visualRefs)}"></span><span class="demora-legend-label">No Activa</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#14</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#15', visualRefs)}"></span><span class="demora-legend-label">Sin dato</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#15</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#13', visualRefs)}"></span><span class="demora-legend-label">Activa</span><span class="demora-legend-ref" title="Click para editar este color">Ref#13</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#14', visualRefs)}"></span><span class="demora-legend-label">No Activa</span><span class="demora-legend-ref" title="Click para editar este color">Ref#14</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#15', visualRefs)}"></span><span class="demora-legend-label">Sin dato</span><span class="demora-legend-ref" title="Click para editar este color">Ref#15</span></div>
         `;
         L.DomEvent.disableClickPropagation(div);
         return div;

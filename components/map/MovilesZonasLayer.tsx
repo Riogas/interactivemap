@@ -181,12 +181,12 @@ function MovilesZonasLegend({ visualRefs }: { visualRefs?: Record<string, string
       onAdd() {
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
-          <div class="demora-legend-title">Móviles prioridad</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#8', visualRefs)}"></span><span class="demora-legend-label">0 móviles</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#8</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#9', visualRefs)}"></span><span class="demora-legend-label">1 móvil</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#9</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#10', visualRefs)}"></span><span class="demora-legend-label">2 móviles</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#10</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#11', visualRefs)}"></span><span class="demora-legend-label">3 móviles</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#11</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#12', visualRefs)}"></span><span class="demora-legend-label">4+ móviles</span><span class="demora-legend-ref" title="Editable en Preferencias &rarr; Conf. Visual">Ref#12</span></div>
+          <div class="demora-legend-title">Móviles / Zona</div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#8', visualRefs)}"></span><span class="demora-legend-label">0 móviles</span><span class="demora-legend-ref" title="Click para editar este color">Ref#8</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#9', visualRefs)}"></span><span class="demora-legend-label">1 móvil</span><span class="demora-legend-ref" title="Click para editar este color">Ref#9</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#10', visualRefs)}"></span><span class="demora-legend-label">2 móviles</span><span class="demora-legend-ref" title="Click para editar este color">Ref#10</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#11', visualRefs)}"></span><span class="demora-legend-label">3 móviles</span><span class="demora-legend-ref" title="Click para editar este color">Ref#11</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#12', visualRefs)}"></span><span class="demora-legend-label">4+ móviles</span><span class="demora-legend-ref" title="Click para editar este color">Ref#12</span></div>
         `;
         L.DomEvent.disableClickPropagation(div);
         return div;
