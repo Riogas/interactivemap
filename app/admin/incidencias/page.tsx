@@ -44,7 +44,7 @@ export default function IncidenciasPage() {
   const [items, setItems] = useState<Incident[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ username: '', status: '' });
+  const [filters, setFilters] = useState({ username: '', status: 'not_closed' });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [selected, setSelected] = useState<Incident | null>(null);
@@ -168,7 +168,8 @@ export default function IncidenciasPage() {
             onChange={(e) => handleFilterChange({ ...filters, status: e.target.value })}
             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition cursor-pointer"
           >
-            <option value="">Todos los estados</option>
+            <option value="">Todas</option>
+            <option value="not_closed">Solo activas (no cerradas)</option>
             <option value="open">Abierta</option>
             <option value="in_review">En revisión</option>
             <option value="closed">Cerrada</option>

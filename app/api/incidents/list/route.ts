@@ -45,10 +45,15 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1) as {
         ilike: (c: string, v: string) => typeof query;
         eq: (c: string, v: string) => typeof query;
+        neq: (c: string, v: string) => typeof query;
       };
 
     if (username) query = query.ilike('username', `%${username}%`);
-    if (status) query = query.eq('status', status);
+    if (status === 'not_closed') {
+      query = query.neq('status', 'closed');
+    } else if (status) {
+      query = query.eq('status', status);
+    }
 
     const { data, error, count } = (await (query as unknown as Promise<{
       data: IncidentRow[];
