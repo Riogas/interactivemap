@@ -287,6 +287,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({
                 stroke: false,
                 color: 'transparent',
                 weight: 0,
+                interactive: false,
               }}
             />
           )}

@@ -129,6 +129,7 @@ const DistribucionZonasLayer = memo(function DistribucionZonasLayer({ zonas, zon
                 stroke: false,
                 color: 'transparent',
                 weight: 0,
+                interactive: false,
               }}
             />
           )}

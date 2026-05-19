@@ -307,6 +307,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
                 stroke: false,
                 color: 'transparent',
                 weight: 0,
+                interactive: false,
               }}
             />
           )}

@@ -304,6 +304,7 @@ const DemorasZonasLayer = memo(function DemorasZonasLayer({
                 stroke: false,
                 color: 'transparent',
                 weight: 0,
+                interactive: false,
               }}
             />
           )}

@@ -334,6 +334,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
                 stroke: false,
                 color: 'transparent',
                 weight: 0,
+                interactive: false,
               }}
             />
           )}
