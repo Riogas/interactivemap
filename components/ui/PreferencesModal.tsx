@@ -261,42 +261,90 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
         return;
       }
 
-      // Columnas esperadas: Categoria* | ID* | Visibilidad | Nombre Corto | CoordX | CoordY | Telefono | Direccion | Observaciones | escenario_id | empresa_fletera_id
+      // Mapeo case-insensitive de columnas del Excel a la tabla puntos_interes.
+      // Formato esperado (canonico):
+      //   ID | Nombre | Descripcion | Latitud | Longitud | tipo | Visible | Categoria | Telefono | escenario_id | empresa_fletera_id
+      // Backward-compat con formato anterior:
+      //   "Nombre Corto" -> nombre, "CoordX"/"CoordY" -> latitud/longitud,
+      //   "Direccion"+"Observaciones" -> descripcion (combinadas), "Visibilidad" -> tipo+visible.
       const headers: string[] = (raw[0] as string[]).map(h => String(h ?? '').trim());
-      const idx = (name: string) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
+      // Match exacto case-insensitive primero, fallback a includes (legacy "Nombre Corto" matchea con "Nombre")
+      const idxExact = (...names: string[]) => {
+        for (const name of names) {
+          const i = headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
+          if (i >= 0) return i;
+        }
+        return -1;
+      };
+      const idxIncludes = (name: string) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
 
-      const iCategoria   = idx('Categoria');
-      const iId          = idx('ID');
-      const iVisib       = idx('Visibilidad');
-      const iNombre      = idx('Nombre Corto');
-      const iCoordX      = idx('CoordX');
-      const iCoordY      = idx('CoordY');
-      const iTelefono    = idx('Telefono');
-      const iDireccion   = idx('Direccion');
-      const iObs         = idx('Observaciones');
-      const iEscenario   = idx('escenario');
-      const iEmpresa     = idx('empresa');
+      const iId          = idxExact('ID', 'id');
+      const iNombre      = idxExact('Nombre', 'name') >= 0 ? idxExact('Nombre', 'name') : idxIncludes('Nombre Corto');
+      const iDescripcion = idxExact('Descripcion', 'Descripción', 'description');
+      const iLatitud     = idxExact('Latitud', 'lat') >= 0 ? idxExact('Latitud', 'lat') : idxIncludes('CoordX');
+      const iLongitud    = idxExact('Longitud', 'lng', 'lon') >= 0 ? idxExact('Longitud', 'lng', 'lon') : idxIncludes('CoordY');
+      const iTipo        = idxExact('tipo', 'Tipo');
+      const iVisible     = idxExact('Visible', 'visible');
+      const iVisibilidad = idxIncludes('Visibilidad'); // legacy
+      const iCategoria   = idxExact('Categoria', 'Categoría', 'category');
+      const iTelefono    = idxExact('Telefono', 'Teléfono', 'phone');
+      // Legacy fields combinados a descripcion si Descripcion exacto no existe
+      const iDireccion   = idxIncludes('Direccion');
+      const iObs         = idxIncludes('Observaciones');
+      const iEscenario   = idxIncludes('escenario');
+      const iEmpresa     = idxIncludes('empresa');
 
       const email = user?.email || user?.username || 'admin@trackmovil';
 
       const rows = raw.slice(1).filter(r => r[iId] != null).map(r => {
-        const visib = String(r[iVisib] ?? '').toLowerCase();
-        // NOTA: la tabla puntos_interes NO tiene columna 'observaciones'. Combinamos
-        // 'Direccion' y 'Observaciones' del Excel en el campo unico 'descripcion'
-        // separados por ' — '. Si solo hay una, se usa esa.
-        const direccion     = iDireccion >= 0 ? String(r[iDireccion] ?? '').trim() : '';
-        const observaciones = iObs >= 0 ? String(r[iObs] ?? '').trim() : '';
-        const descripcionFinal = [direccion, observaciones].filter(Boolean).join(' — ') || null;
+        // Determinar descripcion: prioridad al campo 'Descripcion' exacto. Si no existe,
+        // combinar 'Direccion' y 'Observaciones' (formato legacy) en un solo string.
+        let descripcionFinal: string | null = null;
+        if (iDescripcion >= 0) {
+          const v = String(r[iDescripcion] ?? '').trim();
+          descripcionFinal = v || null;
+        } else {
+          const direccion     = iDireccion >= 0 ? String(r[iDireccion] ?? '').trim() : '';
+          const observaciones = iObs >= 0 ? String(r[iObs] ?? '').trim() : '';
+          descripcionFinal = [direccion, observaciones].filter(Boolean).join(' — ') || null;
+        }
+
+        // Determinar tipo (publico/privado) y visible (true/false).
+        // Formato nuevo: dos columnas separadas 'tipo' (publico|privado) y 'Visible' (true|false).
+        // Formato legacy: una sola columna 'Visibilidad' (publico|privado) — derivamos visible=true si publico.
+        let tipo: 'publico' | 'privado';
+        let visible: boolean;
+        if (iTipo >= 0) {
+          const t = String(r[iTipo] ?? '').toLowerCase().trim();
+          tipo = t === 'publico' || t === 'público' || t === 'public' ? 'publico' : 'privado';
+        } else if (iVisibilidad >= 0) {
+          const v = String(r[iVisibilidad] ?? '').toLowerCase().trim();
+          tipo = v === 'publico' || v === 'público' || v === 'public' ? 'publico' : 'privado';
+        } else {
+          tipo = 'privado';
+        }
+        if (iVisible >= 0) {
+          const v = String(r[iVisible] ?? '').toLowerCase().trim();
+          visible = v === 'true' || v === '1' || v === 'si' || v === 'sí';
+        } else if (iVisibilidad >= 0) {
+          // En formato legacy 'Visibilidad' tambien funcionaba como visible:
+          // publico -> visible, otra cosa -> oculto.
+          const v = String(r[iVisibilidad] ?? '').toLowerCase().trim();
+          visible = v === 'publico' || v === 'público' || v === 'true' || v === '1';
+        } else {
+          visible = true; // default visible
+        }
+
         return {
           id:                 Number(r[iId]),
           nombre:             String(r[iNombre] ?? '').trim(),
           categoria:          iCategoria >= 0 ? String(r[iCategoria] ?? '').trim() || null : null,
-          latitud:            Number(r[iCoordX]),
-          longitud:           Number(r[iCoordY]),
+          latitud:            Number(r[iLatitud]),
+          longitud:           Number(r[iLongitud]),
           telefono:           r[iTelefono] ? Number(r[iTelefono]) : null,
           descripcion:        descripcionFinal,
-          visible:            visib === 'publico' || visib === 'true' || visib === '1',
-          tipo:               visib === 'publico' ? 'publico' : 'privado',
+          visible,
+          tipo,
           icono:              '📍',
           usuario_email:      email,
           escenario_id:       iEscenario >= 0 && r[iEscenario] != null ? Number(r[iEscenario]) : null,
@@ -1252,17 +1300,17 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                         </thead>
                         <tbody>
                           {[
-                            { col: 'ID',                 tipo: 'número',         req: true,  ej: '100' },
-                            { col: 'Categoria',          tipo: 'texto',            req: false, ej: 'GASODOMESTICO' },
-                            { col: 'Visibilidad',        tipo: 'publico/privado',  req: false, ej: 'publico' },
-                            { col: 'Nombre Corto',       tipo: 'texto',            req: true,  ej: 'Suc 5' },
-                            { col: 'CoordX',             tipo: 'número',         req: true,  ej: '-34.872' },
-                            { col: 'CoordY',             tipo: 'número',         req: true,  ej: '-56.207' },
-                            { col: 'Telefono',           tipo: 'número',         req: false, ej: '24001234' },
-                            { col: 'Direccion',          tipo: 'texto',            req: false, ej: 'Bvar Artigas 4321' },
-                            { col: 'Observaciones',      tipo: 'texto',            req: false, ej: 'Atiende solo mañanas' },
-                            { col: 'escenario_id',       tipo: 'número',         req: false, ej: '1000' },
-                            { col: 'empresa_fletera_id', tipo: 'número',         req: false, ej: '70' },
+                            { col: 'ID',                 tipo: 'número',           req: true,  ej: '1000' },
+                            { col: 'Nombre',             tipo: 'texto',            req: true,  ej: 'Cementerio Central' },
+                            { col: 'Descripcion',        tipo: 'texto',            req: false, ej: 'Gonzalo Ramírez 1290' },
+                            { col: 'Latitud',            tipo: 'número',           req: true,  ej: '-34.9178' },
+                            { col: 'Longitud',           tipo: 'número',           req: true,  ej: '-56.1745' },
+                            { col: 'tipo',               tipo: 'publico/privado',  req: false, ej: 'publico' },
+                            { col: 'Visible',            tipo: 'true/false',       req: false, ej: 'true' },
+                            { col: 'Categoria',          tipo: 'texto',            req: false, ej: 'Cementerio' },
+                            { col: 'Telefono',           tipo: 'número',           req: false, ej: '24001234' },
+                            { col: 'escenario_id',       tipo: 'número',           req: false, ej: '1000' },
+                            { col: 'empresa_fletera_id', tipo: 'número',           req: false, ej: '70' },
                           ].map(({ col, tipo, req, ej }) => (
                             <tr key={col} className="even:bg-white odd:bg-gray-50">
                               <td className="px-2 py-1 border border-gray-200 font-mono">{col}</td>
@@ -1278,7 +1326,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                           type="button"
                           className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all"
                           onClick={() => {
-                            const hdrs = ['ID','Categoria','Visibilidad','Nombre Corto','CoordX','CoordY','Telefono','Direccion','Observaciones','escenario_id','empresa_fletera_id'];
+                            const hdrs = ['ID','Nombre','Descripcion','Latitud','Longitud','tipo','Visible','Categoria','Telefono','escenario_id','empresa_fletera_id'];
                             const wb = XLSX.utils.book_new();
                             const ws = XLSX.utils.aoa_to_sheet([hdrs]);
                             XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
