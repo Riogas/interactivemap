@@ -63,6 +63,11 @@ interface PedidosTableModalProps {
   preFilterZona?: number;
   onClearPreFilter?: () => void;
   initialAsignacion?: 'todos' | 'con_movil' | 'sin_movil';
+  /** Filtro de atraso a aplicar al abrir el modal. Se setea como filtro
+   *  interno cada vez que el prop cambia, permitiendo que un caller (ej.
+   *  click en zona del mapa Pedidos/Zona con combo "Atrasados") pre-filtre
+   *  por ['muy_atrasado','atrasado']. Comportamiento análogo a initialAsignacion. */
+  initialAtraso?: AtrasoFilter[];
   hideUnassigned?: boolean;
   /** True cuando el usuario está en modo "Todos" — todas las empresas
    *  seleccionadas Y todos los móviles operativos seleccionados. Habilita la
@@ -108,7 +113,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -201,6 +206,17 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     setFilters(f => ({ ...f, asignacion: initialAsignacion }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAsignacion]);
+
+  // Aplicar filtro inicial de atraso sólo cuando el prop cambia (no en cada reopen).
+  // Si initialAtraso es undefined, no toca el filtro; si es un array (vacío o con
+  // claves), reemplaza el filtro de atraso. Esto permite que el click en
+  // Pedidos/Zona con combo "Atrasados" pre-filtre por ['muy_atrasado','atrasado'].
+  useEffect(() => {
+    if (initialAtraso === undefined) return;
+    setFilters(f => ({ ...f, atraso: initialAtraso }));
+    setPage(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAtraso]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {

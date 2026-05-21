@@ -343,6 +343,10 @@ function DashboardContent() {
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>(defaultPedidosFilters);
   const [pedidosResetToken, setPedidosResetToken] = useState(0);
   const [pedidosInitialAsignacion, setPedidosInitialAsignacion] = useState<'todos' | 'con_movil' | 'sin_movil'>('todos');
+  // Filtro de atraso inicial a inyectar en PedidosTableModal al abrirlo (ej.
+  // click en capa "Pedidos/Zona" con combo "Atrasados" → ['muy_atrasado','atrasado']).
+  // undefined = no toca el filtro de atraso interno del modal.
+  const [pedidosInitialAtraso, setPedidosInitialAtraso] = useState<('muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora')[] | undefined>(undefined);
   const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'atrasados'>('pendientes');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>(defaultServicesFilters);
   const [servicesResetToken, setServicesResetToken] = useState(0);
@@ -2834,7 +2838,7 @@ function DashboardContent() {
       <PedidosTableModal
         key={`pedidos-${preFilterMovil ?? 'all'}-z${preFilterZona ?? 'all'}`}
         isOpen={isPedidosTableOpen}
-        onClose={() => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
+        onClose={() => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); setPedidosInitialAtraso(undefined); }}
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
         hiddenMovilIds={hiddenMovilIds}
@@ -2849,6 +2853,7 @@ function DashboardContent() {
         preFilterZona={preFilterZona}
         onClearPreFilter={() => { setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
         initialAsignacion={pedidosInitialAsignacion}
+        initialAtraso={pedidosInitialAtraso}
         hideUnassigned={hideUnassigned}
         allMovilesSelected={allMovilesSelected}
         privilegedUser={isPrivilegedUser}
@@ -3323,7 +3328,25 @@ function DashboardContent() {
                 poiCategoryIcons={preferences.poiCategoryIcons}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
-                onZonaClick={(dataViewMode === 'moviles-zonas' || dataViewMode === 'pedidos-zona') ? openZonaView : dataViewMode === 'saturacion' ? setSaturacionModalZonaId : undefined}
+                onZonaClick={
+                  dataViewMode === 'pedidos-zona'
+                    ? (zonaId: number) => {
+                        // Click en capa "Pedidos/Zona": abre la tabla extendida
+                        // filtrada por esta zona + por el valor del combo
+                        // (Pendientes / Sin asignar / Atrasados).
+                        setPreFilterZona(zonaId);
+                        setPreFilterMovil(undefined);
+                        setPedidosInitialAsignacion(pedidosZonaFilter === 'sin_asignar' ? 'sin_movil' : 'todos');
+                        setPedidosInitialAtraso(pedidosZonaFilter === 'atrasados' ? ['muy_atrasado', 'atrasado'] : []);
+                        setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: [] }));
+                        setIsPedidosTableOpen(true);
+                      }
+                    : dataViewMode === 'moviles-zonas'
+                      ? openZonaView
+                      : dataViewMode === 'saturacion'
+                        ? setSaturacionModalZonaId
+                        : undefined
+                }
                 serverNow={serverNow}
                 minutosAntesSa={minutosAntesSa}
                 user={user}
