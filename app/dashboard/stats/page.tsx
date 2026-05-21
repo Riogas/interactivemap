@@ -62,7 +62,7 @@ function formatDate(dateStr: string) {
   return `${d} ${months[parseInt(m) - 1]} ${y}`;
 }
 
-function BarChart({ data, colorClass = 'bg-blue-500' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
+function BarChart({ data, colorClass = 'bg-stats-info' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <div className="space-y-2">
@@ -100,9 +100,9 @@ function StackedBarChart({ data, expanded = false }: { data: StackRow[]; expande
     <div className={spacing}>
       {/* Leyenda */}
       <div className="flex gap-3 text-[10px] text-gray-400 mb-1">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Entregados</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />No entregados</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Pendientes</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-success inline-block" />Entregados</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-warning inline-block" />No entregados</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-info inline-block" />Pendientes</span>
       </div>
       {data.map(row => {
         const total = row.entregados + row.noEntregados + row.pendientes;
@@ -119,17 +119,17 @@ function StackedBarChart({ data, expanded = false }: { data: StackRow[]; expande
             <div className={`${barH} bg-white/10 rounded-full overflow-hidden`}>
               <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${Math.max(barWidth, total > 0 ? 2 : 0)}%` }}>
                 {row.entregados > 0 && (
-                  <div className="h-full bg-green-500 flex items-center justify-center overflow-hidden" style={{ width: `${pEnt}%` }}>
+                  <div className="h-full bg-stats-success flex items-center justify-center overflow-hidden" style={{ width: `${pEnt}%` }}>
                     {(expanded || pEnt >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pEnt}%</span>}
                   </div>
                 )}
                 {row.noEntregados > 0 && (
-                  <div className="h-full bg-orange-400 flex items-center justify-center overflow-hidden" style={{ width: `${pNoEnt}%` }}>
+                  <div className="h-full bg-stats-warning flex items-center justify-center overflow-hidden" style={{ width: `${pNoEnt}%` }}>
                     {(expanded || pNoEnt >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pNoEnt}%</span>}
                   </div>
                 )}
                 {row.pendientes > 0 && (
-                  <div className="h-full bg-blue-400 flex items-center justify-center overflow-hidden" style={{ width: `${pPend}%` }}>
+                  <div className="h-full bg-stats-info flex items-center justify-center overflow-hidden" style={{ width: `${pPend}%` }}>
                     {(expanded || pPend >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pPend}%</span>}
                   </div>
                 )}
@@ -138,9 +138,9 @@ function StackedBarChart({ data, expanded = false }: { data: StackRow[]; expande
             {/* Siempre visible en modo expandido: etiquetas de % debajo de la barra */}
             {expanded && total > 0 && (
               <div className="flex gap-4 mt-1.5">
-                {pEnt > 0 && <span className="text-[10px] text-green-400 font-semibold">{pEnt}% ent.</span>}
-                {pNoEnt > 0 && <span className="text-[10px] text-orange-400 font-semibold">{pNoEnt}% no ent.</span>}
-                {pPend > 0 && <span className="text-[10px] text-blue-400 font-semibold">{pPend}% pend.</span>}
+                {pEnt > 0 && <span className="text-[10px] text-stats-success font-semibold">{pEnt}% ent.</span>}
+                {pNoEnt > 0 && <span className="text-[10px] text-stats-warning font-semibold">{pNoEnt}% no ent.</span>}
+                {pPend > 0 && <span className="text-[10px] text-stats-info font-semibold">{pPend}% pend.</span>}
               </div>
             )}
           </div>
@@ -789,7 +789,7 @@ function StatsContent() {
   }, [filteredPedidos]);
 
   return (
-    <div className="h-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-y-auto">
+    <div className="h-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-y-auto font-stats-sans">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-gray-900/80 backdrop-blur-md border-b border-white/10 px-4 py-3">
         {/* Row 1: título + total pedidos centrado + cerrar */}
@@ -802,12 +802,12 @@ function StatsContent() {
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-6">
             <div className="text-center">
               <p className="text-xs text-gray-400 leading-none mb-0.5">Total pedidos</p>
-              <p className="text-3xl font-bold text-white leading-none">{pedidosStats.total}</p>
+              <p className="text-3xl font-bold text-white leading-none font-stats-mono tabular-nums">{pedidosStats.total}</p>
             </div>
             <div className="w-px h-8 bg-white/20" />
             <div className="text-center">
               <p className="text-xs text-gray-400 leading-none mb-0.5">Total services</p>
-              <p className="text-3xl font-bold text-white leading-none">{servicesStats.total}</p>
+              <p className="text-3xl font-bold text-white leading-none font-stats-mono tabular-nums">{servicesStats.total}</p>
             </div>
           </div>
           <button
@@ -1049,7 +1049,7 @@ function StatsContent() {
             {/* Pedidos por hora */}
             {pedidosPorHora.length > 0 && (
               <ExpandableCard title="Pedidos por hora">
-                <BarChart data={pedidosPorHora} colorClass="bg-blue-500" />
+                <BarChart data={pedidosPorHora} colorClass="bg-stats-info" />
               </ExpandableCard>
             )}
 

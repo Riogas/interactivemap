@@ -5,6 +5,60 @@
   --foreground: 222.2 84% 4.9%;
 }
 
+/* ─── Design tokens "Stats" ────────────────────────────────────────────────
+ * Tokens semánticos para el dashboard de estadísticas (/dashboard/stats).
+ * Disponibles como utilidades Tailwind v4: bg-stats-primary, text-stats-accent,
+ * border-stats-border, font-stats-sans, font-stats-mono, etc.
+ * Basado en "Data-Dense Dashboard" del skill ui-ux-pro-max.
+ * Light mode (default) + dark mode via [data-theme="dark"] (Capa 2).
+ * ───────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* Brand */
+  --color-stats-primary: #1E40AF;
+  --color-stats-primary-fg: #FFFFFF;
+  --color-stats-secondary: #3B82F6;
+  --color-stats-accent: #D97706;
+
+  /* Status (semantic, used in charts and badges) */
+  --color-stats-success: #16A34A;
+  --color-stats-success-soft: #DCFCE7;
+  --color-stats-warning: #D97706;
+  --color-stats-warning-soft: #FEF3C7;
+  --color-stats-destructive: #DC2626;
+  --color-stats-destructive-soft: #FEE2E2;
+  --color-stats-info: #3B82F6;
+  --color-stats-info-soft: #DBEAFE;
+  --color-stats-neutral: #6B7280;
+  --color-stats-neutral-soft: #F3F4F6;
+
+  /* Surfaces (light mode) */
+  --color-stats-background: #F8FAFC;
+  --color-stats-surface: #FFFFFF;
+  --color-stats-surface-2: #F1F5F9;
+  --color-stats-border: #E2E8F0;
+  --color-stats-foreground: #0F172A;
+  --color-stats-muted-fg: #64748B;
+
+  /* Fonts: Fira Sans (body) + Fira Code (data/tabular numbers) */
+  --font-stats-sans: var(--font-stats-sans-base, 'Fira Sans'), system-ui, sans-serif;
+  --font-stats-mono: var(--font-stats-mono-base, 'Fira Code'), ui-monospace, monospace;
+}
+
+/* Dark theme overrides (activado por [data-theme="dark"] en el root o por
+ * prefers-color-scheme. Capa 2 enchufa el toggle). */
+[data-theme="dark"] {
+  --color-stats-background: #0B1220;
+  --color-stats-surface: #111827;
+  --color-stats-surface-2: #1F2937;
+  --color-stats-border: #1F2937;
+  --color-stats-foreground: #F8FAFC;
+  --color-stats-muted-fg: #94A3B8;
+  --color-stats-success-soft: #052E16;
+  --color-stats-warning-soft: #422006;
+  --color-stats-destructive-soft: #450A0A;
+  --color-stats-info-soft: #0B2447;
+}
+
 body {
   background-color: rgb(249 250 251);
 }
