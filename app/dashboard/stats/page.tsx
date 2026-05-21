@@ -73,22 +73,37 @@ function formatTimeAgo(date: Date | null): string {
 
 function BarChart({ data, colorClass = 'bg-stats-info' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
   const total = data.reduce((s, d) => s + d.value, 0);
+  const summary = data.length === 0
+    ? 'Sin datos'
+    : `${data.length} categorias, total ${total}. ${data
+        .map((d) => `${d.label}: ${d.value}`)
+        .slice(0, 5)
+        .join('; ')}${data.length > 5 ? '; …' : ''}.`;
   return (
-    <div className="space-y-2">
-      {data.map((item) => {
+    <div
+      className="space-y-2"
+      role="img"
+      aria-label={summary}
+    >
+      {data.map((item, i) => {
         const pctOfTotal = total > 0 ? Math.round((item.value / total) * 100) : 0;
         return (
-          <div key={item.label}>
-            <div className="flex justify-between text-xs text-gray-400 mb-0.5">
+          <div
+            key={item.label}
+            className="group stats-row-enter rounded -mx-1 px-1 py-0.5 transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/5"
+            style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
+            title={`${item.label}: ${item.value} (${pctOfTotal}%)`}
+          >
+            <div className="flex justify-between text-xs mb-0.5 text-stats-muted-fg dark:text-gray-400">
               <span className="truncate max-w-[60%]">{item.label}</span>
-              <span className="font-semibold text-white">
+              <span className="font-semibold tabular-nums font-stats-mono text-stats-foreground dark:text-white">
                 {item.value}
-                <span className="text-gray-500 font-normal ml-1">· {pctOfTotal}%</span>
+                <span className="text-stats-muted-fg/70 dark:text-gray-500 font-normal ml-1">· {pctOfTotal}%</span>
               </span>
             </div>
-            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+            <div className="h-2 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
               <div
-                className={`h-full ${colorClass} rounded-full transition-all duration-700`}
+                className={`h-full ${colorClass} rounded-full transition-all duration-700 group-hover:brightness-110`}
                 style={{ width: `${Math.max(item.pct, item.value > 0 ? 2 : 0)}%` }}
               />
             </div>
@@ -106,26 +121,35 @@ function StackedBarChart({ data, expanded = false }: { data: StackRow[]; expande
   const barH = expanded ? 'h-7' : 'h-5';
   const spacing = expanded ? 'space-y-5' : 'space-y-2.5';
   return (
-    <div className={spacing}>
+    <div
+      className={spacing}
+      role="img"
+      aria-label={`Distribucion entregados/no entregados/pendientes en ${data.length} filas, total ${data.reduce((s, r) => s + r.entregados + r.noEntregados + r.pendientes, 0)}.`}
+    >
       {/* Leyenda */}
-      <div className="flex gap-3 text-[10px] text-gray-400 mb-1">
+      <div className="flex gap-3 text-[10px] mb-1 text-stats-muted-fg dark:text-gray-400">
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-success inline-block" />Entregados</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-warning inline-block" />No entregados</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-info inline-block" />Pendientes</span>
       </div>
-      {data.map(row => {
+      {data.map((row, i) => {
         const total = row.entregados + row.noEntregados + row.pendientes;
         const barWidth = Math.round((total / maxTotal) * 100);
         const pEnt = total > 0 ? Math.round((row.entregados / total) * 100) : 0;
         const pNoEnt = total > 0 ? Math.round((row.noEntregados / total) * 100) : 0;
         const pPend = total > 0 ? 100 - pEnt - pNoEnt : 0;
         return (
-          <div key={row.label}>
-            <div className={`flex justify-between ${expanded ? 'text-sm' : 'text-xs'} text-gray-300 mb-0.5`}>
+          <div
+            key={row.label}
+            className="group stats-row-enter rounded -mx-1 px-1 py-0.5 transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/5"
+            style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
+            title={`${row.label}: total ${total} · entregados ${row.entregados} (${pEnt}%) · no entregados ${row.noEntregados} (${pNoEnt}%) · pendientes ${row.pendientes} (${pPend}%)`}
+          >
+            <div className={`flex justify-between ${expanded ? 'text-sm' : 'text-xs'} mb-0.5 text-stats-foreground/80 dark:text-gray-300`}>
               <span className="truncate max-w-[70%] font-medium">{row.label}</span>
-              <span className="font-bold text-white">{total}</span>
+              <span className="font-bold tabular-nums font-stats-mono text-stats-foreground dark:text-white">{total}</span>
             </div>
-            <div className={`${barH} bg-white/10 rounded-full overflow-hidden`}>
+            <div className={`${barH} rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10`}>
               <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${Math.max(barWidth, total > 0 ? 2 : 0)}%` }}>
                 {row.entregados > 0 && (
                   <div className="h-full bg-stats-success flex items-center justify-center overflow-hidden" style={{ width: `${pEnt}%` }}>
@@ -894,7 +918,7 @@ function StatsContent() {
               onClick={() => setRefreshTick((t) => t + 1)}
               title="Actualizar ahora"
               aria-label="Actualizar ahora"
-              className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10"
+              className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
             >
               <svg className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
@@ -904,7 +928,7 @@ function StatsContent() {
               onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
               title={`Cambiar a tema ${theme === 'dark' ? 'claro' : 'oscuro'}`}
               aria-label={`Cambiar a tema ${theme === 'dark' ? 'claro' : 'oscuro'}`}
-              className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10"
+              className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
             >
               {theme === 'dark' ? (
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
