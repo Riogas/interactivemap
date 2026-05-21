@@ -398,20 +398,18 @@ function DashboardContent() {
     };
   }, []);
   const restorePedidosState = useCallback(() => {
-    const snap = pedidosSnapshotRef.current;
-    if (!snap) {
-      // Sin snapshot (ej. modal abierto via rehidratacion de view-state):
-      // fallback al comportamiento previo de limpiar overrides puntuales.
-      setPreFilterMovil(undefined);
-      setPreFilterZona(undefined);
-      setPedidosInitialAtraso(undefined);
-      return;
-    }
-    setPedidosFilters(snap.filters);
-    setPedidosInitialAsignacion(snap.initialAsignacion);
-    setPedidosInitialAtraso(snap.initialAtraso);
-    setPreFilterMovil(snap.preFilterMovil);
-    setPreFilterZona(snap.preFilterZona);
+    // BIDIRECCIONAL TOTAL: NO revertimos pedidosFilters al snapshot pre-open.
+    // Cualquier cambio que el usuario haya hecho dentro de la tabla extendida
+    // debe persistir y reflejarse en el colapsable (MovilSelector) y el mapa.
+    //
+    // Sí limpiamos las "señales contextuales" (preFilterMovil/Zona,
+    // pedidosInitialAtraso) para que al reabrir el modal sus useEffect no
+    // re-inyecten encima del estado actual lo que el usuario ya cambió.
+    // pedidosInitialAsignacion se mantiene ('todos' por default; cambia solo
+    // cuando un handler explícito lo setea para el próximo open).
+    setPreFilterMovil(undefined);
+    setPreFilterZona(undefined);
+    setPedidosInitialAtraso(undefined);
     pedidosSnapshotRef.current = null;
   }, [setPreFilterMovil, setPreFilterZona]);
   const snapshotServicesState = useCallback(() => {
@@ -423,15 +421,10 @@ function DashboardContent() {
     };
   }, []);
   const restoreServicesState = useCallback(() => {
-    const snap = servicesSnapshotRef.current;
-    if (!snap) {
-      setPreFilterMovil(undefined);
-      setPreFilterZona(undefined);
-      return;
-    }
-    setServicesFilters(snap.filters);
-    setPreFilterMovil(snap.preFilterMovil);
-    setPreFilterZona(snap.preFilterZona);
+    // BIDIRECCIONAL TOTAL: idem restorePedidosState — NO revertir servicesFilters.
+    // Solo limpiar las señales contextuales que disparan re-inyección al reabrir.
+    setPreFilterMovil(undefined);
+    setPreFilterZona(undefined);
     servicesSnapshotRef.current = null;
   }, [setPreFilterMovil, setPreFilterZona]);
   // ---------------------------------------------------------------------------
@@ -2949,7 +2942,20 @@ function DashboardContent() {
         allMovilesSelected={allMovilesSelected}
         privilegedUser={isPrivilegedUser}
         canVerSinAsignarUnitario={canVerSinAsignarUnitario}
-        onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, producto: f.producto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[], tipoServicio: f.tipoServicio }))}
+        // Controlled mode: el modal lee/escribe los filtros directamente sobre
+        // pedidosFilters del dashboard → sincronía bidireccional con colapsable y mapa.
+        externalFilters={{
+          search: pedidosFilters.search,
+          atraso: pedidosFilters.atraso as ('muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora')[],
+          zona: pedidosFilters.zona,
+          movil: pedidosFilters.movil,
+          producto: pedidosFilters.producto,
+          soloSinCoords: pedidosFilters.soloSinCoords,
+          asignacion: pedidosFilters.asignacion,
+          entrega: pedidosFilters.entrega,
+          tipoServicio: pedidosFilters.tipoServicio,
+        }}
+        onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, ...f, atraso: f.atraso as string[] }))}
         externalResetToken={pedidosResetToken}
         serverNow={serverNow}
         minutosAntesSa={minutosAntesSa}
@@ -2978,7 +2984,18 @@ function DashboardContent() {
         allMovilesSelected={allMovilesSelected}
         privilegedUser={isPrivilegedUser}
         canVerSinAsignarUnitario={canVerSinAsignarUnitario}
-        onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, search: f.search, zona: f.zona, movil: f.movil, defecto: f.defecto, asignacion: f.asignacion, entrega: f.entrega, soloSinCoords: f.soloSinCoords, atraso: f.atraso as string[] }))}
+        // Controlled mode (ver PedidosTableModal arriba).
+        externalFilters={{
+          search: servicesFilters.search,
+          atraso: servicesFilters.atraso as ('muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora')[],
+          zona: servicesFilters.zona,
+          movil: servicesFilters.movil,
+          defecto: servicesFilters.defecto,
+          soloSinCoords: servicesFilters.soloSinCoords,
+          asignacion: servicesFilters.asignacion,
+          entrega: servicesFilters.entrega,
+        }}
+        onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, ...f, atraso: f.atraso as string[] }))}
         externalResetToken={servicesResetToken}
         serverNow={serverNow}
         minutosAntesSa={minutosAntesSa}

@@ -27,6 +27,18 @@ interface Filters {
   tipoServicio: string[];
 }
 
+const DEFAULT_FILTERS: Filters = {
+  search: '',
+  atraso: [],
+  zona: null,
+  movil: null,
+  producto: null,
+  soloSinCoords: false,
+  asignacion: 'todos',
+  entrega: 'todos',
+  tipoServicio: [],
+};
+
 const ATRASO_OPTIONS: { key: AtrasoFilter; label: string; color: string; dotColor: string }[] = [
   { key: 'muy_atrasado', label: 'Muy Atrasado', color: 'bg-red-500/20 text-red-300 border-red-500/30', dotColor: 'bg-red-400' },
   { key: 'atrasado', label: 'Atrasado', color: 'bg-pink-500/20 text-pink-300 border-pink-500/30', dotColor: 'bg-pink-400' },
@@ -83,6 +95,11 @@ interface PedidosTableModalProps {
    *  en la tabla y en el filtro de asignacion. */
   canVerSinAsignarUnitario?: boolean;
   onInnerFiltersChange?: (f: Filters) => void;
+  /** Si se provee, el modal queda controlled: los filtros internos se reemplazan
+   *  por este objeto en cada render, y los cambios del usuario se reportan via
+   *  `onInnerFiltersChange` sin guardarse en state local. Permite sincronía
+   *  bidireccional con el colapsable (MovilSelector) y el mapa. */
+  externalFilters?: Filters;
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
   scope?: ScopeFilter;
@@ -113,19 +130,39 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalFilters, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
-  const [filters, setFilters] = useState<Filters>({
-    search: '',
-    atraso: [],
-    zona: null,
-    movil: null,
-    producto: null,
-    soloSinCoords: false,
-    asignacion: 'todos',
-    entrega: 'todos',
-    tipoServicio: [],
-  });
+
+  // Modo controlled vs uncontrolled:
+  //   - Controlled (externalFilters definido): los filtros viven en el parent.
+  //     Cualquier cambio se reporta via onInnerFiltersChange y se refleja al
+  //     re-render con nuevos externalFilters. Habilita la sincronía bidireccional
+  //     con el colapsable (MovilSelector) y el mapa.
+  //   - Uncontrolled (externalFilters undefined): el modal mantiene su propio
+  //     state local (compat con consumidores legacy).
+  const [localFilters, setLocalFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const isControlled = externalFilters !== undefined;
+  const filters = isControlled ? externalFilters : localFilters;
+  // filtersRef permite que los updaters funcionales (setFilters(f => ...)) lean
+  // siempre el último valor incluso cuando varios setters se encadenan en el
+  // mismo tick (React batchea; sin el ref, el segundo updater veria el filters
+  // de la render previa).
+  const filtersRef = useRef<Filters>(filters);
+  useEffect(() => { filtersRef.current = filters; });
+  const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
+  useEffect(() => { onInnerFiltersChangeRef.current = onInnerFiltersChange; });
+  const setFilters = useCallback((update: Filters | ((prev: Filters) => Filters)) => {
+    const next = typeof update === 'function'
+      ? (update as (prev: Filters) => Filters)(filtersRef.current)
+      : update;
+    filtersRef.current = next;
+    if (isControlled) {
+      onInnerFiltersChangeRef.current?.(next);
+    } else {
+      setLocalFilters(next);
+      onInnerFiltersChangeRef.current?.(next);
+    }
+  }, [isControlled]);
   const [servicioDropdownOpen, setServicioDropdownOpen] = useState(false);
   const servicioDropdownRef = useRef<HTMLDivElement>(null);
   const servicioButtonRef = useRef<HTMLButtonElement>(null);
@@ -149,19 +186,14 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     setPage(0);
   }, [vista]);
 
-  // Report inner filter changes upward
-  const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
-  useEffect(() => { onInnerFiltersChangeRef.current = onInnerFiltersChange; });
-  useEffect(() => { onInnerFiltersChangeRef.current?.(filters); }, [filters]);
-
   // Accept external reset
   const prevResetToken = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (externalResetToken !== undefined && prevResetToken.current !== undefined && prevResetToken.current !== externalResetToken) {
-      setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos', tipoServicio: [] });
+      setFilters(DEFAULT_FILTERS);
     }
     prevResetToken.current = externalResetToken;
-  }, [externalResetToken]);
+  }, [externalResetToken, setFilters]);
 
   // Click-outside para cerrar dropdown de tipo de servicio
   useEffect(() => {
@@ -191,7 +223,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       setFilters(f => ({ ...f, movil: preFilterMovil }));
       setPage(0);
     }
-  }, [preFilterMovil, isOpen, pedidos]);
+  }, [preFilterMovil, isOpen, pedidos, setFilters]);
 
   // Aplicar pre-filtro de zona inmediatamente
   useEffect(() => {
@@ -199,7 +231,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       setFilters(f => ({ ...f, zona: preFilterZona }));
       setPage(0);
     }
-  }, [preFilterZona, isOpen]);
+  }, [preFilterZona, isOpen, setFilters]);
 
   // Aplicar filtro inicial de asignación sólo cuando el prop cambia (no en cada reopen)
   useEffect(() => {
@@ -480,12 +512,12 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
         : [...prev.atraso, key],
     }));
     setPage(0);
-  }, []);
+  }, [setFilters]);
 
   const clearFilters = useCallback(() => {
-    setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos', tipoServicio: [] });
+    setFilters(DEFAULT_FILTERS);
     setPage(0);
-  }, []);
+  }, [setFilters]);
 
   const getMovilName = useCallback((movilId: number | null) => {
     if (!movilId) return '—';

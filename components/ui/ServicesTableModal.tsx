@@ -25,6 +25,17 @@ interface Filters {
   entrega: 'todos' | 'entregados' | 'no_entregados';
 }
 
+const DEFAULT_FILTERS: Filters = {
+  search: '',
+  atraso: [],
+  zona: null,
+  movil: null,
+  defecto: null,
+  soloSinCoords: false,
+  asignacion: 'todos',
+  entrega: 'todos',
+};
+
 const ATRASO_OPTIONS: { key: AtrasoFilter; label: string; color: string; dotColor: string }[] = [
   { key: 'muy_atrasado', label: 'Muy Atrasado', color: 'bg-red-500/20 text-red-300 border-red-500/30', dotColor: 'bg-red-400' },
   { key: 'atrasado', label: 'Atrasado', color: 'bg-pink-500/20 text-pink-300 border-pink-500/30', dotColor: 'bg-pink-400' },
@@ -72,6 +83,11 @@ interface ServicesTableModalProps {
   canVerSinAsignarUnitario?: boolean;
   onClearPreFilter?: () => void;
   onInnerFiltersChange?: (f: Filters) => void;
+  /** Si se provee, el modal queda controlled: los filtros internos se reemplazan
+   *  por este objeto en cada render, y los cambios del usuario se reportan via
+   *  `onInnerFiltersChange` sin guardarse en state local. Permite sincronía
+   *  bidireccional con el colapsable (MovilSelector) y el mapa. */
+  externalFilters?: Filters;
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
   scope?: ScopeFilter;
@@ -102,37 +118,44 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalFilters, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
-  const [filters, setFilters] = useState<Filters>({
-    search: '',
-    atraso: [],
-    zona: null,
-    movil: null,
-    defecto: null,
-    soloSinCoords: false,
-    asignacion: 'todos',
-    entrega: 'todos',
-  });
+
+  // Modo controlled vs uncontrolled — ver comentario en PedidosTableModal.
+  const [localFilters, setLocalFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const isControlled = externalFilters !== undefined;
+  const filters = isControlled ? externalFilters : localFilters;
+  const filtersRef = useRef<Filters>(filters);
+  useEffect(() => { filtersRef.current = filters; });
+  const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
+  useEffect(() => { onInnerFiltersChangeRef.current = onInnerFiltersChange; });
+  const setFilters = useCallback((update: Filters | ((prev: Filters) => Filters)) => {
+    const next = typeof update === 'function'
+      ? (update as (prev: Filters) => Filters)(filtersRef.current)
+      : update;
+    filtersRef.current = next;
+    if (isControlled) {
+      onInnerFiltersChangeRef.current?.(next);
+    } else {
+      setLocalFilters(next);
+      onInnerFiltersChangeRef.current?.(next);
+    }
+  }, [isControlled]);
+
   const [sortKey, setSortKey] = useState<SortKey>('delay');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  // Report inner filter changes upward
-  const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
-  useEffect(() => { onInnerFiltersChangeRef.current = onInnerFiltersChange; });
-  useEffect(() => { onInnerFiltersChangeRef.current?.(filters); }, [filters]);
-
   // Accept external reset
   const prevResetToken = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (externalResetToken !== undefined && prevResetToken.current !== undefined && prevResetToken.current !== externalResetToken) {
-      setFilters({ search: '', atraso: [], zona: null, movil: null, defecto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos' });
+      setFilters(DEFAULT_FILTERS);
     }
     prevResetToken.current = externalResetToken;
-  }, [externalResetToken]);
+  }, [externalResetToken, setFilters]);
 
   // Aplicar pre-filtro de móvil con delay para que la tabla cargue primero
   useEffect(() => {
@@ -143,7 +166,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       }, 600);
       return () => clearTimeout(timer);
     }
-  }, [preFilterMovil, isOpen]);
+  }, [preFilterMovil, isOpen, setFilters]);
 
   // Aplicar pre-filtro de zona inmediatamente
   useEffect(() => {
@@ -151,7 +174,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       setFilters(f => ({ ...f, zona: preFilterZona }));
       setPage(0);
     }
-  }, [preFilterZona, isOpen]);
+  }, [preFilterZona, isOpen, setFilters]);
 
   // ========== Services base: según vista (pendientes/finalizados) + filtros externos ==========
   const servicesBase = useMemo(() => {
@@ -372,12 +395,12 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       atraso: prev.atraso.includes(key) ? prev.atraso.filter(k => k !== key) : [...prev.atraso, key],
     }));
     setPage(0);
-  }, []);
+  }, [setFilters]);
 
   const clearFilters = useCallback(() => {
-    setFilters({ search: '', atraso: [], zona: null, movil: null, defecto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos' });
+    setFilters(DEFAULT_FILTERS);
     setPage(0);
-  }, []);
+  }, [setFilters]);
 
   const getMovilName = useCallback((movilId: number | null) => {
     if (!movilId) return '—';
