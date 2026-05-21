@@ -167,20 +167,48 @@ function getEmpresaNombre(p: { movil?: unknown; empresa_fletera_id?: unknown }, 
   return empresas.has(empId) ? empresas.get(empId)! : `Empresa ${empId}`;
 }
 
+// Tonos KPI tokenizados — funcionan en light y dark via [data-theme].
+// Cada tono define superficie suave + borde + color de texto del numero.
+const KPI_TONES: Record<string, { surface: string; border: string; text: string }> = {
+  green:  { surface: 'bg-stats-success-soft dark:bg-stats-success/15',         border: 'border-stats-success/40',     text: 'text-stats-success' },
+  blue:   { surface: 'bg-stats-info-soft dark:bg-stats-info/15',               border: 'border-stats-info/40',        text: 'text-stats-info' },
+  orange: { surface: 'bg-stats-warning-soft dark:bg-stats-warning/15',         border: 'border-stats-warning/40',     text: 'text-stats-warning' },
+  red:    { surface: 'bg-stats-destructive-soft dark:bg-stats-destructive/15', border: 'border-stats-destructive/40', text: 'text-stats-destructive' },
+  purple: { surface: 'bg-stats-info-soft dark:bg-stats-info/10',               border: 'border-stats-info/30',        text: 'text-stats-info' },
+  gray:   { surface: 'bg-stats-neutral-soft dark:bg-white/5',                  border: 'border-stats-border dark:border-white/10', text: 'text-stats-foreground dark:text-white' },
+};
+
 function KpiCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
-  const bg: Record<string, string> = {
-    green: 'bg-green-500/20 border-green-400/30',
-    blue: 'bg-blue-500/20 border-blue-400/30',
-    orange: 'bg-orange-500/20 border-orange-400/30',
-    red: 'bg-red-500/20 border-red-400/30',
-    purple: 'bg-purple-500/20 border-purple-400/30',
-    gray: 'bg-gray-500/20 border-gray-400/30',
-  };
+  const t = KPI_TONES[color] ?? KPI_TONES.gray;
   return (
-    <div className={`rounded-xl border p-4 ${bg[color] ?? bg.gray} backdrop-blur-sm`}>
-      <p className="text-xs text-gray-400 mb-1">{label}</p>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+    <div
+      className={`relative rounded-xl border p-3.5 backdrop-blur-sm transition-colors hover:shadow-sm ${t.surface} ${t.border}`}
+    >
+      {/* Accent bar a la izquierda — refuerza la jerarquia de color sin saturar */}
+      <span aria-hidden className={`absolute left-0 top-3 bottom-3 w-0.5 rounded-r ${t.text.replace('text-', 'bg-')}`} />
+      <p className="text-[10px] uppercase tracking-wider text-stats-muted-fg dark:text-gray-400 mb-1 pl-1.5">{label}</p>
+      <p className={`text-2xl font-bold leading-none font-stats-mono tabular-nums pl-1.5 ${t.text}`}>{value}</p>
+      {sub && <p className="text-[11px] text-stats-muted-fg dark:text-gray-400 mt-1 pl-1.5">{sub}</p>}
+    </div>
+  );
+}
+
+// Skeleton para los KPI cards mientras carga. Mantiene la grilla "estable"
+// (no hay layout shift cuando termina la carga).
+function KpiSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-xl border border-stats-border dark:border-white/10 bg-stats-surface-2 dark:bg-white/5 p-3.5 animate-pulse"
+          aria-hidden
+        >
+          <div className="h-2.5 w-16 rounded bg-stats-border dark:bg-white/10 mb-3" />
+          <div className="h-6 w-12 rounded bg-stats-border dark:bg-white/15 mb-2" />
+          <div className="h-2 w-20 rounded bg-stats-border dark:bg-white/10" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -212,13 +240,14 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
           </div>
         </div>
       )}
-      <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+      <div className="rounded-xl p-4 border bg-stats-surface border-stats-border dark:bg-white/5 dark:border-white/10">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-300">{title}</h3>
+          <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-300">{title}</h3>
           <button
             onClick={() => setExpanded(true)}
-            className="text-gray-500 hover:text-white transition-all duration-200 p-1 rounded-lg hover:bg-white/10 hover:scale-110 active:scale-95"
+            className="p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10"
             title="Expandir"
+            aria-label="Expandir tarjeta"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
@@ -979,24 +1008,41 @@ function StatsContent() {
         </div>
       </div>
 
-      {isLoading && (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+      {/* Skeleton durante carga inicial (no en refreshes — el indicador de
+          "act. Ns" + ● en el header avisa de las recargas posteriores). */}
+      {isLoading && !lastUpdatedAt && (
+        <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+          <section>
+            <div className="h-3 w-20 rounded bg-stats-border dark:bg-white/10 mb-3 animate-pulse" />
+            <KpiSkeleton count={6} />
+          </section>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-xl p-4 border bg-stats-info-soft/50 border-stats-info/20 dark:bg-stats-info/5 dark:border-stats-info/15">
+              <div className="h-3 w-32 rounded bg-stats-info/30 mb-3 animate-pulse" />
+              <KpiSkeleton count={3} />
+            </div>
+            <div className="rounded-xl p-4 border bg-stats-success-soft/50 border-stats-success/20 dark:bg-stats-success/5 dark:border-stats-success/15">
+              <div className="h-3 w-32 rounded bg-stats-success/30 mb-3 animate-pulse" />
+              <KpiSkeleton count={3} />
+            </div>
+          </section>
         </div>
       )}
 
       {error && (
-        <div className="m-6 p-4 bg-red-500/20 border border-red-400/30 rounded-xl text-red-300 text-sm">
+        <div className="m-6 p-4 rounded-xl text-sm border bg-stats-destructive-soft border-stats-destructive/40 text-stats-destructive dark:bg-stats-destructive/10 dark:border-stats-destructive/30 dark:text-stats-destructive-soft">
           {error}
         </div>
       )}
 
-      {!isLoading && !error && (
+      {/* Contenido: en la primer carga el skeleton arriba ocupa el lugar; los
+          refreshes posteriores mantienen los datos viejos visibles + indicador. */}
+      {(!isLoading || lastUpdatedAt) && !error && (
         <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
 
           {/* ── KPIs Móviles ── */}
           <section>
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Móviles</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-muted-fg dark:text-gray-500">Móviles</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
               <KpiCard
                 label="Móviles Activos"
@@ -1040,8 +1086,8 @@ function StatsContent() {
           <section>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {/* Columna Pedidos Pendientes */}
-              <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
-                <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Pedidos Pendientes</h2>
+              <div className="rounded-xl p-4 border bg-stats-info-soft border-stats-info/30 dark:bg-stats-info/5 dark:border-stats-info/20">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-info">Pedidos Pendientes</h2>
                 <div className={`grid gap-2 ${canSeeUnassigned ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   {canSeeUnassigned && (
                     <KpiCard
@@ -1065,8 +1111,8 @@ function StatsContent() {
                 </div>
               </div>
               {/* Columna Pedidos Finalizados */}
-              <div className="rounded-xl border border-green-400/20 bg-green-500/5 p-4">
-                <h2 className="text-xs font-semibold text-green-300 uppercase tracking-wider mb-3">Pedidos Finalizados</h2>
+              <div className="rounded-xl p-4 border bg-stats-success-soft border-stats-success/30 dark:bg-stats-success/5 dark:border-stats-success/20">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-success">Pedidos Finalizados</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <KpiCard
                     label="Entregados"
@@ -1095,8 +1141,8 @@ function StatsContent() {
           <section>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Columna Services Pendientes */}
-              <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
-                <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Services Pendientes</h2>
+              <div className="rounded-xl p-4 border bg-stats-info-soft border-stats-info/30 dark:bg-stats-info/5 dark:border-stats-info/20">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-info">Services Pendientes</h2>
                 <div className={`grid gap-2 ${canSeeUnassigned ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   {canSeeUnassigned && (
                     <KpiCard
@@ -1120,8 +1166,8 @@ function StatsContent() {
                 </div>
               </div>
               {/* Columna Services Finalizados */}
-              <div className="rounded-xl border border-green-400/20 bg-green-500/5 p-4">
-                <h2 className="text-xs font-semibold text-green-300 uppercase tracking-wider mb-3">Services Finalizados</h2>
+              <div className="rounded-xl p-4 border bg-stats-success-soft border-stats-success/30 dark:bg-stats-success/5 dark:border-stats-success/20">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-success">Services Finalizados</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <KpiCard
                     label="Realizados"
