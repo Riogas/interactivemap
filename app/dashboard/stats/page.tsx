@@ -140,17 +140,17 @@ function BarChart({ data, colorClass = 'bg-stats-info' }: { data: { label: strin
             style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
             title={`${item.label}: ${item.value} (${pctOfTotal}%)`}
           >
-            <div className="flex justify-between text-xs mb-0.5 text-stats-muted-fg dark:text-gray-400">
-              <span className="truncate max-w-[60%]">{item.label}</span>
-              <span className="font-semibold tabular-nums font-stats-mono text-stats-foreground dark:text-white">
-                {item.value}
-                <span className="text-stats-muted-fg/70 dark:text-gray-500 font-normal ml-1">· {pctOfTotal}%</span>
+            <div className="flex justify-between items-baseline gap-2 text-xs mb-0.5 text-stats-muted-fg dark:text-gray-400">
+              <span className="truncate max-w-[55%]">{item.label}</span>
+              <span className="font-semibold tabular-nums font-stats-mono text-stats-foreground dark:text-white flex items-baseline gap-1">
+                <span className="text-right min-w-[3ch]">{item.value}</span>
+                <span className="text-stats-muted-fg/70 dark:text-gray-500 font-normal text-right min-w-[3.5ch]">· {pctOfTotal}%</span>
               </span>
             </div>
             <div className="h-2 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
               <div
                 className={`h-full ${colorClass} rounded-full transition-all duration-700 group-hover:brightness-110`}
-                style={{ width: `${Math.max(item.pct, item.value > 0 ? 2 : 0)}%` }}
+                style={{ width: `${Math.max(item.pct, item.value > 0 ? 6 : 0)}%` }}
               />
             </div>
           </div>
@@ -191,25 +191,25 @@ function StackedBarChart({ data, expanded = false }: { data: StackRow[]; expande
             style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
             title={`${row.label}: total ${total} · entregados ${row.entregados} (${pEnt}%) · no entregados ${row.noEntregados} (${pNoEnt}%) · pendientes ${row.pendientes} (${pPend}%)`}
           >
-            <div className={`flex justify-between ${expanded ? 'text-sm' : 'text-xs'} mb-0.5 text-stats-foreground/80 dark:text-gray-300`}>
+            <div className={`flex justify-between items-baseline gap-2 ${expanded ? 'text-sm' : 'text-xs'} mb-0.5 text-stats-foreground/80 dark:text-gray-300`}>
               <span className="truncate max-w-[70%] font-medium">{row.label}</span>
-              <span className="font-bold tabular-nums font-stats-mono text-stats-foreground dark:text-white">{total}</span>
+              <span className="font-bold tabular-nums font-stats-mono text-right min-w-[3ch] text-stats-foreground dark:text-white">{total}</span>
             </div>
             <div className={`${barH} rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10`}>
-              <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${Math.max(barWidth, total > 0 ? 2 : 0)}%` }}>
+              <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${Math.max(barWidth, total > 0 ? 6 : 0)}%` }}>
                 {row.entregados > 0 && (
                   <div className="h-full bg-stats-success flex items-center justify-center overflow-hidden" style={{ width: `${pEnt}%` }}>
-                    {(expanded || pEnt >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pEnt}%</span>}
+                    {(expanded || pEnt >= 15) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-white leading-none [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]`}>{pEnt}%</span>}
                   </div>
                 )}
                 {row.noEntregados > 0 && (
                   <div className="h-full bg-stats-warning flex items-center justify-center overflow-hidden" style={{ width: `${pNoEnt}%` }}>
-                    {(expanded || pNoEnt >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pNoEnt}%</span>}
+                    {(expanded || pNoEnt >= 15) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-white leading-none [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]`}>{pNoEnt}%</span>}
                   </div>
                 )}
                 {row.pendientes > 0 && (
                   <div className="h-full bg-stats-info flex items-center justify-center overflow-hidden" style={{ width: `${pPend}%` }}>
-                    {(expanded || pPend >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pPend}%</span>}
+                    {(expanded || pPend >= 15) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-white leading-none [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]`}>{pPend}%</span>}
                   </div>
                 )}
               </div>
@@ -283,9 +283,23 @@ function KpiSkeleton({ count = 6 }: { count?: number }) {
   );
 }
 
+// Icono pequeno (16x16) por categoria de card. SVG inline para no agregar deps.
+// Familia: outline 1.5px stroke, lucide-style.
+const CARD_ICONS = {
+  clock: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></svg>,
+  grid: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>,
+  building: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="1" /><line x1="9" y1="6" x2="9" y2="6" /><line x1="15" y1="6" x2="15" y2="6" /><line x1="9" y1="10" x2="9" y2="10" /><line x1="15" y1="10" x2="15" y2="10" /><line x1="9" y1="14" x2="9" y2="14" /><line x1="15" y1="14" x2="15" y2="14" /><path d="M10 22V18h4v4" /></svg>,
+  truck: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M1 3h13v13H1z" /><polygon points="14 8 18 8 21 11 21 16 14 16 14 8" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="17.5" cy="18.5" r="2.5" /></svg>,
+  pin: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>,
+  alert: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
+} as const;
+
+type CardIconName = keyof typeof CARD_ICONS;
+
 // ─── Tarjeta expandible ───────────────────────────────────────────────────────
-function ExpandableCard({ title, children, expandedChildren }: { title: string; children: React.ReactNode; expandedChildren?: React.ReactNode }) {
+function ExpandableCard({ title, icon, children, expandedChildren }: { title: string; icon?: CardIconName; children: React.ReactNode; expandedChildren?: React.ReactNode }) {
   const [expanded, setExpanded] = useState(false);
+  const iconNode = icon ? CARD_ICONS[icon] : null;
   return (
     <>
       {expanded && (
@@ -295,7 +309,10 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
         >
           <div className="w-full max-w-5xl stats-modal-content">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white">{title}</h3>
+              <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
+                {iconNode && <span className="text-stats-muted-fg dark:text-gray-400">{iconNode}</span>}
+                {title}
+              </h3>
               <button
                 onClick={() => setExpanded(false)}
                 className="p-2 rounded-xl transition-all duration-200 group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
@@ -311,12 +328,15 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
           </div>
         </div>
       )}
-      <div className="rounded-xl p-4 border bg-stats-surface border-stats-border dark:bg-white/5 dark:border-white/10">
+      <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 hover:-translate-y-px hover:shadow-md dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40 dark:hover:bg-white/[0.07]">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-300">{title}</h3>
+          <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2">
+            {iconNode && <span className="text-stats-info">{iconNode}</span>}
+            {title}
+          </h3>
           <button
             onClick={() => setExpanded(true)}
-            className="p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10"
+            className="p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
             title="Expandir"
             aria-label="Expandir tarjeta"
           >
@@ -1295,31 +1315,40 @@ function StatsContent() {
 
             {/* Pedidos por hora */}
             {pedidosPorHora.length > 0 && (
-              <ExpandableCard title="Pedidos por hora">
+              <ExpandableCard title="Pedidos por hora" icon="clock">
                 <BarChart data={pedidosPorHora} colorClass="bg-stats-info" />
               </ExpandableCard>
             )}
 
             {/* Estados de pedidos */}
             {estadosPedidos.length > 0 && (
-              <ExpandableCard title="Pedidos por estado">
+              <ExpandableCard title="Pedidos por estado" icon="grid">
                 <div className="space-y-4">
-                  {estadosPedidos.map(estado => (
+                  {estadosPedidos.map(estado => {
+                    // Color semantico de la barra segun el estado.
+                    // Finalizado → success; Pendiente → info; Cancelado/Anulado → destructive; resto → neutral.
+                    const labelUpper = (estado.label || '').toUpperCase();
+                    const estadoBarColor =
+                      labelUpper.includes('FINALIZ') || labelUpper.includes('ENTREGA') ? 'var(--color-stats-success)' :
+                      labelUpper.includes('PENDIENT') || labelUpper.includes('PROCESO') ? 'var(--color-stats-info)' :
+                      labelUpper.includes('CANCEL') || labelUpper.includes('ANUL') || labelUpper.includes('RECHAZ') ? 'var(--color-stats-destructive)' :
+                      'var(--color-stats-neutral)';
+                    return (
                     <div key={estado.label}>
                       {/* Barra principal de estado */}
-                      <div className="flex justify-between text-xs mb-0.5">
+                      <div className="flex justify-between items-baseline gap-2 text-xs mb-0.5">
                         <span className="font-semibold text-stats-foreground/90 dark:text-gray-200">{estado.label}</span>
-                        <span className="font-bold tabular-nums font-stats-mono text-stats-foreground dark:text-white">
-                          {estado.value}
-                          <span className="text-stats-muted-fg/70 dark:text-gray-500 font-normal ml-1">· {estado.pct}%</span>
+                        <span className="font-bold tabular-nums font-stats-mono text-stats-foreground dark:text-white flex items-baseline gap-1">
+                          <span className="text-right min-w-[3ch]">{estado.value}</span>
+                          <span className="text-stats-muted-fg/70 dark:text-gray-500 font-normal text-right min-w-[3.5ch]">· {estado.pct}%</span>
                         </span>
                       </div>
                       <div className="h-3 rounded-full overflow-hidden mb-2 bg-stats-surface-2 dark:bg-white/10">
                         <div
                           className="h-full rounded-full transition-all duration-700"
                           style={{
-                            width: `${Math.max(estado.barPct, estado.value > 0 ? 2 : 0)}%`,
-                            background: 'var(--color-stats-accent)',
+                            width: `${Math.max(estado.barPct, estado.value > 0 ? 6 : 0)}%`,
+                            background: estadoBarColor,
                           }}
                         />
                       </div>
@@ -1327,11 +1356,11 @@ function StatsContent() {
                       <div className="pl-3 border-l border-stats-border dark:border-white/10 space-y-1.5">
                         {estado.subEstados.map(sub => (
                           <div key={sub.label}>
-                            <div className="flex justify-between text-[10px] mb-0.5">
-                              <span className="text-stats-muted-fg dark:text-gray-400 truncate max-w-[65%]">{sub.label}</span>
-                              <span className="font-semibold tabular-nums font-stats-mono text-stats-foreground/90 dark:text-gray-300">
-                                {sub.value}
-                                <span className="text-stats-muted-fg/60 dark:text-gray-600 font-normal ml-1">· {sub.pct}%</span>
+                            <div className="flex justify-between items-baseline gap-2 text-[10px] mb-0.5">
+                              <span className="text-stats-muted-fg dark:text-gray-400 truncate max-w-[60%]">{sub.label}</span>
+                              <span className="font-semibold tabular-nums font-stats-mono text-stats-foreground/90 dark:text-gray-300 flex items-baseline gap-1">
+                                <span className="text-right min-w-[3ch]">{sub.value}</span>
+                                <span className="text-stats-muted-fg/60 dark:text-gray-600 font-normal text-right min-w-[3.5ch]">· {sub.pct}%</span>
                               </span>
                             </div>
                             <div className="h-3 rounded-full overflow-hidden bg-stats-surface-2/60 dark:bg-white/5">
@@ -1340,14 +1369,15 @@ function StatsContent() {
                                   sub.isEntregado ? 'bg-stats-success' :
                                   estado.label === 'Pendiente' ? 'bg-stats-info' : 'bg-stats-warning'
                                 }`}
-                                style={{ width: `${Math.max(sub.pct, sub.value > 0 ? 2 : 0)}%` }}
+                                style={{ width: `${Math.max(sub.pct, sub.value > 0 ? 6 : 0)}%` }}
                               />
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </ExpandableCard>
             )}
@@ -1356,6 +1386,7 @@ function StatsContent() {
             {pedidosPorEmpresa.length > 0 && (
               <ExpandableCard
                 title="Pedidos por empresa"
+                icon="building"
                 expandedChildren={<StackedBarChart data={pedidosPorEmpresa} expanded />}
               >
                 <StackedBarChart data={pedidosPorEmpresa.slice(0, 10)} />
@@ -1366,6 +1397,7 @@ function StatsContent() {
             {movilesTop.length > 0 && (
               <ExpandableCard
                 title="Top móviles por entregas"
+                icon="truck"
                 expandedChildren={<StackedBarChart data={movilesTop} expanded />}
               >
                 <StackedBarChart data={movilesTop.slice(0, 10)} />
@@ -1376,6 +1408,7 @@ function StatsContent() {
             {pedidosPorZona.length > 0 && (
               <ExpandableCard
                 title="Pedidos por zona"
+                icon="pin"
                 expandedChildren={<StackedBarChart data={pedidosPorZona} expanded />}
               >
                 <StackedBarChart data={pedidosPorZona.slice(0, 12)} />
@@ -1383,7 +1416,7 @@ function StatsContent() {
             )}
 
             {/* Atrasos de pedidos */}
-            <ExpandableCard title="Atrasos de pedidos pendientes">
+            <ExpandableCard title="Atrasos de pedidos pendientes" icon="alert">
               <p className="text-xs mb-4 text-stats-muted-fg dark:text-gray-500">{atrasosStats.total} pendientes en total</p>
 
               {/* % general con atraso */}
