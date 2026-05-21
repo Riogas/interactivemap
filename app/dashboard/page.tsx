@@ -2181,15 +2181,21 @@ function DashboardContent() {
 
   // allMovilesSelected (espejo del MovilSelector): true sólo cuando estamos en
   // modo "Todos" ? todas las empresas seleccionadas Y todos los móviles
-  // operativos del universo (excluyendo ocultos) están en selectedMoviles.
-  // Lo usa el filtro de pedidos/services del mapa para decidir si pasan los
-  // sin-asignar y los de móviles ocultos-pero-operativos. Si el usuario tiene
-  // un subset seleccionado, ninguno de esos pasa.
+  // VISIBLES bajo el filtro de actividad (excluyendo ocultos) están en
+  // selectedMoviles. Lo usa el filtro de pedidos/services del mapa y de la
+  // tabla extendida para decidir si pasan los sin-asignar y los de móviles
+  // ocultos-pero-operativos.
+  //
+  // Considera activity filter (default = 'activo'): los no_activos no cuentan,
+  // por lo que un selectAll de los visibles equivale a "modo Todos" desde la
+  // perspectiva del usuario. Sin esto, con cualquier no_activo en movilesFiltered
+  // el flag se quedaba en false aún cuando el usuario tenía todo lo seleccionable
+  // marcado, y los sin-asignar nunca llegaban a verse.
   const allMovilesSelected = useMemo(() => {
     if (!allEmpresasSelected) return false;
-    const operativos = movilesFiltered.filter(m => !hiddenMovilIds.has(m.id));
+    const operativos = applyActivityFilter(movilesFiltered).filter(m => !hiddenMovilIds.has(m.id));
     return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
-  }, [allEmpresasSelected, movilesFiltered, selectedMoviles, hiddenMovilIds]);
+  }, [allEmpresasSelected, movilesFiltered, selectedMoviles, hiddenMovilIds, applyActivityFilter]);
 
   // Versión basada en el Map completo allMovilEstados (cubre móviles sin GPS).
   // Devuelve Set<string> con movil_id crudo para matchear moviles_zonas.movil_id.

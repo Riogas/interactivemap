@@ -502,19 +502,32 @@ export default function MovilSelector({
     || empresas.length === 0
     || (selectedEmpresas?.length ?? 0) === empresas.length;
 
-  // allMovilesSelected (semántica estricta — guard de canSeeUnassigned y huérfanos):
+  // allMovilesSelected (guard de canSeeUnassigned y huérfanos):
   // true SOLO cuando (a) todas las empresas del universo están seleccionadas Y
-  // (b) todos los móviles operativos están en selectedMoviles. Si hay filtro parcial
-  // de empresa, retorna false aun cuando el usuario haya tildado todo lo visible —
-  // porque los huérfanos podrían corresponder a empresas excluidas y no se deben mostrar.
-  // Usado para: canSeeUnassigned (filteredPedidos + filteredServices).
+  // (b) todos los móviles VISIBLES bajo el filtro de actividad están en
+  // selectedMoviles. Si hay filtro parcial de empresa, retorna false aun cuando
+  // el usuario haya tildado todo lo visible — porque los huérfanos podrían
+  // corresponder a empresas excluidas y no se deben mostrar.
+  //
+  // Considera activity filter (no search/capacidad/estado): si el usuario tiene
+  // activity='activo' (default), los no_activos NO cuentan — un selectAll de
+  // los visibles equivale a "modo Todos" desde la perspectiva del usuario, y
+  // habilita los sin-asignar / huérfanos. Las otras dimensiones de filtro
+  // (search, capacidad, estado) son refinamientos del usuario y NO afectan
+  // el universo de referencia.
   const allMovilesSelected = useMemo(() => {
     if (!allEmpresasSelected) return false;
+    const visibles = moviles.filter(m => {
+      const estadoNro = m.estadoNro;
+      if (movilesFilters.actividad === 'activo') return isMovilActiveForUI(estadoNro);
+      if (movilesFilters.actividad === 'no_activo') return estadoNro === 3;
+      return true; // 'todos' / 'baja_momentanea' u otro: contar todos
+    });
     const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
-      ? moviles.filter(m => !hiddenMovilIds.has(m.id))
-      : moviles;
+      ? visibles.filter(m => !hiddenMovilIds.has(m.id))
+      : visibles;
     return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
-  }, [moviles, selectedMoviles, hiddenMovilIds, allEmpresasSelected]);
+  }, [moviles, selectedMoviles, hiddenMovilIds, allEmpresasSelected, movilesFilters.actividad]);
 
   // allVisibleOperativosSelected (semántica relajada — label del badge):
   // true cuando todos los móviles operativos VISIBLES (post filtro de empresa) están
