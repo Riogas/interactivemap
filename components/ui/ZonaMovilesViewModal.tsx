@@ -78,11 +78,19 @@ export default function ZonaMovilesViewModal({
   const [internalMzData, setInternalMzData] = useState<MovilZonaRecord[]>([]);
   const effectiveMzData = movilesZonasData.length > 0 ? movilesZonasData : internalMzData;
 
-  // Sincronizar filtro de servicio desde el mapa cuando se abre el modal
+  // Sincronizar filtro de servicio desde el mapa cuando se abre el modal.
+  // El mapa usa vocabulario 'all' | 'SERVICE' | 'URGENTE' | 'NOCTURNO' | ...
+  // El modal usa TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE']. Si se pisa el state
+  // con un valor que no esta en TIPOS_SERVICIO (ej. 'all'), el `=== 'PEDIDOS'`
+  // que gobierna la visibilidad del sub-combo Urgente/Nocturno da false y el
+  // sub-combo no se ve hasta que el usuario togglea el combo principal.
+  // Mapeo: 'SERVICE' → 'SERVICE'; cualquier otro valor (incluyendo URGENTE /
+  // NOCTURNO / 'all') → 'PEDIDOS', porque urgente y nocturno son tipos dentro
+  // de PEDIDOS. El sub-filtro arranca en 'TODOS' (default) y queda al usuario.
   useEffect(() => {
-    if (isOpen && initialServiceFilter) {
-      setServiceFilter(initialServiceFilter);
-    }
+    if (!isOpen || !initialServiceFilter) return;
+    const upper = initialServiceFilter.toUpperCase();
+    setServiceFilter(upper === 'SERVICE' ? 'SERVICE' : 'PEDIDOS');
   }, [isOpen, initialServiceFilter]);
 
   // ========== Fetch zonas + moviles_zonas (si prop está vacío) ==========
