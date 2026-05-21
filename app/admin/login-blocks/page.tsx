@@ -151,7 +151,8 @@ export default function LoginBlocksPage() {
   const todayStr = todayMontevideo();
   const [dateFrom, setDateFrom] = useState(todayStr);
   const [dateTo, setDateTo] = useState(todayStr);
-  const [attemptsLimit] = useState(200);
+  const [attemptsPageSize, setAttemptsPageSize] = useState<number>(50);
+  const [attemptsPage, setAttemptsPage] = useState(1); // 1-based
 
   // ─── Estado: export Excel ───────────────────────────────────────────────────
   const [exporting, setExporting] = useState(false);
@@ -313,7 +314,8 @@ export default function LoginBlocksPage() {
       if (estadoFilter) params.append('estado', estadoFilter);
       if (dateFrom) params.append('date_from', dateFrom);
       if (dateTo) params.append('date_to', dateTo);
-      params.append('limit', String(attemptsLimit));
+      params.append('limit', String(attemptsPageSize));
+      params.append('offset', String((attemptsPage - 1) * attemptsPageSize));
 
       const res = await fetch(`/api/admin/login-logs?${params}`, {
         headers: getAuthHeaders(),
@@ -331,7 +333,7 @@ export default function LoginBlocksPage() {
     } finally {
       setAttemptsLoading(false);
     }
-  }, [usernameFilter, ipFilter, estadoFilter, dateFrom, dateTo, attemptsLimit, enrichAttempts]);
+  }, [usernameFilter, ipFilter, estadoFilter, dateFrom, dateTo, attemptsPageSize, attemptsPage, enrichAttempts]);
 
   // ─── Fetch inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -346,6 +348,11 @@ export default function LoginBlocksPage() {
     if (user?.isRoot !== 'S') return;
     fetchAttempts();
   }, [usernameFilter, ipFilter, estadoFilter, dateFrom, dateTo, fetchAttempts, user]);
+
+  // ─── Reset a pagina 1 cuando cambian filtros que afectan resultados ────────
+  useEffect(() => {
+    setAttemptsPage(1);
+  }, [usernameFilter, ipFilter, estadoFilter, dateFrom, dateTo, attemptsPageSize]);
 
   // ─── Re-fetch bloqueos al cambiar filtro show-all ─────────────────────────
   useEffect(() => {
@@ -1336,11 +1343,58 @@ export default function LoginBlocksPage() {
                   })}
                 </tbody>
               </table>
-              {attemptsTotal > attempts.length && (
-                <p className="text-xs text-gray-400 mt-3 px-4">
-                  Mostrando {attempts.length} de {attemptsTotal} registros. Usa los filtros para acotar la busqueda.
-                </p>
-              )}
+              {/* Paginacion */}
+              {attemptsTotal > 0 && (() => {
+                const totalPages = Math.max(1, Math.ceil(attemptsTotal / attemptsPageSize));
+                const startItem = (attemptsPage - 1) * attemptsPageSize + 1;
+                const endItem = Math.min(attemptsPage * attemptsPageSize, attemptsTotal);
+                const canPrev = attemptsPage > 1;
+                const canNext = attemptsPage < totalPages;
+                return (
+                  <div className="mt-3 px-2 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <span className="text-gray-500 tabular-nums">
+                      Mostrando {startItem}-{endItem} de {attemptsTotal}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={attemptsPageSize}
+                        onChange={(e) => setAttemptsPageSize(Number(e.target.value))}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        title="Registros por pagina"
+                      >
+                        {[25, 50, 100, 200].map(n => (
+                          <option key={n} value={n}>{n} / pag</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setAttemptsPage(1)}
+                        disabled={!canPrev}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Primera pagina"
+                      >«</button>
+                      <button
+                        onClick={() => setAttemptsPage(p => Math.max(1, p - 1))}
+                        disabled={!canPrev}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >‹ Anterior</button>
+                      <span className="px-2 text-gray-600 tabular-nums">
+                        Pag {attemptsPage} de {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setAttemptsPage(p => Math.min(totalPages, p + 1))}
+                        disabled={!canNext}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >Siguiente ›</button>
+                      <button
+                        onClick={() => setAttemptsPage(totalPages)}
+                        disabled={!canNext}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Ultima pagina"
+                      >»</button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
