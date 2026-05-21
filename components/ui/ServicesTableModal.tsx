@@ -83,6 +83,8 @@ interface ServicesTableModalProps {
   canVerSinAsignarUnitario?: boolean;
   onClearPreFilter?: () => void;
   onInnerFiltersChange?: (f: Filters) => void;
+  /** Ver PedidosTableModal.onSelectedMovilesChange. */
+  onSelectedMovilesChange?: (ids: number[]) => void;
   /** Si se provee, el modal queda controlled: los filtros internos se reemplazan
    *  por este objeto en cada render, y los cambios del usuario se reportan via
    *  `onInnerFiltersChange` sin guardarse en state local. Permite sincronía
@@ -120,7 +122,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
 
   // Modo controlled vs uncontrolled — ver comentario en PedidosTableModal.
@@ -351,7 +353,9 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       result = result.filter(({ service: s }) => s.zona_nro === filters.zona);
     }
 
-    if (filters.movil.length > 0) {
+    // En colapsable mode no aplica: selectedMoviles ya filtra (el dropdown
+    // escribe sobre selectedMoviles, no sobre filters.movil).
+    if (filters.movil.length > 0 && openSource !== 'colapsable') {
       const movilSet = new Set(filters.movil.map(Number));
       result = result.filter(({ service: s }) => movilSet.has(Number(s.movil)));
     }
@@ -651,69 +655,100 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                         {uniqueZonas.map(z => <option key={z} value={z}>Zona {z}</option>)}
                       </select>
 
-                      {/* Movil multi-select (Caso 5) */}
-                      <div className="relative" ref={movilDropdownRef}>
-                        <button
-                          ref={movilButtonRef}
-                          onClick={() => {
-                            if (!movilDropdownOpen && movilButtonRef.current) {
-                              const r = movilButtonRef.current.getBoundingClientRect();
-                              setMovilDropdownPos({ top: r.bottom + 4, left: r.left });
-                            }
-                            setMovilDropdownOpen(o => !o);
-                          }}
-                          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all ${
-                            filters.movil.length > 0
-                              ? 'bg-violet-500/20 border-violet-500/40 text-violet-300'
-                              : 'bg-gray-800 border-gray-600/50 text-gray-200 hover:border-violet-500/50'
-                          }`}
-                        >
-                          <span>
-                            {filters.movil.length === 0
+                      {/* Movil multi-select (Caso 5). Ver PedidosTableModal. */}
+                      {(() => {
+                        const isColapsableMode = openSource === 'colapsable';
+                        const displayedMovilIds = isColapsableMode ? selectedMoviles : filters.movil;
+                        const handleToggle = (m: number, checked: boolean) => {
+                          if (isColapsableMode && onSelectedMovilesChange) {
+                            onSelectedMovilesChange(
+                              checked
+                                ? Array.from(new Set([...selectedMoviles, m]))
+                                : selectedMoviles.filter(id => id !== m)
+                            );
+                          } else {
+                            setFilters(f => ({
+                              ...f,
+                              movil: checked
+                                ? Array.from(new Set([...f.movil, m]))
+                                : f.movil.filter(id => id !== m),
+                            }));
+                          }
+                          setPage(0);
+                        };
+                        const handleClear = () => {
+                          if (isColapsableMode && onSelectedMovilesChange) {
+                            onSelectedMovilesChange(uniqueMoviles);
+                          } else {
+                            setFilters(f => ({ ...f, movil: [] }));
+                          }
+                          setPage(0);
+                        };
+                        const label = isColapsableMode
+                          ? (displayedMovilIds.length === 0
+                              ? 'Ninguno'
+                              : displayedMovilIds.length === uniqueMoviles.length
                               ? 'Todos los móviles'
-                              : filters.movil.length === 1
-                              ? getMovilName(filters.movil[0])
-                              : `${filters.movil.length} móviles`}
-                          </span>
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                        {movilDropdownOpen && (
-                          <div
-                            className="fixed z-[10050] bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[200px] max-h-[320px] overflow-y-auto py-1"
-                            style={{ top: movilDropdownPos.top, left: movilDropdownPos.left }}
-                          >
+                              : displayedMovilIds.length === 1
+                              ? getMovilName(displayedMovilIds[0])
+                              : `${displayedMovilIds.length} móviles`)
+                          : (displayedMovilIds.length === 0
+                              ? 'Todos los móviles'
+                              : displayedMovilIds.length === 1
+                              ? getMovilName(displayedMovilIds[0])
+                              : `${displayedMovilIds.length} móviles`);
+                        const isActive = isColapsableMode
+                          ? displayedMovilIds.length > 0 && displayedMovilIds.length !== uniqueMoviles.length
+                          : displayedMovilIds.length > 0;
+                        return (
+                          <div className="relative" ref={movilDropdownRef}>
                             <button
-                              onClick={() => { setFilters(f => ({ ...f, movil: [] })); setPage(0); }}
-                              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 ${
-                                filters.movil.length === 0 ? 'text-violet-300 font-medium' : 'text-gray-400'
+                              ref={movilButtonRef}
+                              onClick={() => {
+                                if (!movilDropdownOpen && movilButtonRef.current) {
+                                  const r = movilButtonRef.current.getBoundingClientRect();
+                                  setMovilDropdownPos({ top: r.bottom + 4, left: r.left });
+                                }
+                                setMovilDropdownOpen(o => !o);
+                              }}
+                              className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all ${
+                                isActive
+                                  ? 'bg-violet-500/20 border-violet-500/40 text-violet-300'
+                                  : 'bg-gray-800 border-gray-600/50 text-gray-200 hover:border-violet-500/50'
                               }`}
                             >
-                              Todos
+                              <span>{label}</span>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
                             </button>
-                            {uniqueMoviles.map(m => (
-                              <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={filters.movil.includes(m)}
-                                  onChange={(e) => {
-                                    setFilters(f => ({
-                                      ...f,
-                                      movil: e.target.checked
-                                        ? [...f.movil, m]
-                                        : f.movil.filter(id => id !== m),
-                                    }));
-                                    setPage(0);
-                                  }}
-                                  className="accent-violet-500"
-                                />
-                                {getMovilName(m)}
-                              </label>
-                            ))}
+                            {movilDropdownOpen && (
+                              <div
+                                className="fixed z-[10050] bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[200px] max-h-[320px] overflow-y-auto py-1"
+                                style={{ top: movilDropdownPos.top, left: movilDropdownPos.left }}
+                              >
+                                <button
+                                  onClick={handleClear}
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 text-gray-400"
+                                >
+                                  {isColapsableMode ? 'Seleccionar todos' : 'Todos'}
+                                </button>
+                                {uniqueMoviles.map(m => (
+                                  <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={displayedMovilIds.includes(m)}
+                                      onChange={(e) => handleToggle(m, e.target.checked)}
+                                      className="accent-violet-500"
+                                    />
+                                    {getMovilName(m)}
+                                  </label>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()}
 
                       <select
                         value={filters.defecto ?? ''}

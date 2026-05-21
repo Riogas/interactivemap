@@ -95,6 +95,12 @@ interface PedidosTableModalProps {
    *  en la tabla y en el filtro de asignacion. */
   canVerSinAsignarUnitario?: boolean;
   onInnerFiltersChange?: (f: Filters) => void;
+  /** Callback para sincronizar selectedMoviles desde el dropdown movil del
+   *  modal. Cuando openSource='colapsable', el dropdown lee/escribe
+   *  directamente sobre selectedMoviles (no sobre filters.movil), porque la
+   *  fuente de verdad es el colapsable de móviles. Cambios en el dropdown se
+   *  reflejan en colapsable + mapa + tabla extendida en tiempo real. */
+  onSelectedMovilesChange?: (ids: number[]) => void;
   /** Si se provee, el modal queda controlled: los filtros internos se reemplazan
    *  por este objeto en cada render, y los cambios del usuario se reportan via
    *  `onInnerFiltersChange` sin guardarse en state local. Permite sincronía
@@ -139,7 +145,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
 
   // Modo controlled vs uncontrolled:
@@ -440,8 +446,10 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       result = result.filter(({ pedido: p }) => p.zona_nro === filters.zona);
     }
 
-    // Movil filter (multi-select)
-    if (filters.movil.length > 0) {
+    // Movil filter (multi-select). En colapsable mode no aplica:
+    // selectedMoviles ya hace ese filtrado (el dropdown escribe sobre
+    // selectedMoviles, no sobre filters.movil).
+    if (filters.movil.length > 0 && openSource !== 'colapsable') {
       const movilSet = new Set(filters.movil.map(Number));
       result = result.filter(({ pedido: p }) => movilSet.has(Number(p.movil)));
     }
@@ -836,69 +844,105 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                         {uniqueZonas.map(z => <option key={z} value={z}>Zona {z}</option>)}
                       </select>
 
-                      {/* Movil multi-select (Caso 5) */}
-                      <div className="relative" ref={movilDropdownRef}>
-                        <button
-                          ref={movilButtonRef}
-                          onClick={() => {
-                            if (!movilDropdownOpen && movilButtonRef.current) {
-                              const r = movilButtonRef.current.getBoundingClientRect();
-                              setMovilDropdownPos({ top: r.bottom + 4, left: r.left });
-                            }
-                            setMovilDropdownOpen(o => !o);
-                          }}
-                          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all ${
-                            filters.movil.length > 0
-                              ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
-                              : 'bg-gray-800 border-gray-600/50 text-gray-200 hover:border-teal-500/50'
-                          }`}
-                        >
-                          <span>
-                            {filters.movil.length === 0
+                      {/* Movil multi-select (Caso 5).
+                          colapsable mode: dropdown ↔ selectedMoviles (bidireccional
+                          con colapsable de móviles + mapa).
+                          otros openSource: dropdown ↔ filters.movil (filtro local
+                          que se snapshot/restore al cerrar). */}
+                      {(() => {
+                        const isColapsableMode = openSource === 'colapsable';
+                        const displayedMovilIds = isColapsableMode ? selectedMoviles : filters.movil;
+                        const handleToggle = (m: number, checked: boolean) => {
+                          if (isColapsableMode && onSelectedMovilesChange) {
+                            onSelectedMovilesChange(
+                              checked
+                                ? Array.from(new Set([...selectedMoviles, m]))
+                                : selectedMoviles.filter(id => id !== m)
+                            );
+                          } else {
+                            setFilters(f => ({
+                              ...f,
+                              movil: checked
+                                ? Array.from(new Set([...f.movil, m]))
+                                : f.movil.filter(id => id !== m),
+                            }));
+                          }
+                          setPage(0);
+                        };
+                        const handleClear = () => {
+                          if (isColapsableMode && onSelectedMovilesChange) {
+                            // "Todos" en colapsable mode = seleccionar todos los visibles del scope.
+                            onSelectedMovilesChange(uniqueMoviles);
+                          } else {
+                            setFilters(f => ({ ...f, movil: [] }));
+                          }
+                          setPage(0);
+                        };
+                        const label = isColapsableMode
+                          ? (displayedMovilIds.length === 0
+                              ? 'Ninguno'
+                              : displayedMovilIds.length === uniqueMoviles.length
                               ? 'Todos los móviles'
-                              : filters.movil.length === 1
-                              ? getMovilName(filters.movil[0])
-                              : `${filters.movil.length} móviles`}
-                          </span>
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                        {movilDropdownOpen && (
-                          <div
-                            className="fixed z-[10050] bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[200px] max-h-[320px] overflow-y-auto py-1"
-                            style={{ top: movilDropdownPos.top, left: movilDropdownPos.left }}
-                          >
+                              : displayedMovilIds.length === 1
+                              ? getMovilName(displayedMovilIds[0])
+                              : `${displayedMovilIds.length} móviles`)
+                          : (displayedMovilIds.length === 0
+                              ? 'Todos los móviles'
+                              : displayedMovilIds.length === 1
+                              ? getMovilName(displayedMovilIds[0])
+                              : `${displayedMovilIds.length} móviles`);
+                        const isActive = isColapsableMode
+                          ? displayedMovilIds.length > 0 && displayedMovilIds.length !== uniqueMoviles.length
+                          : displayedMovilIds.length > 0;
+                        return (
+                          <div className="relative" ref={movilDropdownRef}>
                             <button
-                              onClick={() => { setFilters(f => ({ ...f, movil: [] })); setPage(0); }}
-                              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 ${
-                                filters.movil.length === 0 ? 'text-teal-300 font-medium' : 'text-gray-400'
+                              ref={movilButtonRef}
+                              onClick={() => {
+                                if (!movilDropdownOpen && movilButtonRef.current) {
+                                  const r = movilButtonRef.current.getBoundingClientRect();
+                                  setMovilDropdownPos({ top: r.bottom + 4, left: r.left });
+                                }
+                                setMovilDropdownOpen(o => !o);
+                              }}
+                              className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all ${
+                                isActive
+                                  ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
+                                  : 'bg-gray-800 border-gray-600/50 text-gray-200 hover:border-teal-500/50'
                               }`}
                             >
-                              Todos
+                              <span>{label}</span>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
                             </button>
-                            {uniqueMoviles.map(m => (
-                              <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={filters.movil.includes(m)}
-                                  onChange={(e) => {
-                                    setFilters(f => ({
-                                      ...f,
-                                      movil: e.target.checked
-                                        ? [...f.movil, m]
-                                        : f.movil.filter(id => id !== m),
-                                    }));
-                                    setPage(0);
-                                  }}
-                                  className="accent-teal-500"
-                                />
-                                {getMovilName(m)}
-                              </label>
-                            ))}
+                            {movilDropdownOpen && (
+                              <div
+                                className="fixed z-[10050] bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[200px] max-h-[320px] overflow-y-auto py-1"
+                                style={{ top: movilDropdownPos.top, left: movilDropdownPos.left }}
+                              >
+                                <button
+                                  onClick={handleClear}
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 text-gray-400"
+                                >
+                                  {isColapsableMode ? 'Seleccionar todos' : 'Todos'}
+                                </button>
+                                {uniqueMoviles.map(m => (
+                                  <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={displayedMovilIds.includes(m)}
+                                      onChange={(e) => handleToggle(m, e.target.checked)}
+                                      className="accent-teal-500"
+                                    />
+                                    {getMovilName(m)}
+                                  </label>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()}
 
                       {/* Producto select */}
                       <select

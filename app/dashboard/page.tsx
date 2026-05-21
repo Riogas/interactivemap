@@ -3022,6 +3022,7 @@ function DashboardContent() {
           tipoServicio: pedidosFilters.tipoServicio,
         }}
         onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, ...f, atraso: f.atraso as string[] }))}
+        onSelectedMovilesChange={setSelectedMoviles}
         externalResetToken={pedidosResetToken}
         openSource={pedidosOpenSource}
         serverNow={serverNow}
@@ -3063,6 +3064,7 @@ function DashboardContent() {
           entrega: servicesFilters.entrega,
         }}
         onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, ...f, atraso: f.atraso as string[] }))}
+        onSelectedMovilesChange={setSelectedMoviles}
         externalResetToken={servicesResetToken}
         openSource={servicesOpenSource}
         serverNow={serverNow}
