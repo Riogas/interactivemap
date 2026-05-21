@@ -350,6 +350,90 @@ function DashboardContent() {
   const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'atrasados'>('pendientes');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>(defaultServicesFilters);
   const [servicesResetToken, setServicesResetToken] = useState(0);
+
+  // ─── Snapshot/restore de filtros para PedidosTable y ServicesTable ──────────
+  // Muchos handlers (zone click, leaderboard, indicators, zone-stats, etc.)
+  // sobrescriben pedidosFilters/servicesFilters/preFilters ANTES de abrir el
+  // modal. Para conservar lo que el usuario tenia ANTES del open, snapshot al
+  // abrir y restore al cerrar. Refs sincronizadas via useEffect porque los
+  // handlers necesitan leer estado sin estar atados a deps de useCallback.
+  type PedidosSnapshot = {
+    filters: PedidoFilters;
+    initialAsignacion: 'todos' | 'con_movil' | 'sin_movil';
+    initialAtraso: ('muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora')[] | undefined;
+    preFilterMovil: number | undefined;
+    preFilterZona: number | undefined;
+  };
+  type ServicesSnapshot = {
+    filters: ServiceFilters;
+    preFilterMovil: number | undefined;
+    preFilterZona: number | undefined;
+  };
+  const pedidosFiltersRef = useRef(pedidosFilters);
+  const pedidosInitialAsignacionRef = useRef(pedidosInitialAsignacion);
+  const pedidosInitialAtrasoRef = useRef(pedidosInitialAtraso);
+  const servicesFiltersRef = useRef(servicesFilters);
+  const preFilterMovilRef = useRef(preFilterMovil);
+  const preFilterZonaRef = useRef(preFilterZona);
+  const pedidosSnapshotRef = useRef<PedidosSnapshot | null>(null);
+  const servicesSnapshotRef = useRef<ServicesSnapshot | null>(null);
+  useEffect(() => {
+    pedidosFiltersRef.current = pedidosFilters;
+    pedidosInitialAsignacionRef.current = pedidosInitialAsignacion;
+    pedidosInitialAtrasoRef.current = pedidosInitialAtraso;
+    servicesFiltersRef.current = servicesFilters;
+    preFilterMovilRef.current = preFilterMovil;
+    preFilterZonaRef.current = preFilterZona;
+  });
+  const snapshotPedidosState = useCallback(() => {
+    // Si ya hay un snapshot pendiente (modal abierto y se re-dispara open),
+    // no lo pisamos: queremos preservar el estado original pre-primer-open.
+    if (pedidosSnapshotRef.current !== null) return;
+    pedidosSnapshotRef.current = {
+      filters: pedidosFiltersRef.current,
+      initialAsignacion: pedidosInitialAsignacionRef.current,
+      initialAtraso: pedidosInitialAtrasoRef.current,
+      preFilterMovil: preFilterMovilRef.current,
+      preFilterZona: preFilterZonaRef.current,
+    };
+  }, []);
+  const restorePedidosState = useCallback(() => {
+    const snap = pedidosSnapshotRef.current;
+    if (!snap) {
+      // Sin snapshot (ej. modal abierto via rehidratacion de view-state):
+      // fallback al comportamiento previo de limpiar overrides puntuales.
+      setPreFilterMovil(undefined);
+      setPreFilterZona(undefined);
+      setPedidosInitialAtraso(undefined);
+      return;
+    }
+    setPedidosFilters(snap.filters);
+    setPedidosInitialAsignacion(snap.initialAsignacion);
+    setPedidosInitialAtraso(snap.initialAtraso);
+    setPreFilterMovil(snap.preFilterMovil);
+    setPreFilterZona(snap.preFilterZona);
+    pedidosSnapshotRef.current = null;
+  }, [setPreFilterMovil, setPreFilterZona]);
+  const snapshotServicesState = useCallback(() => {
+    if (servicesSnapshotRef.current !== null) return;
+    servicesSnapshotRef.current = {
+      filters: servicesFiltersRef.current,
+      preFilterMovil: preFilterMovilRef.current,
+      preFilterZona: preFilterZonaRef.current,
+    };
+  }, []);
+  const restoreServicesState = useCallback(() => {
+    const snap = servicesSnapshotRef.current;
+    if (!snap) {
+      setPreFilterMovil(undefined);
+      setPreFilterZona(undefined);
+      return;
+    }
+    setServicesFilters(snap.filters);
+    setPreFilterMovil(snap.preFilterMovil);
+    setPreFilterZona(snap.preFilterZona);
+    servicesSnapshotRef.current = null;
+  }, [setPreFilterMovil, setPreFilterZona]);
   // ---------------------------------------------------------------------------
   // View-state sync ? preserva y restaura el estado visual a través de auto-reloads
   // ---------------------------------------------------------------------------
@@ -1786,14 +1870,18 @@ function DashboardContent() {
       );
 
       if (hasPedidos) {
+        snapshotPedidosState();
         setIsPedidosTableOpen(true);
       } else if (hasServices) {
+        snapshotServicesState();
         setIsServicesTableOpen(true);
       } else {
         // Sin pendientes (caso defensivo, el botón no debería estar visible).
+        snapshotPedidosState();
         setIsPedidosTableOpen(true);
       }
     } else {
+      snapshotPedidosState();
       setIsPedidosTableOpen(true);
     }
     
@@ -2595,22 +2683,25 @@ function DashboardContent() {
   // Callbacks estables para DashboardIndicators ? sin useCallback se crean inline
   // y DashboardIndicators re-renderiza en cada tick de GPS aunque no haya cambiado nada.
   const onSinAsignarClick = useCallback(() => {
+    snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
     setPedidosInitialAsignacion('sin_movil');
     setIsPedidosTableOpen(true);
-  }, []);
+  }, [snapshotPedidosState]);
 
   const onEntregadosClick = useCallback(() => {
+    snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
     setPedidosInitialAsignacion('todos');
     setIsPedidosTableOpen(true);
-  }, []);
+  }, [snapshotPedidosState]);
 
   const onPorcentajeClick = useCallback(() => {
+    snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
     setPedidosInitialAsignacion('todos');
     setIsPedidosTableOpen(true);
-  }, []);
+  }, [snapshotPedidosState]);
 
   const onZonasSinMovilClick = useCallback(() => setIsZonasSinMovilOpen(true), []);
   const onMovilesSinReportarClick = useCallback(() => setIsMovilesSinReportarOpen(true), []);
@@ -2804,7 +2895,7 @@ function DashboardContent() {
         closeRanking={() => setIsLeaderboardOpen(false)}
         openTracking={() => setIsTrackingModalOpen(true)}
         closeTracking={() => setIsTrackingModalOpen(false)}
-        openPedidosTable={() => setIsPedidosTableOpen(true)}
+        openPedidosTable={() => { snapshotPedidosState(); setIsPedidosTableOpen(true); }}
         closePedidosTable={() => setIsPedidosTableOpen(false)}
       />
 
@@ -2838,7 +2929,7 @@ function DashboardContent() {
       <PedidosTableModal
         key={`pedidos-${preFilterMovil ?? 'all'}-z${preFilterZona ?? 'all'}`}
         isOpen={isPedidosTableOpen}
-        onClose={() => { setIsPedidosTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); setPedidosInitialAtraso(undefined); }}
+        onClose={() => { setIsPedidosTableOpen(false); restorePedidosState(); }}
         pedidos={pedidosCompletos}
         moviles={movilesFiltered}
         hiddenMovilIds={hiddenMovilIds}
@@ -2868,7 +2959,7 @@ function DashboardContent() {
       <ServicesTableModal
         key={`services-${preFilterMovil ?? 'all'}-z${preFilterZona ?? 'all'}`}
         isOpen={isServicesTableOpen}
-        onClose={() => { setIsServicesTableOpen(false); setPreFilterMovil(undefined); setPreFilterZona(undefined); }}
+        onClose={() => { setIsServicesTableOpen(false); restoreServicesState(); }}
         services={servicesCompletos}
         moviles={movilesFiltered}
         hiddenMovilIds={hiddenMovilIds}
@@ -3021,18 +3112,22 @@ function DashboardContent() {
           if (stat === 'noEntregados') {
             // No entregados = finalizados que no cumplen isPedidoEntregado / isServiceEntregado
             if (viewMode === 'pedidos') {
+              snapshotPedidosState();
               setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
               setIsPedidosTableOpen(true);
             } else {
+              snapshotServicesState();
               setServicesFilters(prev => ({ ...prev, vista: 'finalizados' }));
               setIsServicesTableOpen(true);
             }
           } else {
             // Atrasados y Pendientes = vista pendientes
             if (viewMode === 'pedidos') {
+              snapshotPedidosState();
               setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
               setIsPedidosTableOpen(true);
             } else {
+              snapshotServicesState();
               setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
               setIsServicesTableOpen(true);
             }
@@ -3063,11 +3158,13 @@ function DashboardContent() {
           setPreFilterMovil(undefined);
           const upper = svcFilter.toUpperCase();
           if (upper === 'SERVICE') {
+            snapshotServicesState();
             setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
             setIsServicesTableOpen(true);
           } else {
             // PEDIDOS = todos los pedidos (sin filtro por servicio_nombre ? 'all')
             // Un tipo específico (URGENTE/NOCTURNO) se pasa directamente
+            snapshotPedidosState();
             setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: upper === 'PEDIDOS' ? [] : (svcFilter ? [svcFilter] : []) }));
             setIsPedidosTableOpen(true);
           }
@@ -3152,8 +3249,8 @@ function DashboardContent() {
                   puntosInteres={puntosInteres}
                   onPuntoInteresClick={handlePuntoInteresClick}
                   onFiltersChange={setMovilesFilters}
-                  onOpenPedidosTable={() => setIsPedidosTableOpen(true)}
-                  onOpenServicesTable={() => setIsServicesTableOpen(true)}
+                  onOpenPedidosTable={() => { snapshotPedidosState(); setIsPedidosTableOpen(true); }}
+                  onOpenServicesTable={() => { snapshotServicesState(); setIsServicesTableOpen(true); }}
                   pedidosFilters={pedidosFilters}
                   onPedidosFiltersChange={(f) => {
                     setPedidosFilters(f);
@@ -3334,6 +3431,7 @@ function DashboardContent() {
                         // Click en capa "Pedidos/Zona": abre la tabla extendida
                         // filtrada por esta zona + por el valor del combo
                         // (Pendientes / Sin asignar / Atrasados).
+                        snapshotPedidosState();
                         setPreFilterZona(zonaId);
                         setPreFilterMovil(undefined);
                         setPedidosInitialAsignacion(pedidosZonaFilter === 'sin_asignar' ? 'sin_movil' : 'todos');
