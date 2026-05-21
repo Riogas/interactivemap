@@ -71,6 +71,52 @@ function formatTimeAgo(date: Date | null): string {
   return `${Math.floor(diff / 3600)}h`;
 }
 
+// Sparkline pequena para los inline KPIs del header. Pinta una curva con
+// area debajo + punto al final. Hereda color via `currentColor` — controla el
+// tono desde el padre con text-stats-info etc. Aria-hidden porque el valor
+// numerico ya esta en el DOM al lado.
+function Sparkline({ data, width = 64, height = 18, ariaLabel }: { data: number[]; width?: number; height?: number; ariaLabel?: string }) {
+  if (!data.length) return null;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const stepX = data.length > 1 ? width / (data.length - 1) : 0;
+  const pts = data.map((v, i) => {
+    const x = i * stepX;
+    const y = height - ((v - min) / range) * (height - 2) - 1;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+  const polyPoints = pts.join(' ');
+  const lastX = (data.length - 1) * stepX;
+  const lastY = height - ((data[data.length - 1] - min) / range) * (height - 2) - 1;
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="overflow-visible flex-shrink-0"
+      role={ariaLabel ? 'img' : undefined}
+      aria-label={ariaLabel}
+      aria-hidden={ariaLabel ? undefined : true}
+    >
+      <path
+        d={`M0,${height} L${polyPoints} L${lastX.toFixed(2)},${height} Z`}
+        fill="currentColor"
+        opacity="0.18"
+      />
+      <polyline
+        points={polyPoints}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx={lastX} cy={lastY} r="1.8" fill="currentColor" />
+    </svg>
+  );
+}
+
 function BarChart({ data, colorClass = 'bg-stats-info' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   const summary = data.length === 0
@@ -249,11 +295,12 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
         >
           <div className="w-full max-w-5xl stats-modal-content">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
+              <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white">{title}</h3>
               <button
                 onClick={() => setExpanded(false)}
-                className="text-gray-400 hover:text-white transition-all duration-200 p-2 rounded-xl hover:bg-white/10 group"
+                className="p-2 rounded-xl transition-all duration-200 group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
                 title="Cerrar"
+                aria-label="Cerrar tarjeta expandida"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -643,6 +690,21 @@ function StatsContent() {
     return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
   }, [filteredPedidos]);
 
+  // ─── Services por hora (para sparkline del KPI inline en el header) ──────
+  const servicesPorHora = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredServices.forEach(s => {
+      const fch = s.fch_hora_para ?? '';
+      const hora = fch.includes('T') ? fch.split('T')[1]?.substring(0, 2) : fch.substring(8, 10);
+      if (hora && hora.match(/^\d{2}$/)) {
+        const h = `${hora}:00`;
+        map[h] = (map[h] ?? 0) + 1;
+      }
+    });
+    const sorted = Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
+    return sorted.map(([label, value]) => ({ label, value }));
+  }, [filteredServices]);
+
   // ─── Pedidos por empresa (multi-serie) ────────────────────────────────────
   const pedidosPorEmpresa = useMemo(() => {
     const map: Record<string, { entregados: number; noEntregados: number; pendientes: number }> = {};
@@ -886,16 +948,29 @@ function StatsContent() {
               {isLoading && <span className="ml-1 text-stats-info animate-pulse">●</span>}
             </span>
           </div>
-          {/* KPIs inline (centro, solo desktop) */}
+          {/* KPIs inline (centro, solo desktop) — con sparkline de la distribucion
+              horaria del dia. Pone contexto al numero (¿pico ya pasado? ¿arrancando?). */}
           <div className="hidden lg:flex items-center gap-4 ml-auto mr-3">
             <div className="flex items-baseline gap-1.5">
               <span className="text-[10px] uppercase tracking-wider text-stats-muted-fg dark:text-gray-500">Pedidos</span>
               <span className="text-base font-bold font-stats-mono tabular-nums">{pedidosStats.total}</span>
+              <span className="text-stats-info self-center">
+                <Sparkline
+                  data={pedidosPorHora.map((p) => p.value)}
+                  ariaLabel={`Distribucion de ${pedidosStats.total} pedidos en ${pedidosPorHora.length} horas`}
+                />
+              </span>
             </div>
             <div className="w-px h-5 bg-stats-border dark:bg-white/20" />
             <div className="flex items-baseline gap-1.5">
               <span className="text-[10px] uppercase tracking-wider text-stats-muted-fg dark:text-gray-500">Services</span>
               <span className="text-base font-bold font-stats-mono tabular-nums">{servicesStats.total}</span>
+              <span className="text-stats-success self-center">
+                <Sparkline
+                  data={servicesPorHora.map((s) => s.value)}
+                  ariaLabel={`Distribucion de ${servicesStats.total} services en ${servicesPorHora.length} horas`}
+                />
+              </span>
             </div>
           </div>
           {/* Acciones */}
@@ -1065,7 +1140,7 @@ function StatsContent() {
         <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
 
           {/* ── KPIs Móviles ── */}
-          <section>
+          <section className="stats-section-enter" style={{ animationDelay: '0ms' }}>
             <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-muted-fg dark:text-gray-500">Móviles</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
               <KpiCard
@@ -1107,7 +1182,7 @@ function StatsContent() {
           </section>
 
           {/* ── KPIs: Pedidos Pendientes / Finalizados ── */}
-          <section>
+          <section className="stats-section-enter" style={{ animationDelay: '60ms' }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {/* Columna Pedidos Pendientes */}
               <div className="rounded-xl p-4 border bg-stats-info-soft border-stats-info/30 dark:bg-stats-info/5 dark:border-stats-info/20">
@@ -1162,7 +1237,7 @@ function StatsContent() {
           </section>
 
           {/* ── KPIs Services ── */}
-          <section>
+          <section className="stats-section-enter" style={{ animationDelay: '120ms' }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Columna Services Pendientes */}
               <div className="rounded-xl p-4 border bg-stats-info-soft border-stats-info/30 dark:bg-stats-info/5 dark:border-stats-info/20">
@@ -1216,7 +1291,7 @@ function StatsContent() {
           </section>
 
           {/* ── Gráficos ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stats-section-enter" style={{ animationDelay: '180ms' }}>
 
             {/* Pedidos por hora */}
             {pedidosPorHora.length > 0 && (
@@ -1233,34 +1308,37 @@ function StatsContent() {
                     <div key={estado.label}>
                       {/* Barra principal de estado */}
                       <div className="flex justify-between text-xs mb-0.5">
-                        <span className="font-semibold text-gray-200">{estado.label}</span>
-                        <span className="font-bold text-white">
+                        <span className="font-semibold text-stats-foreground/90 dark:text-gray-200">{estado.label}</span>
+                        <span className="font-bold tabular-nums font-stats-mono text-stats-foreground dark:text-white">
                           {estado.value}
-                          <span className="text-gray-500 font-normal ml-1">· {estado.pct}%</span>
+                          <span className="text-stats-muted-fg/70 dark:text-gray-500 font-normal ml-1">· {estado.pct}%</span>
                         </span>
                       </div>
-                      <div className="h-3 bg-white/10 rounded-full overflow-hidden mb-2">
+                      <div className="h-3 rounded-full overflow-hidden mb-2 bg-stats-surface-2 dark:bg-white/10">
                         <div
-                          className="h-full bg-purple-500 rounded-full transition-all duration-700"
-                          style={{ width: `${Math.max(estado.barPct, estado.value > 0 ? 2 : 0)}%` }}
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{
+                            width: `${Math.max(estado.barPct, estado.value > 0 ? 2 : 0)}%`,
+                            background: 'var(--color-stats-accent)',
+                          }}
                         />
                       </div>
                       {/* Sub-estados desglosados */}
-                      <div className="pl-3 border-l border-white/10 space-y-1.5">
+                      <div className="pl-3 border-l border-stats-border dark:border-white/10 space-y-1.5">
                         {estado.subEstados.map(sub => (
                           <div key={sub.label}>
                             <div className="flex justify-between text-[10px] mb-0.5">
-                              <span className="text-gray-400 truncate max-w-[65%]">{sub.label}</span>
-                              <span className="text-gray-300 font-semibold">
+                              <span className="text-stats-muted-fg dark:text-gray-400 truncate max-w-[65%]">{sub.label}</span>
+                              <span className="font-semibold tabular-nums font-stats-mono text-stats-foreground/90 dark:text-gray-300">
                                 {sub.value}
-                                <span className="text-gray-600 font-normal ml-1">· {sub.pct}%</span>
+                                <span className="text-stats-muted-fg/60 dark:text-gray-600 font-normal ml-1">· {sub.pct}%</span>
                               </span>
                             </div>
-                            <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+                            <div className="h-3 rounded-full overflow-hidden bg-stats-surface-2/60 dark:bg-white/5">
                               <div
                                 className={`h-full rounded-full transition-all duration-500 ${
-                                  sub.isEntregado ? 'bg-green-400' :
-                                  estado.label === 'Pendiente' ? 'bg-blue-400' : 'bg-orange-400'
+                                  sub.isEntregado ? 'bg-stats-success' :
+                                  estado.label === 'Pendiente' ? 'bg-stats-info' : 'bg-stats-warning'
                                 }`}
                                 style={{ width: `${Math.max(sub.pct, sub.value > 0 ? 2 : 0)}%` }}
                               />
@@ -1306,24 +1384,24 @@ function StatsContent() {
 
             {/* Atrasos de pedidos */}
             <ExpandableCard title="Atrasos de pedidos pendientes">
-              <p className="text-xs text-gray-500 mb-4">{atrasosStats.total} pendientes en total</p>
+              <p className="text-xs mb-4 text-stats-muted-fg dark:text-gray-500">{atrasosStats.total} pendientes en total</p>
 
               {/* % general con atraso */}
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-gray-400">Con atraso</span>
+                <span className="text-xs text-stats-muted-fg dark:text-gray-400">Con atraso</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold" style={{ color: atrasosStats.pctAtraso >= 50 ? '#ef4444' : atrasosStats.pctAtraso >= 20 ? '#f97316' : '#22c55e' }}>
+                  <span className="text-sm font-bold tabular-nums font-stats-mono" style={{ color: atrasosStats.pctAtraso >= 50 ? 'var(--color-stats-destructive)' : atrasosStats.pctAtraso >= 20 ? 'var(--color-stats-warning)' : 'var(--color-stats-success)' }}>
                     {atrasosStats.pctAtraso}%
                   </span>
-                  <span className="text-xs text-gray-500">({atrasosStats.muyAtrasado + atrasosStats.atrasado})</span>
+                  <span className="text-xs tabular-nums text-stats-muted-fg/80 dark:text-gray-500">({atrasosStats.muyAtrasado + atrasosStats.atrasado})</span>
                 </div>
               </div>
-              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-4">
+              <div className="h-1.5 rounded-full overflow-hidden mb-4 bg-stats-surface-2 dark:bg-white/10">
                 <div
                   className="h-full rounded-full transition-all duration-700"
                   style={{
                     width: `${atrasosStats.pctAtraso}%`,
-                    background: atrasosStats.pctAtraso >= 50 ? '#ef4444' : atrasosStats.pctAtraso >= 20 ? '#f97316' : '#22c55e',
+                    background: atrasosStats.pctAtraso >= 50 ? 'var(--color-stats-destructive)' : atrasosStats.pctAtraso >= 20 ? 'var(--color-stats-warning)' : 'var(--color-stats-success)',
                   }}
                 />
               </div>
@@ -1331,28 +1409,28 @@ function StatsContent() {
               {/* Categorías */}
               <div className="space-y-2.5 text-xs">
                 {[
-                  { label: 'Muy Atrasado', value: atrasosStats.muyAtrasado, color: '#ef4444', dot: 'bg-red-500' },
-                  { label: 'Atrasado', value: atrasosStats.atrasado, color: '#f472b6', dot: 'bg-pink-400' },
-                  { label: 'Límite Cercana', value: atrasosStats.limiteCercana, color: '#facc15', dot: 'bg-yellow-400' },
-                  { label: 'En Hora', value: atrasosStats.enHora, color: '#22c55e', dot: 'bg-green-500' },
-                  { label: 'Sin Hora', value: atrasosStats.sinHora, color: '#6b7280', dot: 'bg-gray-500' },
+                  { label: 'Muy Atrasado', value: atrasosStats.muyAtrasado, cssVar: 'var(--color-stats-destructive)', dot: 'bg-stats-destructive' },
+                  { label: 'Atrasado', value: atrasosStats.atrasado, cssVar: '#f472b6', dot: 'bg-pink-400' },
+                  { label: 'Límite Cercana', value: atrasosStats.limiteCercana, cssVar: 'var(--color-stats-warning)', dot: 'bg-stats-warning' },
+                  { label: 'En Hora', value: atrasosStats.enHora, cssVar: 'var(--color-stats-success)', dot: 'bg-stats-success' },
+                  { label: 'Sin Hora', value: atrasosStats.sinHora, cssVar: 'var(--color-stats-neutral)', dot: 'bg-stats-neutral' },
                 ].map(cat => (
                   <div key={cat.label} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cat.dot}`} />
-                      <span className="text-gray-300">{cat.label}</span>
+                      <span className="text-stats-foreground/85 dark:text-gray-300">{cat.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-20 h-1 bg-white/10 rounded-full overflow-hidden">
+                      <div className="w-20 h-1 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
                         <div
                           className="h-full rounded-full"
                           style={{
                             width: atrasosStats.total > 0 ? `${Math.round((cat.value / atrasosStats.total) * 100)}%` : '0%',
-                            background: cat.color,
+                            background: cat.cssVar,
                           }}
                         />
                       </div>
-                      <span className="font-semibold text-white w-6 text-right">{cat.value}</span>
+                      <span className="font-semibold tabular-nums font-stats-mono w-6 text-right text-stats-foreground dark:text-white">{cat.value}</span>
                     </div>
                   </div>
                 ))}
@@ -1361,7 +1439,7 @@ function StatsContent() {
           </div>
 
           {/* Footer */}
-          <p className="text-center text-xs text-gray-600 pb-4">
+          <p className="text-center text-xs pb-4 text-stats-muted-fg/60 dark:text-gray-600">
             Datos del {formatDate(date)} · RiogasTracking
           </p>
         </div>
@@ -1375,8 +1453,8 @@ export default function StatsPage() {
   return (
     <ProtectedRoute>
       <Suspense fallback={
-        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+        <div className="min-h-screen flex items-center justify-center bg-stats-background dark:bg-gray-900">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-stats-info" />
         </div>
       }>
         <StatsContent />

@@ -58,8 +58,20 @@
 .stats-row-enter {
   animation: stats-row-enter 260ms ease-out both;
 }
+
+/* Animacion de entrada para secciones completas (sin stutter en refresh
+ * porque las secciones no se remontan: solo el contenido interno cambia). */
+@keyframes stats-section-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.stats-section-enter {
+  animation: stats-section-enter 360ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .stats-row-enter { animation: none; }
+  .stats-row-enter,
+  .stats-section-enter { animation: none; }
 }
 
 /* Dark theme overrides (activado por [data-theme="dark"] en el root o por
