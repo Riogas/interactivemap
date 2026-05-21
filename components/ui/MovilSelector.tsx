@@ -549,12 +549,12 @@ export default function MovilSelector({
     // visibles para usuarios privilegiados cuando TODOS los móviles operativos
     // del universo están seleccionados Y todas las empresas están seleccionadas
     // (alcance global, no del colapsable). Si el usuario filtró a un subset de
-    // empresas, los sin asignar no aplican porque podrían corresponder a
-    // empresas excluidas.
-    // Nuevo: canSeeUnassigned se basa en el gate funcional "Ped s/asignar unitarios".
-    // privilegedUser ya no controla la visibilidad de sin-asignar en el colapsable —
-    // eso queda solo en canVerSinAsignarUnitario (root bypass incluido en la prop).
-    const canSeeUnassigned = canVerSinAsignarUnitario;
+    // empresas o de móviles, los sin asignar no aplican porque podrían
+    // corresponder a un universo distinto al que el usuario operó.
+    // Regla = gate funcional "Ped s/asignar unitarios" Y modo "Todos"
+    // (allMovilesSelected ya considera allEmpresasSelected + todos los móviles
+    // operativos seleccionados).
+    const canSeeUnassigned = canVerSinAsignarUnitario && allMovilesSelected;
 
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
     if (selectedMoviles.length > 0) {
@@ -722,10 +722,9 @@ export default function MovilSelector({
 
     // Sin asignar y de móviles ocultos solo visibles para privilegiados cuando
     // todas las empresas + todos los móviles están seleccionados. Mismo
-    // criterio que en filteredPedidos: usa allMovilesSelected (incluye gating
-    // por empresa).
-    // Mismo criterio que canSeeUnassigned para pedidos: basado en gate funcional.
-    const canSeeUnassignedSvc = canVerSinAsignarUnitario;
+    // criterio que en filteredPedidos: gate funcional Y allMovilesSelected
+    // (que ya gating por empresa).
+    const canSeeUnassignedSvc = canVerSinAsignarUnitario && allMovilesSelected;
 
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
