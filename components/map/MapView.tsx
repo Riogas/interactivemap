@@ -785,7 +785,7 @@ function CulledPedidosLayer({
           <div className="text-xs">
             <div className="font-bold">Pedido #{pedido.id}</div>
             <div>{pedido.cliente_nombre}</div>
-            <div className="text-gray-600">{pedido.producto_nom}</div>
+            <div className="text-gray-600">{pedido.servicio_nombre || pedido.producto_nom}</div>
             {isSinAsignar && (
               <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
             )}
@@ -861,7 +861,7 @@ function CulledServicesLayer({
           <div className="text-xs">
             <div className="font-bold">Service #{service.id}</div>
             <div>{service.cliente_nombre}</div>
-            <div className="text-gray-600">{service.defecto}</div>
+            <div className="text-gray-600">{service.servicio_nombre || service.defecto}</div>
             {isSinAsignar && (
               <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
             )}
