@@ -62,6 +62,15 @@ function formatDate(dateStr: string) {
   return `${d} ${months[parseInt(m) - 1]} ${y}`;
 }
 
+function formatTimeAgo(date: Date | null): string {
+  if (!date) return 'cargando…';
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 5) return 'recién';
+  if (diff < 60) return `${diff}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}min`;
+  return `${Math.floor(diff / 3600)}h`;
+}
+
 function BarChart({ data, colorClass = 'bg-stats-info' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
@@ -251,6 +260,18 @@ function StatsContent() {
   const [refreshTick, setRefreshTick] = useState<number>(0);
   const [zonasNoActivasCount, setZonasNoActivasCount] = useState<number | null>(null);
   const [zonasSinMovilCount, setZonasSinMovilCount] = useState<number | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  // Theme dark/light. Default dark (era el unico valor antes). Persistencia
+  // en localStorage scoped a esta pantalla — toggle solo afecta /dashboard/stats.
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem('stats-theme');
+    if (saved === 'light' || saved === 'dark') setTheme(saved);
+  }, []);
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('stats-theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const load = async () => {
@@ -302,6 +323,7 @@ function StatsContent() {
         // Set de IDs con GPS vigente (equivalente al INNER JOIN gps_latest_positions)
         const gpsIds = new Set<string>((gData.data ?? []).map((g: { movilId: number }) => String(g.movilId)));
         setMovilesConGps(gpsIds);
+        setLastUpdatedAt(new Date());
       } catch (e) {
         setError('Error al cargar los datos');
       } finally {
@@ -788,92 +810,172 @@ function StatsContent() {
     return Math.round((enHora.length / conAmbas.length) * 100);
   }, [filteredPedidos]);
 
+  const isFiltered = selectedEmpresa !== 'Todas' || selectedProducto !== 'Todos';
+  const clearFilters = () => { setSelectedEmpresa('Todas'); setSelectedProducto('Todos'); };
+
   return (
-    <div className="h-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-y-auto font-stats-sans">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-gray-900/80 backdrop-blur-md border-b border-white/10 px-4 py-3">
-        {/* Row 1: título + total pedidos centrado + cerrar */}
-        <div className="relative flex items-center justify-between mb-2">
-          <div>
-            <h1 className="text-lg font-bold text-white">Centro Estadístico</h1>
-            <p className="text-sm text-gray-400">{formatDate(date)}</p>
+    <div
+      data-theme={theme}
+      className="h-full overflow-y-auto font-stats-sans bg-stats-background text-stats-foreground dark:bg-gradient-to-br dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 dark:text-white"
+    >
+      {/* ─── Header compacto ─────────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-10 backdrop-blur-md border-b px-4 py-2 bg-white/85 border-stats-border dark:bg-gray-900/85 dark:border-white/10">
+        {/* Row 1: titulo + KPIs inline (desktop) + acciones */}
+        <div className="flex items-center justify-between gap-3 mb-1.5">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h1 className="text-base font-bold tracking-tight whitespace-nowrap">Centro Estadístico</h1>
+            <span className="text-xs text-stats-muted-fg dark:text-gray-400 whitespace-nowrap">{formatDate(date)}</span>
+            <span
+              className="text-[10px] text-stats-muted-fg/70 dark:text-gray-500 hidden md:inline whitespace-nowrap"
+              title={lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('es-UY') : ''}
+            >
+              · act. {formatTimeAgo(lastUpdatedAt)}
+              {isLoading && <span className="ml-1 text-stats-info animate-pulse">●</span>}
+            </span>
           </div>
-          {/* Total pedidos + Total services centrado absolutamente */}
-          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-6">
-            <div className="text-center">
-              <p className="text-xs text-gray-400 leading-none mb-0.5">Total pedidos</p>
-              <p className="text-3xl font-bold text-white leading-none font-stats-mono tabular-nums">{pedidosStats.total}</p>
+          {/* KPIs inline (centro, solo desktop) */}
+          <div className="hidden lg:flex items-center gap-4 ml-auto mr-3">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-stats-muted-fg dark:text-gray-500">Pedidos</span>
+              <span className="text-base font-bold font-stats-mono tabular-nums">{pedidosStats.total}</span>
             </div>
-            <div className="w-px h-8 bg-white/20" />
-            <div className="text-center">
-              <p className="text-xs text-gray-400 leading-none mb-0.5">Total services</p>
-              <p className="text-3xl font-bold text-white leading-none font-stats-mono tabular-nums">{servicesStats.total}</p>
+            <div className="w-px h-5 bg-stats-border dark:bg-white/20" />
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-stats-muted-fg dark:text-gray-500">Services</span>
+              <span className="text-base font-bold font-stats-mono tabular-nums">{servicesStats.total}</span>
             </div>
           </div>
-          <button
-            onClick={() => window.close()}
-            className="text-gray-400 hover:text-white transition-colors text-sm"
-          >
-            Cerrar
-          </button>
+          {/* Acciones */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <select
+              value={refreshSeconds}
+              onChange={(e) => setRefreshSeconds(Number(e.target.value))}
+              className="text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-stats-info cursor-pointer bg-stats-surface-2 border border-stats-border text-stats-foreground dark:bg-white/10 dark:border-white/20 dark:text-white"
+              aria-label="Intervalo de refresh"
+              title="Intervalo de refresh"
+            >
+              <option value={0}>Manual</option>
+              <option value={10}>10s</option>
+              <option value={30}>30s</option>
+              <option value={60}>60s</option>
+              <option value={120}>2min</option>
+              <option value={300}>5min</option>
+            </select>
+            <button
+              onClick={() => setRefreshTick((t) => t + 1)}
+              title="Actualizar ahora"
+              aria-label="Actualizar ahora"
+              className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10"
+            >
+              <svg className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              title={`Cambiar a tema ${theme === 'dark' ? 'claro' : 'oscuro'}`}
+              aria-label={`Cambiar a tema ${theme === 'dark' ? 'claro' : 'oscuro'}`}
+              className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10"
+            >
+              {theme === 'dark' ? (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+              ) : (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={() => window.close()}
+              title="Cerrar"
+              aria-label="Cerrar"
+              className="p-1.5 rounded-lg transition-colors text-stats-muted-fg hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:bg-white/10"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
-        {/* Row 2: filtros + refresh */}
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Filtro empresa */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 whitespace-nowrap">Empresa:</label>
+
+        {/* Row 2: filter pills */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Pill: Empresa */}
+          <label className={`group flex items-center gap-1.5 text-xs rounded-full pl-2.5 pr-1 py-0.5 transition-colors border ${
+            selectedEmpresa !== 'Todas'
+              ? 'bg-stats-info-soft border-stats-info text-stats-info dark:bg-stats-info/15 dark:border-stats-info/40'
+              : 'bg-stats-surface-2 border-stats-border text-stats-muted-fg dark:bg-white/5 dark:border-white/10 dark:text-gray-300'
+          }`}>
+            <svg className="h-3 w-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" /></svg>
+            <span className="opacity-70">Empresa:</span>
             <select
               value={selectedEmpresa}
-              onChange={e => setSelectedEmpresa(e.target.value)}
-              className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+              onChange={(e) => setSelectedEmpresa(e.target.value)}
+              className="bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer pr-1 py-0.5 font-medium"
+              aria-label="Filtrar por empresa"
             >
-              <option value="Todas" className="bg-gray-900">Todas</option>
-              {empresaOptions.map(emp => (
-                <option key={emp} value={emp} className="bg-gray-900">{emp}</option>
+              <option value="Todas" className="bg-stats-surface dark:bg-gray-900 text-stats-foreground dark:text-white">Todas</option>
+              {empresaOptions.map((emp) => (
+                <option key={emp} value={emp} className="bg-stats-surface dark:bg-gray-900 text-stats-foreground dark:text-white">{emp}</option>
               ))}
             </select>
-          </div>
-          {/* Filtro producto */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 whitespace-nowrap">Producto:</label>
-            <select
-              value={selectedProducto}
-              onChange={e => setSelectedProducto(e.target.value)}
-              className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
-            >
-              <option value="Todos" className="bg-gray-900">Todos</option>
-              <option value="1002013" className="bg-gray-900">GLP Envasado 13 Kg</option>
-            </select>
-          </div>
-          {/* Auto-refresh */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 whitespace-nowrap">
-              Refresh:{' '}
-              <span className="text-white font-semibold">
-                {refreshSeconds === 0 ? 'Manual' : `${refreshSeconds}s`}
-              </span>
-            </label>
-            <input
-              type="range"
-              min={0} max={100} step={5}
-              value={refreshSeconds}
-              onChange={e => setRefreshSeconds(Number(e.target.value))}
-              className="w-24 accent-blue-400 cursor-pointer"
-            />
-            {/* Botón de refresh manual cuando el slash está en 0 */}
-            {refreshSeconds === 0 && (
+            {selectedEmpresa !== 'Todas' && (
               <button
-                onClick={() => setRefreshTick(t => t + 1)}
-                title="Actualizar ahora"
-                className="text-blue-400 hover:text-blue-300 transition-colors p-1 rounded hover:bg-white/10"
+                onClick={() => setSelectedEmpresa('Todas')}
+                className="ml-0.5 p-0.5 rounded-full hover:bg-stats-info/20"
+                aria-label="Quitar filtro empresa"
+                title="Quitar filtro"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                </svg>
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             )}
+          </label>
+
+          {/* Pill: Producto */}
+          <label className={`group flex items-center gap-1.5 text-xs rounded-full pl-2.5 pr-1 py-0.5 transition-colors border ${
+            selectedProducto !== 'Todos'
+              ? 'bg-stats-info-soft border-stats-info text-stats-info dark:bg-stats-info/15 dark:border-stats-info/40'
+              : 'bg-stats-surface-2 border-stats-border text-stats-muted-fg dark:bg-white/5 dark:border-white/10 dark:text-gray-300'
+          }`}>
+            <svg className="h-3 w-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
+            <span className="opacity-70">Producto:</span>
+            <select
+              value={selectedProducto}
+              onChange={(e) => setSelectedProducto(e.target.value)}
+              className="bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer pr-1 py-0.5 font-medium"
+              aria-label="Filtrar por producto"
+            >
+              <option value="Todos" className="bg-stats-surface dark:bg-gray-900 text-stats-foreground dark:text-white">Todos</option>
+              <option value="1002013" className="bg-stats-surface dark:bg-gray-900 text-stats-foreground dark:text-white">GLP Envasado 13 Kg</option>
+            </select>
+            {selectedProducto !== 'Todos' && (
+              <button
+                onClick={() => setSelectedProducto('Todos')}
+                className="ml-0.5 p-0.5 rounded-full hover:bg-stats-info/20"
+                aria-label="Quitar filtro producto"
+                title="Quitar filtro"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            )}
+          </label>
+
+          {isFiltered && (
+            <button
+              onClick={clearFilters}
+              className="text-[11px] px-2 py-0.5 rounded-full text-stats-info hover:underline focus:outline-none focus:ring-2 focus:ring-stats-info"
+            >
+              Limpiar filtros
+            </button>
+          )}
+
+          {/* KPIs inline (mobile, right-aligned) */}
+          <div className="lg:hidden ml-auto flex items-center gap-3 text-xs">
+            <span><span className="opacity-60 mr-1">Ped</span><span className="font-stats-mono tabular-nums font-bold">{pedidosStats.total}</span></span>
+            <span><span className="opacity-60 mr-1">Svc</span><span className="font-stats-mono tabular-nums font-bold">{servicesStats.total}</span></span>
           </div>
-          {isLoading && <span className="text-xs text-blue-400 animate-pulse">Actualizando…</span>}
         </div>
       </div>
 

@@ -44,6 +44,11 @@
   --font-stats-mono: var(--font-stats-mono-base, 'Fira Code'), ui-monospace, monospace;
 }
 
+/* Habilitar `dark:` variant de Tailwind v4 cuando el ancestor tiene
+ * data-theme="dark". Asi `dark:bg-gray-900` aplica solo bajo ese ancestro
+ * (scope-able a /dashboard/stats sin afectar otras pantallas). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* Dark theme overrides (activado por [data-theme="dark"] en el root o por
  * prefers-color-scheme. Capa 2 enchufa el toggle). */
 [data-theme="dark"] {
