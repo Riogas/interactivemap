@@ -230,9 +230,10 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
             // nunca los ven.
             return allMovilesSelected && privilegedUser;
           }
-          // Pendientes sin asignar: pasa si tiene permiso "Ped s/asignar
-          // unitarios". Scope por zona ya validado por isServiceInScope arriba.
-          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
+          // Pendientes sin asignar: pasa solo si tiene permiso "Ped s/asignar
+          // unitarios" Y modo "Todos" (allMovilesSelected incluye
+          // allEmpresasSelected). Con subset seleccionado, no aplican.
+          return canVerSinAsignarUnitario && allMovilesSelected && filters.asignacion !== 'con_movil';
         }
         // Móviles seleccionados pasan
         if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;

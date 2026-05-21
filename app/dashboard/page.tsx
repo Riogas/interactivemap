@@ -2411,7 +2411,10 @@ function DashboardContent() {
     let base = pedidosCompletos.filter(p => {
       if (Number(p.estado_nro) !== targetEstado) return false;
       if (!p.movil || Number(p.movil) === 0) {
-        if (!canVerSinAsignarUnitario || !isPendientes) return false;
+        // Sin asignar visible solo si: gate funcional 'Ped s/asignar unitarios'
+        // Y modo "Todos" (allMovilesSelected, que ya considera allEmpresasSelected
+        // + todos los móviles operativos seleccionados). Con subset, no aplican.
+        if (!canVerSinAsignarUnitario || !allMovilesSelected || !isPendientes) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
           const zonaId = p.zona_nro != null ? Number(p.zona_nro) : null;
           if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
@@ -2459,7 +2462,8 @@ function DashboardContent() {
     let base = servicesCompletos.filter(s => {
       if (Number(s.estado_nro) !== targetEstado) return false;
       if (!s.movil || Number(s.movil) === 0) {
-        if (!canVerSinAsignarUnitario || !isPendientes) return false;
+        // Mismo gate que pedidosForMap.
+        if (!canVerSinAsignarUnitario || !allMovilesSelected || !isPendientes) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
           const zonaId = s.zona_nro != null ? Number(s.zona_nro) : null;
           if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;

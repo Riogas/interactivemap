@@ -309,11 +309,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
       result = result.filter(p => {
         if (!p.movil || Number(p.movil) === 0) {
-          // Pendientes sin móvil: pasa si tiene permiso "Ped s/asignar
-          // unitarios". La scope por zona ya se aplicó vía isPedidoInScope
-          // arriba (línea 243). Los gates legacy (hideUnassigned,
-          // allMovilesSelected) ya no aplican — refactor permisos.
-          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
+          // Pendientes sin móvil: pasa solo si tiene permiso "Ped s/asignar
+          // unitarios" Y modo "Todos" (allMovilesSelected, que incluye
+          // allEmpresasSelected). Con un subset de móviles seleccionados los
+          // sin-asignar NO aplican porque podrían pertenecer a empresas o
+          // zonas que el usuario excluyó. La scope por zona ya se aplicó vía
+          // isPedidoInScope arriba.
+          return canVerSinAsignarUnitario && allMovilesSelected && filters.asignacion !== 'con_movil';
         }
         // Móviles seleccionados pasan
         if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
