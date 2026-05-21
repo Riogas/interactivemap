@@ -7,7 +7,10 @@ interface Incident {
   ts: string;
   user_id: string | null;
   username: string | null;
+  reporter_nombre: string | null;
   description: string | null;
+  contact_email: string | null;
+  contact_celular: string | null;
   video_path: string;
   video_url: string | null;
   duration_s: number | null;
@@ -281,12 +284,23 @@ export default function IncidenciasPage() {
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {item.username ? (
+                      {item.username || item.reporter_nombre ? (
                         <>
-                          <span className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 text-white flex items-center justify-center text-[10px] font-bold">
-                            {item.username.slice(0, 2).toUpperCase()}
+                          <span className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                            {(item.reporter_nombre || item.username || '??').slice(0, 2).toUpperCase()}
                           </span>
-                          <span className="text-sm font-medium text-slate-700 truncate">{item.username}</span>
+                          <div className="min-w-0 flex-1">
+                            {item.reporter_nombre ? (
+                              <>
+                                <span className="text-sm font-medium text-slate-700 truncate block">{item.reporter_nombre}</span>
+                                {item.username && (
+                                  <span className="text-[10px] text-slate-400 font-mono truncate block">@{item.username}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-sm font-medium text-slate-700 truncate block">@{item.username}</span>
+                            )}
+                          </div>
                         </>
                       ) : (
                         <span className="text-sm text-slate-400 italic">anónimo</span>
@@ -297,7 +311,23 @@ export default function IncidenciasPage() {
                         {item.description}
                       </p>
                     )}
-                    <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                    {(item.contact_email || item.contact_celular) && (
+                      <div className="flex flex-col gap-0.5 text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                        {item.contact_email && (
+                          <a href={`mailto:${item.contact_email}`} className="flex items-center gap-1 hover:text-blue-600 truncate" onClick={(e) => e.stopPropagation()}>
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                            <span className="truncate">{item.contact_email}</span>
+                          </a>
+                        )}
+                        {item.contact_celular && (
+                          <a href={`tel:${item.contact_celular}`} className="flex items-center gap-1 hover:text-blue-600 truncate" onClick={(e) => e.stopPropagation()}>
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                            <span className="truncate">{item.contact_celular}</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
+                    <div className={`text-[10px] text-slate-400 pt-1 ${(item.contact_email || item.contact_celular) ? '' : 'border-t border-slate-100'}`}>
                       {formatSize(item.size_bytes)} · {item.mime_type ?? 'video'}
                     </div>
                   </div>
@@ -387,7 +417,10 @@ export default function IncidenciasPage() {
                 <div>
                   <h2 className="text-base font-bold text-slate-800">Incidencia #{selected.id}</h2>
                   <p className="text-xs text-slate-500">
-                    {selected.username ?? 'anónimo'} · {new Date(selected.ts).toLocaleString('es-UY')}
+                    {selected.reporter_nombre
+                      ? <>{selected.reporter_nombre}{selected.username ? <span className="text-slate-400 font-mono ml-1">(@{selected.username})</span> : null}</>
+                      : (selected.username ? `@${selected.username}` : 'anónimo')}
+                    {' · '}{new Date(selected.ts).toLocaleString('es-UY')}
                   </p>
                 </div>
               </div>
@@ -440,6 +473,28 @@ export default function IncidenciasPage() {
                 <MetaField label="Formato" value={selected.mime_type ?? '—'} />
                 <MetaField label="IP" value={selected.ip ?? '—'} />
               </div>
+
+              {/* Contacto del reporter */}
+              {(selected.contact_email || selected.contact_celular) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {selected.contact_email && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Email contacto</div>
+                      <a href={`mailto:${selected.contact_email}`} className="text-sm text-blue-600 hover:underline break-all">
+                        {selected.contact_email}
+                      </a>
+                    </div>
+                  )}
+                  {selected.contact_celular && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Celular contacto</div>
+                      <a href={`tel:${selected.contact_celular}`} className="text-sm text-blue-600 hover:underline">
+                        {selected.contact_celular}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Descripción */}
               {selected.description && (

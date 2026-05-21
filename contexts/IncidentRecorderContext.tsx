@@ -149,10 +149,27 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
   const [state, setState] = useState<RecorderState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [description, setDescription] = useState('');
+  // Contacto opcional para que despachadores puedan llamar de vuelta al reporter.
+  // Email se pre-rellena con el del usuario logueado (editable, vaciable).
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactCelular, setContactCelular] = useState('');
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingDurationS, setPendingDurationS] = useState(0);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [browserBlocked, setBrowserBlocked] = useState(false);
+  // Pre-fill email del usuario al pasar a confirming, asi el reporter no tiene
+  // que tipear su email cada vez (lo puede cambiar/borrar).
+  useEffect(() => {
+    if (state === 'confirming' && !contactEmail && user?.email) {
+      setContactEmail(user.email);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  // Descripcion ahora es obligatoria con minimo 10 caracteres.
+  const DESCRIPTION_MIN = 10;
+  const descriptionTrim = description.trim();
+  const descriptionValid = descriptionTrim.length >= DESCRIPTION_MIN;
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -418,12 +435,19 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
 
   const confirmUpload = async () => {
     if (!pendingBlob) return;
+    if (!descriptionValid) {
+      setToast({ type: 'err', msg: `La descripcion debe tener al menos ${DESCRIPTION_MIN} caracteres.` });
+      return;
+    }
     setState('uploading');
     try {
       const form = new FormData();
       form.append('video', pendingBlob, 'incident.webm');
-      if (description.trim()) form.append('description', description.trim());
+      form.append('description', descriptionTrim);
       form.append('duration_s', String(pendingDurationS));
+      if (contactEmail.trim()) form.append('contact_email', contactEmail.trim());
+      if (contactCelular.trim()) form.append('contact_celular', contactCelular.trim());
+      if (user?.nombre) form.append('reporter_nombre', user.nombre);
 
       const res = await fetch('/api/incidents', {
         method: 'POST',
@@ -445,6 +469,8 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
       }
       setToast({ type: 'ok', msg: `Incidencia #${data.id} reportada. Gracias!` });
       setDescription('');
+      setContactEmail('');
+      setContactCelular('');
       setPendingBlob(null);
       setPendingDurationS(0);
       setState('idle');
@@ -456,6 +482,8 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
 
   const discard = () => {
     setDescription('');
+    setContactEmail('');
+    setContactCelular('');
     setPendingBlob(null);
     setPendingDurationS(0);
     setState('idle');
@@ -536,15 +564,52 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
-                  ¿Qué sucedió? <span className="font-normal normal-case text-slate-400">(opcional)</span>
+                  ¿Qué sucedió? <span className="font-normal normal-case text-rose-600">*</span>
+                  <span className="font-normal normal-case text-slate-400"> (mínimo {DESCRIPTION_MIN} caracteres)</span>
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Contanos brevemente qué pasó para ayudar a reproducir el problema…"
                   rows={3}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+                  className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition ${
+                    description.length > 0 && !descriptionValid
+                      ? 'border-rose-300 focus:ring-rose-500'
+                      : 'border-slate-200 focus:ring-blue-500'
+                  }`}
                 />
+                <div className="mt-1 flex items-center justify-between text-[11px]">
+                  <span className={description.length > 0 && !descriptionValid ? 'text-rose-600' : 'text-slate-400'}>
+                    {descriptionTrim.length}/{DESCRIPTION_MIN} mínimo
+                  </span>
+                </div>
+              </div>
+              {/* Contacto opcional para que despachadores puedan llamar de vuelta */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
+                    Email <span className="font-normal normal-case text-slate-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="tu@email.com"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
+                    Celular <span className="font-normal normal-case text-slate-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={contactCelular}
+                    onChange={(e) => setContactCelular(e.target.value)}
+                    placeholder="099 123 456"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+                  />
+                </div>
               </div>
               <div className="rounded-lg overflow-hidden bg-slate-900 aspect-video">
                 {pendingBlobUrl && (
@@ -561,7 +626,9 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
               </button>
               <button
                 onClick={confirmUpload}
-                className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-semibold px-5 py-2 rounded-lg shadow-lg shadow-blue-500/20 transition"
+                disabled={!descriptionValid}
+                title={!descriptionValid ? `Completa la descripcion (minimo ${DESCRIPTION_MIN} caracteres)` : 'Enviar incidencia'}
+                className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-lg shadow-lg shadow-blue-500/20 transition"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />

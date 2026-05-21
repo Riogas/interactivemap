@@ -101,9 +101,21 @@ export async function POST(request: NextRequest) {
     }
 
     const description = (form.get('description') as string | null)?.slice(0, 2000) ?? null;
+    // Descripcion es obligatoria y minimo 10 caracteres (server-side guard, la
+    // UI ya valida pero el endpoint puede ser invocado directamente).
+    if (!description || description.trim().length < 10) {
+      return NextResponse.json(
+        { success: false, error: 'La descripcion es obligatoria y debe tener al menos 10 caracteres.' },
+        { status: 400 },
+      );
+    }
     const durationStr = form.get('duration_s') as string | null;
     const duration_s = durationStr ? Math.max(0, Number(durationStr)) || null : null;
     const mimeType = video.type || 'video/webm';
+    // Contacto opcional + nombre completo del reporter (snapshot al upload).
+    const contact_email = (form.get('contact_email') as string | null)?.slice(0, 200) || null;
+    const contact_celular = (form.get('contact_celular') as string | null)?.slice(0, 50) || null;
+    const reporter_nombre = (form.get('reporter_nombre') as string | null)?.slice(0, 200) || null;
 
     const { userId, username } = extractUser(request);
     const ip =
@@ -141,7 +153,10 @@ export async function POST(request: NextRequest) {
     const row = {
       user_id: userId,
       username,
+      reporter_nombre,
       description,
+      contact_email,
+      contact_celular,
       video_path: videoPath,
       duration_s,
       size_bytes: video.size,

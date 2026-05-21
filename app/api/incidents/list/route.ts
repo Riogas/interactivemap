@@ -11,8 +11,11 @@ interface IncidentRow {
   id: number;
   ts: string;
   username: string | null;
+  reporter_nombre: string | null;
   user_id: string | null;
   description: string | null;
+  contact_email: string | null;
+  contact_celular: string | null;
   video_path: string;
   duration_s: number | null;
   size_bytes: number | null;
