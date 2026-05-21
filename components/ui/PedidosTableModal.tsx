@@ -921,12 +921,32 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                                 className="fixed z-[10050] bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[200px] max-h-[320px] overflow-y-auto py-1"
                                 style={{ top: movilDropdownPos.top, left: movilDropdownPos.left }}
                               >
-                                <button
-                                  onClick={handleClear}
-                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 text-gray-400"
-                                >
-                                  {isColapsableMode ? 'Seleccionar todos' : 'Todos'}
-                                </button>
+                                {isColapsableMode ? (
+                                  <div className="flex border-b border-gray-700/50">
+                                    <button
+                                      onClick={handleClear}
+                                      className="flex-1 text-center px-2 py-1.5 text-xs hover:bg-gray-700/50 text-teal-300"
+                                    >
+                                      Seleccionar todos
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (onSelectedMovilesChange) onSelectedMovilesChange([]);
+                                        setPage(0);
+                                      }}
+                                      className="flex-1 text-center px-2 py-1.5 text-xs hover:bg-gray-700/50 text-orange-300 border-l border-gray-700/50"
+                                    >
+                                      Ninguno
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={handleClear}
+                                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 text-gray-400"
+                                  >
+                                    Todos
+                                  </button>
+                                )}
                                 {uniqueMoviles.map(m => (
                                   <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
                                     <input

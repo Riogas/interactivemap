@@ -2762,6 +2762,25 @@ function DashboardContent() {
     setIsPedidosTableOpen(true);
   }, [snapshotPedidosState]);
 
+  // Handler para los cambios de selectedMoviles disparados por el dropdown
+  // del modal en colapsable mode. Actualiza userExplicitlyCleared para que
+  // el useEffect de "modo Todos" (linea ~1268) no re-rellene la seleccion.
+  // - Selecciono todos los visibles -> userExplicitlyCleared=false (modo Todos)
+  // - Selecciono un subset (incl. vacio) -> userExplicitlyCleared=true (custom)
+  const handleModalSelectedMovilesChange = useCallback((ids: number[]) => {
+    const hidden = hiddenMovilIdsRef.current;
+    const visibleIds = applyActivityFilter(movilesFiltered)
+      .filter(m => !hidden.has(m.id))
+      .map(m => m.id);
+    const idsSet = new Set(ids);
+    const isAllSelected = visibleIds.length > 0
+      && visibleIds.length === ids.length
+      && visibleIds.every(id => idsSet.has(id));
+    userExplicitlyCleared.current = !isAllSelected;
+    bumpSelectionVersion();
+    setSelectedMoviles(ids);
+  }, [movilesFiltered, applyActivityFilter, bumpSelectionVersion]);
+
   const onZonasSinMovilClick = useCallback(() => setIsZonasSinMovilOpen(true), []);
   const onMovilesSinReportarClick = useCallback(() => setIsMovilesSinReportarOpen(true), []);
   const onZonasNoActivasClick = useCallback(() => setIsZonasNoActivasOpen(true), []);
@@ -3022,7 +3041,7 @@ function DashboardContent() {
           tipoServicio: pedidosFilters.tipoServicio,
         }}
         onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, ...f, atraso: f.atraso as string[] }))}
-        onSelectedMovilesChange={setSelectedMoviles}
+        onSelectedMovilesChange={handleModalSelectedMovilesChange}
         externalResetToken={pedidosResetToken}
         openSource={pedidosOpenSource}
         serverNow={serverNow}
@@ -3064,7 +3083,7 @@ function DashboardContent() {
           entrega: servicesFilters.entrega,
         }}
         onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, ...f, atraso: f.atraso as string[] }))}
-        onSelectedMovilesChange={setSelectedMoviles}
+        onSelectedMovilesChange={handleModalSelectedMovilesChange}
         externalResetToken={servicesResetToken}
         openSource={servicesOpenSource}
         serverNow={serverNow}
