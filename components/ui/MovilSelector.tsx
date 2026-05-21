@@ -372,14 +372,14 @@ export default function MovilSelector({
     actividad: 'activo', // Por defecto mostrar solo activos
   });
   // Filtros de pedidos/services: usar props si vienen del padre, si no estado local (fallback)
-  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false });
-  const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({ 
-    atraso: [], 
+  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: [], defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false });
+  const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({
+    atraso: [],
     tipoServicio: [],
     vista: 'pendientes',
     search: '',
     zona: null,
-    movil: null,
+    movil: [],
     producto: null,
     asignacion: 'todos',
     entrega: 'todos',
@@ -558,16 +558,15 @@ export default function MovilSelector({
     // de empresas y (b) filtro manual parcial de empresas.
     const isPartialEmpresa = hideUnassigned;
 
-    // Los sin asignar y los de móviles ocultos-pero-operativos solo son
-    // visibles para usuarios privilegiados cuando TODOS los móviles operativos
-    // del universo están seleccionados Y todas las empresas están seleccionadas
-    // (alcance global, no del colapsable). Si el usuario filtró a un subset de
-    // empresas o de móviles, los sin asignar no aplican porque podrían
-    // corresponder a un universo distinto al que el usuario operó.
-    // Regla = gate funcional "Ped s/asignar unitarios" Y modo "Todos"
-    // (allMovilesSelected ya considera allEmpresasSelected + todos los móviles
-    // operativos seleccionados).
-    const canSeeUnassigned = canVerSinAsignarUnitario && allMovilesSelected;
+    // Caso 6: en vista pendientes los sin-asignar también pasan cuando el
+    // usuario filtra explícitamente por asignacion='sin_movil' (gate funcional
+    // requerido). En finalizados queda el gate estricto (solo allMovilesSelected).
+    // allMovilesSelected ya incluye allEmpresasSelected + todos los móviles
+    // operativos visibles seleccionados.
+    const isPendientesView = pedidosFilters.vista !== 'finalizados';
+    const canSeeUnassigned = isPendientesView
+      ? canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil')
+      : canVerSinAsignarUnitario && allMovilesSelected;
 
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
     if (selectedMoviles.length > 0) {
@@ -654,8 +653,8 @@ export default function MovilSelector({
     if (pedidosFilters.zona !== null) {
       result = result.filter(pedido => pedido.zona_nro === pedidosFilters.zona);
     }
-    if (pedidosFilters.movil !== null) {
-      result = result.filter(pedido => Number(pedido.movil) === pedidosFilters.movil);
+    if (pedidosFilters.movil.length > 0) {
+      result = result.filter(pedido => pedidosFilters.movil.includes(Number(pedido.movil)));
     }
     if (pedidosFilters.producto !== null) {
       result = result.filter(pedido => pedido.producto_nom === pedidosFilters.producto);
@@ -733,11 +732,12 @@ export default function MovilSelector({
     // Mismo criterio que para pedidos: el parent calcula y baja el flag.
     const isPartialEmpresaSvc = hideUnassigned;
 
-    // Sin asignar y de móviles ocultos solo visibles para privilegiados cuando
-    // todas las empresas + todos los móviles están seleccionados. Mismo
-    // criterio que en filteredPedidos: gate funcional Y allMovilesSelected
-    // (que ya gating por empresa).
-    const canSeeUnassignedSvc = canVerSinAsignarUnitario && allMovilesSelected;
+    // Caso 6 (idem filteredPedidos): en vista pendientes acepta asignacion=
+    // 'sin_movil' como bypass del gate "Todos". En finalizados queda estricto.
+    const isPendientesSvcView = servicesFilters.vista !== 'finalizados';
+    const canSeeUnassignedSvc = isPendientesSvcView
+      ? canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil')
+      : canVerSinAsignarUnitario && allMovilesSelected;
 
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
@@ -818,8 +818,8 @@ export default function MovilSelector({
     if (servicesFilters.zona !== null) {
       result = result.filter(service => service.zona_nro === servicesFilters.zona);
     }
-    if (servicesFilters.movil !== null) {
-      result = result.filter(service => Number(service.movil) === servicesFilters.movil);
+    if (servicesFilters.movil.length > 0) {
+      result = result.filter(service => servicesFilters.movil.includes(Number(service.movil)));
     }
     if (servicesFilters.defecto !== null) {
       result = result.filter(service => service.defecto === servicesFilters.defecto);
@@ -1048,7 +1048,7 @@ export default function MovilSelector({
             + pedidosFilters.atraso.length
             + (pedidosFilters.search ? 1 : 0)
             + (pedidosFilters.zona !== null ? 1 : 0)
-            + (pedidosFilters.movil !== null ? 1 : 0)
+            + (pedidosFilters.movil.length > 0 ? 1 : 0)
             + (pedidosFilters.producto !== null ? 1 : 0)
             + (pedidosFilters.asignacion !== 'todos' ? 1 : 0)
             + (pedidosFilters.entrega !== 'todos' ? 1 : 0)
@@ -1056,7 +1056,7 @@ export default function MovilSelector({
           badges.push({
             label: pCount === 0 ? '📦 Pedidos: Todos' : `📦 Pedidos: ${pCount} Filtro${pCount !== 1 ? 's' : ''}`,
             color: pCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
-            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: [], vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
+            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: [], vista: 'pendientes', search: '', zona: null, movil: [], producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
           });
         }
 
@@ -1067,7 +1067,7 @@ export default function MovilSelector({
             + servicesFilters.atraso.length
             + (servicesFilters.search ? 1 : 0)
             + (servicesFilters.zona !== null ? 1 : 0)
-            + (servicesFilters.movil !== null ? 1 : 0)
+            + (servicesFilters.movil.length > 0 ? 1 : 0)
             + (servicesFilters.defecto !== null ? 1 : 0)
             + (servicesFilters.asignacion !== 'todos' ? 1 : 0)
             + (servicesFilters.entrega !== 'todos' ? 1 : 0)
@@ -1075,7 +1075,7 @@ export default function MovilSelector({
           badges.push({
             label: sCount === 0 ? '🔧 Services: Todos' : `🔧 Services: ${sCount} Filtro${sCount !== 1 ? 's' : ''}`,
             color: sCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
-            onClear: sCount > 0 ? () => setServicesFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
+            onClear: sCount > 0 ? () => setServicesFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: [], defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
           });
         }
 

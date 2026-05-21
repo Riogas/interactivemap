@@ -338,8 +338,8 @@ function DashboardContent() {
   });
 
   // Estado para filtros de pedidos y services (lifted desde MovilSelector para compartir con MapView)
-  const defaultPedidosFilters: PedidoFilters = { atraso: [], tipoServicio: [], vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
-  const defaultServicesFilters: ServiceFilters = { atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
+  const defaultPedidosFilters: PedidoFilters = { atraso: [], tipoServicio: [], vista: 'pendientes', search: '', zona: null, movil: [], producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
+  const defaultServicesFilters: ServiceFilters = { atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: [], defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false };
   const [pedidosFilters, setPedidosFilters] = useState<PedidoFilters>(defaultPedidosFilters);
   const [pedidosResetToken, setPedidosResetToken] = useState(0);
   const [pedidosInitialAsignacion, setPedidosInitialAsignacion] = useState<'todos' | 'con_movil' | 'sin_movil'>('todos');
@@ -352,13 +352,18 @@ function DashboardContent() {
   const [servicesResetToken, setServicesResetToken] = useState(0);
 
   // ─── Snapshot/restore de filtros para PedidosTable y ServicesTable ──────────
-  // Muchos handlers (zone click, leaderboard, indicators, zone-stats, etc.)
-  // sobrescriben pedidosFilters/servicesFilters/preFilters ANTES de abrir el
-  // modal. Para conservar lo que el usuario tenia ANTES del open, snapshot al
-  // abrir y restore al cerrar. Refs sincronizadas via useEffect porque los
-  // handlers necesitan leer estado sin estar atados a deps de useCallback.
+  // Comportamiento dual segun openSource (ver
+  // docs/superpowers/specs/2026-05-21-tabla-extendida-casos.md):
+  //   - 'colapsable': bidireccional TOTAL. NO se restaura nada al cerrar; los
+  //      cambios persisten en el colapsable y el mapa.
+  //   - cualquier otro: snapshot completo (filtros + selectedMoviles +
+  //      selectedEmpresas + señales) al abrir y restore al cerrar. Los cambios
+  //      en el modal se aplican al colapsable temporalmente y se revierten.
+  type OpenSource = 'colapsable' | 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' | 'movil_individual';
   type PedidosSnapshot = {
     filters: PedidoFilters;
+    selectedMoviles: number[];
+    selectedEmpresas: number[];
     initialAsignacion: 'todos' | 'con_movil' | 'sin_movil';
     initialAtraso: ('muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora')[] | undefined;
     preFilterMovil: number | undefined;
@@ -366,15 +371,21 @@ function DashboardContent() {
   };
   type ServicesSnapshot = {
     filters: ServiceFilters;
+    selectedMoviles: number[];
+    selectedEmpresas: number[];
     preFilterMovil: number | undefined;
     preFilterZona: number | undefined;
   };
+  const [pedidosOpenSource, setPedidosOpenSource] = useState<OpenSource>('colapsable');
+  const [servicesOpenSource, setServicesOpenSource] = useState<OpenSource>('colapsable');
   const pedidosFiltersRef = useRef(pedidosFilters);
   const pedidosInitialAsignacionRef = useRef(pedidosInitialAsignacion);
   const pedidosInitialAtrasoRef = useRef(pedidosInitialAtraso);
   const servicesFiltersRef = useRef(servicesFilters);
   const preFilterMovilRef = useRef(preFilterMovil);
   const preFilterZonaRef = useRef(preFilterZona);
+  const selectedMovilesRef = useRef(selectedMoviles);
+  const selectedEmpresasRef = useRef(selectedEmpresas);
   const pedidosSnapshotRef = useRef<PedidosSnapshot | null>(null);
   const servicesSnapshotRef = useRef<ServicesSnapshot | null>(null);
   useEffect(() => {
@@ -384,13 +395,15 @@ function DashboardContent() {
     servicesFiltersRef.current = servicesFilters;
     preFilterMovilRef.current = preFilterMovil;
     preFilterZonaRef.current = preFilterZona;
+    selectedMovilesRef.current = selectedMoviles;
+    selectedEmpresasRef.current = selectedEmpresas;
   });
   const snapshotPedidosState = useCallback(() => {
-    // Si ya hay un snapshot pendiente (modal abierto y se re-dispara open),
-    // no lo pisamos: queremos preservar el estado original pre-primer-open.
     if (pedidosSnapshotRef.current !== null) return;
     pedidosSnapshotRef.current = {
       filters: pedidosFiltersRef.current,
+      selectedMoviles: selectedMovilesRef.current,
+      selectedEmpresas: selectedEmpresasRef.current,
       initialAsignacion: pedidosInitialAsignacionRef.current,
       initialAtraso: pedidosInitialAtrasoRef.current,
       preFilterMovil: preFilterMovilRef.current,
@@ -398,35 +411,65 @@ function DashboardContent() {
     };
   }, []);
   const restorePedidosState = useCallback(() => {
-    // BIDIRECCIONAL TOTAL: NO revertimos pedidosFilters al snapshot pre-open.
-    // Cualquier cambio que el usuario haya hecho dentro de la tabla extendida
-    // debe persistir y reflejarse en el colapsable (MovilSelector) y el mapa.
-    //
-    // Sí limpiamos las "señales contextuales" (preFilterMovil/Zona,
-    // pedidosInitialAtraso) para que al reabrir el modal sus useEffect no
-    // re-inyecten encima del estado actual lo que el usuario ya cambió.
-    // pedidosInitialAsignacion se mantiene ('todos' por default; cambia solo
-    // cuando un handler explícito lo setea para el próximo open).
-    setPreFilterMovil(undefined);
-    setPreFilterZona(undefined);
-    setPedidosInitialAtraso(undefined);
+    const snap = pedidosSnapshotRef.current;
+    // 'colapsable': bidireccional. Solo limpiar las señales contextuales para
+    // que un próximo open no las re-inyecte sobre el estado del usuario.
+    if (pedidosOpenSource === 'colapsable') {
+      setPreFilterMovil(undefined);
+      setPreFilterZona(undefined);
+      setPedidosInitialAtraso(undefined);
+      pedidosSnapshotRef.current = null;
+      return;
+    }
+    // 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' |
+    // 'movil_individual': restaurar estado pre-open completo.
+    if (snap) {
+      setPedidosFilters(snap.filters);
+      setSelectedMoviles(snap.selectedMoviles);
+      setSelectedEmpresas(snap.selectedEmpresas);
+      setPedidosInitialAsignacion(snap.initialAsignacion);
+      setPedidosInitialAtraso(snap.initialAtraso);
+      setPreFilterMovil(snap.preFilterMovil);
+      setPreFilterZona(snap.preFilterZona);
+    } else {
+      setPreFilterMovil(undefined);
+      setPreFilterZona(undefined);
+      setPedidosInitialAtraso(undefined);
+    }
     pedidosSnapshotRef.current = null;
-  }, [setPreFilterMovil, setPreFilterZona]);
+    setPedidosOpenSource('colapsable');
+  }, [pedidosOpenSource, setPreFilterMovil, setPreFilterZona]);
   const snapshotServicesState = useCallback(() => {
     if (servicesSnapshotRef.current !== null) return;
     servicesSnapshotRef.current = {
       filters: servicesFiltersRef.current,
+      selectedMoviles: selectedMovilesRef.current,
+      selectedEmpresas: selectedEmpresasRef.current,
       preFilterMovil: preFilterMovilRef.current,
       preFilterZona: preFilterZonaRef.current,
     };
   }, []);
   const restoreServicesState = useCallback(() => {
-    // BIDIRECCIONAL TOTAL: idem restorePedidosState — NO revertir servicesFilters.
-    // Solo limpiar las señales contextuales que disparan re-inyección al reabrir.
-    setPreFilterMovil(undefined);
-    setPreFilterZona(undefined);
+    const snap = servicesSnapshotRef.current;
+    if (servicesOpenSource === 'colapsable') {
+      setPreFilterMovil(undefined);
+      setPreFilterZona(undefined);
+      servicesSnapshotRef.current = null;
+      return;
+    }
+    if (snap) {
+      setServicesFilters(snap.filters);
+      setSelectedMoviles(snap.selectedMoviles);
+      setSelectedEmpresas(snap.selectedEmpresas);
+      setPreFilterMovil(snap.preFilterMovil);
+      setPreFilterZona(snap.preFilterZona);
+    } else {
+      setPreFilterMovil(undefined);
+      setPreFilterZona(undefined);
+    }
     servicesSnapshotRef.current = null;
-  }, [setPreFilterMovil, setPreFilterZona]);
+    setServicesOpenSource('colapsable');
+  }, [servicesOpenSource, setPreFilterMovil, setPreFilterZona]);
   // ---------------------------------------------------------------------------
   // View-state sync ? preserva y restaura el estado visual a través de auto-reloads
   // ---------------------------------------------------------------------------
@@ -1863,21 +1906,25 @@ function DashboardContent() {
       );
 
       if (hasPedidos) {
+        setPedidosOpenSource('movil_individual');
         snapshotPedidosState();
         setIsPedidosTableOpen(true);
       } else if (hasServices) {
+        setServicesOpenSource('movil_individual');
         snapshotServicesState();
         setIsServicesTableOpen(true);
       } else {
         // Sin pendientes (caso defensivo, el botón no debería estar visible).
+        setPedidosOpenSource('movil_individual');
         snapshotPedidosState();
         setIsPedidosTableOpen(true);
       }
     } else {
+      setPedidosOpenSource('colapsable');
       snapshotPedidosState();
       setIsPedidosTableOpen(true);
     }
-    
+
     setPopupMovil(undefined); // Cierra el popup
   }, [popupMovil]);
 
@@ -2417,10 +2464,13 @@ function DashboardContent() {
     let base = pedidosCompletos.filter(p => {
       if (Number(p.estado_nro) !== targetEstado) return false;
       if (!p.movil || Number(p.movil) === 0) {
-        // Sin asignar visible solo si: gate funcional 'Ped s/asignar unitarios'
-        // Y modo "Todos" (allMovilesSelected, que ya considera allEmpresasSelected
-        // + todos los móviles operativos seleccionados). Con subset, no aplican.
-        if (!canVerSinAsignarUnitario || !allMovilesSelected || !isPendientes) return false;
+        // Caso 6: en pendientes pasa si está en modo "Todos" O si el filtro
+        // de asignacion es 'sin_movil' (bypass explícito). En finalizados
+        // queda estricto.
+        const allowsUnassigned = isPendientes
+          ? canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil')
+          : canVerSinAsignarUnitario && allMovilesSelected && isPendientes;
+        if (!allowsUnassigned) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
           const zonaId = p.zona_nro != null ? Number(p.zona_nro) : null;
           if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
@@ -2442,7 +2492,7 @@ function DashboardContent() {
     base = filterByDelay(base, isPendientes ? pedidosFilters.atraso : []);
     if (isPendientes && pedidosFilters.tipoServicio.length > 0) base = base.filter(p => p.servicio_nombre && pedidosFilters.tipoServicio.includes(p.servicio_nombre));
     if (pedidosFilters.zona !== null) base = base.filter(p => p.zona_nro === pedidosFilters.zona);
-    if (pedidosFilters.movil !== null) base = base.filter(p => Number(p.movil) === pedidosFilters.movil);
+    if (pedidosFilters.movil.length > 0) base = base.filter(p => pedidosFilters.movil.includes(Number(p.movil)));
     if (pedidosFilters.producto !== null) base = base.filter(p => p.producto_nom === pedidosFilters.producto);
     if (pedidosFilters.asignacion === 'con_movil') base = base.filter(p => p.movil && Number(p.movil) !== 0);
     else if (pedidosFilters.asignacion === 'sin_movil') base = base.filter(p => !p.movil || Number(p.movil) === 0);
@@ -2468,8 +2518,11 @@ function DashboardContent() {
     let base = servicesCompletos.filter(s => {
       if (Number(s.estado_nro) !== targetEstado) return false;
       if (!s.movil || Number(s.movil) === 0) {
-        // Mismo gate que pedidosForMap.
-        if (!canVerSinAsignarUnitario || !allMovilesSelected || !isPendientes) return false;
+        // Mismo gate Caso 6 que pedidosForMap (con services).
+        const allowsUnassigned = isPendientes
+          ? canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil')
+          : canVerSinAsignarUnitario && allMovilesSelected && isPendientes;
+        if (!allowsUnassigned) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
           const zonaId = s.zona_nro != null ? Number(s.zona_nro) : null;
           if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
@@ -2490,7 +2543,7 @@ function DashboardContent() {
     base = base.filter(s => !s.latitud || !s.longitud || isInUruguay(s.latitud, s.longitud));
     base = filterByTipoServicio(filterByDelay(base, isPendientes ? servicesFilters.atraso : []), isPendientes ? servicesFilters.tipoServicio : 'all');
     if (servicesFilters.zona !== null) base = base.filter(s => s.zona_nro === servicesFilters.zona);
-    if (servicesFilters.movil !== null) base = base.filter(s => Number(s.movil) === servicesFilters.movil);
+    if (servicesFilters.movil.length > 0) base = base.filter(s => servicesFilters.movil.includes(Number(s.movil)));
     if (servicesFilters.defecto !== null) base = base.filter(s => s.defecto === servicesFilters.defecto);
     if (servicesFilters.asignacion === 'con_movil') base = base.filter(s => s.movil && Number(s.movil) !== 0);
     else if (servicesFilters.asignacion === 'sin_movil') base = base.filter(s => !s.movil || Number(s.movil) === 0);
@@ -2686,6 +2739,7 @@ function DashboardContent() {
   // Callbacks estables para DashboardIndicators ? sin useCallback se crean inline
   // y DashboardIndicators re-renderiza en cada tick de GPS aunque no haya cambiado nada.
   const onSinAsignarClick = useCallback(() => {
+    setPedidosOpenSource('navbar_sin_asignar');
     snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
     setPedidosInitialAsignacion('sin_movil');
@@ -2693,6 +2747,7 @@ function DashboardContent() {
   }, [snapshotPedidosState]);
 
   const onEntregadosClick = useCallback(() => {
+    setPedidosOpenSource('navbar_entregados');
     snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
     setPedidosInitialAsignacion('todos');
@@ -2700,6 +2755,7 @@ function DashboardContent() {
   }, [snapshotPedidosState]);
 
   const onPorcentajeClick = useCallback(() => {
+    setPedidosOpenSource('navbar_entregados');
     snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
     setPedidosInitialAsignacion('todos');
@@ -2898,7 +2954,7 @@ function DashboardContent() {
         closeRanking={() => setIsLeaderboardOpen(false)}
         openTracking={() => setIsTrackingModalOpen(true)}
         closeTracking={() => setIsTrackingModalOpen(false)}
-        openPedidosTable={() => { snapshotPedidosState(); setIsPedidosTableOpen(true); }}
+        openPedidosTable={() => { setPedidosOpenSource('colapsable'); snapshotPedidosState(); setIsPedidosTableOpen(true); }}
         closePedidosTable={() => setIsPedidosTableOpen(false)}
       />
 
@@ -2967,6 +3023,7 @@ function DashboardContent() {
         }}
         onInnerFiltersChange={(f) => setPedidosFilters(prev => ({ ...prev, ...f, atraso: f.atraso as string[] }))}
         externalResetToken={pedidosResetToken}
+        openSource={pedidosOpenSource}
         serverNow={serverNow}
         minutosAntesSa={minutosAntesSa}
       />
@@ -3007,6 +3064,7 @@ function DashboardContent() {
         }}
         onInnerFiltersChange={(f) => setServicesFilters(prev => ({ ...prev, ...f, atraso: f.atraso as string[] }))}
         externalResetToken={servicesResetToken}
+        openSource={servicesOpenSource}
         serverNow={serverNow}
         minutosAntesSa={minutosAntesSa}
       />
@@ -3135,14 +3193,16 @@ function DashboardContent() {
         onStatClick={(movilId, viewMode, stat) => {
           setIsLeaderboardOpen(false);
           setPreFilterMovil(movilId);
-          
+
           if (stat === 'noEntregados') {
             // No entregados = finalizados que no cumplen isPedidoEntregado / isServiceEntregado
             if (viewMode === 'pedidos') {
+              setPedidosOpenSource('movil_individual');
               snapshotPedidosState();
               setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
               setIsPedidosTableOpen(true);
             } else {
+              setServicesOpenSource('movil_individual');
               snapshotServicesState();
               setServicesFilters(prev => ({ ...prev, vista: 'finalizados' }));
               setIsServicesTableOpen(true);
@@ -3150,10 +3210,12 @@ function DashboardContent() {
           } else {
             // Atrasados y Pendientes = vista pendientes
             if (viewMode === 'pedidos') {
+              setPedidosOpenSource('movil_individual');
               snapshotPedidosState();
               setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
               setIsPedidosTableOpen(true);
             } else {
+              setServicesOpenSource('movil_individual');
               snapshotServicesState();
               setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
               setIsServicesTableOpen(true);
@@ -3185,12 +3247,14 @@ function DashboardContent() {
           setPreFilterMovil(undefined);
           const upper = svcFilter.toUpperCase();
           if (upper === 'SERVICE') {
+            setServicesOpenSource('zona_combo');
             snapshotServicesState();
             setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }));
             setIsServicesTableOpen(true);
           } else {
             // PEDIDOS = todos los pedidos (sin filtro por servicio_nombre ? 'all')
             // Un tipo específico (URGENTE/NOCTURNO) se pasa directamente
+            setPedidosOpenSource('zona_combo');
             snapshotPedidosState();
             setPedidosFilters(prev => ({ ...prev, vista: 'pendientes', tipoServicio: upper === 'PEDIDOS' ? [] : (svcFilter ? [svcFilter] : []) }));
             setIsPedidosTableOpen(true);
@@ -3276,8 +3340,8 @@ function DashboardContent() {
                   puntosInteres={puntosInteres}
                   onPuntoInteresClick={handlePuntoInteresClick}
                   onFiltersChange={setMovilesFilters}
-                  onOpenPedidosTable={() => { snapshotPedidosState(); setIsPedidosTableOpen(true); }}
-                  onOpenServicesTable={() => { snapshotServicesState(); setIsServicesTableOpen(true); }}
+                  onOpenPedidosTable={() => { setPedidosOpenSource('colapsable'); snapshotPedidosState(); setIsPedidosTableOpen(true); }}
+                  onOpenServicesTable={() => { setServicesOpenSource('colapsable'); snapshotServicesState(); setIsServicesTableOpen(true); }}
                   pedidosFilters={pedidosFilters}
                   onPedidosFiltersChange={(f) => {
                     setPedidosFilters(f);
@@ -3457,7 +3521,9 @@ function DashboardContent() {
                     ? (zonaId: number) => {
                         // Click en capa "Pedidos/Zona": abre la tabla extendida
                         // filtrada por esta zona + por el valor del combo
-                        // (Pendientes / Sin asignar / Atrasados).
+                        // (Pendientes / Sin asignar / Atrasados). openSource='zona_combo'
+                        // → al cerrar, el colapsable vuelve al estado previo.
+                        setPedidosOpenSource('zona_combo');
                         snapshotPedidosState();
                         setPreFilterZona(zonaId);
                         setPreFilterMovil(undefined);

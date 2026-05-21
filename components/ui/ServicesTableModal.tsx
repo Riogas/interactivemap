@@ -18,7 +18,7 @@ interface Filters {
   search: string;
   atraso: AtrasoFilter[];
   zona: number | null;
-  movil: number | null;
+  movil: number[];        // Caso 5: multi-select
   defecto: string | null;
   soloSinCoords: boolean;
   asignacion: 'todos' | 'con_movil' | 'sin_movil';
@@ -29,7 +29,7 @@ const DEFAULT_FILTERS: Filters = {
   search: '',
   atraso: [],
   zona: null,
-  movil: null,
+  movil: [],
   defecto: null,
   soloSinCoords: false,
   asignacion: 'todos',
@@ -90,6 +90,8 @@ interface ServicesTableModalProps {
   externalFilters?: Filters;
   externalResetToken?: number;
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
+  /** Ver PedidosTableModal.openSource. */
+  openSource?: 'colapsable' | 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' | 'movil_individual';
   scope?: ScopeFilter;
   /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
   serverNow?: Date;
@@ -118,7 +120,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalFilters, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
 
   // Modo controlled vs uncontrolled — ver comentario en PedidosTableModal.
@@ -146,6 +148,21 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
+  const [movilDropdownOpen, setMovilDropdownOpen] = useState(false);
+  const movilDropdownRef = useRef<HTMLDivElement>(null);
+  const movilButtonRef = useRef<HTMLButtonElement>(null);
+  const [movilDropdownPos, setMovilDropdownPos] = useState({ top: 0, left: 0 });
+
+  // Click-outside para cerrar dropdown de movil
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (movilDropdownRef.current && !movilDropdownRef.current.contains(e.target as Node)) {
+        setMovilDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
   const PAGE_SIZE = 50;
 
   // Accept external reset
@@ -161,7 +178,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   useEffect(() => {
     if (preFilterMovil && isOpen) {
       const timer = setTimeout(() => {
-        setFilters(f => ({ ...f, movil: preFilterMovil }));
+        setFilters(f => ({ ...f, movil: [preFilterMovil] }));
         setPage(0);
       }, 600);
       return () => clearTimeout(timer);
@@ -218,26 +235,26 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
 
     // Filtro por móviles / empresa del usuario.
-    // Los finalizados también respetan la restricción de empresas.
+    // openSource controla si se respetan selectedMoviles del colapsable
+    // (ver docs/superpowers/specs/2026-05-21-tabla-extendida-casos.md).
+    const respectColapsableSelection = openSource === 'colapsable';
     if (preFilterMovil || preFilterZona) {
       // Pre-filtro activo — el dropdown interno se encarga.
+    } else if (!respectColapsableSelection) {
+      // Casos 2/3/4: ignora selectedMoviles, muestra todo el scope del usuario.
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
+      // Caso 1: respeta selectedMoviles en pendientes Y finalizados cuando
+      // viene del colapsable. Gate estricto para sin-asignar (rama ya
+      // condicionada a asignacion !== 'sin_movil'; el bypass Caso 6 por
+      // asignacion='sin_movil' lo cubre el filtro arriba).
       result = result.filter(s => {
         if (!s.movil || Number(s.movil) === 0) {
           if (isFinalizados) {
-            // Finalizados sin móvil: solo en modo "Todos" Y para usuarios
-            // privilegiados (despacho/root/supervisor/dashboard). Distribuidores
-            // nunca los ven.
             return allMovilesSelected && privilegedUser;
           }
-          // Pendientes sin asignar: pasa solo si tiene permiso "Ped s/asignar
-          // unitarios" Y modo "Todos" (allMovilesSelected incluye
-          // allEmpresasSelected). Con subset seleccionado, no aplican.
           return canVerSinAsignarUnitario && allMovilesSelected && filters.asignacion !== 'con_movil';
         }
-        // Móviles seleccionados pasan
         if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
-        // Móviles ocultos-pero-operativos: SOLO en modo "Todos".
         if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(s.movil))) return true;
         return false;
       });
@@ -272,7 +289,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
+  }, [services, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
   // Respetamos scope: un distribuidor solo ve sus móviles/zonas/defectos en los dropdowns.
@@ -334,8 +351,9 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       result = result.filter(({ service: s }) => s.zona_nro === filters.zona);
     }
 
-    if (filters.movil !== null) {
-      result = result.filter(({ service: s }) => Number(s.movil) === filters.movil);
+    if (filters.movil.length > 0) {
+      const movilSet = new Set(filters.movil.map(Number));
+      result = result.filter(({ service: s }) => movilSet.has(Number(s.movil)));
     }
 
     if (filters.defecto !== null) {
@@ -415,7 +433,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     return m?.color || '#6B7280';
   }, [moviles]);
 
-  const hasActiveFilters = filters.search || filters.atraso.length > 0 || filters.zona !== null || filters.movil !== null || filters.defecto !== null || filters.soloSinCoords;
+  const hasActiveFilters = filters.search || filters.atraso.length > 0 || filters.zona !== null || filters.movil.length > 0 || filters.defecto !== null || filters.soloSinCoords;
 
   const SortArrow = ({ col }: { col: SortKey }) => {
     if (sortKey !== col) return <span className="text-gray-600 ml-1">↕</span>;
@@ -633,14 +651,69 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                         {uniqueZonas.map(z => <option key={z} value={z}>Zona {z}</option>)}
                       </select>
 
-                      <select
-                        value={filters.movil ?? ''}
-                        onChange={(e) => { setFilters(f => ({ ...f, movil: e.target.value ? Number(e.target.value) : null })); setPage(0); }}
-                        className="bg-gray-800 border border-gray-600/50 rounded-lg text-sm text-gray-200 px-3 py-2 focus:outline-none focus:border-violet-500/50"
-                      >
-                        <option value="">Todos los móviles</option>
-                        {uniqueMoviles.map(m => <option key={m} value={m}>{getMovilName(m)}</option>)}
-                      </select>
+                      {/* Movil multi-select (Caso 5) */}
+                      <div className="relative" ref={movilDropdownRef}>
+                        <button
+                          ref={movilButtonRef}
+                          onClick={() => {
+                            if (!movilDropdownOpen && movilButtonRef.current) {
+                              const r = movilButtonRef.current.getBoundingClientRect();
+                              setMovilDropdownPos({ top: r.bottom + 4, left: r.left });
+                            }
+                            setMovilDropdownOpen(o => !o);
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all ${
+                            filters.movil.length > 0
+                              ? 'bg-violet-500/20 border-violet-500/40 text-violet-300'
+                              : 'bg-gray-800 border-gray-600/50 text-gray-200 hover:border-violet-500/50'
+                          }`}
+                        >
+                          <span>
+                            {filters.movil.length === 0
+                              ? 'Todos los móviles'
+                              : filters.movil.length === 1
+                              ? getMovilName(filters.movil[0])
+                              : `${filters.movil.length} móviles`}
+                          </span>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {movilDropdownOpen && (
+                          <div
+                            className="fixed z-[10050] bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[200px] max-h-[320px] overflow-y-auto py-1"
+                            style={{ top: movilDropdownPos.top, left: movilDropdownPos.left }}
+                          >
+                            <button
+                              onClick={() => { setFilters(f => ({ ...f, movil: [] })); setPage(0); }}
+                              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 ${
+                                filters.movil.length === 0 ? 'text-violet-300 font-medium' : 'text-gray-400'
+                              }`}
+                            >
+                              Todos
+                            </button>
+                            {uniqueMoviles.map(m => (
+                              <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={filters.movil.includes(m)}
+                                  onChange={(e) => {
+                                    setFilters(f => ({
+                                      ...f,
+                                      movil: e.target.checked
+                                        ? [...f.movil, m]
+                                        : f.movil.filter(id => id !== m),
+                                    }));
+                                    setPage(0);
+                                  }}
+                                  className="accent-violet-500"
+                                />
+                                {getMovilName(m)}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
 
                       <select
                         value={filters.defecto ?? ''}

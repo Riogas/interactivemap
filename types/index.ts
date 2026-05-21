@@ -287,7 +287,7 @@ export interface ServiceFilters {
   // Inner table filters (synced to map + collapsible)
   search: string;
   zona: number | null;
-  movil: number | null;
+  movil: number[];              // Caso 5: multi-select bidireccional con selectedMoviles cuando openSource=colapsable
   defecto: string | null;       // "producto" for services
   asignacion: 'todos' | 'con_movil' | 'sin_movil';
   entrega: 'todos' | 'entregados' | 'no_entregados';
@@ -302,7 +302,7 @@ export interface PedidoFilters {
   // Inner table filters (synced to map + collapsible)
   search: string;
   zona: number | null;
-  movil: number | null;
+  movil: number[];        // Caso 5: multi-select bidireccional con selectedMoviles cuando openSource=colapsable
   producto: string | null;
   asignacion: 'todos' | 'con_movil' | 'sin_movil';
   entrega: 'todos' | 'entregados' | 'no_entregados';
