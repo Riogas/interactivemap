@@ -1,0 +1,54 @@
+/**
+ * Tipos compartidos para el snapshot de capacidad por zona.
+ *
+ * Producidos por: GET /api/zonas/capacidad-snapshot
+ * Consumidos por: useZonaCapacidadSnapshot (PR1), SaturacionZonaModal / SaturacionZonasLayer (PR2)
+ *
+ * PR1 crea estos tipos; PR2 los usa para reemplazar el cálculo client-side de saturacionData.
+ */
+
+/**
+ * Pedido sin asignar en versión compacta para el detalle de zona.
+ * Solo se incluye en el response cuando el caller tiene la funcionalidad
+ * "Ped s/asignar x zona".
+ */
+export interface PedidoSinAsignarMini {
+  id: number;
+  cliente: string;
+  fecha: string;
+  direccion_corta: string;
+}
+
+/**
+ * Detalle de un móvil dentro de una zona para el snapshot de capacidad.
+ * - `en_transito`: true si `moviles_zonas.prioridad_o_transito !== 1` para ese (movil, zona, escenario).
+ * - `aporte_a_zona`: el `lote_disponible` de `zonas_cap_entrega` para ese móvil × zona.
+ * - `capacidad_actual`: campo `capacidad` de la tabla `moviles` (pedidos + services en curso).
+ */
+export interface MovilDetalleZona {
+  movil_id: number;
+  lote_asignado: number;
+  en_transito: boolean;
+  capacidad_actual: number;
+  aporte_a_zona: number;
+}
+
+/**
+ * Snapshot consolidado de capacidad para una zona.
+ *
+ * Invariantes:
+ * - `capacidad_total` puede ser negativo (sobrecupo real — sin cap).
+ * - `pedidos_sin_asignar` es 0 cuando el caller NO tiene la funcionalidad.
+ * - `pedidos_sin_asignar_detalle` está AUSENTE (no null) cuando el caller no tiene la funcionalidad.
+ * - El cap a 0 / -9999 es RESPONSABILIDAD DEL CLIENTE (PR2), no del endpoint.
+ */
+export interface ZonaCapSnapshot {
+  zona_id: number;
+  capacidad_total: number;
+  pedidos_sin_asignar: number;
+  /** Solo presente cuando caller tiene funcionalidad "Ped s/asignar x zona". */
+  pedidos_sin_asignar_detalle?: PedidoSinAsignarMini[];
+  moviles_prioridad: number;
+  moviles_transito: number;
+  moviles_detalle: MovilDetalleZona[];
+}
