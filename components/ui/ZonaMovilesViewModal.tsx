@@ -4,6 +4,10 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData } from '@/types';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
+import { useAuth } from '@/contexts/AuthContext';
+import { useServerTime } from '@/hooks/useServerTime';
+import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
+import { determineServicePeriod, parseTimeToDecimal } from '@/lib/horario-servicio';
 
 // ========== Tipos internos ==========
 interface Zona {
@@ -20,9 +24,8 @@ const ESTADOS_TACHADOS = new Set([3, 5, 15]);
 const TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE'] as const;
 /** servicio_nombre / tipo_de_servicio values que corresponden a "PEDIDOS" */
 const PEDIDOS_SERVICES = new Set(['URGENTE', 'NOCTURNO']);
-/** Sub-filtros disponibles dentro de PEDIDOS */
+/** Sub-filtros disponibles dentro de PEDIDOS (sin "Todos") */
 const PEDIDOS_SUB_OPTIONS = [
-  { value: 'TODOS', label: 'Todos' },
   { value: 'URGENTE', label: 'Urgente' },
   { value: 'NOCTURNO', label: 'Nocturno' },
 ] as const;
@@ -68,11 +71,24 @@ export default function ZonaMovilesViewModal({
   scopedZonaIds = null,
   scopedEmpresas = null,
 }: ZonaMovilesViewModalProps) {
+  const { escenarioId } = useAuth();
+  const { serverNow } = useServerTime();
+  const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
+
+  const aplicaNocturno = escenarioSettings?.aplicaServNocturno ?? true;
+  const nightStart = parseTimeToDecimal(escenarioSettings?.horaIniNocturno ?? null);
+  const dayStart = parseTimeToDecimal(escenarioSettings?.horaFinNocturno ?? null);
+
+  /** Calculates the default sub-filter based on current server time and escenario settings. */
+  const calcDefaultSubFilter = useCallback((): 'URGENTE' | 'NOCTURNO' => {
+    return determineServicePeriod(serverNow, aplicaNocturno, nightStart, dayStart);
+  }, [serverNow, aplicaNocturno, nightStart, dayStart]);
+
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loadingZonas, setLoadingZonas] = useState(false);
   const [selectedZonaId, setSelectedZonaId] = useState<number | null>(null);
   const [serviceFilter, setServiceFilter] = useState<string>('PEDIDOS');
-  const [pedidosSubFilter, setPedidosSubFilter] = useState<'TODOS' | 'URGENTE' | 'NOCTURNO'>('TODOS');
+  const [pedidosSubFilter, setPedidosSubFilter] = useState<'URGENTE' | 'NOCTURNO'>('URGENTE');
 
   // ========== Datos internos de moviles_zonas (fetch propio si prop viene vacío) ==========
   const [internalMzData, setInternalMzData] = useState<MovilZonaRecord[]>([]);
@@ -86,12 +102,21 @@ export default function ZonaMovilesViewModal({
   // sub-combo no se ve hasta que el usuario togglea el combo principal.
   // Mapeo: 'SERVICE' → 'SERVICE'; cualquier otro valor (incluyendo URGENTE /
   // NOCTURNO / 'all') → 'PEDIDOS', porque urgente y nocturno son tipos dentro
-  // de PEDIDOS. El sub-filtro arranca en 'TODOS' (default) y queda al usuario.
+  // de PEDIDOS. El sub-filtro se calcula por hora actual al abrir.
   useEffect(() => {
     if (!isOpen || !initialServiceFilter) return;
     const upper = initialServiceFilter.toUpperCase();
     setServiceFilter(upper === 'SERVICE' ? 'SERVICE' : 'PEDIDOS');
   }, [isOpen, initialServiceFilter]);
+
+  // Al abrir el modal, calcular el default del sub-filtro por hora actual.
+  // No recalcular en cada tick de serverNow — solo al abrir para no pisar
+  // el valor que el usuario eligió manualmente.
+  useEffect(() => {
+    if (!isOpen) return;
+    setPedidosSubFilter(calcDefaultSubFilter());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // calcDefaultSubFilter excluido intencionalmente — solo recalcular al abrir
 
   // ========== Fetch zonas + moviles_zonas (si prop está vacío) ==========
   const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '';
@@ -158,7 +183,7 @@ export default function ZonaMovilesViewModal({
 
   // ========== Mapa movil_id → estadoNro (desde API, cubre TODOS los moviles) ==========
   const [allMovilEstados, setAllMovilEstados] = useState<Map<string, number>>(new Map());
-  
+
   useEffect(() => {
     if (!isOpen) return;
     fetch('/api/moviles-extended')
@@ -188,33 +213,30 @@ export default function ZonaMovilesViewModal({
     return m;
   }, [moviles, allMovilEstados]);
 
-  // Reset sub-filtro al cambiar el tipo de servicio principal
+  // Al cambiar el combo principal de PEDIDOS ↔ SERVICE y volver a PEDIDOS,
+  // recalcular el sub-filtro por hora actual.
   useEffect(() => {
-    setPedidosSubFilter('TODOS');
+    if (serviceFilter === 'PEDIDOS') {
+      setPedidosSubFilter(calcDefaultSubFilter());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceFilter]);
+  // Note: calcDefaultSubFilter excluido intencionalmente — recalcular solo
+  // cuando el usuario cambia el combo principal, no en cada tick de serverNow.
 
   // ========== Filtrar registros por tipo de servicio ==========
   const filteredData = useMemo(() => {
     const upper = serviceFilter.toUpperCase();
-    let records = effectiveMzData.filter(mz => {
-      const svc = (mz.tipo_de_servicio || '').toUpperCase();
-      if (upper === 'PEDIDOS') {
-        if (pedidosSubFilter !== 'TODOS') return svc === pedidosSubFilter;
-        return PEDIDOS_SERVICES.has(svc);
-      }
-      return svc === upper;
-    });
-    // Deduplicar cuando PEDIDOS TODOS: un móvil puede estar en URGENTE y NOCTURNO → mostrar solo una vez
-    if (upper === 'PEDIDOS' && pedidosSubFilter === 'TODOS') {
-      const seen = new Set<string>();
-      records = records.filter(mz => {
-        const key = `${mz.zona_id}|${mz.movil_id}|${mz.prioridad_o_transito}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
+    if (upper === 'PEDIDOS') {
+      return effectiveMzData.filter(mz => {
+        const svc = (mz.tipo_de_servicio || '').toUpperCase();
+        return svc === pedidosSubFilter;
       });
     }
-    return records;
+    return effectiveMzData.filter(mz => {
+      const svc = (mz.tipo_de_servicio || '').toUpperCase();
+      return svc === upper;
+    });
   }, [effectiveMzData, serviceFilter, pedidosSubFilter]);
 
   // ========== Asignaciones por zona (desde filteredData) ==========
@@ -256,7 +278,7 @@ export default function ZonaMovilesViewModal({
     if (!isOpen) {
       setSelectedZonaId(null);
       setServiceFilter('PEDIDOS');
-      setPedidosSubFilter('TODOS');
+      // Sub-filter se recalcula al próximo open via el effect de isOpen
       setInternalMzData([]);
     }
   }, [isOpen]);
@@ -337,7 +359,7 @@ export default function ZonaMovilesViewModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
           <motion.div
@@ -378,8 +400,13 @@ export default function ZonaMovilesViewModal({
                 {serviceFilter === 'PEDIDOS' && (
                   <select
                     value={pedidosSubFilter}
-                    onChange={(e) => setPedidosSubFilter(e.target.value as 'TODOS' | 'URGENTE' | 'NOCTURNO')}
-                    className="bg-gray-800 border border-gray-600/50 rounded-lg text-sm text-gray-200 px-3 py-1.5 focus:outline-none focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/20"
+                    onChange={(e) => setPedidosSubFilter(e.target.value as 'URGENTE' | 'NOCTURNO')}
+                    disabled={!aplicaNocturno}
+                    className={`bg-gray-800 border rounded-lg text-sm text-gray-200 px-3 py-1.5 focus:outline-none focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/20 ${
+                      !aplicaNocturno
+                        ? 'border-gray-700/40 opacity-60 cursor-not-allowed'
+                        : 'border-gray-600/50'
+                    }`}
                   >
                     {PEDIDOS_SUB_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -425,7 +452,7 @@ export default function ZonaMovilesViewModal({
                       const isSelected = zona.zona_id === selectedZonaId;
                       const count = countPorZona(zona.zona_id);
                       const zonaColor = getZonaColor(index);
-                      
+
                       return (
                         <button
                           key={zona.zona_id}
@@ -504,7 +531,7 @@ export default function ZonaMovilesViewModal({
             {/* ========== Footer ========== */}
             <div className="flex items-center justify-between px-6 py-3 border-t border-gray-700/50 bg-gray-900/80">
               <div className="text-xs text-gray-500">
-                {filteredData.length} asignación{filteredData.length !== 1 ? 'es' : ''} ({serviceFilter})
+                {filteredData.length} asignación{filteredData.length !== 1 ? 'es' : ''} ({serviceFilter} / {pedidosSubFilter})
               </div>
               <button
                 onClick={onClose}
