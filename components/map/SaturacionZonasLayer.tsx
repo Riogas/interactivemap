@@ -77,15 +77,22 @@ function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, num
   return [cy * f, cx * f];
 }
 
-
+/**
+ * Opacidad para el polígono según capEntrega (con nueva escala de ratio).
+ * -1000 = sin datos (gris, muy transparente).
+ * -999  = sin cobertura (rojo/naranja, opaco).
+ * negativo real → saturado (opaco).
+ * 0    → lleno (65%).
+ * positivo → más libre = más transparente.
+ */
 function getCapEntregaOpacity(capEntrega: number): number {
-  if (capEntrega === -999) return 0.70; // sin cobertura
+  if (capEntrega === -999)  return 0.70; // sin cobertura
   if (capEntrega === -1000) return 0.15; // gris sin datos
-  if (capEntrega < 0)  return 0.70;
-  if (capEntrega === 0) return 0.65;
-  if (capEntrega === 1) return 0.55;
-  if (capEntrega <= 3)  return 0.50;
-  return 0.40; // >3 verde claro
+  if (capEntrega < 0)       return 0.70; // sobrecupo
+  if (capEntrega === 0)     return 0.65;
+  if (capEntrega <= 2)      return 0.55;
+  if (capEntrega <= 5)      return 0.45;
+  return 0.35; // amplio sobrante → muy transparente
 }
 
 function adjustOpacity(base: number, zonaOpacity: number): number {
@@ -125,11 +132,11 @@ function SaturacionLegend({
           : '';
         div.innerHTML = `
           <div class="demora-legend-title">Cap. Entrega</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#21', visualRefs)}"></span><span class="demora-legend-label">Sin Cap. (&lt; 0)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#21</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#22', visualRefs)}"></span><span class="demora-legend-label">0 (capacidad máx.)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#22</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#23', visualRefs)}"></span><span class="demora-legend-label">1</span><span class="demora-legend-ref" title="Click para editar este color">Ref#23</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#24', visualRefs)}"></span><span class="demora-legend-label">2 – 3</span><span class="demora-legend-ref" title="Click para editar este color">Ref#24</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#25', visualRefs)}"></span><span class="demora-legend-label">&gt; 3 (sobrante)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#25</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">Holgura alta (&gt; 50%)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#84cc16"></span><span class="demora-legend-label">Holgura baja (0–50%)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">Capacidad exacta (0%)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">Sobrecupo leve (0–50%)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">Sobrecupo alto (&gt; 50%)</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#26', visualRefs)}"></span><span class="demora-legend-label">Sin datos</span><span class="demora-legend-ref" title="Click para editar este color">Ref#26</span></div>
           ${toggleHtml}
         `;
@@ -252,11 +259,11 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
         `Cap. libre (prorat.): <b>${s.capacidadDisponible.toFixed(1)}</b>`,
         capEntrega === -999 ? 'Sin cobertura (0 moviles)'
           : capEntrega === -1000 ? '— Sin datos'
-          : `Cap. Entrega: <b>${capEntrega < 0 ? capEntrega : capEntrega}</b>`,
+          : `Cap. Entrega: <b>${capEntrega}</b>`,
         s.movilesCompartidos > 0 ? '<i style="color:#6b7280;font-size:10px">Capacidad con prorrateo por zonas compartidas</i>' : '',
       ].filter(Boolean);
 
-      // Mostrar label siempre excepto para casos sin datos y valores muy positivos (>3 solo numero)
+      // Mostrar label siempre excepto para sin datos
       const showLabel = capEntrega !== -1000;
 
       return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity, tooltipHTML: tooltipLines.join('<br/>') };

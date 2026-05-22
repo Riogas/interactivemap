@@ -15,91 +15,173 @@ function makeStats(overrides: Partial<SaturacionZonaStats> = {}): SaturacionZona
   };
 }
 
-describe('getCapEntregaColor', () => {
-  describe('capEntrega < 0 (calculo real, no sentinel)', () => {
-    const negativeCases = [-1, -5, -100];
+// ─────────────────────────────────────────────────────────────────────────────
+// Nueva escala de color: ratio = capacidadDisponible / max(capacidadTotal, 1)
+//  ratio > 0.5  → verde fuerte  #22c55e
+//  0 < ratio <= 0.5 → verde-amarillo #84cc16
+//  ratio = 0    → amarillo #eab308
+//  -0.5 <= ratio < 0 → naranja #f97316  (solo con feature / isPrivileged)
+//  ratio < -0.5 → rojo #ef4444          (solo con feature / isPrivileged)
+// ─────────────────────────────────────────────────────────────────────────────
 
-    negativeCases.forEach((capEntrega) => {
-      const sinAsignar = Math.abs(capEntrega) + 5;
-      const capacidadDisponible = 5;
-      // capEntrega = capacidadDisponible - sinAsignar = 5 - (|capEntrega|+5) = -|capEntrega|
-      const stats = makeStats({ sinAsignar, capacidadDisponible, movilesEnZona: 2 });
+describe('getCapEntregaColor — nueva escala de ratio', () => {
 
-      it(`isPrivileged=true, capEntrega=${capEntrega} -> label "${capEntrega}"`, () => {
-        const result = getCapEntregaColor(stats, true);
-        expect(result.label).toBe(String(capEntrega));
-        expect(result.color).toBe('#92400e');
-        expect(result.capEntrega).toBe(capEntrega);
-      });
+  describe('sentinel -1000: sin moviles + sin pedidos (sin datos)', () => {
+    const stats = makeStats({ movilesEnZona: 0, sinAsignar: 0 });
 
-      it(`isPrivileged=false, capEntrega=${capEntrega} -> label "Sin Cap."`, () => {
-        const result = getCapEntregaColor(stats, false);
-        expect(result.label).toBe('Sin Cap.');
-        expect(result.color).toBe('#92400e');
-        expect(result.capEntrega).toBe(capEntrega);
-      });
+    it('isPrivileged=true -> label "—", gris', () => {
+      const result = getCapEntregaColor(stats, true);
+      expect(result.label).toBe('—');
+      expect(result.capEntrega).toBe(-1000);
+    });
+
+    it('isPrivileged=false -> label "—", gris', () => {
+      const result = getCapEntregaColor(stats, false);
+      expect(result.label).toBe('—');
+      expect(result.capEntrega).toBe(-1000);
     });
   });
 
   describe('sentinel -999: sin moviles + pedidos pendientes', () => {
     const stats = makeStats({ movilesEnZona: 0, sinAsignar: 5 });
 
-    it('isPrivileged=true -> label "Sin Cap." (sentinel, no se muestra numero)', () => {
+    it('isPrivileged=true -> label "Sin Cap.", capEntrega=-999', () => {
       const result = getCapEntregaColor(stats, true);
       expect(result.label).toBe('Sin Cap.');
       expect(result.capEntrega).toBe(-999);
-      expect(result.color).toBe('#92400e');
     });
 
-    it('isPrivileged=false -> label "Sin Cap."', () => {
+    it('isPrivileged=false -> label "Sin Cap.", capEntrega=-999', () => {
       const result = getCapEntregaColor(stats, false);
       expect(result.label).toBe('Sin Cap.');
       expect(result.capEntrega).toBe(-999);
     });
   });
 
-  describe('sentinel -1000: sin moviles + sin pedidos (sin datos)', () => {
-    const stats = makeStats({ movilesEnZona: 0, sinAsignar: 0 });
+  describe('ratio > 0.5 → verde fuerte (#22c55e)', () => {
+    // capacidadDisponible=8, capacidadTotal=10 → ratio=0.8 > 0.5
+    const stats = makeStats({ capacidadDisponible: 8, capacidadTotal: 10, sinAsignar: 0, movilesEnZona: 2 });
 
-    it('isPrivileged=true -> label "—"', () => {
+    it('isPrivileged=true -> verde fuerte', () => {
       const result = getCapEntregaColor(stats, true);
-      expect(result.label).toBe('—');
-      expect(result.capEntrega).toBe(-1000);
-      expect(result.color).toBe('#d1d5db');
+      expect(result.color).toBe('#22c55e');
+      expect(result.capEntrega).toBe(8);
     });
 
-    it('isPrivileged=false -> label "—"', () => {
+    it('isPrivileged=false -> verde fuerte (cap no afecta positivos)', () => {
       const result = getCapEntregaColor(stats, false);
-      expect(result.label).toBe('—');
-      expect(result.capEntrega).toBe(-1000);
+      expect(result.color).toBe('#22c55e');
     });
   });
 
-  describe('capEntrega >= 0 (bandas positivas, isPrivileged no afecta label)', () => {
-    it('capEntrega=0 -> rojo label "0"', () => {
-      const stats = makeStats({ capacidadDisponible: 3, sinAsignar: 3 });
-      expect(getCapEntregaColor(stats, true)).toMatchObject({ color: '#ef4444', label: '0', capEntrega: 0 });
-      expect(getCapEntregaColor(stats, false)).toMatchObject({ color: '#ef4444', label: '0', capEntrega: 0 });
+  describe('0 < ratio <= 0.5 → verde-amarillo (#84cc16)', () => {
+    // capacidadDisponible=3, capacidadTotal=10 → ratio=0.3, en [0, 0.5]
+    const stats = makeStats({ capacidadDisponible: 3, capacidadTotal: 10, sinAsignar: 0, movilesEnZona: 2 });
+
+    it('isPrivileged=true -> verde-amarillo', () => {
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#84cc16');
+      expect(result.capEntrega).toBe(3);
+    });
+  });
+
+  describe('ratio = 0 → amarillo (#eab308)', () => {
+    // capacidadDisponible=0, capacidadTotal=10 → ratio=0
+    const stats = makeStats({ capacidadDisponible: 0, capacidadTotal: 10, sinAsignar: 0, movilesEnZona: 2 });
+
+    it('isPrivileged=true -> amarillo, label "0"', () => {
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#eab308');
+      expect(result.label).toBe('0');
+      expect(result.capEntrega).toBe(0);
     });
 
-    it('capEntrega=1 -> naranja label "1"', () => {
-      const stats = makeStats({ capacidadDisponible: 4, sinAsignar: 3 });
-      expect(getCapEntregaColor(stats, true)).toMatchObject({ color: '#f97316', label: '1', capEntrega: 1 });
+    it('isPrivileged=false -> amarillo (ratio 0, no negativo)', () => {
+      const result = getCapEntregaColor(stats, false);
+      expect(result.color).toBe('#eab308');
+    });
+  });
+
+  describe('-0.5 <= ratio < 0 → naranja (#f97316) — solo con feature', () => {
+    // capacidadDisponible=-3, capacidadTotal=10 → ratio=-0.3, en [-0.5, 0)
+    // Solo visible con isPrivileged=true (sin feature, se capea a 0)
+    const stats = makeStats({ capacidadDisponible: -3, capacidadTotal: 10, sinAsignar: 0, movilesEnZona: 2 });
+
+    it('isPrivileged=true -> naranja', () => {
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#f97316');
+      expect(result.capEntrega).toBe(-3);
     });
 
-    it('capEntrega=2 -> amarillo label "2"', () => {
-      const stats = makeStats({ capacidadDisponible: 5, sinAsignar: 3 });
-      expect(getCapEntregaColor(stats, true)).toMatchObject({ color: '#eab308', label: '2', capEntrega: 2 });
+    it('isPrivileged=false -> color claro (capeado a 0, ratio=0 → amarillo)', () => {
+      const result = getCapEntregaColor(stats, false);
+      // Con isPrivileged=false, capacidadDisponible se capea a max(-3,0)=0 → ratio=0 → amarillo
+      expect(result.color).toBe('#eab308');
+    });
+  });
+
+  describe('ratio < -0.5 → rojo (#ef4444) — solo con feature', () => {
+    // capacidadDisponible=-8, capacidadTotal=10 → ratio=-0.8 < -0.5
+    const stats = makeStats({ capacidadDisponible: -8, capacidadTotal: 10, sinAsignar: 0, movilesEnZona: 2 });
+
+    it('isPrivileged=true -> rojo', () => {
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#ef4444');
+      expect(result.capEntrega).toBe(-8);
     });
 
-    it('capEntrega=3 -> amarillo label "3"', () => {
-      const stats = makeStats({ capacidadDisponible: 6, sinAsignar: 3 });
-      expect(getCapEntregaColor(stats, true)).toMatchObject({ color: '#eab308', label: '3', capEntrega: 3 });
+    it('isPrivileged=false -> amarillo (capeado a 0, ratio=0)', () => {
+      const result = getCapEntregaColor(stats, false);
+      expect(result.color).toBe('#eab308');
+    });
+  });
+
+  describe('sinAsignar afecta capEntrega pero NO el ratio del color', () => {
+    // capacidadDisponible=8 → ratio=0.8 → verde fuerte
+    // sinAsignar=3 → capEntrega=8-3=5 (label "5"), pero color sigue verde fuerte
+    const stats = makeStats({ capacidadDisponible: 8, capacidadTotal: 10, sinAsignar: 3, movilesEnZona: 2 });
+
+    it('isPrivileged=true -> verde fuerte, label "5"', () => {
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#22c55e');
+      expect(result.capEntrega).toBe(5); // 8 - 3
+      expect(result.label).toBe('5');
     });
 
-    it('capEntrega=10 -> verde claro label "10"', () => {
-      const stats = makeStats({ capacidadDisponible: 13, sinAsignar: 3 });
-      expect(getCapEntregaColor(stats, true)).toMatchObject({ color: '#86efac', label: '10', capEntrega: 10 });
+    it('isPrivileged=false -> verde fuerte, sinAsignar ignorado (0)', () => {
+      const result = getCapEntregaColor(stats, false);
+      expect(result.color).toBe('#22c55e');
+      expect(result.capEntrega).toBe(8); // sinAsignar=0 para no-privilegiado → 8-0=8
+    });
+  });
+
+  describe('getCapEntregaColor — 5 bandas de ratio completas', () => {
+    it('ratio exactamente 0.5 → verde-amarillo (boundary incluido en [0, 0.5])', () => {
+      // capacidadDisponible=5, capacidadTotal=10 → ratio=0.5 → verde-amarillo
+      const stats = makeStats({ capacidadDisponible: 5, capacidadTotal: 10, movilesEnZona: 2 });
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#84cc16');
+    });
+
+    it('ratio=0.51 → verde fuerte', () => {
+      // capacidadDisponible=6, capacidadTotal=10 → ratio=0.6 → verde fuerte
+      const stats = makeStats({ capacidadDisponible: 6, capacidadTotal: 10, movilesEnZona: 2 });
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#22c55e');
+    });
+
+    it('ratio=-0.5 → naranja (boundary inferior de naranja)', () => {
+      // capacidadDisponible=-5, capacidadTotal=10 → ratio=-0.5 → naranja
+      const stats = makeStats({ capacidadDisponible: -5, capacidadTotal: 10, movilesEnZona: 2 });
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#f97316');
+    });
+
+    it('ratio=-0.51 → rojo', () => {
+      // capacidadDisponible=-6, capacidadTotal=10 → ratio=-0.6 → rojo
+      const stats = makeStats({ capacidadDisponible: -6, capacidadTotal: 10, movilesEnZona: 2 });
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#ef4444');
     });
   });
 });
