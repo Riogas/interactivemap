@@ -30,6 +30,7 @@ interface Pedido {
   fch_hora_finalizacion?: string | null;
   pedido_hijo?: number | null;
   producto_cod?: string | null;
+  atraso_cump_mins?: number | null;
 }
 interface Service {
   service_id: number;
@@ -384,6 +385,10 @@ function StatsContent() {
   // Theme dark/light. Default dark (era el unico valor antes). Persistencia
   // en localStorage scoped a esta pantalla — toggle solo afecta /dashboard/stats.
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  // Modal states para las 3 tarjetas de porcentaje por entidad
+  const [modalEmpresa, setModalEmpresa] = useState(false);
+  const [modalMoviles, setModalMoviles] = useState(false);
+  const [modalZona, setModalZona] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const saved = window.localStorage.getItem('stats-theme');
@@ -865,6 +870,24 @@ function StatsContent() {
     return { total, muyAtrasado, atrasado, limiteCercana, enHora, sinHora, pctAtraso };
   }, [filteredPedidos]);
 
+  // ─── Atrasos por pedidos entregados (rangos de cumplimiento) ─────────────────────────
+  const atrasosEntregadosStats = useMemo(() => {
+    const entregados = filteredPedidos.filter(p => isPedidoEntregado(p) && !p.pedido_hijo);
+    let rango1a15 = 0, rango15a30 = 0, rango30a60 = 0, rango60mas = 0, sinDato = 0;
+    entregados.forEach(p => {
+      const min = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+      if (min === null) { sinDato++; return; }
+      if (min <= 0) { sinDato++; return; } // en hora o anticipado: sin atraso
+      if (min <= 15) rango1a15++;
+      else if (min <= 30) rango15a30++;
+      else if (min <= 60) rango30a60++;
+      else rango60mas++;
+    });
+    const total = entregados.length;
+    const conAtraso = rango1a15 + rango15a30 + rango30a60 + rango60mas;
+    return { total, rango1a15, rango15a30, rango30a60, rango60mas, sinDato, conAtraso };
+  }, [filteredPedidos]);
+
   // ─── Móviles con más entregas ──────────────────────────────────────────────
   const movilesTop = useMemo((): StackRow[] => {
     const map: Record<string, { entregados: number; noEntregados: number; pendientes: number }> = {};
@@ -1313,20 +1336,114 @@ function StatsContent() {
           {/* ── Gráficos ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stats-section-enter" style={{ animationDelay: '180ms' }}>
 
-            {/* Pedidos por hora */}
+            {/* Atrasos de pedidos pendientes — primera tarjeta, fila 1 */}
+            <ExpandableCard title="Atrasos de pedidos pendientes" icon="alert">
+              <p className="text-xs mb-4 text-stats-muted-fg dark:text-gray-500">{atrasosStats.total} pendientes en total</p>
+
+              {/* % general con atraso */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-stats-muted-fg dark:text-gray-400">Con atraso</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold tabular-nums font-stats-mono" style={{ color: atrasosStats.pctAtraso >= 50 ? 'var(--color-stats-destructive)' : atrasosStats.pctAtraso >= 20 ? 'var(--color-stats-warning)' : 'var(--color-stats-success)' }}>
+                    {atrasosStats.pctAtraso}%
+                  </span>
+                  <span className="text-xs tabular-nums text-stats-muted-fg/80 dark:text-gray-500">({atrasosStats.muyAtrasado + atrasosStats.atrasado})</span>
+                </div>
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden mb-4 bg-stats-surface-2 dark:bg-white/10">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${atrasosStats.pctAtraso}%`,
+                    background: atrasosStats.pctAtraso >= 50 ? 'var(--color-stats-destructive)' : atrasosStats.pctAtraso >= 20 ? 'var(--color-stats-warning)' : 'var(--color-stats-success)',
+                  }}
+                />
+              </div>
+
+              {/* Categorías pendientes */}
+              <div className="space-y-2.5 text-xs">
+                {[
+                  { label: 'Muy Atrasado', value: atrasosStats.muyAtrasado, cssVar: 'var(--color-stats-destructive)', dot: 'bg-stats-destructive' },
+                  { label: 'Atrasado', value: atrasosStats.atrasado, cssVar: '#f472b6', dot: 'bg-pink-400' },
+                  { label: 'Límite Cercana', value: atrasosStats.limiteCercana, cssVar: 'var(--color-stats-warning)', dot: 'bg-stats-warning' },
+                  { label: 'En Hora', value: atrasosStats.enHora, cssVar: 'var(--color-stats-success)', dot: 'bg-stats-success' },
+                  { label: 'Sin Hora', value: atrasosStats.sinHora, cssVar: 'var(--color-stats-neutral)', dot: 'bg-stats-neutral' },
+                ].map(cat => (
+                  <div key={cat.label} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cat.dot}`} />
+                      <span className="text-stats-foreground/85 dark:text-gray-300">{cat.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: atrasosStats.total > 0 ? `${Math.round((cat.value / atrasosStats.total) * 100)}%` : '0%',
+                            background: cat.cssVar,
+                          }}
+                        />
+                      </div>
+                      <span className="font-semibold tabular-nums font-stats-mono w-6 text-right text-stats-foreground dark:text-white">{cat.value}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Sub-sección: Atrasos por pedidos entregados */}
+              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
+                <h4 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-muted-fg dark:text-gray-400">
+                  Atrasos por pedidos entregados
+                </h4>
+                {atrasosEntregadosStats.conAtraso === 0 ? (
+                  <p className="text-xs text-stats-muted-fg dark:text-gray-500 italic">Sin atrasos registrados en entregados</p>
+                ) : (
+                  <div className="space-y-2.5 text-xs">
+                    {[
+                      { label: '1 a 15 min', value: atrasosEntregadosStats.rango1a15, cssVar: 'var(--color-stats-warning)', dot: 'bg-stats-warning' },
+                      { label: '15 a 30 min', value: atrasosEntregadosStats.rango15a30, cssVar: '#f97316', dot: 'bg-orange-400' },
+                      { label: '30 a 60 min', value: atrasosEntregadosStats.rango30a60, cssVar: '#f472b6', dot: 'bg-pink-400' },
+                      { label: '60+ min', value: atrasosEntregadosStats.rango60mas, cssVar: 'var(--color-stats-destructive)', dot: 'bg-stats-destructive' },
+                    ].map(rango => (
+                      <div key={rango.label} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${rango.dot}`} />
+                          <span className="text-stats-foreground/85 dark:text-gray-300">{rango.label}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-1 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: atrasosEntregadosStats.conAtraso > 0 ? `${Math.round((rango.value / atrasosEntregadosStats.conAtraso) * 100)}%` : '0%',
+                                background: rango.cssVar,
+                              }}
+                            />
+                          </div>
+                          <span className="font-semibold tabular-nums font-stats-mono w-6 text-right text-stats-foreground dark:text-white">{rango.value}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-stats-muted-fg/60 dark:text-gray-600 mt-2">
+                  {atrasosEntregadosStats.total} entregados totales · {atrasosEntregadosStats.conAtraso} con atraso registrado
+                </p>
+              </div>
+            </ExpandableCard>
+
+            {/* Pedidos por hora — fila 1, segunda tarjeta */}
             {pedidosPorHora.length > 0 && (
               <ExpandableCard title="Pedidos por hora" icon="clock">
                 <BarChart data={pedidosPorHora} colorClass="bg-stats-info" />
               </ExpandableCard>
             )}
 
-            {/* Estados de pedidos */}
+            {/* Estados de pedidos — fila 1, tercera tarjeta */}
             {estadosPedidos.length > 0 && (
               <ExpandableCard title="Pedidos por estado" icon="grid">
                 <div className="space-y-4">
                   {estadosPedidos.map(estado => {
-                    // Color semantico de la barra segun el estado.
-                    // Finalizado → success; Pendiente → info; Cancelado/Anulado → destructive; resto → neutral.
                     const labelUpper = (estado.label || '').toUpperCase();
                     const estadoBarColor =
                       labelUpper.includes('FINALIZ') || labelUpper.includes('ENTREGA') ? 'var(--color-stats-success)' :
@@ -1335,7 +1452,6 @@ function StatsContent() {
                       'var(--color-stats-neutral)';
                     return (
                     <div key={estado.label}>
-                      {/* Barra principal de estado */}
                       <div className="flex justify-between items-baseline gap-2 text-xs mb-0.5">
                         <span className="font-semibold text-stats-foreground/90 dark:text-gray-200">{estado.label}</span>
                         <span className="font-bold tabular-nums font-stats-mono text-stats-foreground dark:text-white flex items-baseline gap-1">
@@ -1352,7 +1468,6 @@ function StatsContent() {
                           }}
                         />
                       </div>
-                      {/* Sub-estados desglosados */}
                       <div className="pl-3 border-l border-stats-border dark:border-white/10 space-y-1.5">
                         {estado.subEstados.map(sub => (
                           <div key={sub.label}>
@@ -1382,93 +1497,102 @@ function StatsContent() {
               </ExpandableCard>
             )}
 
-            {/* Pedidos por empresa */}
-            {pedidosPorEmpresa.length > 0 && (
-              <ExpandableCard
-                title="Pedidos por empresa"
-                icon="building"
-                expandedChildren={<StackedBarChart data={pedidosPorEmpresa} expanded />}
-              >
-                <StackedBarChart data={pedidosPorEmpresa.slice(0, 10)} />
-              </ExpandableCard>
-            )}
-
-            {/* Top móviles */}
-            {movilesTop.length > 0 && (
-              <ExpandableCard
-                title="Top móviles por entregas"
-                icon="truck"
-                expandedChildren={<StackedBarChart data={movilesTop} expanded />}
-              >
-                <StackedBarChart data={movilesTop.slice(0, 10)} />
-              </ExpandableCard>
-            )}
-
-            {/* Pedidos por zona */}
-            {pedidosPorZona.length > 0 && (
-              <ExpandableCard
-                title="Pedidos por zona"
-                icon="pin"
-                expandedChildren={<StackedBarChart data={pedidosPorZona} expanded />}
-              >
-                <StackedBarChart data={pedidosPorZona.slice(0, 12)} />
-              </ExpandableCard>
-            )}
-
-            {/* Atrasos de pedidos */}
-            <ExpandableCard title="Atrasos de pedidos pendientes" icon="alert">
-              <p className="text-xs mb-4 text-stats-muted-fg dark:text-gray-500">{atrasosStats.total} pendientes en total</p>
-
-              {/* % general con atraso */}
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-stats-muted-fg dark:text-gray-400">Con atraso</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold tabular-nums font-stats-mono" style={{ color: atrasosStats.pctAtraso >= 50 ? 'var(--color-stats-destructive)' : atrasosStats.pctAtraso >= 20 ? 'var(--color-stats-warning)' : 'var(--color-stats-success)' }}>
-                    {atrasosStats.pctAtraso}%
-                  </span>
-                  <span className="text-xs tabular-nums text-stats-muted-fg/80 dark:text-gray-500">({atrasosStats.muyAtrasado + atrasosStats.atrasado})</span>
-                </div>
+            {/* Top móviles por entregas — fila 2, botón lazy */}
+            <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-stats-info">{CARD_ICONS.truck}</span>
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200">Top móviles por entregas</h3>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden mb-4 bg-stats-surface-2 dark:bg-white/10">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{
-                    width: `${atrasosStats.pctAtraso}%`,
-                    background: atrasosStats.pctAtraso >= 50 ? 'var(--color-stats-destructive)' : atrasosStats.pctAtraso >= 20 ? 'var(--color-stats-warning)' : 'var(--color-stats-success)',
-                  }}
-                />
-              </div>
-
-              {/* Categorías */}
-              <div className="space-y-2.5 text-xs">
-                {[
-                  { label: 'Muy Atrasado', value: atrasosStats.muyAtrasado, cssVar: 'var(--color-stats-destructive)', dot: 'bg-stats-destructive' },
-                  { label: 'Atrasado', value: atrasosStats.atrasado, cssVar: '#f472b6', dot: 'bg-pink-400' },
-                  { label: 'Límite Cercana', value: atrasosStats.limiteCercana, cssVar: 'var(--color-stats-warning)', dot: 'bg-stats-warning' },
-                  { label: 'En Hora', value: atrasosStats.enHora, cssVar: 'var(--color-stats-success)', dot: 'bg-stats-success' },
-                  { label: 'Sin Hora', value: atrasosStats.sinHora, cssVar: 'var(--color-stats-neutral)', dot: 'bg-stats-neutral' },
-                ].map(cat => (
-                  <div key={cat.label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cat.dot}`} />
-                      <span className="text-stats-foreground/85 dark:text-gray-300">{cat.label}</span>
+              <p className="text-xs text-stats-muted-fg dark:text-gray-400 mb-4">
+                {movilesTop.length} móviles con actividad. El gráfico se carga al solicitarlo.
+              </p>
+              <button
+                onClick={() => setModalMoviles(true)}
+                className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+              >
+                Mostrar gráficos por móvil
+              </button>
+              {modalMoviles && (
+                <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setModalMoviles(false); }}>
+                  <div className="w-full max-w-5xl stats-modal-content">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
+                        <span className="text-stats-muted-fg dark:text-gray-400">{CARD_ICONS.truck}</span>Top móviles por entregas
+                      </h3>
+                      <button onClick={() => setModalMoviles(false)} className="p-2 rounded-xl group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info" aria-label="Cerrar">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                      </button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-1 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: atrasosStats.total > 0 ? `${Math.round((cat.value / atrasosStats.total) * 100)}%` : '0%',
-                            background: cat.cssVar,
-                          }}
-                        />
-                      </div>
-                      <span className="font-semibold tabular-nums font-stats-mono w-6 text-right text-stats-foreground dark:text-white">{cat.value}</span>
-                    </div>
+                    <div className="text-sm"><StackedBarChart data={movilesTop} expanded /></div>
                   </div>
-                ))}
+                </div>
+              )}
+            </div>
+
+            {/* Pedidos por zona — fila 2, botón lazy */}
+            <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-stats-info">{CARD_ICONS.pin}</span>
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200">Pedidos por zona</h3>
               </div>
-            </ExpandableCard>
+              <p className="text-xs text-stats-muted-fg dark:text-gray-400 mb-4">
+                {pedidosPorZona.length} zonas con actividad. El gráfico se carga al solicitarlo.
+              </p>
+              <button
+                onClick={() => setModalZona(true)}
+                className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+              >
+                Mostrar gráficos por zona
+              </button>
+              {modalZona && (
+                <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setModalZona(false); }}>
+                  <div className="w-full max-w-5xl stats-modal-content">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
+                        <span className="text-stats-muted-fg dark:text-gray-400">{CARD_ICONS.pin}</span>Pedidos por zona
+                      </h3>
+                      <button onClick={() => setModalZona(false)} className="p-2 rounded-xl group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info" aria-label="Cerrar">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                      </button>
+                    </div>
+                    <div className="text-sm"><StackedBarChart data={pedidosPorZona} expanded /></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Pedidos por empresa — fila 2, botón lazy */}
+            <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-stats-info">{CARD_ICONS.building}</span>
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200">Pedidos por empresa</h3>
+              </div>
+              <p className="text-xs text-stats-muted-fg dark:text-gray-400 mb-4">
+                {pedidosPorEmpresa.length} empresas con actividad. El gráfico se carga al solicitarlo.
+              </p>
+              <button
+                onClick={() => setModalEmpresa(true)}
+                className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+              >
+                Mostrar gráficos por empresa
+              </button>
+              {modalEmpresa && (
+                <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setModalEmpresa(false); }}>
+                  <div className="w-full max-w-5xl stats-modal-content">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
+                        <span className="text-stats-muted-fg dark:text-gray-400">{CARD_ICONS.building}</span>Pedidos por empresa
+                      </h3>
+                      <button onClick={() => setModalEmpresa(false)} className="p-2 rounded-xl group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info" aria-label="Cerrar">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                      </button>
+                    </div>
+                    <div className="text-sm"><StackedBarChart data={pedidosPorEmpresa} expanded /></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
 
           {/* Footer */}
