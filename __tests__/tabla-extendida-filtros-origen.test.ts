@@ -183,7 +183,8 @@ describe('AC3 — isFilterDisabled refleja openSource', () => {
     expect(isFilterDisabled).toBe(false);
   });
 
-  const contextualSources = ['navbar_sin_asignar', 'navbar_entregados', 'zona_combo', 'movil_individual'] as const;
+  type OpenSource = 'colapsable' | 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' | 'movil_individual';
+  const contextualSources: OpenSource[] = ['navbar_sin_asignar', 'navbar_entregados', 'zona_combo', 'movil_individual'];
   for (const src of contextualSources) {
     it(`${src} -> isFilterDisabled = true`, () => {
       const isFilterDisabled = src !== 'colapsable';
@@ -234,7 +235,7 @@ describe('AC5 — combo movil muestra inactivos solo en colapsable + finalizados
   });
 
   it('isShowingInactivos = false cuando openSource != colapsable', () => {
-    const openSource = 'navbar_entregados';
+    const openSource: string = 'navbar_entregados';
     const isFinalizados = true;
     const inactiveMovilesAvailable = [{ id: 99, nombre: 'Movil 99', activa: false }];
 
