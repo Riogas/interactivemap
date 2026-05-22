@@ -15,10 +15,14 @@ import { getServerSupabaseClient } from '@/lib/supabase';
 export interface LoginSecurityConfig {
   /** Cantidad de intentos fallidos antes de bloquear al usuario. */
   maxIntentosUsuario: number;
-  /** Cantidad de usernames distintos fallidos desde una IP antes de bloquear la IP. */
+  /** Cantidad de intentos totales fallidos desde una IP antes de bloquear la IP. */
   maxIntentosIp: number;
-  /** Duracion del bloqueo en minutos tras alcanzar el threshold. */
-  tiempoBloqueoMinutos: number;
+  /** Duracion del bloqueo de usuario en minutos tras alcanzar el threshold. */
+  tiempoBloqueoUsuarioMinutos: number;
+  /** Duracion del bloqueo de IP en minutos tras alcanzar el threshold. */
+  tiempoBloqueoIpMinutos: number;
+  /** Patrones de IP con asteriscos como wildcard (ej: '192.168.*.*'). IPs que matcheen no se bloquean (pero se loguean). */
+  ipWhitelistPatterns: string[];
   /** Mensaje que se muestra al usuario cuando intenta login y esta bloqueado. */
   mensajeBloqueo: string;
 }
@@ -30,7 +34,9 @@ export interface LoginSecurityConfig {
 export const DEFAULT_LOGIN_SECURITY_CONFIG: LoginSecurityConfig = {
   maxIntentosUsuario: 3,
   maxIntentosIp: 5,
-  tiempoBloqueoMinutos: 15,
+  tiempoBloqueoUsuarioMinutos: 15,
+  tiempoBloqueoIpMinutos: 15,
+  ipWhitelistPatterns: [],
   mensajeBloqueo: 'Tu acceso esta bloqueado temporalmente. Contacta al administrador.',
 };
 
@@ -51,7 +57,7 @@ export async function getLoginSecurityConfig(): Promise<LoginSecurityConfig> {
 
     const { data, error } = await client
       .from('login_security_config')
-      .select('max_intentos_usuario, max_intentos_ip, tiempo_bloqueo_minutos, mensaje_bloqueo')
+      .select('max_intentos_usuario, max_intentos_ip, tiempo_bloqueo_usuario_minutos, tiempo_bloqueo_ip_minutos, ip_whitelist_patterns, mensaje_bloqueo')
       .eq('id', 1)
       .maybeSingle();
 
@@ -74,15 +80,23 @@ export async function getLoginSecurityConfig(): Promise<LoginSecurityConfig> {
       ? data.max_intentos_ip
       : DEFAULT_LOGIN_SECURITY_CONFIG.maxIntentosIp;
 
-    const tiempoBloqueoMinutos = typeof data.tiempo_bloqueo_minutos === 'number' && data.tiempo_bloqueo_minutos > 0
-      ? data.tiempo_bloqueo_minutos
-      : DEFAULT_LOGIN_SECURITY_CONFIG.tiempoBloqueoMinutos;
+    const tiempoBloqueoUsuarioMinutos = typeof data.tiempo_bloqueo_usuario_minutos === 'number' && data.tiempo_bloqueo_usuario_minutos > 0
+      ? data.tiempo_bloqueo_usuario_minutos
+      : DEFAULT_LOGIN_SECURITY_CONFIG.tiempoBloqueoUsuarioMinutos;
+
+    const tiempoBloqueoIpMinutos = typeof data.tiempo_bloqueo_ip_minutos === 'number' && data.tiempo_bloqueo_ip_minutos > 0
+      ? data.tiempo_bloqueo_ip_minutos
+      : DEFAULT_LOGIN_SECURITY_CONFIG.tiempoBloqueoIpMinutos;
+
+    const ipWhitelistPatterns = Array.isArray(data.ip_whitelist_patterns)
+      ? (data.ip_whitelist_patterns as unknown[]).filter((p): p is string => typeof p === 'string')
+      : DEFAULT_LOGIN_SECURITY_CONFIG.ipWhitelistPatterns;
 
     const mensajeBloqueo = typeof data.mensaje_bloqueo === 'string' && data.mensaje_bloqueo.trim().length > 0
       ? data.mensaje_bloqueo.trim()
       : DEFAULT_LOGIN_SECURITY_CONFIG.mensajeBloqueo;
 
-    return { maxIntentosUsuario, maxIntentosIp, tiempoBloqueoMinutos, mensajeBloqueo };
+    return { maxIntentosUsuario, maxIntentosIp, tiempoBloqueoUsuarioMinutos, tiempoBloqueoIpMinutos, ipWhitelistPatterns, mensajeBloqueo };
   } catch (error) {
     console.error('[login-security-config] Excepcion inesperada al leer config:', error);
     return DEFAULT_LOGIN_SECURITY_CONFIG;
@@ -109,7 +123,9 @@ export async function setLoginSecurityConfig(
       id: 1,
       max_intentos_usuario: config.maxIntentosUsuario,
       max_intentos_ip: config.maxIntentosIp,
-      tiempo_bloqueo_minutos: config.tiempoBloqueoMinutos,
+      tiempo_bloqueo_usuario_minutos: config.tiempoBloqueoUsuarioMinutos,
+      tiempo_bloqueo_ip_minutos: config.tiempoBloqueoIpMinutos,
+      ip_whitelist_patterns: config.ipWhitelistPatterns,
       mensaje_bloqueo: config.mensajeBloqueo,
       updated_at: new Date().toISOString(),
       updated_by: updatedBy,

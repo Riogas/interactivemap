@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLoginSecurityConfig, setLoginSecurityConfig } from '@/lib/login-security-config';
+import { isValidIpPattern } from '@/lib/ip-whitelist';
 
 /**
  * GET  /api/admin/login-security/config — Leer config global de limites de bloqueo
@@ -31,7 +32,9 @@ export async function GET(request: NextRequest) {
       success: true,
       maxIntentosUsuario: config.maxIntentosUsuario,
       maxIntentosIp: config.maxIntentosIp,
-      tiempoBloqueoMinutos: config.tiempoBloqueoMinutos,
+      tiempoBloqueoUsuarioMinutos: config.tiempoBloqueoUsuarioMinutos,
+      tiempoBloqueoIpMinutos: config.tiempoBloqueoIpMinutos,
+      ipWhitelistPatterns: config.ipWhitelistPatterns,
       mensajeBloqueo: config.mensajeBloqueo,
     });
   } catch (error) {
@@ -59,7 +62,14 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  const { maxIntentosUsuario, maxIntentosIp, tiempoBloqueoMinutos, mensajeBloqueo } = body as Record<string, unknown>;
+  const {
+    maxIntentosUsuario,
+    maxIntentosIp,
+    tiempoBloqueoUsuarioMinutos,
+    tiempoBloqueoIpMinutos,
+    ipWhitelistPatterns,
+    mensajeBloqueo,
+  } = body as Record<string, unknown>;
 
   // Validar maxIntentosUsuario
   if (
@@ -87,15 +97,68 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  // Validar tiempoBloqueoMinutos
+  // Validar tiempoBloqueoUsuarioMinutos
   if (
-    typeof tiempoBloqueoMinutos !== 'number' ||
-    !Number.isInteger(tiempoBloqueoMinutos) ||
-    tiempoBloqueoMinutos < 1 ||
-    tiempoBloqueoMinutos > 1440
+    typeof tiempoBloqueoUsuarioMinutos !== 'number' ||
+    !Number.isInteger(tiempoBloqueoUsuarioMinutos) ||
+    tiempoBloqueoUsuarioMinutos < 1 ||
+    tiempoBloqueoUsuarioMinutos > 1440
   ) {
     return NextResponse.json(
-      { success: false, error: 'tiempoBloqueoMinutos debe ser un entero entre 1 y 1440' },
+      { success: false, error: 'tiempoBloqueoUsuarioMinutos debe ser un entero entre 1 y 1440' },
+      { status: 400 }
+    );
+  }
+
+  // Validar tiempoBloqueoIpMinutos
+  if (
+    typeof tiempoBloqueoIpMinutos !== 'number' ||
+    !Number.isInteger(tiempoBloqueoIpMinutos) ||
+    tiempoBloqueoIpMinutos < 1 ||
+    tiempoBloqueoIpMinutos > 1440
+  ) {
+    return NextResponse.json(
+      { success: false, error: 'tiempoBloqueoIpMinutos debe ser un entero entre 1 y 1440' },
+      { status: 400 }
+    );
+  }
+
+  // Validar ipWhitelistPatterns
+  if (!Array.isArray(ipWhitelistPatterns)) {
+    return NextResponse.json(
+      { success: false, error: 'ipWhitelistPatterns debe ser un array' },
+      { status: 400 }
+    );
+  }
+
+  // Validar que cada pattern sea string valido
+  const invalidPatterns: string[] = [];
+  for (const pattern of ipWhitelistPatterns) {
+    if (typeof pattern !== 'string') {
+      return NextResponse.json(
+        { success: false, error: 'Cada elemento de ipWhitelistPatterns debe ser un string' },
+        { status: 400 }
+      );
+    }
+    if (!isValidIpPattern(pattern)) {
+      invalidPatterns.push(pattern);
+    }
+  }
+  if (invalidPatterns.length > 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Patrones de IP invalidos: ${invalidPatterns.join(', ')}`,
+        invalidPatterns,
+      },
+      { status: 400 }
+    );
+  }
+
+  // Limitar cantidad de patrones (defensa ante abuso)
+  if (ipWhitelistPatterns.length > 100) {
+    return NextResponse.json(
+      { success: false, error: 'Maximo 100 patrones de IP permitidos' },
       { status: 400 }
     );
   }
@@ -114,11 +177,15 @@ export async function PUT(request: NextRequest) {
 
   try {
     const updatedBy = request.headers.get('x-track-user') ?? null;
+    const cleanPatterns = (ipWhitelistPatterns as string[]).map(p => p.trim());
+
     await setLoginSecurityConfig(
       {
         maxIntentosUsuario,
         maxIntentosIp,
-        tiempoBloqueoMinutos,
+        tiempoBloqueoUsuarioMinutos,
+        tiempoBloqueoIpMinutos,
+        ipWhitelistPatterns: cleanPatterns,
         mensajeBloqueo: mensajeBloqueo.trim(),
       },
       updatedBy
@@ -128,7 +195,9 @@ export async function PUT(request: NextRequest) {
       success: true,
       maxIntentosUsuario,
       maxIntentosIp,
-      tiempoBloqueoMinutos,
+      tiempoBloqueoUsuarioMinutos,
+      tiempoBloqueoIpMinutos,
+      ipWhitelistPatterns: cleanPatterns,
       mensajeBloqueo: mensajeBloqueo.trim(),
     });
   } catch (error) {

@@ -51,7 +51,9 @@ describe('getLoginSecurityConfig', () => {
       data: {
         max_intentos_usuario: 7,
         max_intentos_ip: 12,
-        tiempo_bloqueo_minutos: 30,
+        tiempo_bloqueo_usuario_minutos: 20,
+        tiempo_bloqueo_ip_minutos: 45,
+        ip_whitelist_patterns: ['192.168.*.*'],
         mensaje_bloqueo: 'Bloqueado por admin.',
       },
       error: null,
@@ -61,7 +63,9 @@ describe('getLoginSecurityConfig', () => {
 
     expect(config.maxIntentosUsuario).toBe(7);
     expect(config.maxIntentosIp).toBe(12);
-    expect(config.tiempoBloqueoMinutos).toBe(30);
+    expect(config.tiempoBloqueoUsuarioMinutos).toBe(20);
+    expect(config.tiempoBloqueoIpMinutos).toBe(45);
+    expect(config.ipWhitelistPatterns).toEqual(['192.168.*.*']);
     expect(config.mensajeBloqueo).toBe('Bloqueado por admin.');
     expect(mockSupabaseClient.from).toHaveBeenCalledWith('login_security_config');
   });
@@ -77,7 +81,9 @@ describe('getLoginSecurityConfig', () => {
     expect(config).toEqual(DEFAULT_LOGIN_SECURITY_CONFIG);
     expect(config.maxIntentosUsuario).toBe(3);
     expect(config.maxIntentosIp).toBe(5);
-    expect(config.tiempoBloqueoMinutos).toBe(15);
+    expect(config.tiempoBloqueoUsuarioMinutos).toBe(15);
+    expect(config.tiempoBloqueoIpMinutos).toBe(15);
+    expect(config.ipWhitelistPatterns).toEqual([]);
     expect(typeof config.mensajeBloqueo).toBe('string');
   });
 
@@ -107,7 +113,9 @@ describe('getLoginSecurityConfig', () => {
       data: {
         max_intentos_usuario: 0,
         max_intentos_ip: -1,
-        tiempo_bloqueo_minutos: 0,
+        tiempo_bloqueo_usuario_minutos: 0,
+        tiempo_bloqueo_ip_minutos: -5,
+        ip_whitelist_patterns: null,
         mensaje_bloqueo: '',
       },
       error: null,
@@ -118,7 +126,9 @@ describe('getLoginSecurityConfig', () => {
     // Campos invalidos → defaults
     expect(config.maxIntentosUsuario).toBe(DEFAULT_LOGIN_SECURITY_CONFIG.maxIntentosUsuario);
     expect(config.maxIntentosIp).toBe(DEFAULT_LOGIN_SECURITY_CONFIG.maxIntentosIp);
-    expect(config.tiempoBloqueoMinutos).toBe(DEFAULT_LOGIN_SECURITY_CONFIG.tiempoBloqueoMinutos);
+    expect(config.tiempoBloqueoUsuarioMinutos).toBe(DEFAULT_LOGIN_SECURITY_CONFIG.tiempoBloqueoUsuarioMinutos);
+    expect(config.tiempoBloqueoIpMinutos).toBe(DEFAULT_LOGIN_SECURITY_CONFIG.tiempoBloqueoIpMinutos);
+    expect(config.ipWhitelistPatterns).toEqual([]);
     expect(config.mensajeBloqueo).toBe(DEFAULT_LOGIN_SECURITY_CONFIG.mensajeBloqueo);
   });
 
@@ -127,7 +137,9 @@ describe('getLoginSecurityConfig', () => {
       data: {
         max_intentos_usuario: 10,
         max_intentos_ip: 20,
-        tiempo_bloqueo_minutos: 60,
+        tiempo_bloqueo_usuario_minutos: 60,
+        tiempo_bloqueo_ip_minutos: 120,
+        ip_whitelist_patterns: ['10.0.0.*', '172.16.*.*'],
         mensaje_bloqueo: 'Contacta soporte.',
       },
       error: null,
@@ -137,8 +149,29 @@ describe('getLoginSecurityConfig', () => {
 
     expect(config.maxIntentosUsuario).toBe(10);
     expect(config.maxIntentosIp).toBe(20);
-    expect(config.tiempoBloqueoMinutos).toBe(60);
+    expect(config.tiempoBloqueoUsuarioMinutos).toBe(60);
+    expect(config.tiempoBloqueoIpMinutos).toBe(120);
+    expect(config.ipWhitelistPatterns).toEqual(['10.0.0.*', '172.16.*.*']);
     expect(config.mensajeBloqueo).toBe('Contacta soporte.');
+  });
+
+  it('filtra elementos no-string de ip_whitelist_patterns', async () => {
+    mockSupabaseClient.__mockQuery.maybeSingle.mockResolvedValueOnce({
+      data: {
+        max_intentos_usuario: 3,
+        max_intentos_ip: 5,
+        tiempo_bloqueo_usuario_minutos: 15,
+        tiempo_bloqueo_ip_minutos: 15,
+        ip_whitelist_patterns: ['192.168.*.*', 123, null, '10.0.0.*'],
+        mensaje_bloqueo: 'Bloqueado.',
+      },
+      error: null,
+    });
+
+    const config = await getLoginSecurityConfig();
+
+    // Solo strings deben sobrevivir el filtrado
+    expect(config.ipWhitelistPatterns).toEqual(['192.168.*.*', '10.0.0.*']);
   });
 });
 
@@ -148,9 +181,16 @@ describe('setLoginSecurityConfig', () => {
     vi.clearAllMocks();
   });
 
-  it('hace upsert con los valores correctos', async () => {
+  it('hace upsert con los valores correctos (tiempos independientes)', async () => {
     await setLoginSecurityConfig(
-      { maxIntentosUsuario: 8, maxIntentosIp: 15, tiempoBloqueoMinutos: 30, mensajeBloqueo: 'Bloqueado.' },
+      {
+        maxIntentosUsuario: 8,
+        maxIntentosIp: 15,
+        tiempoBloqueoUsuarioMinutos: 10,
+        tiempoBloqueoIpMinutos: 30,
+        ipWhitelistPatterns: ['192.168.*.*'],
+        mensajeBloqueo: 'Bloqueado.',
+      },
       'admin'
     );
 
@@ -160,7 +200,9 @@ describe('setLoginSecurityConfig', () => {
         id: 1,
         max_intentos_usuario: 8,
         max_intentos_ip: 15,
-        tiempo_bloqueo_minutos: 30,
+        tiempo_bloqueo_usuario_minutos: 10,
+        tiempo_bloqueo_ip_minutos: 30,
+        ip_whitelist_patterns: ['192.168.*.*'],
         mensaje_bloqueo: 'Bloqueado.',
         updated_by: 'admin',
       }),
@@ -170,12 +212,38 @@ describe('setLoginSecurityConfig', () => {
 
   it('acepta updatedBy null', async () => {
     await setLoginSecurityConfig(
-      { maxIntentosUsuario: 5, maxIntentosIp: 10, tiempoBloqueoMinutos: 15, mensajeBloqueo: 'Bloqueado.' },
+      {
+        maxIntentosUsuario: 5,
+        maxIntentosIp: 10,
+        tiempoBloqueoUsuarioMinutos: 15,
+        tiempoBloqueoIpMinutos: 15,
+        ipWhitelistPatterns: [],
+        mensajeBloqueo: 'Bloqueado.',
+      },
       null
     );
 
     expect(mockSupabaseClient.__mockQuery.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ updated_by: null }),
+      { onConflict: 'id' }
+    );
+  });
+
+  it('acepta whitelist vacia', async () => {
+    await setLoginSecurityConfig(
+      {
+        maxIntentosUsuario: 5,
+        maxIntentosIp: 10,
+        tiempoBloqueoUsuarioMinutos: 15,
+        tiempoBloqueoIpMinutos: 15,
+        ipWhitelistPatterns: [],
+        mensajeBloqueo: 'Bloqueado.',
+      },
+      'admin'
+    );
+
+    expect(mockSupabaseClient.__mockQuery.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ip_whitelist_patterns: [] }),
       { onConflict: 'id' }
     );
   });
@@ -187,7 +255,14 @@ describe('setLoginSecurityConfig', () => {
 
     await expect(
       setLoginSecurityConfig(
-        { maxIntentosUsuario: 5, maxIntentosIp: 10, tiempoBloqueoMinutos: 15, mensajeBloqueo: 'Bloqueado.' },
+        {
+          maxIntentosUsuario: 5,
+          maxIntentosIp: 10,
+          tiempoBloqueoUsuarioMinutos: 15,
+          tiempoBloqueoIpMinutos: 15,
+          ipWhitelistPatterns: [],
+          mensajeBloqueo: 'Bloqueado.',
+        },
         'admin'
       )
     ).rejects.toThrow('Error al guardar configuracion');

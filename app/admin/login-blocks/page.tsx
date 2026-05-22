@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { authStorage } from '@/lib/auth-storage';
 import { supabase } from '@/lib/supabase';
 import { todayMontevideo } from '@/lib/date-utils';
+import { isValidIpPattern } from '@/lib/ip-whitelist';
 
 // ==============================================================================
 // TIPOS
@@ -111,6 +112,97 @@ function extractEmpFletera(empFletera: UsuarioDetalle['empFletera']): string[] {
 }
 
 // ==============================================================================
+// COMPONENTE: Editor de whitelist de IPs
+// ==============================================================================
+
+interface IpWhitelistEditorProps {
+  patterns: string[];
+  onPatternsChange: (patterns: string[]) => void;
+  inputValue: string;
+  onInputChange: (value: string) => void;
+}
+
+function IpWhitelistEditor({ patterns, onPatternsChange, inputValue, onInputChange }: IpWhitelistEditorProps) {
+  const trimmed = inputValue.trim();
+  const isEmpty = trimmed.length === 0;
+  const isValid = isEmpty || isValidIpPattern(trimmed);
+
+  const handleAdd = () => {
+    if (!trimmed || !isValid) return;
+    if (!patterns.includes(trimmed)) {
+      onPatternsChange([...patterns, trimmed]);
+    }
+    onInputChange('');
+  };
+
+  return (
+    <div className="bg-blue-50 rounded-lg p-4 space-y-2">
+      <label className="block text-sm font-medium text-gray-700">
+        Whitelist de IPs (no se bloquean automáticamente)
+      </label>
+      <p className="text-xs text-gray-500">
+        Usá <code className="bg-blue-100 px-1 rounded text-blue-700">*</code> como wildcard por octeto.
+        Ej: <code className="bg-blue-100 px-1 rounded text-blue-700">192.168.*.*</code> cubre toda la LAN clase B.
+        Las IPs que matcheen estos patrones NO se bloquean, pero los intentos se siguen logeando.
+      </p>
+      {/* Lista de patrones actuales */}
+      {patterns.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">Sin patrones configurados</p>
+      ) : (
+        <ul className="space-y-1">
+          {patterns.map((pattern, idx) => (
+            <li key={idx} className="flex items-center gap-2">
+              <code className="flex-1 text-xs font-mono bg-white border border-blue-200 rounded px-2 py-1 text-blue-800">{pattern}</code>
+              <button
+                type="button"
+                onClick={() => onPatternsChange(patterns.filter((_, i) => i !== idx))}
+                className="text-red-400 hover:text-red-600 transition-colors text-xs font-medium px-1.5 py-0.5 rounded hover:bg-red-50"
+                title="Remover patrón"
+              >
+                Remover
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* Input para nuevo patron */}
+      <div className="flex gap-2 items-start">
+        <div className="flex-1">
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => onInputChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+            placeholder="192.168.*.*"
+            className={`w-full px-3 py-1.5 text-sm font-mono border rounded-lg focus:ring-2 focus:outline-none ${
+              !isEmpty && !isValid
+                ? 'border-red-400 focus:ring-red-300 bg-red-50'
+                : 'border-blue-200 focus:ring-blue-300 bg-white'
+            }`}
+          />
+          {!isEmpty && !isValid && (
+            <p className="text-xs text-red-500 mt-0.5">Patrón inválido. Usá 4 octetos con números 0-255 o *.</p>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={isEmpty || !isValid}
+          onClick={handleAdd}
+          className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+        >
+          Agregar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ==============================================================================
 // PAGINA PRINCIPAL
 // ==============================================================================
 
@@ -121,7 +213,10 @@ export default function LoginBlocksPage() {
   // ─── Estado: config global ──────────────────────────────────────────────────
   const [configUsuario, setConfigUsuario] = useState<number>(3);
   const [configIp, setConfigIp] = useState<number>(5);
-  const [configTiempoBloqueo, setConfigTiempoBloqueo] = useState<number>(15);
+  const [configTiempoBloqueoUsuario, setConfigTiempoBloqueoUsuario] = useState<number>(15);
+  const [configTiempoBloqueoIp, setConfigTiempoBloqueoIp] = useState<number>(15);
+  const [configIpWhitelist, setConfigIpWhitelist] = useState<string[]>([]);
+  const [configIpWhitelistInput, setConfigIpWhitelistInput] = useState<string>('');
   const [configMensajeBloqueo, setConfigMensajeBloqueo] = useState<string>(
     'Tu acceso esta bloqueado temporalmente. Contacta al administrador.'
   );
@@ -195,8 +290,14 @@ export default function LoginBlocksPage() {
       if (json.success) {
         setConfigUsuario(json.maxIntentosUsuario);
         setConfigIp(json.maxIntentosIp);
-        if (typeof json.tiempoBloqueoMinutos === 'number') {
-          setConfigTiempoBloqueo(json.tiempoBloqueoMinutos);
+        if (typeof json.tiempoBloqueoUsuarioMinutos === 'number') {
+          setConfigTiempoBloqueoUsuario(json.tiempoBloqueoUsuarioMinutos);
+        }
+        if (typeof json.tiempoBloqueoIpMinutos === 'number') {
+          setConfigTiempoBloqueoIp(json.tiempoBloqueoIpMinutos);
+        }
+        if (Array.isArray(json.ipWhitelistPatterns)) {
+          setConfigIpWhitelist(json.ipWhitelistPatterns as string[]);
         }
         if (typeof json.mensajeBloqueo === 'string') {
           setConfigMensajeBloqueo(json.mensajeBloqueo);
@@ -450,13 +551,21 @@ export default function LoginBlocksPage() {
     setConfigToast(null);
 
     try {
+      // Bloquear guardado si hay patterns invalidos pendientes
+      if (configIpWhitelistInput.trim().length > 0) {
+        setConfigToast({ ok: false, msg: 'Hay un patron sin agregar. Agregalo o borrá el campo antes de guardar.' });
+        return;
+      }
+
       const res = await fetch('/api/admin/login-security/config', {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           maxIntentosUsuario: configUsuario,
           maxIntentosIp: configIp,
-          tiempoBloqueoMinutos: configTiempoBloqueo,
+          tiempoBloqueoUsuarioMinutos: configTiempoBloqueoUsuario,
+          tiempoBloqueoIpMinutos: configTiempoBloqueoIp,
+          ipWhitelistPatterns: configIpWhitelist,
           mensajeBloqueo: configMensajeBloqueo,
         }),
       });
@@ -760,23 +869,46 @@ export default function LoginBlocksPage() {
                       className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
                     />
                   </div>
-                  {/* Parte E.3: tiempo de bloqueo */}
+                  {/* Tiempos de bloqueo independientes */}
                   <div className="bg-gray-50 rounded-lg p-4 space-y-1">
                     <label className="block text-sm font-medium text-gray-700">
-                      Tiempo de bloqueo (minutos)
+                      Tiempo de bloqueo de usuario (minutos)
                     </label>
                     <p className="text-xs text-gray-400 mb-1">
-                      Cuanto dura el bloqueo despues de superar los intentos permitidos. Rango: 1-1440 min.
+                      Cuanto dura el bloqueo de un usuario tras superar los intentos fallidos. Rango: 1-1440 min.
                     </p>
                     <input
                       type="number"
                       min={1}
                       max={1440}
-                      value={configTiempoBloqueo}
-                      onChange={(e) => setConfigTiempoBloqueo(Math.max(1, Math.min(1440, parseInt(e.target.value) || 1)))}
+                      value={configTiempoBloqueoUsuario}
+                      onChange={(e) => setConfigTiempoBloqueoUsuario(Math.max(1, Math.min(1440, parseInt(e.target.value) || 1)))}
                       className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
                     />
                   </div>
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Tiempo de bloqueo de IP (minutos)
+                    </label>
+                    <p className="text-xs text-gray-400 mb-1">
+                      Cuanto dura el bloqueo de una IP tras superar los intentos fallidos. Rango: 1-1440 min.
+                    </p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={configTiempoBloqueoIp}
+                      onChange={(e) => setConfigTiempoBloqueoIp(Math.max(1, Math.min(1440, parseInt(e.target.value) || 1)))}
+                      className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
+                    />
+                  </div>
+                  {/* Editor de whitelist de IPs */}
+                  <IpWhitelistEditor
+                    patterns={configIpWhitelist}
+                    onPatternsChange={setConfigIpWhitelist}
+                    inputValue={configIpWhitelistInput}
+                    onInputChange={setConfigIpWhitelistInput}
+                  />
                   {/* Parte E.3: mensaje de bloqueo */}
                   <div className="bg-gray-50 rounded-lg p-4 space-y-1">
                     <label className="block text-sm font-medium text-gray-700">

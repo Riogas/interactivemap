@@ -5,15 +5,17 @@
  * - Usuario: 3 fails en 10 min → bloqueo configurable (default 15 min)
  * - IP: 5 intentos TOTALES fallidos en 10 min → bloqueo configurable (default 15 min)
  * - Username === password: rechazado sin penalty
- * - IPs whitelisted: nunca se bloquean (pero se registran)
+ * - IPs whitelisted: nunca se bloquean (pero se registran con whitelisted=true)
  *
  * La duracion del bloqueo y el mensaje al usuario se leen desde login_security_config
- * (campos tiempo_bloqueo_minutos y mensaje_bloqueo).
+ * (campos tiempo_bloqueo_usuario_minutos, tiempo_bloqueo_ip_minutos y mensaje_bloqueo).
+ * Los patrones de whitelist dinamicos se leen desde ip_whitelist_patterns.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { getLoginSecurityConfig } from '@/lib/login-security-config';
+import { ipMatchesAnyPattern } from '@/lib/ip-whitelist';
 
 // ==============================================================================
 // CONSTANTES CONFIGURABLES
@@ -60,7 +62,9 @@ export interface RecordLoginAttemptInput {
 // Copiadas de lib/rate-limit.ts para evitar dependencia circular
 
 /**
- * Lista explicita de IPs internas (sin bloqueo)
+ * Lista explicita de IPs internas (sin bloqueo automatico)
+ * Estas IPs siempre se excluyen del bloqueo automatico independientemente de
+ * la configuracion de ip_whitelist_patterns.
  */
 const WHITELISTED_IPS = [
   '127.0.0.1',           // Localhost
@@ -84,8 +88,9 @@ function normalizeIp(ip: string): string {
 }
 
 /**
- * Verificar si una IP esta en la whitelist
- * (incluye lista explicita + rangos privados)
+ * Verificar si una IP esta en la whitelist estatica hardcoded
+ * (incluye lista explicita + rangos privados RFC1918)
+ * No incluye la whitelist dinamica de config — esa se chequea por separado.
  */
 function isWhitelistedIp(ip: string): boolean {
   const normalizedIp = normalizeIp(ip);
@@ -255,8 +260,14 @@ export async function recordLoginAttempt(input: RecordLoginAttemptInput): Promis
  * actua como "punto cero" sin modificar el historico de login_attempts.
  * Lo mismo aplica para el conteo de IP: se busca el ultimo unblocked_at de esa IP.
  *
- * FIX (nuevo): la duracion del bloqueo ahora se lee desde config.tiempoBloqueoMinutos
- * en lugar de estar hardcoded a 10/15 min.
+ * FIX (nuevo — tiempos independientes): la duracion del bloqueo de usuario se lee
+ * desde config.tiempoBloqueoUsuarioMinutos y la del bloqueo de IP desde
+ * config.tiempoBloqueoIpMinutos (antes ambas usaban el mismo campo tiempoBloqueoMinutos).
+ *
+ * FIX (nuevo — whitelist dinamica): ademas de la whitelist estatica (WHITELISTED_IPS
+ * + rangos RFC1918), se chequea config.ipWhitelistPatterns. Una IP que matchea
+ * cualquier patron NO entra al sistema de bloqueo. Los attempts se siguen logeando
+ * con whitelisted=true.
  *
  * Retorna info de bloqueos aplicados
  */
@@ -308,8 +319,8 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
     console.log(`[login-security] user=${username} ip=${normalizedIp} user_fails=${userFailCount ?? 0} max_user=${config.maxIntentosUsuario} count_from=${userCountFrom}`);
 
     if (userFailCount && userFailCount >= config.maxIntentosUsuario) {
-      // Usar tiempo de bloqueo configurable en lugar del hardcoded
-      const blockMinutes = config.tiempoBloqueoMinutos;
+      // Usar tiempo de bloqueo de usuario (independiente del de IP)
+      const blockMinutes = config.tiempoBloqueoUsuarioMinutos;
       const blockedUntil = new Date(now.getTime() + blockMinutes * 60 * 1000);
       await client
         .from('login_blocks')
@@ -327,8 +338,12 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
     // 2. Contar TOTAL de intentos fallidos desde la IP en los ultimos 10 min
     // FIX (Opcion A): cambiado de "usernames distintos" a "total intentos"
     // FIX (Opcion C): igual que para usuario, respetar el ultimo unblocked_at de la IP
-    // IMPORTANTE: Solo si la IP NO esta whitelisted
-    if (!isWhitelistedIp(normalizedIp)) {
+    // IMPORTANTE: Solo si la IP NO esta whitelisted (estatica NI dinamica)
+    const ipIsStaticWhitelisted = isWhitelistedIp(normalizedIp);
+    const ipIsDynamicWhitelisted = ipMatchesAnyPattern(normalizedIp, config.ipWhitelistPatterns);
+    const ipIsWhitelisted = ipIsStaticWhitelisted || ipIsDynamicWhitelisted;
+
+    if (!ipIsWhitelisted) {
       const { data: lastIpUnblock } = await client
         .from('login_blocks')
         .select('unblocked_at')
@@ -356,8 +371,8 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
       console.log(`[login-security] user=${username} ip=${normalizedIp} ip_fails=${ipFailCount ?? 0} max_ip=${config.maxIntentosIp} count_from=${ipCountFrom}`);
 
       if (ipFailCount && ipFailCount >= config.maxIntentosIp) {
-        // Usar tiempo de bloqueo configurable en lugar del hardcoded
-        const blockMinutes = config.tiempoBloqueoMinutos;
+        // Usar tiempo de bloqueo de IP (independiente del de usuario)
+        const blockMinutes = config.tiempoBloqueoIpMinutos;
         const blockedUntil = new Date(now.getTime() + blockMinutes * 60 * 1000);
         await client
           .from('login_blocks')
@@ -371,6 +386,8 @@ export async function evaluateAndApplyBlocks(username: string, ip: string): Prom
         ipBlocked = { until: blockedUntil };
         console.log(`[login-security] user=${username} ip=${normalizedIp} ip_attempts=${ipFailCount} max=${config.maxIntentosIp} blockMin=${blockMinutes} → DECISION=block-ip until=${blockedUntil.toISOString()}`);
       }
+    } else {
+      console.log(`[login-security] user=${username} ip=${normalizedIp} → IP whitelisted (static=${ipIsStaticWhitelisted} dynamic=${ipIsDynamicWhitelisted}), skip ip-block check`);
     }
 
     if (!userBlocked && !ipBlocked) {
@@ -564,3 +581,4 @@ export async function runLoginSecurity(
 // Keep unused constants referenced to avoid TS/ESLint unused-variable errors
 void USER_FAIL_THRESHOLD;
 void IP_FAIL_WINDOW_MINUTES;
+void IP_FAIL_THRESHOLD;
