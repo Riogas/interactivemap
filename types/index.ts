@@ -308,3 +308,10 @@ export interface PedidoFilters {
   entrega: 'todos' | 'entregados' | 'no_entregados';
   soloSinCoords: boolean;
 }
+
+// Opción de móvil para el combo del modal (activos + inactivos relevantes)
+export interface MovilOption {
+  id: number;
+  nombre: string;
+  activa: boolean;
+}

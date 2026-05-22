@@ -112,9 +112,18 @@ export async function POST(request: NextRequest) {
     const durationStr = form.get('duration_s') as string | null;
     const duration_s = durationStr ? Math.max(0, Number(durationStr)) || null : null;
     const mimeType = video.type || 'video/webm';
-    // Contacto opcional + nombre completo del reporter (snapshot al upload).
+    // Contacto: email opcional, celular obligatorio.
     const contact_email = (form.get('contact_email') as string | null)?.slice(0, 200) || null;
-    const contact_celular = (form.get('contact_celular') as string | null)?.slice(0, 50) || null;
+    const contact_celular_raw = (form.get('contact_celular') as string | null)?.trim() ?? '';
+    // Server-side guard: el celular es obligatorio — protege contra clientes
+    // que bypaseen el form (Postman, devtools, etc.).
+    if (!contact_celular_raw) {
+      return NextResponse.json(
+        { success: false, error: 'Celular requerido', code: 'CELULAR_REQUIRED' },
+        { status: 400 },
+      );
+    }
+    const contact_celular = contact_celular_raw.slice(0, 50);
     const reporter_nombre = (form.get('reporter_nombre') as string | null)?.slice(0, 200) || null;
 
     const { userId, username } = extractUser(request);
