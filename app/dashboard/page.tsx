@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, MotionConfig } from 'framer-motion';
-import { MovilData, MovilSupabase, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters, PedidoFilters, ServiceFilters } from '@/types';
+import { MovilData, MovilSupabase, EmpresaFleteraSupabase, PedidoSupabase, ServiceSupabase, CustomMarker, MovilFilters, PedidoFilters, ServiceFilters, MovilOption } from '@/types';
 import MovilSelector from '@/components/ui/MovilSelector';
 import RealtimeHealthBanner from '@/components/ui/RealtimeHealthBanner';
 import UserEqPassBanner from '@/components/ui/UserEqPassBanner';
@@ -26,7 +26,7 @@ import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
 import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForZonaScope, isRoot } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
-import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI } from '@/lib/moviles/visibility';
+import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConFinalizadosEnFecha } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
@@ -379,6 +379,8 @@ function DashboardContent() {
   };
   const [pedidosOpenSource, setPedidosOpenSource] = useState<OpenSource>('colapsable');
   const [servicesOpenSource, setServicesOpenSource] = useState<OpenSource>('colapsable');
+  // State efimero para moviles inactivos seleccionados en el modal. Solo en colapsable+finalizados.
+  const [modalExtraSelectedMoviles, setModalExtraSelectedMoviles] = useState<number[]>([]);
   const pedidosFiltersRef = useRef(pedidosFilters);
   const pedidosInitialAsignacionRef = useRef(pedidosInitialAsignacion);
   const pedidosInitialAtrasoRef = useRef(pedidosInitialAtraso);
@@ -2708,6 +2710,7 @@ function DashboardContent() {
     snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }));
     setPedidosInitialAsignacion('sin_movil');
+    setModalExtraSelectedMoviles([]);
     setIsPedidosTableOpen(true);
   }, [snapshotPedidosState]);
 
@@ -2716,6 +2719,7 @@ function DashboardContent() {
     snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
     setPedidosInitialAsignacion('todos');
+    setModalExtraSelectedMoviles([]);
     setIsPedidosTableOpen(true);
   }, [snapshotPedidosState]);
 
@@ -2724,8 +2728,13 @@ function DashboardContent() {
     snapshotPedidosState();
     setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }));
     setPedidosInitialAsignacion('todos');
+    setModalExtraSelectedMoviles([]);
     setIsPedidosTableOpen(true);
   }, [snapshotPedidosState]);
+
+  const handleModalExtraSelectedMovilesChange = (ids: number[]) => {
+    setModalExtraSelectedMoviles(ids);
+  };
 
   // Handler para los cambios de selectedMoviles disparados por el dropdown
   // del modal en colapsable mode. Actualiza userExplicitlyCleared para que
@@ -2745,6 +2754,28 @@ function DashboardContent() {
     bumpSelectionVersion();
     setSelectedMoviles(ids);
   }, [movilesFiltered, applyActivityFilter, bumpSelectionVersion]);
+
+  // Moviles inactivos relevantes para el combo del modal en colapsable+finalizados.
+  // Solo se calculan cuando el modal de pedidos esta en colapsable mode.
+  const inactiveMovilesAvailable = useMemo((): MovilOption[] => {
+    if (pedidosOpenSource !== 'colapsable') return [];
+    const finalizadosMovilIds = new Set(
+      getMovilesConFinalizadosEnFecha(selectedEmpresas, pedidosCompletos, servicesCompletos)
+    );
+    return moviles
+      .filter(m => !isMovilActiveForUI(m.estadoNro) && finalizadosMovilIds.has(m.id))
+      .map(m => ({ id: m.id, nombre: m.name || String(m.id), activa: false }));
+  }, [pedidosOpenSource, moviles, selectedEmpresas, pedidosCompletos, servicesCompletos]);
+
+  // Dataset filtrado para el modal cuando openSource=navbar_entregados (respeta selectedEmpresas).
+  const pedidosParaModal = useMemo(() => {
+    if (pedidosOpenSource === 'navbar_entregados' && selectedEmpresas.length > 0) {
+      return pedidosCompletos.filter((p: PedidoSupabase) =>
+        p.empresa_fletera_id != null && selectedEmpresas.includes(p.empresa_fletera_id)
+      );
+    }
+    return pedidosCompletos;
+  }, [pedidosOpenSource, pedidosCompletos, selectedEmpresas]);
 
   const onZonasSinMovilClick = useCallback(() => setIsZonasSinMovilOpen(true), []);
   const onMovilesSinReportarClick = useCallback(() => setIsMovilesSinReportarOpen(true), []);
@@ -2938,7 +2969,7 @@ function DashboardContent() {
         closeRanking={() => setIsLeaderboardOpen(false)}
         openTracking={() => setIsTrackingModalOpen(true)}
         closeTracking={() => setIsTrackingModalOpen(false)}
-        openPedidosTable={() => { setPedidosOpenSource('colapsable'); snapshotPedidosState(); setIsPedidosTableOpen(true); }}
+        openPedidosTable={() => { setPedidosOpenSource('colapsable'); snapshotPedidosState(); setModalExtraSelectedMoviles([]); setIsPedidosTableOpen(true); }}
         closePedidosTable={() => setIsPedidosTableOpen(false)}
       />
 
@@ -2972,8 +3003,8 @@ function DashboardContent() {
       <PedidosTableModal
         key={`pedidos-${preFilterMovil ?? 'all'}-z${preFilterZona ?? 'all'}`}
         isOpen={isPedidosTableOpen}
-        onClose={() => { setIsPedidosTableOpen(false); restorePedidosState(); }}
-        pedidos={pedidosCompletos}
+        onClose={() => { setIsPedidosTableOpen(false); restorePedidosState(); setModalExtraSelectedMoviles([]); }}
+        pedidos={pedidosParaModal}
         moviles={movilesFiltered}
         hiddenMovilIds={hiddenMovilIds}
         scope={scope}
@@ -3011,6 +3042,9 @@ function DashboardContent() {
         openSource={pedidosOpenSource}
         serverNow={serverNow}
         minutosAntesSa={minutosAntesSa}
+        modalExtraSelectedMoviles={modalExtraSelectedMoviles}
+        onModalExtraSelectedMovilesChange={handleModalExtraSelectedMovilesChange}
+        inactiveMovilesAvailable={inactiveMovilesAvailable}
       />
 
       {/* Modal de Vista Extendida de Services */}
@@ -3193,7 +3227,7 @@ function DashboardContent() {
         selectedMoviles={selectedMoviles}
         selectedEmpresas={selectedEmpresas}
         onZonaClick={(zonaId, svcFilter) => {
-          setIsZonaEstadisticasOpen(false);
+          // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here
           setPreFilterZona(zonaId);
           setPreFilterMovil(undefined);
           const upper = svcFilter.toUpperCase();
@@ -3212,7 +3246,7 @@ function DashboardContent() {
           }
         }}
         onMovsPrioClick={(zonaId, _movilIds, _svcFilter) => {
-          setIsZonaEstadisticasOpen(false);
+          // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here
           openZonaView(zonaId);
         }}
       />
@@ -3291,7 +3325,7 @@ function DashboardContent() {
                   puntosInteres={puntosInteres}
                   onPuntoInteresClick={handlePuntoInteresClick}
                   onFiltersChange={setMovilesFilters}
-                  onOpenPedidosTable={() => { setPedidosOpenSource('colapsable'); snapshotPedidosState(); setIsPedidosTableOpen(true); }}
+                  onOpenPedidosTable={() => { setPedidosOpenSource('colapsable'); snapshotPedidosState(); setModalExtraSelectedMoviles([]); setIsPedidosTableOpen(true); }}
                   onOpenServicesTable={() => { setServicesOpenSource('colapsable'); snapshotServicesState(); setIsServicesTableOpen(true); }}
                   pedidosFilters={pedidosFilters}
                   onPedidosFiltersChange={(f) => {
