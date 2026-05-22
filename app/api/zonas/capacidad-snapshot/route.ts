@@ -48,6 +48,20 @@ type SQB = {
   then: Promise<{ data: unknown[] | null; error: { message: string } | null }>['then'];
 };
 
+// Mapea (tipoServicio, subFiltroPedidos) del cliente a los valores reales
+// que guarda zonas_cap_entrega.tipo_servicio: 'SERVICE' | 'URGENTE' | 'NOCTURNO'.
+function tipoServicioToBdValues(
+  tipoServicio: string,
+  subFiltro: string | null,
+): string[] {
+  if (tipoServicio === 'SERVICES') return ['SERVICE'];
+  // tipoServicio === 'PEDIDOS'
+  if (subFiltro === 'URGENTE') return ['URGENTE'];
+  if (subFiltro === 'NOCTURNO') return ['NOCTURNO'];
+  // 'TODOS' o null → ambos tipos de pedido
+  return ['URGENTE', 'NOCTURNO'];
+}
+
 type SupabaseCompat = {
   from: (table: string) => { select: (cols: string) => SQB };
 };
@@ -125,11 +139,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // 4. subFiltroPedidos (opcional, validado pero reservado para PR2)
+  // 4. subFiltroPedidos (opcional, solo aplica si tipoServicio === 'PEDIDOS')
   const subFiltroRaw = sp.get('subFiltroPedidos');
-  const _subFiltroPedidos: string | null =
+  const subFiltroPedidos: string | null =
     subFiltroRaw && SUB_FILTRO_ALLOWED.has(subFiltroRaw) ? subFiltroRaw : null;
-  void _subFiltroPedidos; // TODO PR2: usar en filtro de tipo de pedido (NOCTURNO/URGENTE)
+
+  // Convertir (tipoServicio, subFiltroPedidos) del cliente → valores BD reales
+  const tipoServicioBd = tipoServicioToBdValues(tipoServicio, subFiltroPedidos);
 
   // 5. zonas (opcional CSV)
   const zonasRaw = sp.get('zonas');
@@ -172,7 +188,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  clog(`escenario=${escenario} tipoServicio=${tipoServicio} isRoot=${isRoot} hasFeature=${hasFeature}`);
+  clog(`escenario=${escenario} tipoServicio=${tipoServicio} subFiltro=${subFiltroPedidos} bdValues=[${tipoServicioBd.join(',')}] isRoot=${isRoot} hasFeature=${hasFeature}`);
 
   const db = getServerSupabaseClient() as unknown as SupabaseCompat;
 
@@ -182,7 +198,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let q = db.from('vw_zona_capacidad')
       .select('escenario, zona, emp_fletera_id, tipo_servicio, capacidad_total, moviles_count, moviles_prioridad, moviles_transito, last_sync')
       .eq('escenario', escenario)
-      .eq('tipo_servicio', tipoServicio);
+      .in('tipo_servicio', tipoServicioBd);
     if (!isRoot && scopeEmpresaIds) q = q.in('emp_fletera_id', scopeEmpresaIds);
     if (zonasFiltro && zonasFiltro.length > 0) q = q.in('zona', zonasFiltro);
     return q;
@@ -192,7 +208,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let q = db.from('zonas_cap_entrega')
       .select('zona, movil, lote_disponible, emp_fletera_id, tipo_servicio')
       .eq('escenario', escenario)
-      .eq('tipo_servicio', tipoServicio);
+      .in('tipo_servicio', tipoServicioBd);
     if (!isRoot && scopeEmpresaIds) q = q.in('emp_fletera_id', scopeEmpresaIds);
     if (zonasFiltro && zonasFiltro.length > 0) q = q.in('zona', zonasFiltro);
     return q;
