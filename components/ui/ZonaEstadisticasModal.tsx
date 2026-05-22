@@ -55,7 +55,7 @@ interface ZonaEstadisticasModalProps {
   hideSinAsignarOverride?: boolean;
 }
 
-type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
+type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio' | 'movsTransito';
 
 const TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE'] as const;
 /** servicio_nombre values que corresponden a "PEDIDOS" */
@@ -297,6 +297,7 @@ export default function ZonaEstadisticasModal({
       pctCumplimiento: number;
       demora: number | null;
       movsPrio: number;
+      movsTransito: number;
     }> = [];
 
     for (const zonaId of zonaIds) {
@@ -356,6 +357,14 @@ export default function ZonaEstadisticasModal({
       );
       const movsPrio = movsPrioIds.size;
 
+      // Moviles en transito (prioridad_o_transito !== 1) — deduplicar por movil_id
+      const movsTransitoIds = new Set(
+        filteredMovilesZonas
+          .filter(r => r.zona_id === zonaId && r.prioridad_o_transito !== 1)
+          .map(r => String(r.movil_id))
+      );
+      const movsTransito = movsTransitoIds.size;
+
       result.push({
         zonaId,
         zonaNombre: zonaNames.get(zonaId) || `Zona ${zonaId}`,
@@ -368,6 +377,7 @@ export default function ZonaEstadisticasModal({
         pctCumplimiento,
         demora,
         movsPrio,
+        movsTransito,
       });
     }
 
@@ -393,6 +403,7 @@ export default function ZonaEstadisticasModal({
         [z.pctCumplimiento, 'pctCumplimiento'],
         [z.demora, 'demora'],
         [z.movsPrio, 'movsPrio'],
+        [z.movsTransito, 'movsTransito'],
       ];
       for (const [val, key] of checks) {
         const raw = filters[key];
@@ -421,6 +432,7 @@ export default function ZonaEstadisticasModal({
         case 'pctCumplimiento': return dir * (a.pctCumplimiento - b.pctCumplimiento);
         case 'demora': return dir * ((a.demora ?? 9999) - (b.demora ?? 9999));
         case 'movsPrio': return dir * (a.movsPrio - b.movsPrio);
+        case 'movsTransito': return dir * (a.movsTransito - b.movsTransito);
         default: return 0;
       }
     });
@@ -556,7 +568,8 @@ export default function ZonaEstadisticasModal({
                   <ThSort label="#No Ent." sortKey="noEntregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="No Entregados (estado 2, sub_estado ≠ 3 y ≠ 19)" />
                   <ThSort label="% Cump." sortKey="pctCumplimiento" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Cumplimiento = entregados / (entregados + no entregados)" />
                   <ThSort label="Min Dem." sortKey="demora" current={sortBy} asc={sortAsc} onClick={handleSort} title="Minutos de demora de la zona" />
-                  <ThSort label="#Movs P." sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles activos en prioridad del tipo de servicio seleccionado (excl. est. 3/5/15)" />
+                  <ThSort label="M.Prio" sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles activos en prioridad del tipo de servicio seleccionado (excl. est. 3/5/15)" />
+                  <ThSort label="M.Trans" sortKey="movsTransito" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles en tránsito del tipo de servicio seleccionado" />
                 </tr>
                 {/* Filter row */}
                 <tr className="bg-slate-900/95 border-b border-cyan-500/20">
@@ -571,8 +584,8 @@ export default function ZonaEstadisticasModal({
                     />
                   </th>
                   {((hideSinAsignar
-                    ? ['pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio']
-                    : ['sinAsignar', 'pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio']
+                    ? ['pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio', 'movsTransito']
+                    : ['sinAsignar', 'pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio', 'movsTransito']
                   ) as (SortKey)[]).map(key => (
                     <th key={key} className="py-1 px-1">
                       <input
@@ -667,12 +680,17 @@ export default function ZonaEstadisticasModal({
                           {z.movsPrio}
                         </span>
                       </td>
+                      <td className="py-1.5 px-1 text-center">
+                        <span className={`text-xs font-bold ${z.movsTransito > 0 ? 'text-indigo-400' : 'text-gray-600'}`}>
+                          {z.movsTransito}
+                        </span>
+                      </td>
                     </motion.tr>
                   );
                 })}
                 {sorted.length === 0 && (
                   <tr>
-                    <td colSpan={hideSinAsignar ? 9 : 10} className="py-8 text-center text-gray-500 text-sm">
+                    <td colSpan={hideSinAsignar ? 10 : 11} className="py-8 text-center text-gray-500 text-sm">
                       {loading ? (
                         <span className="flex items-center justify-center gap-2">
                           <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
@@ -701,7 +719,7 @@ export default function ZonaEstadisticasModal({
                 </button>
               )}
             </div>
-            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en #Movs P. = Detalle móvil · Filtrar en fila 2 · Cabecera = Ordenar</span>
+            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en M.Prio = Detalle móvil · Filtrar en fila 2 · Cabecera = Ordenar</span>
           </div>
         </motion.div>
       </motion.div>

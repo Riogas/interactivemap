@@ -16,6 +16,7 @@ import { useUserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
+import { useZonaCapacidadSnapshot, invalidateZonaCapacidadSnapshot } from '@/lib/hooks/use-zona-capacidad-snapshot';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado, filterPedidosVisibles } from '@/utils/estadoPedido';
@@ -969,6 +970,8 @@ function DashboardContent() {
       if (result.success) {
         console.log(`? Loaded ${result.count} pedidos`);
         setPedidosIniciales(result.data || []);
+        // PR2: Invalidar snapshot al recargar pedidos.
+        invalidateZonaCapacidadSnapshot();
       } else {
         console.error('? Error loading pedidos:', result.error);
       }
@@ -2299,111 +2302,75 @@ function DashboardContent() {
     }
   }, [canVerSinAsigPorZona, pedidosZonaFilter]);
 
-  // ? Cálculo de saturación por zona:
-  //   Para cada móvil con prioridad activa en zonas, su capacidad disponible se proratea
-  //   entre la cantidad de zonas en que tiene prioridad, evitando sobrecontar móviles compartidos.
-  // Cálculo de saturación por zona, filtrado por tipo de servicio:
-  //   - SERVICE  ? usa servicesCompletos sin asignar + móviles con tipo SERVICE
-  //   - URGENTE/NOCTURNO ? usa pedidosCompletos sin asignar + móviles con ese tipo
-  //   Los móviles no-activos (estado ? 0/1/2) y los ocultos-pero-operativos se excluyen de la capacidad.
-  const saturacionData = useMemo(() => {
-    const isService = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
-    const stats = new Map<number, { sinAsignar: number; capacidadTotal: number; capacidadDisponible: number; movilesEnZona: number; movilesCompartidos: number; asignadosWeight: number; totalWeight: number }>();
+  // ─── Snapshot de capacidad por zona (PR2) ────────────────────────────────
+  // Deriva tipoServicio y subFiltroPedidos del filtro de servicio del mapa.
+  const _snapshotTipoServicio: 'PEDIDOS' | 'SERVICES' = useMemo(
+    () => movilesZonasServiceFilter.toUpperCase() === 'SERVICE' ? 'SERVICES' : 'PEDIDOS',
+    [movilesZonasServiceFilter],
+  );
+  const _snapshotSubFiltro: 'NOCTURNO' | 'URGENTE' | 'TODOS' | undefined = useMemo(() => {
+    const upper = movilesZonasServiceFilter.toUpperCase();
+    if (upper === 'URGENTE') return 'URGENTE';
+    if (upper === 'NOCTURNO') return 'NOCTURNO';
+    return undefined;
+  }, [movilesZonasServiceFilter]);
 
-    // 1. Registros de prioridad activos filtrados por tipo de servicio
-    const priorityRecs = movilesZonasData.filter(
-      r => r.prioridad_o_transito === 1 && r.activa &&
-           (r.tipo_de_servicio || '').toUpperCase() === movilesZonasServiceFilter.toUpperCase()
-    );
-
-    // 2. Cuántas zonas de prioridad (del mismo tipo) tiene cada móvil (para el prorrateo)
-    const movilZoneCount = new Map<string, number>();
-    priorityRecs.forEach(r => movilZoneCount.set(r.movil_id, (movilZoneCount.get(r.movil_id) ?? 0) + 1));
-
-    // 3. Lookup de datos de móvil: id ? { tamanoLote, pedidosAsignados, estadoNro }
-    const movilDataMap = new Map<string, { tamanoLote: number; pedidosAsignados: number; estadoNro?: number }>();
-    moviles.forEach(m => movilDataMap.set(String(m.id), {
-      tamanoLote: (m as any).tamanoLote ?? 0,
-      pedidosAsignados: (m as any).pedidosAsignados ?? 0,
-      estadoNro: (m as any).estadoNro ?? undefined,
-    }));
-
-    // 4. Acumular capacidad por zona (excluye inactivos)
-    // Para SERVICE no se proratea: un móvil libre puede atender cualquiera de sus zonas
-    // Para URGENTE/NOCTURNO se divide entre la cantidad de zonas que cubre (prorrateo)
-    //
-    // Nota: usamos md.pedidosAsignados (que viene de /api/moviles-extended y ya
-    // cuenta pedidos+services con estado_nro=1) como fuente única de verdad.
-    // Es la misma fuente que muestra la card del móvil en SaturacionZonaModal ?
-    // mantener un solo origen evita inconsistencias entre "2/4 (50%) +2 libres"
-    // y "Cap. libre 1.0".
-    priorityRecs.forEach(r => {
-      // Scope: zonas fuera del set permitido se ignoran
-      if (scopedZonaIds && !scopedZonaIds.has(r.zona_id)) return;
-      // Zonas inactivas (demoras.activa===false): no calcular Cap. Entrega (todos los roles)
-      if (demorasData.get(r.zona_id)?.activa === false) return;
-      const md = movilDataMap.get(r.movil_id);
-      if (!md) return;
-      if (md.estadoNro !== undefined && !isMovilActiveForUI(md.estadoNro)) return;
-      if (allHiddenMovilIds && allHiddenMovilIds.has(String(r.movil_id))) return;
-      const nZones = isService ? 1 : (movilZoneCount.get(r.movil_id) ?? 1);
-      const available = Math.max(0, md.tamanoLote - md.pedidosAsignados);
-      const existing = stats.get(r.zona_id) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
-      // El aporte prorrateado por móvil se redondea HACIA ARRIBA al entero
-      // siguiente (request 2026-05-07): un móvil que cubre 3 zonas con 4
-      // libres aporta ceil(4/3)=2 a cada zona en vez de 1.33. Más realista
-      // visualmente y evita decimales en cap. libre / cap. total.
-      // Math.ceil(0)=0 ? móviles llenos siguen aportando 0 a capacidadDisponible.
-      // Pesos sin ceil ? para el cálculo exacto del % de saturación.
-      const asignadosShare = md.pedidosAsignados / nZones;
-      const totalShare = md.tamanoLote / nZones;
-      stats.set(r.zona_id, {
-        ...existing,
-        capacidadTotal: existing.capacidadTotal + Math.ceil(md.tamanoLote / nZones),
-        capacidadDisponible: existing.capacidadDisponible + Math.ceil(available / nZones),
-        movilesEnZona: existing.movilesEnZona + 1,
-        movilesCompartidos: existing.movilesCompartidos + (nZones > 1 ? 1 : 0),
-        asignadosWeight: existing.asignadosWeight + asignadosShare,
-        totalWeight: existing.totalWeight + totalShare,
-      });
-    });
-
-    // 5. Contar trabajos sin asignar por zona según tipo de servicio.
-    // Solo para roles privilegiados (root/despacho/dashboard/supervisor).
-    // Zonas inactivas siempre se saltean (todos los roles).
-    if (canSeeUnassignedInCapEntrega) {
-      if (isService) {
-        servicesCompletos.forEach(s => {
-          if (Number(s.estado_nro) !== 1) return;
-          if (s.movil != null && Number(s.movil) !== 0) return;
-          if (!isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)) return;
-          const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
-          if (!zona || zona === 0) return;
-          if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
-          // Zona inactiva: no contar sin asignar
-          if (demorasData.get(zona)?.activa === false) return;
-          const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
-          stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
-        });
-      } else {
-        pedidosCompletos.forEach(p => {
-          if (Number(p.estado_nro) !== 1) return;
-          if (p.movil != null && Number(p.movil) !== 0) return;
-          if (!isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)) return;
-          const zona = p.zona_nro != null ? Number(p.zona_nro) : null;
-          if (!zona || zona === 0) return;
-          if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
-          // Zona inactiva: no contar sin asignar
-          if (demorasData.get(zona)?.activa === false) return;
-          const existing = stats.get(zona) ?? { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
-          stats.set(zona, { ...existing, sinAsignar: existing.sinAsignar + 1 });
-        });
+  // Construir array de nombres de funcionalidades del usuario (para el endpoint).
+  const _userFuncionalidades = useMemo((): string[] => {
+    if (!user?.roles) return [];
+    const names: string[] = [];
+    for (const role of user.roles) {
+      if (role.funcionalidades) {
+        for (const f of role.funcionalidades) {
+          if (f.nombre) names.push(f.nombre);
+        }
       }
     }
-    // No-op si !canSeeUnassignedInCapEntrega: sinAsignar queda en 0 (no privilegiado)
+    return [...new Set(names)];
+  }, [user?.roles]);
 
-    return stats;
-  }, [movilesZonasData, moviles, pedidosCompletos, servicesCompletos, movilesZonasServiceFilter, allHiddenMovilIds, scopedZonaIds, canSeeUnassignedInCapEntrega, demorasData, serverNow, minutosAntesSa]);
+  const _snapshotZonas = useMemo(
+    () => scopedZonaIds ? [...scopedZonaIds] : undefined,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scopedZonaIds ? [...scopedZonaIds].sort((a, b) => a - b).join(',') : ''],
+  );
+
+  const { data: zonaCapSnapshotData } = useZonaCapacidadSnapshot({
+    escenario: escenarioId,
+    tipoServicio: _snapshotTipoServicio,
+    subFiltroPedidos: _snapshotSubFiltro,
+    zonas: _snapshotZonas,
+    isRoot: isRootUser,
+    empresasIds: user?.allowedEmpresas ?? [],
+    funcionalidades: _userFuncionalidades,
+  });
+
+  // Construir saturacionData: Map<zona_id, SaturacionZonaStats> desde el snapshot.
+  // Reemplaza el cálculo client-side anterior (PR2).
+  // Cap 0 / -9999 según canVerSinAsigPorZona (feature flag).
+  const saturacionData = useMemo((): Map<number, import('@/lib/cap-entrega-color').SaturacionZonaStats> => {
+    const map = new Map<number, import('@/lib/cap-entrega-color').SaturacionZonaStats>();
+    if (!zonaCapSnapshotData) return map;
+
+    for (const snap of zonaCapSnapshotData) {
+      const sinAsignarCount = canVerSinAsigPorZona ? snap.pedidos_sin_asignar : 0;
+      const capacidadNetaRaw = snap.capacidad_total - sinAsignarCount;
+      const capacidadMostrada = canVerSinAsigPorZona
+        ? Math.max(capacidadNetaRaw, -9999)
+        : Math.max(capacidadNetaRaw, 0);
+
+      map.set(snap.zona_id, {
+        sinAsignar: sinAsignarCount,
+        capacidadTotal: snap.capacidad_total,
+        capacidadDisponible: capacidadMostrada,
+        movilesEnZona: snap.moviles_prioridad + snap.moviles_transito,
+        movilesCompartidos: 0,
+        asignadosWeight: 0,
+        totalWeight: snap.capacidad_total,
+      });
+    }
+    return map;
+  }, [zonaCapSnapshotData, canVerSinAsigPorZona]);
   // Versiones memoizadas de markInactiveMoviles(movilesFiltered) y la cadena de filtros
   // para el mapa. Sin esto, cada llamada inline crea un nuevo array ? downstream re-renders.
 
@@ -2682,6 +2649,9 @@ function DashboardContent() {
     const realtimeKey = JSON.stringify(pedidosRealtime.map(p => `${p.id}-${p.movil}-${p.estado_nro}`).sort());
     if (realtimeKey === prevRealtimeKeyRef.current) return;
     prevRealtimeKeyRef.current = realtimeKey;
+
+    // PR2: Invalidar snapshot de capacidad por zona cuando cambian pedidos en realtime.
+    invalidateZonaCapacidadSnapshot();
     
     if (process.env.NEXT_PUBLIC_DEBUG_REALTIME === 'true') {
       console.log(`?? Actualizando ${pedidosRealtime.length} pedidos desde Realtime`);
@@ -3129,57 +3099,22 @@ function DashboardContent() {
         scopedEmpresas={scopedEmpresas}
       />
 
-      {/* Modal de Saturación: click en zona del mapa */}
-      {/* No abrir si zona inactiva (demoras.activa===false) ? sin métricas relevantes */}
+      {/* Modal de Saturación: click en zona del mapa (PR2: consume snapshot) */}
+      {/* No abrir si zona inactiva (demoras.activa===false) — sin métricas relevantes */}
       {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && demorasData.get(saturacionModalZonaId)?.activa !== false && (() => {
-        const isServiceMode = movilesZonasServiceFilter.toUpperCase() === 'SERVICE';
-        // Solo si canSeeUnassignedInCapEntrega (privilegiado clásico o tiene 'Ped s/asignar x zona').
-        const sinAsignarList = !canSeeUnassignedInCapEntrega
-          ? []
-          : isServiceMode
-          ? servicesCompletos
-              .filter(s =>
-                Number(s.estado_nro) === 1 &&
-                (s.movil == null || Number(s.movil) === 0) &&
-                Number(s.zona_nro) === saturacionModalZonaId &&
-                // SA fuera de ventana temporal: excluir de TODO computo.
-                (!serverNow || isWithinSaWindow(s.fch_hora_para ?? null, serverNow, minutosAntesSa)),
-              )
-              .map(s => ({
-                id: s.id,
-                cliente_nombre: s.cliente_nombre,
-                cliente_direccion: s.cliente_direccion,
-                servicio_nombre: s.servicio_nombre,
-                fch_hora_para: s.fch_hora_para,
-                demora_informada: s.demora_informada,
-                zona_nro: s.zona_nro,
-              }))
-          : pedidosCompletos
-              .filter(p =>
-                Number(p.estado_nro) === 1 &&
-                (p.movil == null || Number(p.movil) === 0) &&
-                Number(p.zona_nro) === saturacionModalZonaId &&
-                // SA fuera de ventana temporal: excluir de TODO computo.
-                (!serverNow || isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)),
-              )
-              .map(p => ({
-                id: p.id,
-                cliente_nombre: p.cliente_nombre,
-                cliente_direccion: p.cliente_direccion,
-                servicio_nombre: p.servicio_nombre,
-                fch_hora_para: p.fch_hora_para,
-                demora_informada: p.demora_informada,
-                zona_nro: p.zona_nro,
-              }));
+        const snap = zonaCapSnapshotData?.find(s => s.zona_id === saturacionModalZonaId);
+        const sinAsignarCount = canVerSinAsigPorZona ? (snap?.pedidos_sin_asignar ?? 0) : 0;
+        const capacidadNetaRaw = (snap?.capacidad_total ?? 0) - sinAsignarCount;
+        const capacidadMostrada = canVerSinAsigPorZona
+          ? Math.max(capacidadNetaRaw, -9999)
+          : Math.max(capacidadNetaRaw, 0);
         return (
           <SaturacionZonaModal
             zonaId={saturacionModalZonaId}
             zonas={(allZonasData.length > 0 ? allZonasData : zonasData).map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre ?? null }))}
-            satStats={saturacionData.get(saturacionModalZonaId)}
-            tipoServicio={movilesZonasServiceFilter}
-            pedidosSinAsignar={sinAsignarList}
-            movilesZonasData={movilesZonasData}
-            moviles={moviles}
+            snapshot={snap}
+            canVerSinAsigPorZona={canVerSinAsigPorZona}
+            capacidadMostrada={capacidadMostrada}
             onClose={() => setSaturacionModalZonaId(null)}
             scopedZonaIds={scopedZonaIds}
           />
