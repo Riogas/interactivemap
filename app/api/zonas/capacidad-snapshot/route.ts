@@ -349,24 +349,43 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const agg = zonaAgg.get(zonaId);
     if (!agg) continue;
 
-    const movilesDetalle: MovilDetalleZona[] = (zceByZona.get(zonaId) ?? []).map((m) => {
+    // Dedupar por movil_id: zonas_cap_entrega tiene una fila por tipo_servicio,
+    // así que un móvil que sirve URGENTE y NOCTURNO aparece 2 veces. Sumamos los
+    // aportes y conservamos un solo registro por móvil.
+    const movilDedupMap = new Map<number, MovilDetalleZona>();
+    for (const m of zceByZona.get(zonaId) ?? []) {
+      const existing = movilDedupMap.get(m.movil);
+      if (existing) {
+        existing.aporte_a_zona += m.lote_disponible;
+        continue;
+      }
       const enTransito = mzIndex.get(`${m.movil}:${zonaId}`) ?? false;
       const capData = movilCapIndex.get(m.movil);
-      return {
+      movilDedupMap.set(m.movil, {
         movil_id: m.movil,
         lote_asignado: capData?.tamano_lote ?? 0,
         en_transito: enTransito,
         capacidad_actual: capData?.capacidad ?? 0,
         aporte_a_zona: m.lote_disponible,
-      };
-    });
+      });
+    }
+    const movilesDetalle: MovilDetalleZona[] = Array.from(movilDedupMap.values());
+
+    // Re-derivar moviles_prioridad/transito desde el detalle deduplicado para
+    // evitar la inflación que produce sumar la vista sobre múltiples tipo_servicio.
+    let movilesPrioridadDedup = 0;
+    let movilesTransitoDedup = 0;
+    for (const m of movilesDetalle) {
+      if (m.en_transito) movilesTransitoDedup += 1;
+      else movilesPrioridadDedup += 1;
+    }
 
     const snapshot: ZonaCapSnapshot = {
       zona_id: zonaId,
       capacidad_total: agg.capacidad_total,
       pedidos_sin_asignar: hasFeature ? (pedidosIndex.get(zonaId)?.length ?? 0) : 0,
-      moviles_prioridad: agg.moviles_prioridad,
-      moviles_transito: agg.moviles_transito,
+      moviles_prioridad: movilesPrioridadDedup,
+      moviles_transito: movilesTransitoDedup,
       moviles_detalle: movilesDetalle,
     };
 
