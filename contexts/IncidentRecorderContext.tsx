@@ -149,10 +149,13 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
   const [state, setState] = useState<RecorderState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [description, setDescription] = useState('');
-  // Contacto opcional para que despachadores puedan llamar de vuelta al reporter.
+  // Contacto: email opcional, celular obligatorio para follow-up de despacho.
   // Email se pre-rellena con el del usuario logueado (editable, vaciable).
   const [contactEmail, setContactEmail] = useState('');
   const [contactCelular, setContactCelular] = useState('');
+  // Controla si ya se intentó hacer submit (para mostrar error de celular vacío
+  // solo después del primer intento, no mientras el usuario escribe).
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingDurationS, setPendingDurationS] = useState(0);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
@@ -170,6 +173,12 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
   const DESCRIPTION_MIN = 10;
   const descriptionTrim = description.trim();
   const descriptionValid = descriptionTrim.length >= DESCRIPTION_MIN;
+
+  // Celular obligatorio: no vacío después de trim.
+  const celularTrim = contactCelular.trim();
+  const celularValid = celularTrim.length > 0;
+  // Mostrar error de celular solo si el usuario ya intentó enviar y el campo está vacío.
+  const showCelularError = submitAttempted && !celularValid;
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -439,6 +448,11 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
       setToast({ type: 'err', msg: `La descripcion debe tener al menos ${DESCRIPTION_MIN} caracteres.` });
       return;
     }
+    // Marcar intento de submit para revelar error inline del celular si está vacío.
+    setSubmitAttempted(true);
+    if (!celularValid) {
+      return;
+    }
     setState('uploading');
     try {
       const form = new FormData();
@@ -446,7 +460,7 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
       form.append('description', descriptionTrim);
       form.append('duration_s', String(pendingDurationS));
       if (contactEmail.trim()) form.append('contact_email', contactEmail.trim());
-      if (contactCelular.trim()) form.append('contact_celular', contactCelular.trim());
+      form.append('contact_celular', celularTrim);
       if (user?.nombre) form.append('reporter_nombre', user.nombre);
 
       const res = await fetch('/api/incidents', {
@@ -471,6 +485,7 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
       setDescription('');
       setContactEmail('');
       setContactCelular('');
+      setSubmitAttempted(false);
       setPendingBlob(null);
       setPendingDurationS(0);
       setState('idle');
@@ -484,6 +499,7 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
     setDescription('');
     setContactEmail('');
     setContactCelular('');
+    setSubmitAttempted(false);
     setPendingBlob(null);
     setPendingDurationS(0);
     setState('idle');
@@ -584,7 +600,7 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
                   </span>
                 </div>
               </div>
-              {/* Contacto opcional para que despachadores puedan llamar de vuelta */}
+              {/* Contacto: email opcional, celular obligatorio para follow-up de despacho */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
@@ -600,15 +616,27 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
-                    Celular <span className="font-normal normal-case text-slate-400">(opcional)</span>
+                    Celular <span className="font-normal normal-case text-rose-600">*</span>
                   </label>
                   <input
                     type="text"
                     value={contactCelular}
                     onChange={(e) => setContactCelular(e.target.value)}
                     placeholder="099 123 456"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+                    aria-required="true"
+                    aria-invalid={showCelularError}
+                    aria-describedby={showCelularError ? 'celular-error' : undefined}
+                    className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition ${
+                      showCelularError
+                        ? 'border-rose-300 focus:ring-rose-500'
+                        : 'border-slate-200 focus:ring-blue-500'
+                    }`}
                   />
+                  {showCelularError && (
+                    <p id="celular-error" className="mt-1 text-[11px] text-rose-600">
+                      El celular es obligatorio.
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="rounded-lg overflow-hidden bg-slate-900 aspect-video">
