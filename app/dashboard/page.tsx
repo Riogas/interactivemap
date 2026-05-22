@@ -2303,16 +2303,12 @@ function DashboardContent() {
   }, [canVerSinAsigPorZona, pedidosZonaFilter]);
 
   // ─── Snapshot de capacidad por zona (PR2) ────────────────────────────────
-  // Deriva tipoServicio y subFiltroPedidos del filtro de servicio del mapa.
-  const _snapshotTipoServicio: 'PEDIDOS' | 'SERVICES' = useMemo(
-    () => movilesZonasServiceFilter.toUpperCase() === 'SERVICE' ? 'SERVICES' : 'PEDIDOS',
-    [movilesZonasServiceFilter],
-  );
-  const _snapshotSubFiltro: 'NOCTURNO' | 'URGENTE' | 'TODOS' | undefined = useMemo(() => {
+  // El filtro del mapa ya contiene uno de los 3 valores reales de BD.
+  const _snapshotTipoServicio: 'URGENTE' | 'SERVICE' | 'NOCTURNO' = useMemo(() => {
     const upper = movilesZonasServiceFilter.toUpperCase();
-    if (upper === 'URGENTE') return 'URGENTE';
+    if (upper === 'SERVICE') return 'SERVICE';
     if (upper === 'NOCTURNO') return 'NOCTURNO';
-    return undefined;
+    return 'URGENTE';
   }, [movilesZonasServiceFilter]);
 
   // Construir array de nombres de funcionalidades del usuario (para el endpoint).
@@ -2338,7 +2334,6 @@ function DashboardContent() {
   const { data: zonaCapSnapshotData } = useZonaCapacidadSnapshot({
     escenario: escenarioId,
     tipoServicio: _snapshotTipoServicio,
-    subFiltroPedidos: _snapshotSubFiltro,
     zonas: _snapshotZonas,
     isRoot: isRootUser,
     empresasIds: user?.allowedEmpresas ?? [],

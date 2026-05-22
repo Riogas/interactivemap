@@ -34,8 +34,8 @@ import type { ZonaCapSnapshot, PedidoSinAsignarMini, MovilDetalleZona } from '@/
 const CAP_LOG = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
 const clog = (...args: unknown[]) => { if (CAP_LOG) console.log('[CAP-SNAPSHOT]', ...args); };
 
-const TIPO_SERVICIO_ALLOWED = new Set(['PEDIDOS', 'SERVICES']);
-const SUB_FILTRO_ALLOWED = new Set(['NOCTURNO', 'URGENTE', 'TODOS']);
+// Valores 1:1 con zonas_cap_entrega.tipo_servicio.
+const TIPO_SERVICIO_ALLOWED = new Set(['URGENTE', 'SERVICE', 'NOCTURNO']);
 
 // ─── Supabase query builder type helper ──────────────────────────────────────
 // El tipo de retorno del Supabase JS client v2 es complejo y las vistas no
@@ -47,20 +47,6 @@ type SQB = {
   or: (filter: string) => SQB;
   then: Promise<{ data: unknown[] | null; error: { message: string } | null }>['then'];
 };
-
-// Mapea (tipoServicio, subFiltroPedidos) del cliente a los valores reales
-// que guarda zonas_cap_entrega.tipo_servicio: 'SERVICE' | 'URGENTE' | 'NOCTURNO'.
-function tipoServicioToBdValues(
-  tipoServicio: string,
-  subFiltro: string | null,
-): string[] {
-  if (tipoServicio === 'SERVICES') return ['SERVICE'];
-  // tipoServicio === 'PEDIDOS'
-  if (subFiltro === 'URGENTE') return ['URGENTE'];
-  if (subFiltro === 'NOCTURNO') return ['NOCTURNO'];
-  // 'TODOS' o null → ambos tipos de pedido
-  return ['URGENTE', 'NOCTURNO'];
-}
 
 type SupabaseCompat = {
   from: (table: string) => { select: (cols: string) => SQB };
@@ -130,22 +116,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // 3. Validar tipoServicio (requerido)
+  // 3. Validar tipoServicio (requerido) — uno de los 3 valores reales de BD
   const tipoServicio = sp.get('tipoServicio') ?? '';
   if (!TIPO_SERVICIO_ALLOWED.has(tipoServicio)) {
     return NextResponse.json(
-      { success: false, error: 'Parámetro "tipoServicio" requerido: PEDIDOS | SERVICES', code: 'INVALID_TIPO_SERVICIO' },
+      { success: false, error: 'Parámetro "tipoServicio" requerido: URGENTE | SERVICE | NOCTURNO', code: 'INVALID_TIPO_SERVICIO' },
       { status: 400 },
     );
   }
-
-  // 4. subFiltroPedidos (opcional, solo aplica si tipoServicio === 'PEDIDOS')
-  const subFiltroRaw = sp.get('subFiltroPedidos');
-  const subFiltroPedidos: string | null =
-    subFiltroRaw && SUB_FILTRO_ALLOWED.has(subFiltroRaw) ? subFiltroRaw : null;
-
-  // Convertir (tipoServicio, subFiltroPedidos) del cliente → valores BD reales
-  const tipoServicioBd = tipoServicioToBdValues(tipoServicio, subFiltroPedidos);
 
   // 5. zonas (opcional CSV)
   const zonasRaw = sp.get('zonas');
@@ -188,7 +166,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  clog(`escenario=${escenario} tipoServicio=${tipoServicio} subFiltro=${subFiltroPedidos} bdValues=[${tipoServicioBd.join(',')}] isRoot=${isRoot} hasFeature=${hasFeature}`);
+  clog(`escenario=${escenario} tipoServicio=${tipoServicio} isRoot=${isRoot} hasFeature=${hasFeature}`);
 
   const db = getServerSupabaseClient() as unknown as SupabaseCompat;
 
@@ -198,7 +176,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let q = db.from('vw_zona_capacidad')
       .select('escenario, zona, emp_fletera_id, tipo_servicio, capacidad_total, moviles_count, moviles_prioridad, moviles_transito, last_sync')
       .eq('escenario', escenario)
-      .in('tipo_servicio', tipoServicioBd);
+      .eq('tipo_servicio', tipoServicio);
     if (!isRoot && scopeEmpresaIds) q = q.in('emp_fletera_id', scopeEmpresaIds);
     if (zonasFiltro && zonasFiltro.length > 0) q = q.in('zona', zonasFiltro);
     return q;
@@ -208,7 +186,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let q = db.from('zonas_cap_entrega')
       .select('zona, movil, lote_disponible, emp_fletera_id, tipo_servicio')
       .eq('escenario', escenario)
-      .in('tipo_servicio', tipoServicioBd);
+      .eq('tipo_servicio', tipoServicio);
     if (!isRoot && scopeEmpresaIds) q = q.in('emp_fletera_id', scopeEmpresaIds);
     if (zonasFiltro && zonasFiltro.length > 0) q = q.in('zona', zonasFiltro);
     return q;

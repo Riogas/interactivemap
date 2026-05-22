@@ -39,7 +39,6 @@ const FAKE_SESSION = { session: { user: { id: 'user-123' } }, user: { id: 'user-
 function makeRequest(params: {
   escenario?: string | null;
   tipoServicio?: string | null;
-  subFiltroPedidos?: string | null;
   zonas?: string | null;
   isRoot?: boolean;
   empresasIds?: number[];
@@ -48,7 +47,6 @@ function makeRequest(params: {
   const sp = new URLSearchParams();
   if (params.escenario != null) sp.set('escenario', params.escenario);
   if (params.tipoServicio != null) sp.set('tipoServicio', params.tipoServicio);
-  if (params.subFiltroPedidos != null) sp.set('subFiltroPedidos', params.subFiltroPedidos);
   if (params.zonas != null) sp.set('zonas', params.zonas);
 
   const url = `http://localhost/api/zonas/capacidad-snapshot?${sp.toString()}`;
@@ -66,19 +64,19 @@ function makeRequest(params: {
 
 const VW_ROWS_EMP70 = [
   {
-    escenario: 1, zona: 10, emp_fletera_id: 70, tipo_servicio: 'PEDIDOS',
+    escenario: 1, zona: 10, emp_fletera_id: 70, tipo_servicio: 'URGENTE',
     capacidad_total: 20, moviles_count: 2, moviles_prioridad: 2, moviles_transito: 0, last_sync: null,
   },
   {
-    escenario: 1, zona: 11, emp_fletera_id: 70, tipo_servicio: 'PEDIDOS',
+    escenario: 1, zona: 11, emp_fletera_id: 70, tipo_servicio: 'URGENTE',
     capacidad_total: 5, moviles_count: 1, moviles_prioridad: 1, moviles_transito: 0, last_sync: null,
   },
 ];
 
 const ZCE_ROWS_EMP70 = [
-  { zona: 10, movil: 100, lote_disponible: 12, emp_fletera_id: 70, tipo_servicio: 'PEDIDOS' },
-  { zona: 10, movil: 101, lote_disponible: 8,  emp_fletera_id: 70, tipo_servicio: 'PEDIDOS' },
-  { zona: 11, movil: 102, lote_disponible: 5,  emp_fletera_id: 70, tipo_servicio: 'PEDIDOS' },
+  { zona: 10, movil: 100, lote_disponible: 12, emp_fletera_id: 70, tipo_servicio: 'URGENTE' },
+  { zona: 10, movil: 101, lote_disponible: 8,  emp_fletera_id: 70, tipo_servicio: 'URGENTE' },
+  { zona: 11, movil: 102, lote_disponible: 5,  emp_fletera_id: 70, tipo_servicio: 'URGENTE' },
 ];
 
 const MZ_ROWS = [
@@ -158,7 +156,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     mockRequireAuth.mockResolvedValue(
       NextResponse.json({ error: 'No autorizado' }, { status: 401 }) as ReturnType<typeof requireAuth> extends Promise<infer T> ? T : never,
     );
-    const req = makeRequest({ escenario: '1', tipoServicio: 'PEDIDOS', isRoot: true });
+    const req = makeRequest({ escenario: '1', tipoServicio: 'URGENTE', isRoot: true });
     const res = await GET(req);
     expect(res.status).toBe(401);
   });
@@ -166,7 +164,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
   // ─── AC-3: Validaciones de params ─────────────────────────────────────────
 
   it('400 cuando escenario está ausente', async () => {
-    const req = makeRequest({ tipoServicio: 'PEDIDOS', isRoot: true });
+    const req = makeRequest({ tipoServicio: 'URGENTE', isRoot: true });
     const res = await GET(req);
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -186,7 +184,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
   it('sin feature: pedidos_sin_asignar = 0 y pedidos_sin_asignar_detalle ausente', async () => {
     const req = makeRequest({
       escenario: '1',
-      tipoServicio: 'PEDIDOS',
+      tipoServicio: 'URGENTE',
       isRoot: true,
       funcionalidades: [], // sin la funcionalidad
     });
@@ -205,7 +203,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
   it('con feature: pedidos_sin_asignar = count real y pedidos_sin_asignar_detalle presente', async () => {
     const req = makeRequest({
       escenario: '1',
-      tipoServicio: 'PEDIDOS',
+      tipoServicio: 'URGENTE',
       isRoot: true,
       funcionalidades: ['Ped s/asignar x zona'],
     });
@@ -227,10 +225,10 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
 
   // ─── AC-5: moviles_prioridad vs moviles_transito ──────────────────────────
 
-  it('moviles_prioridad y moviles_transito calculados correctamente desde la vista', async () => {
+  it('moviles_prioridad y moviles_transito derivados desde el detalle deduplicado', async () => {
     const req = makeRequest({
       escenario: '1',
-      tipoServicio: 'PEDIDOS',
+      tipoServicio: 'URGENTE',
       isRoot: true,
       funcionalidades: [],
     });
@@ -238,15 +236,17 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     const zona10 = body.data.find((z: { zona_id: number }) => z.zona_id === 10);
-    // La vista ya calculó: moviles_prioridad=2, moviles_transito=0 para zona 10
-    expect(zona10.moviles_prioridad).toBe(2);
-    expect(zona10.moviles_transito).toBe(0);
+    // Para zona 10: movil 100 (prio_o_transito=1 → prio) y 101 (=2 → tránsito)
+    // Los counts se derivan del moviles_detalle, no del campo de la vista
+    // (la vista inflaba con rows multi-tipo_servicio).
+    expect(zona10.moviles_prioridad).toBe(1);
+    expect(zona10.moviles_transito).toBe(1);
   });
 
   it('en_transito correcto en moviles_detalle (movil 101 es tránsito)', async () => {
     const req = makeRequest({
       escenario: '1',
-      tipoServicio: 'PEDIDOS',
+      tipoServicio: 'URGENTE',
       isRoot: true,
       funcionalidades: [],
     });
@@ -262,14 +262,14 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
 
   // ─── AC-5: filtro tipoServicio ────────────────────────────────────────────
 
-  it('tipoServicio=SERVICES: devuelve zonas vacías cuando no hay datos de SERVICES', async () => {
-    // Mock con 0 rows para SERVICES
+  it('tipoServicio=SERVICE: devuelve zonas vacías cuando no hay datos de SERVICE', async () => {
+    // Mock con 0 rows para SERVICE
     mockGetSupabase.mockReturnValue(
       makeSupabaseMock({ vwRows: [], zceRows: [] }) as unknown as ReturnType<typeof getServerSupabaseClient>,
     );
     const req = makeRequest({
       escenario: '1',
-      tipoServicio: 'SERVICES',
+      tipoServicio: 'SERVICE',
       isRoot: true,
     });
     const res = await GET(req);
@@ -288,7 +288,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     // el mock devuelve solo filas de emp_fletera_id=70 (simulando el filtro aplicado).
     const req = makeRequest({
       escenario: '1',
-      tipoServicio: 'PEDIDOS',
+      tipoServicio: 'URGENTE',
       isRoot: false,
       empresasIds: [70],
       funcionalidades: [],
@@ -305,7 +305,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
   it('fail-closed: no-root sin empresas válidas → devuelve []', async () => {
     const req = makeRequest({
       escenario: '1',
-      tipoServicio: 'PEDIDOS',
+      tipoServicio: 'URGENTE',
       isRoot: false,
       empresasIds: [], // vacío → fail-closed
       funcionalidades: [],
@@ -322,7 +322,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
   it('happy path isRoot: devuelve datos bien tipados con estructura correcta', async () => {
     const req = makeRequest({
       escenario: '1',
-      tipoServicio: 'PEDIDOS',
+      tipoServicio: 'URGENTE',
       isRoot: true,
       funcionalidades: ['Ped s/asignar x zona'],
     });

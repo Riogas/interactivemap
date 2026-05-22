@@ -26,7 +26,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { ZonaCapSnapshot } from '@/types/zona-capacidad';
+import type { ZonaCapSnapshot, TipoServicioSnapshot } from '@/types/zona-capacidad';
 
 // =============================================================================
 // Tipos
@@ -35,13 +35,8 @@ import type { ZonaCapSnapshot } from '@/types/zona-capacidad';
 export interface UseZonaCapacidadSnapshotParams {
   /** ID de escenario. Si es null, el hook queda deshabilitado. */
   escenario: number | null;
-  /** Tipo de servicio a consultar. */
-  tipoServicio: 'PEDIDOS' | 'SERVICES';
-  /**
-   * Sub-filtro solo para tipoServicio=PEDIDOS.
-   * NOCTURNO | URGENTE | TODOS (si se omite, el endpoint devuelve todo).
-   */
-  subFiltroPedidos?: 'NOCTURNO' | 'URGENTE' | 'TODOS';
+  /** Tipo de servicio a consultar — uno de los 3 valores reales de BD. */
+  tipoServicio: TipoServicioSnapshot;
   /**
    * Lista de zona_ids a consultar.
    * Si se omite, el endpoint devuelve todas las zonas del scope del caller.
@@ -83,10 +78,9 @@ const _cache = new Map<string, CacheEntry>();
 function buildCacheKey(
   escenario: number,
   tipoServicio: string,
-  subFiltroPedidos: string,
   zonasKey: string,
 ): string {
-  return [escenario, tipoServicio, subFiltroPedidos, zonasKey].join('|');
+  return [escenario, tipoServicio, zonasKey].join('|');
 }
 
 /**
@@ -108,7 +102,6 @@ async function fetchSnapshot(params: UseZonaCapacidadSnapshotParams): Promise<Zo
   const sp = new URLSearchParams();
   sp.set('escenario', String(params.escenario));
   sp.set('tipoServicio', params.tipoServicio);
-  if (params.subFiltroPedidos) sp.set('subFiltroPedidos', params.subFiltroPedidos);
   if (params.zonas && params.zonas.length > 0) sp.set('zonas', params.zonas.join(','));
 
   const headers: Record<string, string> = {
@@ -174,10 +167,10 @@ export function useZonaCapacidadSnapshot(
 
   const refetch = useCallback(() => {
     if (params.escenario == null) return;
-    const key = buildCacheKey(params.escenario, params.tipoServicio, params.subFiltroPedidos ?? '', zonasKey);
+    const key = buildCacheKey(params.escenario, params.tipoServicio, zonasKey);
     _cache.delete(key);
     setRefetchTrigger((n) => n + 1);
-  }, [params.escenario, params.tipoServicio, params.subFiltroPedidos, zonasKey]);
+  }, [params.escenario, params.tipoServicio, zonasKey]);
 
   useEffect(() => {
     if (params.escenario == null) {
@@ -185,7 +178,7 @@ export function useZonaCapacidadSnapshot(
       return;
     }
 
-    const key = buildCacheKey(params.escenario, params.tipoServicio, params.subFiltroPedidos ?? '', zonasKey);
+    const key = buildCacheKey(params.escenario, params.tipoServicio, zonasKey);
     const cached = _cache.get(key);
     const now = Date.now();
 
@@ -222,7 +215,6 @@ export function useZonaCapacidadSnapshot(
   }, [
     params.escenario,
     params.tipoServicio,
-    params.subFiltroPedidos,
     params.isRoot,
     zonasKey,
     empresasKey,

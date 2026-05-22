@@ -8,6 +8,12 @@
  */
 
 /**
+ * Tipo de servicio aceptado por el endpoint y el hook.
+ * Coincide 1:1 con los valores en `zonas_cap_entrega.tipo_servicio`.
+ */
+export type TipoServicioSnapshot = 'URGENTE' | 'SERVICE' | 'NOCTURNO';
+
+/**
  * Pedido sin asignar en versión compacta para el detalle de zona.
  * Solo se incluye en el response cuando el caller tiene la funcionalidad
  * "Ped s/asignar x zona".
