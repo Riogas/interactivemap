@@ -49,11 +49,15 @@ interface SaturacionZonaModalProps {
 
 // ──────────────────────── helpers ────────────────────────────────────────
 
-/** Color Tailwind para la métrica Cap. Entrega (entero) */
+/** Color Tailwind para la métrica Cap. Entrega (entero). Coincide con la
+ * escala absoluta de `lib/cap-entrega-color.ts` para que la capa del mapa y
+ * este modal usen los mismos umbrales (>=4 holgura alta, 1-3 baja, 0 exacta,
+ * -3..-1 sobrecupo leve, <=-4 sobrecupo alto). */
 function capEntregaColorClass(cap: number): string {
-  if (cap < 0)   return 'text-red-600';
-  if (cap === 0) return 'text-orange-500';
-  if (cap <= 3)  return 'text-yellow-600';
+  if (cap <= -4) return 'text-red-600';
+  if (cap < 0)   return 'text-orange-500';
+  if (cap === 0) return 'text-yellow-600';
+  if (cap <= 3)  return 'text-lime-600';
   return 'text-green-700';
 }
 

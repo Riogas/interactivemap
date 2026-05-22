@@ -155,31 +155,39 @@ describe('getCapEntregaColor — nueva escala de ratio', () => {
     });
   });
 
-  describe('getCapEntregaColor — 5 bandas de ratio completas', () => {
-    it('ratio exactamente 0.5 → verde-amarillo (boundary incluido en [0, 0.5])', () => {
-      // capacidadDisponible=5, capacidadTotal=10 → ratio=0.5 → verde-amarillo
-      const stats = makeStats({ capacidadDisponible: 5, capacidadTotal: 10, movilesEnZona: 2 });
-      const result = getCapEntregaColor(stats, true);
-      expect(result.color).toBe('#84cc16');
-    });
-
-    it('ratio=0.51 → verde fuerte', () => {
-      // capacidadDisponible=6, capacidadTotal=10 → ratio=0.6 → verde fuerte
-      const stats = makeStats({ capacidadDisponible: 6, capacidadTotal: 10, movilesEnZona: 2 });
+  describe('getCapEntregaColor — boundaries de la escala absoluta', () => {
+    it('cap=4 (mínimo de holgura alta) → verde fuerte', () => {
+      const stats = makeStats({ capacidadDisponible: 4, capacidadTotal: 10, movilesEnZona: 2 });
       const result = getCapEntregaColor(stats, true);
       expect(result.color).toBe('#22c55e');
     });
 
-    it('ratio=-0.5 → naranja (boundary inferior de naranja)', () => {
-      // capacidadDisponible=-5, capacidadTotal=10 → ratio=-0.5 → naranja
-      const stats = makeStats({ capacidadDisponible: -5, capacidadTotal: 10, movilesEnZona: 2 });
+    it('cap=3 (máximo de holgura baja) → verde-amarillo', () => {
+      const stats = makeStats({ capacidadDisponible: 3, capacidadTotal: 10, movilesEnZona: 2 });
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#84cc16');
+    });
+
+    it('cap=1 (mínimo positivo) → verde-amarillo aunque sea 1/1 (ratio=100%)', () => {
+      const stats = makeStats({ capacidadDisponible: 1, capacidadTotal: 1, movilesEnZona: 1 });
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#84cc16');
+    });
+
+    it('cap=-1 (sobrecupo leve mínimo) → naranja', () => {
+      const stats = makeStats({ capacidadDisponible: -1, capacidadTotal: 10, movilesEnZona: 2 });
       const result = getCapEntregaColor(stats, true);
       expect(result.color).toBe('#f97316');
     });
 
-    it('ratio=-0.51 → rojo', () => {
-      // capacidadDisponible=-6, capacidadTotal=10 → ratio=-0.6 → rojo
-      const stats = makeStats({ capacidadDisponible: -6, capacidadTotal: 10, movilesEnZona: 2 });
+    it('cap=-3 (límite inferior sobrecupo leve) → naranja', () => {
+      const stats = makeStats({ capacidadDisponible: -3, capacidadTotal: 10, movilesEnZona: 2 });
+      const result = getCapEntregaColor(stats, true);
+      expect(result.color).toBe('#f97316');
+    });
+
+    it('cap=-4 (mínimo sobrecupo alto) → rojo', () => {
+      const stats = makeStats({ capacidadDisponible: -4, capacidadTotal: 10, movilesEnZona: 2 });
       const result = getCapEntregaColor(stats, true);
       expect(result.color).toBe('#ef4444');
     });
