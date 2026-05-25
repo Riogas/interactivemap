@@ -18,6 +18,9 @@ interface ZonaInfo {
   nombre: string | null;
 }
 
+/** Identificadores de columnas clickeables para drill-down a la tabla extendida. */
+export type ZonaCellKind = 'sinAsignar' | 'pendientes' | 'atrasados' | 'entregados' | 'noEntregados';
+
 interface ZonaEstadisticasModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -34,6 +37,9 @@ interface ZonaEstadisticasModalProps {
   onZonaClick?: (zonaId: number, serviceFilter: string) => void;
   /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona */
   onMovsPrioClick?: (zonaId: number, movilIds: number[], serviceFilter: string) => void;
+  /** Callback al clickear uno de los 5 números de estadísticas (sinAsignar/pendientes/atrasados/entregados/noEntregados).
+   *  Si el valor es 0, el click no se emite (cursor default). */
+  onCellClick?: (zonaId: number, kind: ZonaCellKind) => void;
   /** Scope de zonas permitidas (null = root/despacho, sin restricción). */
   scopedZonaIds?: Set<number> | null;
   /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
@@ -77,6 +83,7 @@ export default function ZonaEstadisticasModal({
   allHiddenMovilIds,
   onZonaClick,
   onMovsPrioClick,
+  onCellClick,
   scopedZonaIds = null,
   scopedEmpresas = null,
   scope,
@@ -622,18 +629,51 @@ export default function ZonaEstadisticasModal({
                       </td>
                       {!hideSinAsignar && (
                         <td className="py-1.5 px-1 text-center">
-                          <span className={`text-xs font-bold ${z.sinAsignar > 0 ? 'text-amber-400' : 'text-gray-600'}`}>
+                          <span
+                            className={`text-xs font-bold ${
+                              z.sinAsignar > 0
+                                ? 'text-amber-400 cursor-pointer hover:underline'
+                                : 'text-gray-600 cursor-default'
+                            }`}
+                            title={z.sinAsignar > 0 ? `Ver ${z.sinAsignar} pedidos sin asignar de ${z.zonaNombre}` : undefined}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (z.sinAsignar > 0) onCellClick?.(z.zonaId, 'sinAsignar');
+                            }}
+                          >
                             {z.sinAsignar}
                           </span>
                         </td>
                       )}
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.pendientes > 0 ? 'text-blue-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${
+                            z.pendientes > 0
+                              ? 'text-blue-400 cursor-pointer hover:underline'
+                              : 'text-gray-600 cursor-default'
+                          }`}
+                          title={z.pendientes > 0 ? `Ver ${z.pendientes} pedidos pendientes de ${z.zonaNombre}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.pendientes > 0) onCellClick?.(z.zonaId, 'pendientes');
+                          }}
+                        >
                           {z.pendientes}
                         </span>
                       </td>
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.atrasados > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${
+                            z.atrasados > 0
+                              ? 'text-red-400 cursor-pointer hover:underline'
+                              : 'text-gray-600 cursor-default'
+                          }`}
+                          title={z.atrasados > 0 ? `Ver ${z.atrasados} pedidos atrasados de ${z.zonaNombre}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.atrasados > 0) onCellClick?.(z.zonaId, 'atrasados');
+                          }}
+                        >
                           {z.atrasados}
                         </span>
                       </td>
@@ -645,12 +685,34 @@ export default function ZonaEstadisticasModal({
                         </span>
                       </td>
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.entregados > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${
+                            z.entregados > 0
+                              ? 'text-green-400 cursor-pointer hover:underline'
+                              : 'text-gray-600 cursor-default'
+                          }`}
+                          title={z.entregados > 0 ? `Ver ${z.entregados} pedidos entregados de ${z.zonaNombre}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.entregados > 0) onCellClick?.(z.zonaId, 'entregados');
+                          }}
+                        >
                           {z.entregados}
                         </span>
                       </td>
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.noEntregados > 0 ? 'text-orange-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${
+                            z.noEntregados > 0
+                              ? 'text-orange-400 cursor-pointer hover:underline'
+                              : 'text-gray-600 cursor-default'
+                          }`}
+                          title={z.noEntregados > 0 ? `Ver ${z.noEntregados} pedidos no entregados de ${z.zonaNombre}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.noEntregados > 0) onCellClick?.(z.zonaId, 'noEntregados');
+                          }}
+                        >
                           {z.noEntregados}
                         </span>
                       </td>
@@ -719,7 +781,7 @@ export default function ZonaEstadisticasModal({
                 </button>
               )}
             </div>
-            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en M.Prio = Detalle móvil · Filtrar en fila 2 · Cabecera = Ordenar</span>
+            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en número = Tabla filtrada · Click en M.Prio = Detalle móvil · Filtrar en fila 2 · Cabecera = Ordenar</span>
           </div>
         </motion.div>
       </motion.div>

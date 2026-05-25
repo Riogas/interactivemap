@@ -30,7 +30,7 @@ import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI,
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
-import ZonaEstadisticasModal from '@/components/ui/ZonaEstadisticasModal';
+import ZonaEstadisticasModal, { type ZonaCellKind } from '@/components/ui/ZonaEstadisticasModal';
 import PedidosTableModal from '@/components/ui/PedidosTableModal';
 import ServicesTableModal from '@/components/ui/ServicesTableModal';
 import OsmImportModal from '@/components/ui/OsmImportModal';
@@ -2744,6 +2744,42 @@ function DashboardContent() {
     setIsPedidosTableOpen(true);
   }, [snapshotPedidosState]);
 
+  const onZonaStatsCellClick = useCallback((zonaId: number, kind: ZonaCellKind) => {
+    setPedidosOpenSource('zona_combo');
+    snapshotPedidosState();
+    setPreFilterZona(zonaId);
+    setPreFilterMovil(undefined);
+    setModalExtraSelectedMoviles([]);
+    switch (kind) {
+      case 'sinAsignar':
+        setPedidosModalInitialFilters({ asignacion: 'sin_movil' });
+        setPedidosInitialAtraso(undefined);
+        setPedidosModalVista('pendientes');
+        break;
+      case 'pendientes':
+        setPedidosModalInitialFilters({ asignacion: 'todos' });
+        setPedidosInitialAtraso(undefined);
+        setPedidosModalVista('pendientes');
+        break;
+      case 'atrasados':
+        setPedidosModalInitialFilters({ asignacion: 'todos' });
+        setPedidosInitialAtraso(['muy_atrasado', 'atrasado']);
+        setPedidosModalVista('pendientes');
+        break;
+      case 'entregados':
+        setPedidosModalInitialFilters({ entrega: 'entregados', asignacion: 'todos' });
+        setPedidosInitialAtraso(undefined);
+        setPedidosModalVista('finalizados');
+        break;
+      case 'noEntregados':
+        setPedidosModalInitialFilters({ entrega: 'no_entregados', asignacion: 'todos' });
+        setPedidosInitialAtraso(undefined);
+        setPedidosModalVista('finalizados');
+        break;
+    }
+    setIsPedidosTableOpen(true);
+  }, [snapshotPedidosState]);
+
   const handleModalExtraSelectedMovilesChange = (ids: number[]) => {
     setModalExtraSelectedMoviles(ids);
   };
@@ -3271,6 +3307,7 @@ function DashboardContent() {
           // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here
           openZonaView(zonaId);
         }}
+        onCellClick={onZonaStatsCellClick}
       />
 
       {/* Indicador de conexión Realtime - Debajo del navbar, a la derecha */}
