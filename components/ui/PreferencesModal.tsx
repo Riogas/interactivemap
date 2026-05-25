@@ -143,7 +143,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
   // ===== Estado para importar Puntos de Interés =====
   const poiFileInputRef = useRef<HTMLInputElement>(null);
   const [importingPOI, setImportingPOI] = useState(false);
-  const [importResultPOI, setImportResultPOI] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [importResultPOI, setImportResultPOI] = useState<{ ok: boolean; msg: string; skipped?: Array<{ nombre: string; usuario_email: string; motivo: string }> } | null>(null);
 
   // ===== Estado para Auditoría (solo root) =====
   const [auditEnabled, setAuditEnabled] = useState<boolean | null>(null);
@@ -333,7 +333,16 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
       const json = await res.json();
 
       if (res.ok && json.success) {
-        setImportResultPOI({ ok: true, msg: `✅ ${json.count} punto(s) de venta actualizados correctamente.` });
+        const parts: string[] = [];
+        if (json.created?.length) parts.push(`${json.created.length} creado(s)`);
+        if (json.updated?.length) parts.push(`${json.updated.length} actualizado(s)`);
+        if (json.skipped?.length) parts.push(`${json.skipped.length} omitido(s) (privados)`);
+        if (!parts.length) parts.push('0 cambios');
+        setImportResultPOI({
+          ok: true,
+          msg: `✅ ${parts.join(' · ')}`,
+          skipped: json.skipped ?? [],
+        });
       } else {
         setImportResultPOI({ ok: false, msg: `❌ Error: ${json.error || 'Error desconocido'}` });
       }
@@ -1234,15 +1243,37 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                     />
                   </div>
 
+
                   {importResultPOI && (
-                    <div className={`text-sm px-4 py-3 rounded-lg border ${
-                      importResultPOI.ok
-                        ? 'bg-green-50 border-green-200 text-green-700'
-                        : 'bg-red-50 border-red-200 text-red-700'
-                    }`}>
-                      {importResultPOI.msg}
+                    <div className={`text-sm px-4 py-3 rounded-lg border ${importResultPOI.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+
+
+
+
+
+                      <div>{importResultPOI.msg}</div>
+                      {importResultPOI.ok && importResultPOI.skipped && importResultPOI.skipped.length > 0 && (
+                        <details className="mt-2 cursor-pointer">
+                          <summary className="text-xs font-semibold text-amber-700 hover:underline">
+                            Ver {importResultPOI.skipped.length} POI(s) omitido(s) (privados existentes)
+                          </summary>
+                          <ul className="mt-1 text-xs text-gray-600 list-disc list-inside max-h-32 overflow-y-auto">
+                            {importResultPOI.skipped.map((s, i) => (
+                              <li key={i}><span className="font-medium">{s.nombre}</span> ({s.usuario_email})</li>
+                            ))}
+                          </ul>
+                        </details>
+
+
+                      )}
                     </div>
                   )}
+
+
+
+
+
+
                 </div>
               )}
 
