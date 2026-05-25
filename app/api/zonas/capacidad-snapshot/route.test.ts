@@ -85,10 +85,11 @@ const MZ_ROWS = [
   { movil_id: '102', zona_id: 11, escenario_id: 1, prioridad_o_transito: 1  }, // prioridad
 ];
 
+// estado_nro: null = activo (sin estado especial)
 const MOVIL_CAP_ROWS = [
-  { nro: 100, capacidad: 3, tamano_lote: 15 },
-  { nro: 101, capacidad: 7, tamano_lote: 10 },
-  { nro: 102, capacidad: 2, tamano_lote: 8  },
+  { nro: 100, capacidad: 3, tamano_lote: 15, estado_nro: null },
+  { nro: 101, capacidad: 7, tamano_lote: 10, estado_nro: null },
+  { nro: 102, capacidad: 2, tamano_lote: 8,  estado_nro: null },
 ];
 
 const PEDIDOS_ROWS = [
@@ -102,7 +103,7 @@ function makeSupabaseMock(overrides: {
   vwRows?: typeof VW_ROWS_EMP70 | [];
   zceRows?: typeof ZCE_ROWS_EMP70 | [];
   mzRows?: typeof MZ_ROWS | [];
-  movilCapRows?: typeof MOVIL_CAP_ROWS | [];
+  movilCapRows?: Array<{ nro: number; capacidad: number; tamano_lote: number | null; estado_nro: number | null }>;
   pedidosRows?: typeof PEDIDOS_ROWS | [];
 } = {}) {
   const vwRows = overrides.vwRows ?? VW_ROWS_EMP70;
@@ -343,5 +344,117 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
       // Con feature: pedidos_sin_asignar_detalle presente
       expect(Array.isArray(zona.pedidos_sin_asignar_detalle)).toBe(true);
     }
+  });
+
+  // ─── Filtro de móviles inactivos ──────────────────────────────────────────
+  // AC-2: móviles con estado_nro IN (3, 5, 15) no deben aparecer en moviles_detalle
+  // ni contribuir a moviles_prioridad/moviles_transito.
+
+  it('móvil con estado_nro=3 (inactivo) NO aparece en moviles_detalle', async () => {
+    // Fixture: zona 10 tiene 2 móviles. El 100 está inactivo (estado_nro=3), el 101 activo.
+    mockGetSupabase.mockReturnValue(
+      makeSupabaseMock({
+        movilCapRows: [
+          { nro: 100, capacidad: 3, tamano_lote: 15, estado_nro: 3 }, // inactivo
+          { nro: 101, capacidad: 7, tamano_lote: 10, estado_nro: null }, // activo
+          { nro: 102, capacidad: 2, tamano_lote: 8,  estado_nro: null },
+        ],
+      }) as unknown as ReturnType<typeof getServerSupabaseClient>,
+    );
+
+    const req = makeRequest({ escenario: '1', tipoServicio: 'URGENTE', isRoot: true });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const zona10 = body.data.find((z: { zona_id: number }) => z.zona_id === 10);
+    expect(zona10).toBeDefined();
+
+    // El móvil 100 (inactivo) no debe aparecer
+    const movilIds = zona10.moviles_detalle.map((m: { movil_id: number }) => m.movil_id);
+    expect(movilIds).not.toContain(100);
+    expect(movilIds).toContain(101); // el activo sí aparece
+
+    // Solo 1 móvil activo en prioridad (el 101 está en prioridad_o_transito=2 → tránsito)
+    // 100 era prioridad_o_transito=1 pero es inactivo → no cuenta
+    expect(zona10.moviles_prioridad).toBe(0);
+    expect(zona10.moviles_transito).toBe(1);
+  });
+
+  it('móviles con estado_nro=5 y estado_nro=15 también son excluidos', async () => {
+    // Fixture: zona 10 tiene 2 móviles, ambos inactivos (estados 5 y 15).
+    mockGetSupabase.mockReturnValue(
+      makeSupabaseMock({
+        movilCapRows: [
+          { nro: 100, capacidad: 3, tamano_lote: 15, estado_nro: 5  }, // inactivo
+          { nro: 101, capacidad: 7, tamano_lote: 10, estado_nro: 15 }, // inactivo
+          { nro: 102, capacidad: 2, tamano_lote: 8,  estado_nro: null },
+        ],
+      }) as unknown as ReturnType<typeof getServerSupabaseClient>,
+    );
+
+    const req = makeRequest({ escenario: '1', tipoServicio: 'URGENTE', isRoot: true });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const zona10 = body.data.find((z: { zona_id: number }) => z.zona_id === 10);
+    expect(zona10).toBeDefined();
+
+    const movilIds = zona10.moviles_detalle.map((m: { movil_id: number }) => m.movil_id);
+    expect(movilIds).not.toContain(100); // estado_nro=5 excluido
+    expect(movilIds).not.toContain(101); // estado_nro=15 excluido
+
+    // Zona 10 sin móviles activos
+    expect(zona10.moviles_prioridad).toBe(0);
+    expect(zona10.moviles_transito).toBe(0);
+  });
+
+  it('fixture mixta: activos aparecen, inactivos excluidos, counts correctos', async () => {
+    // Fixture: zona 10 tiene 2 móviles (100 activo, 101 inactivo estado_nro=3).
+    // La vista v2 ya los excluiría en SQL, pero el endpoint aplica el read-time filter también.
+    // Simulamos: vw_zona_capacidad ya filtra (capacidad_total refleja solo el activo),
+    // y el endpoint filtra en movilDedupMap.
+    mockGetSupabase.mockReturnValue(
+      makeSupabaseMock({
+        vwRows: [
+          // Vista v2 ya excluye móvil 101 (inactivo): capacidad_total = 12 (solo aporte del 100)
+          {
+            escenario: 1, zona: 10, emp_fletera_id: 70, tipo_servicio: 'URGENTE',
+            capacidad_total: 12, moviles_count: 1, moviles_prioridad: 1, moviles_transito: 0, last_sync: null,
+          },
+          {
+            escenario: 1, zona: 11, emp_fletera_id: 70, tipo_servicio: 'URGENTE',
+            capacidad_total: 5, moviles_count: 1, moviles_prioridad: 1, moviles_transito: 0, last_sync: null,
+          },
+        ],
+        movilCapRows: [
+          { nro: 100, capacidad: 3, tamano_lote: 15, estado_nro: null }, // activo
+          { nro: 101, capacidad: 7, tamano_lote: 10, estado_nro: 3   }, // inactivo — debe excluirse
+          { nro: 102, capacidad: 2, tamano_lote: 8,  estado_nro: null },
+        ],
+      }) as unknown as ReturnType<typeof getServerSupabaseClient>,
+    );
+
+    const req = makeRequest({ escenario: '1', tipoServicio: 'URGENTE', isRoot: true });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const zona10 = body.data.find((z: { zona_id: number }) => z.zona_id === 10);
+    expect(zona10).toBeDefined();
+
+    // Solo el activo (100) aparece
+    const movilIds = zona10.moviles_detalle.map((m: { movil_id: number }) => m.movil_id);
+    expect(movilIds).toContain(100);
+    expect(movilIds).not.toContain(101);
+    expect(movilIds).toHaveLength(1);
+
+    // movil 100 es prioridad_o_transito=1 → prioridad
+    expect(zona10.moviles_prioridad).toBe(1);
+    expect(zona10.moviles_transito).toBe(0);
+
+    // capacidad_total viene de la vista (ya excluye inactivos en v2)
+    expect(zona10.capacidad_total).toBe(12);
   });
 });

@@ -29,6 +29,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
+import { MOVIL_ESTADOS_INACTIVOS } from '@/lib/movil-estados';
 import type { ZonaCapSnapshot, PedidoSinAsignarMini, MovilDetalleZona } from '@/types/zona-capacidad';
 
 const CAP_LOG = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
@@ -85,6 +86,7 @@ interface MovilCapRow {
   nro: number;
   capacidad: number;
   tamano_lote: number | null;
+  estado_nro: number | null;
 }
 
 interface PedidoSinAsignarRow {
@@ -243,13 +245,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ─── Query 4: moviles (para capacidad_actual y tamano_lote) ───────────────
+  // ─── Query 4: moviles (para capacidad_actual, tamano_lote y estado_nro) ───────────────
 
   const movilIdsInt = Array.from(new Set(zceRows.map((r) => r.movil)));
   let movilCapRows: MovilCapRow[] = [];
   if (movilIdsInt.length > 0) {
     const mCapQuery = db.from('moviles')
-      .select('nro, capacidad, tamano_lote')
+      .select('nro, capacidad, tamano_lote, estado_nro')
       .in('nro', movilIdsInt);
     const mCapResult = await (mCapQuery as unknown as Promise<{ data: MovilCapRow[] | null; error: { message: string } | null }>);
     if (!mCapResult.error) movilCapRows = mCapResult.data ?? [];
@@ -285,9 +287,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     mzIndex.set(key, mz.prioridad_o_transito !== 1);
   }
 
-  // moviles: nro → { capacidad, tamano_lote }
-  const movilCapIndex = new Map<number, { capacidad: number; tamano_lote: number | null }>();
-  for (const m of movilCapRows) movilCapIndex.set(m.nro, { capacidad: m.capacidad, tamano_lote: m.tamano_lote });
+  // moviles: nro → { capacidad, tamano_lote, estado_nro }
+  const movilCapIndex = new Map<number, { capacidad: number; tamano_lote: number | null; estado_nro: number | null }>();
+  for (const m of movilCapRows) movilCapIndex.set(m.nro, { capacidad: m.capacidad, tamano_lote: m.tamano_lote, estado_nro: m.estado_nro ?? null });
 
   // pedidos sin asignar: zona_nro → PedidoSinAsignarMini[]
   const pedidosIndex = new Map<number, PedidoSinAsignarMini[]>();
@@ -330,15 +332,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Dedupar por movil_id: zonas_cap_entrega tiene una fila por tipo_servicio,
     // así que un móvil que sirve URGENTE y NOCTURNO aparece 2 veces. Sumamos los
     // aportes y conservamos un solo registro por móvil.
+    // Filtro read-time: se omiten móviles con estado_nro inactivo (IN {3, 5, 15}).
+    // La sincronización (zonas-cap-entrega.ts) queda out of scope; este filtro
+    // garantiza que el detalle y los counts sólo reflejen móviles operativos.
     const movilDedupMap = new Map<number, MovilDetalleZona>();
     for (const m of zceByZona.get(zonaId) ?? []) {
+      const capData = movilCapIndex.get(m.movil);
+
+      // Excluir móviles inactivos del detalle y del cálculo de capacidad
+      if (capData && MOVIL_ESTADOS_INACTIVOS.has(capData.estado_nro as number)) continue;
+
       const existing = movilDedupMap.get(m.movil);
       if (existing) {
         existing.aporte_a_zona += m.lote_disponible;
         continue;
       }
       const enTransito = mzIndex.get(`${m.movil}:${zonaId}`) ?? false;
-      const capData = movilCapIndex.get(m.movil);
       movilDedupMap.set(m.movil, {
         movil_id: m.movil,
         lote_asignado: capData?.tamano_lote ?? 0,

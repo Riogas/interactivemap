@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { determineServicePeriod, parseTimeToDecimal } from '@/lib/horario-servicio';
+import { MOVIL_ESTADOS_INACTIVOS } from '@/lib/movil-estados';
 
 // ========== Tipos internos ==========
 interface Zona {
@@ -17,8 +18,8 @@ interface Zona {
   [key: string]: any;
 }
 
-/** Estados de móvil que se muestran tachados (inactivos) */
-const ESTADOS_TACHADOS = new Set([3, 5, 15]);
+/** Estados de móvil que se muestran tachados (inactivos) — fuente: lib/movil-estados.ts */
+const ESTADOS_TACHADOS = MOVIL_ESTADOS_INACTIVOS;
 
 /** Opciones fijas de tipo de servicio */
 const TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE'] as const;
