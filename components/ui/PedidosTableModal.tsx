@@ -127,6 +127,10 @@ interface PedidosTableModalProps {
   onModalExtraSelectedMovilesChange?: (ids: number[]) => void;
   /** Moviles inactivos relevantes para la vista finalizados desde colapsable. */
   inactiveMovilesAvailable?: MovilOption[];
+  /** Filtros iniciales a aplicar cuando openSource !== 'colapsable' (non-controlled mode).
+   *  Al abrirse el modal, localFilters se inicializa con DEFAULT_FILTERS + initialFilters.
+   *  Los cambios internos quedan en state local y NO se propagan al dashboard. */
+  initialFilters?: Partial<Filters>;
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -150,7 +154,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [] }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   // Cuando el openSource no es 'colapsable', todos los filtros excepto search
   // se muestran disabled+grisaceos (visibles pero no clickeables).
@@ -221,6 +225,20 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     prevResetToken.current = externalResetToken;
   }, [externalResetToken, setFilters]);
+
+  // Re-init local filters from initialFilters when opened in non-controlled mode (openSource != 'colapsable').
+  // Ensures that each open from navbar/zona/movil starts with the correct pre-applied filters
+  // (e.g. entrega='entregado' for Entregados) without touching the dashboard pedidosFilters.
+  const prevIsOpen = useRef(false);
+  useEffect(() => {
+    if (!isControlled && isOpen && !prevIsOpen.current && initialFilters) {
+      const next = { ...DEFAULT_FILTERS, ...initialFilters };
+      setLocalFilters(next);
+      filtersRef.current = next;
+    }
+    prevIsOpen.current = isOpen;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // initialFilters e isControlled excluidos intencionalmente — solo reinit al abrir
 
   // Click-outside para cerrar dropdowns (tipo de servicio + movil)
   useEffect(() => {

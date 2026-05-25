@@ -104,6 +104,10 @@ interface ServicesTableModalProps {
   onModalExtraSelectedMovilesChange?: (ids: number[]) => void;
   /** Moviles inactivos relevantes para la vista finalizados desde colapsable. */
   inactiveMovilesAvailable?: MovilOption[];
+  /** Filtros iniciales a aplicar cuando openSource !== 'colapsable' (non-controlled mode).
+   *  Al abrirse el modal, localFilters se inicializa con DEFAULT_FILTERS + initialFilters.
+   *  Los cambios internos quedan en state local y NO se propagan al dashboard. */
+  initialFilters?: Partial<Filters>;
 }
 
 // ========== Row bg colors ==========
@@ -127,7 +131,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [] }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const isFilterDisabled = openSource !== 'colapsable';
 
@@ -160,6 +164,18 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
   const movilDropdownRef = useRef<HTMLDivElement>(null);
   const movilButtonRef = useRef<HTMLButtonElement>(null);
   const [movilDropdownPos, setMovilDropdownPos] = useState({ top: 0, left: 0 });
+
+  // Re-init local filters from initialFilters when opened in non-controlled mode (openSource != 'colapsable').
+  const prevIsOpen = useRef(false);
+  useEffect(() => {
+    if (!isControlled && isOpen && !prevIsOpen.current && initialFilters) {
+      const next = { ...DEFAULT_FILTERS, ...initialFilters };
+      setLocalFilters(next);
+      filtersRef.current = next;
+    }
+    prevIsOpen.current = isOpen;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // initialFilters e isControlled excluidos intencionalmente — solo reinit al abrir
 
   // Click-outside para cerrar dropdown de movil
   useEffect(() => {
