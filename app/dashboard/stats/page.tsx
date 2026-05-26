@@ -72,52 +72,6 @@ function formatTimeAgo(date: Date | null): string {
   return `${Math.floor(diff / 3600)}h`;
 }
 
-// Sparkline pequena para los inline KPIs del header. Pinta una curva con
-// area debajo + punto al final. Hereda color via `currentColor` — controla el
-// tono desde el padre con text-stats-info etc. Aria-hidden porque el valor
-// numerico ya esta en el DOM al lado.
-function Sparkline({ data, width = 64, height = 18, ariaLabel }: { data: number[]; width?: number; height?: number; ariaLabel?: string }) {
-  if (!data.length) return null;
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
-  const range = max - min || 1;
-  const stepX = data.length > 1 ? width / (data.length - 1) : 0;
-  const pts = data.map((v, i) => {
-    const x = i * stepX;
-    const y = height - ((v - min) / range) * (height - 2) - 1;
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  });
-  const polyPoints = pts.join(' ');
-  const lastX = (data.length - 1) * stepX;
-  const lastY = height - ((data[data.length - 1] - min) / range) * (height - 2) - 1;
-  return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      className="overflow-visible flex-shrink-0"
-      role={ariaLabel ? 'img' : undefined}
-      aria-label={ariaLabel}
-      aria-hidden={ariaLabel ? undefined : true}
-    >
-      <path
-        d={`M0,${height} L${polyPoints} L${lastX.toFixed(2)},${height} Z`}
-        fill="currentColor"
-        opacity="0.18"
-      />
-      <polyline
-        points={polyPoints}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx={lastX} cy={lastY} r="1.8" fill="currentColor" />
-    </svg>
-  );
-}
-
 function BarChart({ data, colorClass = 'bg-stats-info' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   const summary = data.length === 0
@@ -378,6 +332,8 @@ function StatsContent() {
   const [selectedEmpresa, setSelectedEmpresa] = useState<string>('Todas');
   const [selectedProducto, setSelectedProducto] = useState<string>('Todos');
   const [refreshSeconds, setRefreshSeconds] = useState<number>(60);
+  // Valor del input manual de refresh (segundos). Se sincroniza con el select.
+  const [refreshInputVal, setRefreshInputVal] = useState<string>('60');
   const [refreshTick, setRefreshTick] = useState<number>(0);
   const [zonasNoActivasCount, setZonasNoActivasCount] = useState<number | null>(null);
   const [zonasSinMovilCount, setZonasSinMovilCount] = useState<number | null>(null);
@@ -715,20 +671,6 @@ function StatsContent() {
     return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
   }, [filteredPedidos]);
 
-  // ─── Services por hora (para sparkline del KPI inline en el header) ──────
-  const servicesPorHora = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredServices.forEach(s => {
-      const fch = s.fch_hora_para ?? '';
-      const hora = fch.includes('T') ? fch.split('T')[1]?.substring(0, 2) : fch.substring(8, 10);
-      if (hora && hora.match(/^\d{2}$/)) {
-        const h = `${hora}:00`;
-        map[h] = (map[h] ?? 0) + 1;
-      }
-    });
-    const sorted = Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
-    return sorted.map(([label, value]) => ({ label, value }));
-  }, [filteredServices]);
 
   // ─── Pedidos por empresa (multi-serie) ────────────────────────────────────
   const pedidosPorEmpresa = useMemo(() => {
@@ -991,47 +933,66 @@ function StatsContent() {
               {isLoading && <span className="ml-1 text-stats-info animate-pulse">●</span>}
             </span>
           </div>
-          {/* KPIs inline (centro, solo desktop) — con sparkline de la distribucion
-              horaria del dia. Pone contexto al numero (¿pico ya pasado? ¿arrancando?). */}
-          <div className="hidden lg:flex items-center gap-4 ml-auto mr-3">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-stats-muted-fg dark:text-gray-500">Pedidos</span>
-              <span className="text-base font-bold font-stats-mono tabular-nums">{pedidosStats.total}</span>
-              <span className="text-stats-info self-center">
-                <Sparkline
-                  data={pedidosPorHora.map((p) => p.value)}
-                  ariaLabel={`Distribucion de ${pedidosStats.total} pedidos en ${pedidosPorHora.length} horas`}
-                />
-              </span>
-            </div>
-            <div className="w-px h-5 bg-stats-border dark:bg-white/20" />
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-stats-muted-fg dark:text-gray-500">Services</span>
-              <span className="text-base font-bold font-stats-mono tabular-nums">{servicesStats.total}</span>
-              <span className="text-stats-success self-center">
-                <Sparkline
-                  data={servicesPorHora.map((s) => s.value)}
-                  ariaLabel={`Distribucion de ${servicesStats.total} services en ${servicesPorHora.length} horas`}
-                />
-              </span>
-            </div>
-          </div>
           {/* Acciones */}
           <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Combo refresh: 19 opciones 1m-10m cada 30s + input manual de segundos */}
             <select
-              value={refreshSeconds}
-              onChange={(e) => setRefreshSeconds(Number(e.target.value))}
-              className="text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-stats-info cursor-pointer bg-stats-surface-2 border border-stats-border text-stats-foreground dark:bg-white/10 dark:border-white/20 dark:text-white"
+              value={[60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360, 390, 420, 450, 480, 510, 540, 570, 600].includes(refreshSeconds) ? refreshSeconds : 0}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (v > 0) { setRefreshSeconds(v); setRefreshInputVal(String(v)); }
+              }}
+              className="text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-stats-info cursor-pointer bg-white border border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               aria-label="Intervalo de refresh"
               title="Intervalo de refresh"
             >
-              <option value={0}>Manual</option>
-              <option value={10}>10s</option>
-              <option value={30}>30s</option>
-              <option value={60}>60s</option>
-              <option value={120}>2min</option>
-              <option value={300}>5min</option>
+              {![60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360, 390, 420, 450, 480, 510, 540, 570, 600].includes(refreshSeconds) && (
+                <option value={0} disabled>Personalizado ({refreshSeconds}s)</option>
+              )}
+              <option value={60}>1m</option>
+              <option value={90}>1m 30s</option>
+              <option value={120}>2m</option>
+              <option value={150}>2m 30s</option>
+              <option value={180}>3m</option>
+              <option value={210}>3m 30s</option>
+              <option value={240}>4m</option>
+              <option value={270}>4m 30s</option>
+              <option value={300}>5m</option>
+              <option value={330}>5m 30s</option>
+              <option value={360}>6m</option>
+              <option value={390}>6m 30s</option>
+              <option value={420}>7m</option>
+              <option value={450}>7m 30s</option>
+              <option value={480}>8m</option>
+              <option value={510}>8m 30s</option>
+              <option value={540}>9m</option>
+              <option value={570}>9m 30s</option>
+              <option value={600}>10m</option>
             </select>
+            {/* Input manual de segundos */}
+            <input
+              type="number"
+              min={10}
+              max={3600}
+              step={1}
+              value={refreshInputVal}
+              onChange={(e) => setRefreshInputVal(e.target.value)}
+              onBlur={(e) => {
+                const v = Math.max(10, Math.min(3600, Number(e.target.value) || 60));
+                setRefreshSeconds(v);
+                setRefreshInputVal(String(v));
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const v = Math.max(10, Math.min(3600, Number(refreshInputVal) || 60));
+                  setRefreshSeconds(v);
+                  setRefreshInputVal(String(v));
+                }
+              }}
+              className="text-xs w-14 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-stats-info bg-white border border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              aria-label="Segundos de refresh personalizado"
+              title="Segundos (10-3600)"
+            />
             <button
               onClick={() => setRefreshTick((t) => t + 1)}
               title="Actualizar ahora"
@@ -1142,11 +1103,6 @@ function StatsContent() {
             </button>
           )}
 
-          {/* KPIs inline (mobile, right-aligned) */}
-          <div className="lg:hidden ml-auto flex items-center gap-3 text-xs">
-            <span><span className="opacity-60 mr-1">Ped</span><span className="font-stats-mono tabular-nums font-bold">{pedidosStats.total}</span></span>
-            <span><span className="opacity-60 mr-1">Svc</span><span className="font-stats-mono tabular-nums font-bold">{servicesStats.total}</span></span>
-          </div>
         </div>
       </div>
 
