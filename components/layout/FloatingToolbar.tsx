@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import PreferencesModal, { UserPreferences } from '@/components/ui/PreferencesModal';
+import PreferenciasGlobalesModal from '@/components/ui/PreferenciasGlobalesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
 import { getMaxRoleAttribute } from '@/lib/role-attributes';
@@ -22,9 +23,11 @@ export default function FloatingToolbar({
 }: FloatingToolbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+  const [isPreferenciasGlobalesOpen, setIsPreferenciasGlobalesOpen] = useState(false);
   // Si true, PreferencesModal abre automaticamente el sub-modal de Conf. Visual.
   // Lo dispara el evento global 'open-conf-visual' (click en un Ref#N de cualquier leyenda).
   const [autoOpenConfVisual, setAutoOpenConfVisual] = useState(false);
+  const [currentPreferences, setCurrentPreferences] = useState<UserPreferences | null>(null);
   const { user, escenarioId, logout, hasPermiso } = useAuth();
 
   // Listener global: cuando alguien clickea en un .demora-legend-ref de cualquier
@@ -45,6 +48,7 @@ export default function FloatingToolbar({
     document.addEventListener('click', onLegendRefClick);
     return () => document.removeEventListener('click', onLegendRefClick);
   }, []);
+
   // canChangeDate: el usuario puede navegar a fechas anteriores en el selector.
   // Pasa si:
   //   - es root (bypass), o
@@ -58,6 +62,16 @@ export default function FloatingToolbar({
   // Gestión de usuarios: gate por funcionalidad "Gestion de Usuarios" (id 15 en SecuritySuite).
   // Root siempre pasa.
   const canGestionarUsuarios = isRoot(user) || hasFuncionalidad(user?.roles, 'Gestion de Usuarios');
+
+  // Gates por funcionalidad para botones admin
+  const canVerIncidentes = isRoot(user) || hasFuncionalidad(user?.roles, 'Query incidentes');
+  const canVerConfigEscenario = isRoot(user) || hasFuncionalidad(user?.roles, 'Conf. Globales x Escenario');
+  const canVerPreferenciasGlobales = isRoot(user) || hasFuncionalidad(user?.roles, 'Preferencias Globales');
+  const canVerLogs = isRoot(user) || hasFuncionalidad(user?.roles, 'Query Logs/Auditoria');
+  const canVerLoginBlocks = isRoot(user) || hasFuncionalidad(user?.roles, 'Query Inicios de sesion');
+  const canVerNotificaciones = isRoot(user) || hasFuncionalidad(user?.roles, 'Notificacion de novedades');
+
+  const hasAnyAdminPerm = canVerIncidentes || canVerConfigEscenario || canVerPreferenciasGlobales || canVerLogs || canVerLoginBlocks || canVerNotificaciones;
 
   const router = useRouter();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -102,6 +116,7 @@ export default function FloatingToolbar({
   }, [isOpen]);
 
   const handlePreferencesSave = (preferences: UserPreferences) => {
+    setCurrentPreferences(preferences);
     if (onPreferencesChange) {
       onPreferencesChange(preferences);
     }
@@ -242,80 +257,105 @@ export default function FloatingToolbar({
               </button>
             )}
 
-            {/* Botones Admin - Solo root */}
-            {isRoot(user) && (
+            {/* Botones Admin — gateados por funcionalidad individual */}
+            {hasAnyAdminPerm && (
               <div className="space-y-2">
-                <button
-                  onClick={() => { window.open('/admin/incidencias', '_blank'); setIsOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 border-2 border-purple-200 hover:border-purple-300 transition-all duration-200 group"
-                >
-                  <svg className="w-5 h-5 text-purple-600 group-hover:text-purple-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <span className="font-semibold text-purple-700 group-hover:text-purple-800 transition-colors flex-1 text-left">
-                    Incidentes
-                  </span>
-                  <svg className="w-4 h-4 text-purple-400 group-hover:text-purple-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => { window.open("/admin/configuracion", "_blank"); setIsOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 border-2 border-green-200 hover:border-green-300 transition-all duration-200 group"
-                >
-                  <svg className="w-5 h-5 text-green-600 group-hover:text-green-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                  </svg>
-                  <span className="font-semibold text-green-700 group-hover:text-green-800 transition-colors flex-1 text-left">
-                    Configuracion
-                  </span>
-                  <svg className="w-4 h-4 text-green-400 group-hover:text-green-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => { window.open("/admin/auditoria", "_blank"); setIsOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 hover:from-slate-100 hover:to-slate-200 border-2 border-slate-200 hover:border-slate-300 transition-all duration-200 group"
-                >
-                  <svg className="w-5 h-5 text-slate-600 group-hover:text-slate-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7h-9M14 17H5m11-5a3 3 0 11-6 0 3 3 0 016 0zM7 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className="font-semibold text-slate-700 group-hover:text-slate-800 transition-colors flex-1 text-left">
-                    Logs / Auditoría
-                  </span>
-                  <svg className="w-4 h-4 text-slate-400 group-hover:text-slate-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => { window.open("/admin/login-blocks", "_blank"); setIsOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 border-2 border-red-200 hover:border-red-300 transition-all duration-200 group"
-                >
-                  <svg className="w-5 h-5 text-red-600 group-hover:text-red-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  <span className="font-semibold text-red-700 group-hover:text-red-800 transition-colors flex-1 text-left">
-                    Bloqueos de Login
-                  </span>
-                  <svg className="w-4 h-4 text-red-400 group-hover:text-red-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </button>
-                {/* Notificaciones de novedades (solo root) */}
-                <button
-                  onClick={() => { window.open("/admin/notificaciones", "_blank"); setIsOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-indigo-50 to-indigo-100 hover:from-indigo-100 hover:to-indigo-200 border-2 border-indigo-200 hover:border-indigo-300 transition-all duration-200 group"
-                >
-                  <svg className="w-5 h-5 text-indigo-600 group-hover:text-indigo-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                  <span className="font-semibold text-indigo-700 group-hover:text-indigo-800 transition-colors flex-1 text-left">
-                    Notificaciones de novedades
-                  </span>
-                  <svg className="w-4 h-4 text-indigo-400 group-hover:text-indigo-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </button>
+                {canVerIncidentes && (
+                  <button
+                    onClick={() => { window.open('/admin/incidencias', '_blank'); setIsOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 border-2 border-purple-200 hover:border-purple-300 transition-all duration-200 group"
+                  >
+                    <svg className="w-5 h-5 text-purple-600 group-hover:text-purple-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="font-semibold text-purple-700 group-hover:text-purple-800 transition-colors flex-1 text-left">
+                      Incidentes
+                    </span>
+                    <svg className="w-4 h-4 text-purple-400 group-hover:text-purple-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </button>
+                )}
+                {canVerConfigEscenario && (
+                  <button
+                    onClick={() => { window.open("/admin/configuracion", "_blank"); setIsOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 border-2 border-green-200 hover:border-green-300 transition-all duration-200 group"
+                  >
+                    <svg className="w-5 h-5 text-green-600 group-hover:text-green-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                    <span className="font-semibold text-green-700 group-hover:text-green-800 transition-colors flex-1 text-left">
+                      Configuracion
+                    </span>
+                    <svg className="w-4 h-4 text-green-400 group-hover:text-green-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </button>
+                )}
+                {canVerPreferenciasGlobales && (
+                  <button
+                    onClick={() => { setIsPreferenciasGlobalesOpen(true); setIsOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-100 hover:from-purple-100 hover:to-indigo-200 border-2 border-indigo-200 hover:border-indigo-300 transition-all duration-200 group"
+                  >
+                    <svg className="w-5 h-5 text-indigo-600 group-hover:text-indigo-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    <span className="font-semibold text-indigo-700 group-hover:text-indigo-800 transition-colors flex-1 text-left">
+                      Preferencias Globales
+                    </span>
+                    <svg className="w-4 h-4 text-indigo-400 group-hover:text-indigo-500 ml-auto transition-all duration-200 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                )}
+                {canVerLogs && (
+                  <button
+                    onClick={() => { window.open("/admin/auditoria", "_blank"); setIsOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 hover:from-slate-100 hover:to-slate-200 border-2 border-slate-200 hover:border-slate-300 transition-all duration-200 group"
+                  >
+                    <svg className="w-5 h-5 text-slate-600 group-hover:text-slate-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7h-9M14 17H5m11-5a3 3 0 11-6 0 3 3 0 016 0zM7 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="font-semibold text-slate-700 group-hover:text-slate-800 transition-colors flex-1 text-left">
+                      Logs / Auditoría
+                    </span>
+                    <svg className="w-4 h-4 text-slate-400 group-hover:text-slate-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </button>
+                )}
+                {canVerLoginBlocks && (
+                  <button
+                    onClick={() => { window.open("/admin/login-blocks", "_blank"); setIsOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 border-2 border-red-200 hover:border-red-300 transition-all duration-200 group"
+                  >
+                    <svg className="w-5 h-5 text-red-600 group-hover:text-red-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span className="font-semibold text-red-700 group-hover:text-red-800 transition-colors flex-1 text-left">
+                      Bloqueos de Login
+                    </span>
+                    <svg className="w-4 h-4 text-red-400 group-hover:text-red-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </button>
+                )}
+                {canVerNotificaciones && (
+                  <button
+                    onClick={() => { window.open("/admin/notificaciones", "_blank"); setIsOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-indigo-50 to-indigo-100 hover:from-indigo-100 hover:to-indigo-200 border-2 border-indigo-200 hover:border-indigo-300 transition-all duration-200 group"
+                  >
+                    <svg className="w-5 h-5 text-indigo-600 group-hover:text-indigo-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    <span className="font-semibold text-indigo-700 group-hover:text-indigo-800 transition-colors flex-1 text-left">
+                      Notificaciones de novedades
+                    </span>
+                    <svg className="w-4 h-4 text-indigo-400 group-hover:text-indigo-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </button>
+                )}
               </div>
             )}
 
@@ -377,6 +417,14 @@ export default function FloatingToolbar({
         }}
         onSave={handlePreferencesSave}
         autoOpenConfVisual={autoOpenConfVisual}
+      />
+
+      {/* Modal de Preferencias Globales (admin) */}
+      <PreferenciasGlobalesModal
+        isOpen={isPreferenciasGlobalesOpen}
+        onClose={() => setIsPreferenciasGlobalesOpen(false)}
+        preferences={currentPreferences ?? {} as UserPreferences}
+        onPreferencesChange={handlePreferencesSave}
       />
     </>
   );
