@@ -2127,6 +2127,14 @@ function DashboardContent() {
     [user],
   );
 
+  // Gating del FAB "Estadísticas globales" (/dashboard/stats):
+  // Controlado por la funcionalidad 'Estadistica Global RiogasTracking'.
+  // Root siempre accede. Reemplaza el gate previo por hasPermiso('stats').
+  const canVerEstadisticasGlobales = useMemo(
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Estadistica Global RiogasTracking'),
+    [user],
+  );
+
   // `userHasEmpresaRestriction` mira solo allowedEmpresas ? se usa para filtrar
   // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
   // `isScopeRestricted` además exige que el user no sea privilegiado (root/despacho/dashboard/supervisor) ? es la
@@ -3014,8 +3022,8 @@ function DashboardContent() {
             </button>
           )}
 
-          {/* FAB: Estadísticas ? requiere permiso stats */}
-          {hasPermiso('stats') && (
+          {/* FAB: Estadísticas globales — gated por funcionalidad 'Estadistica Global RiogasTracking' */}
+          {canVerEstadisticasGlobales && (
             <button
               id="tour-fab-estadisticas"
               onClick={() => {
