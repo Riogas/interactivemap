@@ -1,15 +1,22 @@
 /**
  * Tests unitarios para el prorrateo con peso en lib/zonas-cap-entrega.ts
  *
+ * MODELO B (confirmado por el usuario):
+ *  - Prioridad: ceil(loteLibre / W_prio)  donde W_prio = cantidad de zonas prioridad
+ *  - Tránsito:  ceil(loteLibre * alpha)   — alpha como descuento absoluto, sin prorrateo
+ *
  * Casos cubiertos:
- *  1. Movil con 1 zona prioridad => lote completo asignado a esa zona
- *  2. Movil con 3 zonas prioridad iguales, lote=5 => ceil(5/3)=2 cada una (suma 6, sobreestima 1)
- *  3. Movil con 2 prioridad + 3 transito, lote=5, α=0.3 => prioridad ~2 c/u, transito ~1 c/u
- *  4. Movil con solo transito (sin prioridad), α=0.3, lote=5, 3 zonas => ceil(5/3)=2 (α se cancela)
- *  5. Movil con α=0, transito solo recibe 0 (W=0, sin upserts)
- *  6. Movil con α=1, prioridad y transito iguales
+ *  1. Movil con 1 zona prioridad => lote completo (ceil(lote/1))
+ *  2. Movil con 3 zonas prioridad iguales, lote=5 => ceil(5/3)=2 cada una
+ *  3. Movil con 2 prioridad + 3 transito, lote=5, α=0.3 => prioridad ceil(5/2)=3 c/u, transito ceil(5*0.3)=2 c/u
+ *  4. Movil con solo transito (sin prioridad), α=0.3, lote=5, 3 zonas => ceil(5*0.3)=2 c/u
+ *  5. Movil con α=0, transito solo => cada zona recibe 0 (rows con lote_disponible=0)
+ *  6. Movil con α=1, prioridad y transito => prioridad ceil(8/2)=4, transito ceil(8*1)=8
  *  7. Movil con lote_libre = 0 => todas las porciones 0
  *  8. Movil con lote_libre < 0 (sobrecupo) => todas las porciones 0
+ *  9. [Modelo B] lote=10, alpha=0.3, 1 zona transito => ceil(10*0.3)=3
+ * 10. [Modelo B] lote=10, alpha=0.3, 2 zonas transito + 1 prio => prio ceil(10/1)=10, transito ceil(10*0.3)=3
+ * 11. [Modelo B] movil lote=10, en 2 zonas transito + 1 prio (alpha=0.3) — suma de aportes supera lote (intencional)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -100,15 +107,15 @@ function makeSupabaseMockProrrateo({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tests de prorrateo
+// Tests de prorrateo — MODELO B
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('syncMovilZonasCapEntrega — prorrateo con peso alpha', () => {
+describe('syncMovilZonasCapEntrega — modelo B (alpha como descuento absoluto)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('Caso 1: movil con 1 zona prioridad => lote completo asignado a esa zona', async () => {
+  it('Caso 1: movil con 1 zona prioridad => ceil(lote/1) = lote completo', async () => {
     const sb = makeSupabaseMockProrrateo({
       movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 5, capacidad: 0 },
       zonaRows: [
@@ -121,12 +128,12 @@ describe('syncMovilZonasCapEntrega — prorrateo con peso alpha', () => {
 
     const upserted = sb.getUpserted();
     expect(upserted).toHaveLength(1);
-    // lote_libre = 5, W = 1, porcion = ceil(5 * 1 / 1) = 5
+    // lote_libre = 5, W_prio = 1, porcion = ceil(5 / 1) = 5
     expect(upserted[0].lote_disponible).toBe(5);
     expect(upserted[0].zona).toBe(10);
   });
 
-  it('Caso 2: movil con 3 zonas prioridad iguales, lote=5 => ceil(5/3)=2 cada una', async () => {
+  it('Caso 2: movil con 3 zonas prioridad, lote=5 => ceil(5/3)=2 cada una', async () => {
     const sb = makeSupabaseMockProrrateo({
       movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 5, capacidad: 0 },
       zonaRows: [
@@ -141,19 +148,15 @@ describe('syncMovilZonasCapEntrega — prorrateo con peso alpha', () => {
 
     const upserted = sb.getUpserted();
     expect(upserted).toHaveLength(3);
-    // lote_libre = 5, W = 3, porcion = ceil(5 * 1 / 3) = ceil(1.67) = 2
+    // lote_libre = 5, W_prio = 3, porcion = ceil(5 / 3) = ceil(1.67) = 2
     for (const row of upserted) {
       expect(row.lote_disponible).toBe(2);
     }
-    // Suma total = 6 (sobreestima 1 — aceptable con ceiling)
-    const suma = upserted.reduce((acc: number, r: any) => acc + r.lote_disponible, 0);
-    expect(suma).toBe(6);
   });
 
-  it('Caso 3: movil con 2 prioridad + 3 transito, lote=5, α=0.3 => distribución correcta', async () => {
-    // W = 2*1 + 3*0.3 = 2 + 0.9 = 2.9
-    // porcion_prioridad = ceil(5 * 1 / 2.9) = ceil(1.724) = 2
-    // porcion_transito = ceil(5 * 0.3 / 2.9) = ceil(0.517) = 1
+  it('Caso 3 (Modelo B): 2 prioridad + 3 transito, lote=5, α=0.3 => prioridad ceil(5/2)=3, transito ceil(5*0.3)=2', async () => {
+    // Prioridad: ceil(5 / 2) = ceil(2.5) = 3
+    // Tránsito:  ceil(5 * 0.3) = ceil(1.5) = 2
     const sb = makeSupabaseMockProrrateo({
       movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 5, capacidad: 0 },
       zonaRows: [
@@ -178,16 +181,15 @@ describe('syncMovilZonasCapEntrega — prorrateo con peso alpha', () => {
     expect(transitos).toHaveLength(3);
 
     for (const p of prioridades) {
-      expect(p.lote_disponible).toBe(2);
+      expect(p.lote_disponible).toBe(3); // ceil(5/2) = 3
     }
     for (const t of transitos) {
-      expect(t.lote_disponible).toBe(1);
+      expect(t.lote_disponible).toBe(2); // ceil(5*0.3) = ceil(1.5) = 2
     }
   });
 
-  it('Caso 4: movil con solo transito, α=0.3, lote=5, 3 zonas => ceil(5/3)=2 (alpha se cancela)', async () => {
-    // W = 3*0.3 = 0.9
-    // porcion = ceil(5 * 0.3 / 0.9) = ceil(5/3) = ceil(1.67) = 2
+  it('Caso 4: movil con solo transito, α=0.3, lote=5, 3 zonas => cada zona ceil(5*0.3)=2', async () => {
+    // Tránsito: ceil(5 * 0.3) = ceil(1.5) = 2 por zona (independiente de cuantas zonas hay)
     const sb = makeSupabaseMockProrrateo({
       movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 5, capacidad: 0 },
       zonaRows: [
@@ -203,12 +205,12 @@ describe('syncMovilZonasCapEntrega — prorrateo con peso alpha', () => {
     const upserted = sb.getUpserted();
     expect(upserted).toHaveLength(3);
     for (const row of upserted) {
-      expect(row.lote_disponible).toBe(2);
+      expect(row.lote_disponible).toBe(2); // ceil(5 * 0.3) = 2
     }
   });
 
-  it('Caso 5: movil con α=0, solo transito => W=0, sin upserts', async () => {
-    // W = 3*0 = 0 => no se generan filas
+  it('Caso 5: movil con α=0, solo transito => cada zona recibe 0 (rows generados con lote_disponible=0)', async () => {
+    // Tránsito con alpha=0: ceil(loteLibre * 0) = 0 => rows con lote_disponible=0
     const sb = makeSupabaseMockProrrateo({
       movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 5, capacidad: 0 },
       zonaRows: [
@@ -221,13 +223,14 @@ describe('syncMovilZonasCapEntrega — prorrateo con peso alpha', () => {
     await syncMovilZonasCapEntrega(sb as any, 42);
 
     const upserted = sb.getUpserted();
-    // W = 0 => calcularPorciones retorna [] => sin upserts
-    expect(upserted).toHaveLength(0);
+    // Modelo B: se generan filas con porcion=0 (a diferencia del modelo A que omitia rows con W=0)
+    expect(upserted).toHaveLength(2);
+    for (const row of upserted) {
+      expect(row.lote_disponible).toBe(0);
+    }
   });
 
-  it('Caso 6: movil con α=1, prioridad y transito iguales', async () => {
-    // W = 2*1 + 2*1 = 4
-    // porcion = ceil(8 * 1 / 4) = ceil(2) = 2
+  it('Caso 6 (Modelo B): α=1, 2 prioridad + 2 transito, lote=8 => prioridad ceil(8/2)=4, transito ceil(8*1)=8', async () => {
     const sb = makeSupabaseMockProrrateo({
       movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 8, capacidad: 0 },
       zonaRows: [
@@ -243,8 +246,15 @@ describe('syncMovilZonasCapEntrega — prorrateo con peso alpha', () => {
 
     const upserted = sb.getUpserted();
     expect(upserted).toHaveLength(4);
-    for (const row of upserted) {
-      expect(row.lote_disponible).toBe(2);
+
+    const prioridades = upserted.filter((r: any) => r.zona === 10 || r.zona === 11);
+    const transitos = upserted.filter((r: any) => r.zona === 12 || r.zona === 13);
+
+    for (const p of prioridades) {
+      expect(p.lote_disponible).toBe(4); // ceil(8 / 2) = 4
+    }
+    for (const t of transitos) {
+      expect(t.lote_disponible).toBe(8); // ceil(8 * 1) = 8
     }
   });
 
@@ -286,5 +296,82 @@ describe('syncMovilZonasCapEntrega — prorrateo con peso alpha', () => {
     for (const row of upserted) {
       expect(row.lote_disponible).toBe(0);
     }
+  });
+
+  it('Caso 9 [Modelo B]: lote=10, alpha=0.3, 1 zona transito => ceil(10*0.3)=3', async () => {
+    const sb = makeSupabaseMockProrrateo({
+      movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 10, capacidad: 0 },
+      zonaRows: [
+        { zona_id: 20, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 2 },
+      ],
+      alpha: 0.3,
+    });
+
+    await syncMovilZonasCapEntrega(sb as any, 42);
+
+    const upserted = sb.getUpserted();
+    expect(upserted).toHaveLength(1);
+    // ceil(10 * 0.3) = ceil(3) = 3
+    expect(upserted[0].lote_disponible).toBe(3);
+    expect(upserted[0].zona).toBe(20);
+  });
+
+  it('Caso 10 [Modelo B]: lote=10, alpha=0.3, 2 zonas transito + 1 prio => prio ceil(10/1)=10, transito ceil(10*0.3)=3 c/u', async () => {
+    const sb = makeSupabaseMockProrrateo({
+      movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 10, capacidad: 0 },
+      zonaRows: [
+        { zona_id: 30, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 1 },
+        { zona_id: 31, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 2 },
+        { zona_id: 32, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 2 },
+      ],
+      alpha: 0.3,
+    });
+
+    await syncMovilZonasCapEntrega(sb as any, 42);
+
+    const upserted = sb.getUpserted();
+    expect(upserted).toHaveLength(3);
+
+    const prio = upserted.find((r: any) => r.zona === 30);
+    const t1 = upserted.find((r: any) => r.zona === 31);
+    const t2 = upserted.find((r: any) => r.zona === 32);
+
+    expect(prio?.lote_disponible).toBe(10); // ceil(10 / 1) = 10
+    expect(t1?.lote_disponible).toBe(3);    // ceil(10 * 0.3) = 3
+    expect(t2?.lote_disponible).toBe(3);    // ceil(10 * 0.3) = 3
+  });
+
+  it('Caso 11 [Modelo B]: suma de aportes de transito puede superar tamano_lote (doble-cuenta intencional)', async () => {
+    // lote=4, alpha=0.3, 1 prio + 2 transito
+    // prio:    ceil(4 / 1) = 4
+    // transito: ceil(4 * 0.3) = ceil(1.2) = 2 c/u => total transito = 4
+    // Suma total aportes = 4 + 2 + 2 = 8 > tamano_lote=4 (esperado en Modelo B)
+    const sb = makeSupabaseMockProrrateo({
+      movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 4, capacidad: 0 },
+      zonaRows: [
+        { zona_id: 40, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 1 },
+        { zona_id: 41, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 2 },
+        { zona_id: 42, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: 2 },
+      ],
+      alpha: 0.3,
+    });
+
+    await syncMovilZonasCapEntrega(sb as any, 42);
+
+    const upserted = sb.getUpserted();
+    expect(upserted).toHaveLength(3);
+
+    const prio = upserted.find((r: any) => r.zona === 40);
+    const t1   = upserted.find((r: any) => r.zona === 41);
+    const t2   = upserted.find((r: any) => r.zona === 42);
+
+    expect(prio?.lote_disponible).toBe(4);  // ceil(4 / 1) = 4
+    expect(t1?.lote_disponible).toBe(2);    // ceil(4 * 0.3) = ceil(1.2) = 2
+    expect(t2?.lote_disponible).toBe(2);    // ceil(4 * 0.3) = ceil(1.2) = 2
+
+    const suma = upserted.reduce((acc: number, r: any) => acc + r.lote_disponible, 0);
+    // 4 + 2 + 2 = 8 > tamano_lote=4: doble-cuenta intencional del modelo B
+    expect(suma).toBeGreaterThan(4);
+    expect(suma).toBe(8);
   });
 });

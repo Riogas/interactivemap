@@ -159,7 +159,7 @@ describe('syncMovilZonasCapEntrega', () => {
     const tamano_lote = 4;
     const capacidad = 1;
     // lote_libre = 3, 3 zonas todas prioridad_o_transito=1 (prioridad)
-    // W = 3, porcion = ceil(3 * 1 / 3) = 1
+    // Modelo B: W_prio = 3, porcion = ceil(3 / 3) = 1
     const expectedLote = 1;
 
     let upsertCalledWith: any[] = [];

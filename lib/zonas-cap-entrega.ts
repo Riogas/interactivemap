@@ -17,17 +17,24 @@ export interface ZonasCapEntregaRow {
 }
 
 /**
- * Calcula la porcion del lote libre para cada zona usando prorrateo con peso.
+ * Calcula la porcion del lote libre para cada zona usando MODELO B:
  *
- * Pesos: prioridad_o_transito === 1 => peso 1 (prioridad), otro => peso alpha (transito).
+ * - Zonas de PRIORIDAD: porcion = ceil(loteLibre / W_prio)
+ *   donde W_prio = cantidad de zonas de prioridad del movil.
+ *   Si W_prio = 0 (no hay zonas prioridad), las zonas de transito usan solo alpha.
  *
- * W = sum(peso_zona para todas las zonas)
- * porcion_zona = ceil(lote_libre * peso_zona / W)
+ * - Zonas de TRANSITO: porcion = ceil(loteLibre * alpha)
+ *   Alpha actua como factor de descuento absoluto, independientemente de cuantas
+ *   zonas de transito tenga el movil.
+ *
+ * Semantica: la suma de aportes puede superar tamano_lote si el movil tiene
+ * multiples zonas de transito (doble-cuenta intencional del modelo B).
  *
  * Edge cases:
- *  - lote_libre <= 0 => todas las porciones son 0
- *  - W === 0 (sin zonas) => array vacio
- *  - alpha = 0 y solo zonas de transito => W = 0, array vacio (no upsertamos nada)
+ *  - lote_libre <= 0  => todas las porciones son 0
+ *  - zonas vacias     => array vacio
+ *  - alpha = 0        => zonas de transito aportan 0
+ *  - W_prio = 0 y solo transito => prioridad no participa; transito aplica alpha
  */
 function calcularPorciones(
   zonas: Array<{ zona_id: number; escenario_id: number; tipo_de_servicio: string; prioridad_o_transito: number }>,
@@ -39,18 +46,20 @@ function calcularPorciones(
   // lote_libre negativo o cero => todas las porciones son 0
   const loteEfectivo = Math.max(0, loteLibre);
 
-  // Calcular W = suma de pesos
-  const W = zonas.reduce((acc, z) => {
-    const peso = z.prioridad_o_transito === 1 ? 1 : alpha;
-    return acc + peso;
-  }, 0);
-
-  // Si W === 0 (por ej: alpha=0 y solo zonas de transito) => no generar filas
-  if (W === 0) return [];
+  // Contar zonas de prioridad para el divisor de prioridad
+  const W_prio = zonas.filter(z => z.prioridad_o_transito === 1).length;
 
   return zonas.map(z => {
-    const peso = z.prioridad_o_transito === 1 ? 1 : alpha;
-    const porcion = loteEfectivo === 0 ? 0 : Math.ceil(loteEfectivo * peso / W);
+    let porcion: number;
+    if (loteEfectivo === 0) {
+      porcion = 0;
+    } else if (z.prioridad_o_transito === 1) {
+      // Prioridad: distribuir lote equitativamente entre zonas de prioridad
+      porcion = Math.ceil(loteEfectivo / W_prio);
+    } else {
+      // Transito: alpha como factor de descuento absoluto
+      porcion = Math.ceil(loteEfectivo * alpha);
+    }
     return {
       zona_id: z.zona_id,
       escenario_id: z.escenario_id,
@@ -61,7 +70,10 @@ function calcularPorciones(
 }
 
 /**
- * Sincroniza zonas_cap_entrega para el movil dado, usando prorrateo con peso alpha.
+ * Sincroniza zonas_cap_entrega para el movil dado, usando MODELO B:
+ *
+ * - Zonas de prioridad: ceil(lote_libre / cantidad_zonas_prioridad)
+ * - Zonas de transito:  ceil(lote_libre * alpha)  [alpha como descuento absoluto]
  *
  * ESTRATEGIA (idempotente):
  *   1. Lee el estado actual del movil desde `moviles` (escenario_id, empresa_fletera_id,
@@ -70,10 +82,9 @@ function calcularPorciones(
  *   3. Lee la lista de zonas activas del movil desde `moviles_zonas` incluyendo
  *      tipo_de_servicio y prioridad_o_transito por fila.
  *   4. Calcula lote_libre = max(0, tamano_lote - capacidad).
- *   5. Calcula W = sum(peso_zona) donde peso = 1 si prioridad, alpha si transito.
- *   6. Por cada zona: porcion = ceil(lote_libre * peso_zona / W).
- *   7. UPSERT en zonas_cap_entrega con lote_disponible = porcion.
- *   8. DELETE filas stale.
+ *   5. Por cada zona: porcion segun tipo (prioridad vs transito).
+ *   6. UPSERT en zonas_cap_entrega con lote_disponible = porcion.
+ *   7. DELETE filas stale.
  *
  * PRECONDICION:
  *   Llamar DESPUES de recomputeMovilCounters para que `capacidad` este actualizado.
@@ -159,7 +170,7 @@ export async function syncMovilZonasCapEntrega(
       (z: any) => z.tipo_de_servicio != null && z.tipo_de_servicio !== '',
     );
 
-  // ── 4. Calcular porciones con prorrateo ───────────────────────────────────
+  // ── 4. Calcular porciones con modelo B ────────────────────────────────────
   const porciones = calcularPorciones(zonas, loteLibre, alpha);
 
   // ── 5. UPSERT de filas activas ────────────────────────────────────────────
@@ -198,7 +209,7 @@ export async function syncMovilZonasCapEntrega(
     );
   } else {
     console.log(
-      `[zonas-cap-entrega] movilNro=${nro} => 0 zonas activas con tipo_servicio valido o W=0`,
+      `[zonas-cap-entrega] movilNro=${nro} => 0 zonas activas con tipo_servicio valido`,
     );
   }
 

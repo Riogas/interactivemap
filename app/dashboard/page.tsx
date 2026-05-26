@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -2373,16 +2373,17 @@ function DashboardContent() {
     if (!zonaCapSnapshotData) return map;
 
     for (const snap of zonaCapSnapshotData) {
+      // sinAsignarCount se pasa como campo separado; getCapEntregaColor lo resta de
+      // capacidadDisponible internamente. NO restar aqui para evitar doble-descuento.
       const sinAsignarCount = canVerSinAsigPorZona ? snap.pedidos_sin_asignar : 0;
-      const capacidadNetaRaw = snap.capacidad_total - sinAsignarCount;
-      const capacidadMostrada = canVerSinAsigPorZona
-        ? Math.max(capacidadNetaRaw, -9999)
-        : Math.max(capacidadNetaRaw, 0);
 
       map.set(snap.zona_id, {
         sinAsignar: sinAsignarCount,
         capacidadTotal: snap.capacidad_total,
-        capacidadDisponible: capacidadMostrada,
+        // capacidadDisponible = capacidad_total (bruto); getCapEntregaColor calcula
+        // capEntrega = capacidadDisponible - sinAsignar => capacidad_total - pedidos_sin_asignar.
+        // Coincide con capacidadMostrada del modal y el caption del poligono.
+        capacidadDisponible: snap.capacidad_total,
         movilesEnZona: snap.moviles_prioridad + snap.moviles_transito,
         movilesCompartidos: 0,
         asignadosWeight: 0,
