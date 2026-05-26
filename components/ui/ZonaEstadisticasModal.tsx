@@ -37,6 +37,8 @@ interface ZonaEstadisticasModalProps {
   onZonaClick?: (zonaId: number, serviceFilter: string) => void;
   /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona */
   onMovsPrioClick?: (zonaId: number, movilIds: number[], serviceFilter: string) => void;
+  /** Callback al clickear la celda M.Trans: abre detalle de moviles en transito de esa zona */
+  onMovsTransClick?: (zonaId: number, movilIds: number[], serviceFilter: string) => void;
   /** Callback al clickear uno de los 5 números de estadísticas (sinAsignar/pendientes/atrasados/entregados/noEntregados).
    *  Si el valor es 0, el click no se emite (cursor default). */
   onCellClick?: (zonaId: number, kind: ZonaCellKind) => void;
@@ -83,6 +85,7 @@ export default function ZonaEstadisticasModal({
   allHiddenMovilIds,
   onZonaClick,
   onMovsPrioClick,
+  onMovsTransClick,
   onCellClick,
   scopedZonaIds = null,
   scopedEmpresas = null,
@@ -743,7 +746,20 @@ export default function ZonaEstadisticasModal({
                         </span>
                       </td>
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.movsTransito > 0 ? 'text-indigo-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${z.movsTransito > 0 ? 'text-indigo-400 cursor-pointer hover:underline' : 'text-gray-600'}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.movsTransito > 0 && onMovsTransClick) {
+                              const movilIds = [...new Set(
+                                filteredMovilesZonas
+                                  .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito !== 1)
+                                  .map(r => Number(r.movil_id))
+                              )];
+                              onMovsTransClick(z.zonaId, movilIds, effectiveServiceFilter);
+                            }
+                          }}
+                        >
                           {z.movsTransito}
                         </span>
                       </td>
