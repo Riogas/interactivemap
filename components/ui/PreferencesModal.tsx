@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -14,11 +14,11 @@ import { VISUAL_REFS_CATALOG } from '@/lib/visual-refs-catalog';
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'star';
 
 export const SHAPE_OPTIONS: { value: MarkerShape; label: string; svg: string }[] = [
-  { value: 'circle', label: 'Círculo', svg: '<circle cx="12" cy="12" r="9" fill="currentColor" stroke="white" stroke-width="2"/>' },
+  { value: 'circle', label: 'CÃ­rculo', svg: '<circle cx="12" cy="12" r="9" fill="currentColor" stroke="white" stroke-width="2"/>' },
   { value: 'square', label: 'Cuadrado', svg: '<rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor" stroke="white" stroke-width="2"/>' },
-  { value: 'triangle', label: 'Triángulo', svg: '<polygon points="12,2 22,20 2,20" fill="currentColor" stroke="white" stroke-width="2"/>' },
+  { value: 'triangle', label: 'TriÃ¡ngulo', svg: '<polygon points="12,2 22,20 2,20" fill="currentColor" stroke="white" stroke-width="2"/>' },
   { value: 'diamond', label: 'Rombo', svg: '<polygon points="12,2 22,12 12,22 2,12" fill="currentColor" stroke="white" stroke-width="2"/>' },
-  { value: 'hexagon', label: 'Hexágono', svg: '<polygon points="12,2 21,7 21,17 12,22 3,17 3,7" fill="currentColor" stroke="white" stroke-width="2"/>' },
+  { value: 'hexagon', label: 'HexÃ¡gono', svg: '<polygon points="12,2 21,7 21,17 12,22 3,17 3,7" fill="currentColor" stroke="white" stroke-width="2"/>' },
   { value: 'star', label: 'Estrella', svg: '<polygon points="12,2 14.9,8.6 22,9.3 16.8,14 18.2,21 12,17.3 5.8,21 7.2,14 2,9.3 9.1,8.6" fill="currentColor" stroke="white" stroke-width="1.5"/>' },
 ];
 
@@ -31,11 +31,11 @@ export interface UserPreferences {
   realtimeEnabled: boolean; // Modo Tiempo Real ON/OFF
   showRouteAnimation: boolean;
   showCompletedMarkers: boolean;
-  markerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de móviles
+  markerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de mÃ³viles
   pedidosCluster: boolean; // Agrupar pedidos/services en clusters
   pedidoMarkerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de pedidos
   serviceMarkerStyle: 'normal' | 'compact' | 'mini'; // Estilo visual de marcadores de services
-  movilShape: MarkerShape; // Forma del marcador de móviles (compact/mini)
+  movilShape: MarkerShape; // Forma del marcador de mÃ³viles (compact/mini)
   pedidoShape: MarkerShape; // Forma del marcador de pedidos (compact/mini)
   serviceShape: MarkerShape; // Forma del marcador de services (compact/mini)
   showDemoraLabels: boolean; // Mostrar etiquetas de demora (minutos) en mapa
@@ -44,34 +44,34 @@ export interface UserPreferences {
   zonaOpacity: number; // Opacidad de las capas de zonas (0-100)
   nightStartHour: number; // Hora de inicio del horario nocturno (0-23.5, intervalos de 0.5 = 30 min)
   dayStartHour: number; // Hora de inicio del horario diurno (0-23.5, intervalos de 0.5 = 30 min)
-  // Campos de visibilidad y Capas de Información (persisten en DB)
-  movilesVisible: boolean; // true = mostrar capa de móviles
+  // Campos de visibilidad y Capas de InformaciÃ³n (persisten en DB)
+  movilesVisible: boolean; // true = mostrar capa de mÃ³viles
   pedidosVisible: boolean; // true = mostrar capa de pedidos
   servicesVisible: boolean; // true = mostrar capa de services
-  poisVisible: boolean; // true = mostrar capa de puntos de interés
-  hiddenPoiCategories: string[]; // categorías de POI ocultas (ej: ['Hospital/Sanatorio', 'Banco'])
-  poiMarkerSize: number; // Tamaño de marcadores POI: 1=chico, 2=mediano, 3=grande
+  poisVisible: boolean; // true = mostrar capa de puntos de interÃ©s
+  hiddenPoiCategories: string[]; // categorÃ­as de POI ocultas (ej: ['Hospital/Sanatorio', 'Banco'])
+  poiMarkerSize: number; // TamaÃ±o de marcadores POI: 1=chico, 2=mediano, 3=grande
   poiDefaultIcon: string; // Emoji por defecto para POIs (cuando el POI no tiene icono propio)
   dataViewMode: DataViewMode; // Vista activa del mapa
   demorasPollingSeconds: number; // Intervalo de refresco para vista Demoras (segundos)
-  movilesZonasPollingSeconds: number; // Intervalo de refresco para vista Móviles en Zonas (segundos)
+  movilesZonasPollingSeconds: number; // Intervalo de refresco para vista MÃ³viles en Zonas (segundos)
   lightMode: boolean; // Modo ligero: deshabilita animaciones (recomendado para escritorio remoto)
-  // ===== Realtime avanzado (sección admin — solo user.isRoot === 'S') =====
-  realtimePollingReconcileSeconds: number; // Polling de reconciliación contra la DB (0 = off). Cubre eventos perdidos por desconexiones silenciosas.
-  realtimeSilenceTimeoutSeconds: number;   // Si no llega ningún evento del WS por más de N segundos, forzar reconexión + refetch (0 = off).
-  realtimeRefetchOnVisible: boolean;       // Al volver la pestaña a visible, hacer refetch completo de pedidos/services.
-  realtimeHeartbeatSeconds: number;        // Heartbeat del cliente Supabase. ⚠ requiere recarga para aplicar.
-  realtimeEventsPerSecond: number;         // Tope de eventos por segundo que el cliente acepta del WS. ⚠ requiere recarga para aplicar.
+  // ===== Realtime avanzado (secciÃ³n admin â€” solo user.isRoot === 'S') =====
+  realtimePollingReconcileSeconds: number; // Polling de reconciliaciÃ³n contra la DB (0 = off). Cubre eventos perdidos por desconexiones silenciosas.
+  realtimeSilenceTimeoutSeconds: number;   // Si no llega ningÃºn evento del WS por mÃ¡s de N segundos, forzar reconexiÃ³n + refetch (0 = off).
+  realtimeRefetchOnVisible: boolean;       // Al volver la pestaÃ±a a visible, hacer refetch completo de pedidos/services.
+  realtimeHeartbeatSeconds: number;        // Heartbeat del cliente Supabase. âš  requiere recarga para aplicar.
+  realtimeEventsPerSecond: number;         // Tope de eventos por segundo que el cliente acepta del WS. âš  requiere recarga para aplicar.
   // ===== Halo de markers y patrones de zonas =====
-  movilHalo: boolean;    // Resaltar móviles con halo blanco
+  movilHalo: boolean;    // Resaltar mÃ³viles con halo blanco
   pedidoHalo: boolean;   // Resaltar pedidos con halo blanco
   serviceHalo: boolean;  // Resaltar services con halo blanco
-  zonaPattern: ZonaPattern; // Patrón visual de zonas (liso = sin patrón)
-  // TODO [realtime-ui-stale-indicator]: próxima mejora pendiente.
-  //   Cuando se implemente, agregar aquí:
+  zonaPattern: ZonaPattern; // PatrÃ³n visual de zonas (liso = sin patrÃ³n)
+  // TODO [realtime-ui-stale-indicator]: prÃ³xima mejora pendiente.
+  //   Cuando se implemente, agregar aquÃ­:
   //     realtimeStaleIndicatorEnabled: boolean;
-  //     realtimeStaleIndicatorThresholdSeconds: number; // cuánto tiempo sin eventos hasta marcar stale
-  //   Visual: badge "🟡 Datos desactualizados hace Xs" + botón refresh.
+  //     realtimeStaleIndicatorThresholdSeconds: number; // cuÃ¡nto tiempo sin eventos hasta marcar stale
+  //   Visual: badge "ðŸŸ¡ Datos desactualizados hace Xs" + botÃ³n refresh.
   // ===== Configuracion Visual: colores de refs Ref#1..Ref#26 =====
   visualRefs?: Record<string, string>;
   /** Override de iconos por categoria de POI. Key = nombre de categoria (ej "Cementerio"). Value = emoji a usar. Si la categoria no esta en este map, el POI muestra su icono original (por punto). Maximo 50 overrides. */
@@ -96,20 +96,20 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   showCapEntregaLabels: false, // Por defecto ocultas
   showPedidosZonaLabels: false, // Por defecto ocultas
   zonaOpacity: 50, // 50% por defecto
-  nightStartHour: NIGHT_START_HOUR, // 20:30 hs por defecto — de lib/horario-servicio.ts
-  dayStartHour: DAY_START_HOUR, // 06:00 hs por defecto — de lib/horario-servicio.ts
+  nightStartHour: NIGHT_START_HOUR, // 20:30 hs por defecto â€” de lib/horario-servicio.ts
+  dayStartHour: DAY_START_HOUR, // 06:00 hs por defecto â€” de lib/horario-servicio.ts
   movilesVisible: true,
   pedidosVisible: true,
   servicesVisible: true,
   poisVisible: true,
   hiddenPoiCategories: [],
   poiMarkerSize: 2,
-  poiDefaultIcon: '🏢',
+  poiDefaultIcon: 'ðŸ¢',
   dataViewMode: 'normal',
   demorasPollingSeconds: 120,
   movilesZonasPollingSeconds: 90,
   lightMode: true, // Por defecto activado para todos. Para root se sobreescribe a false al aplicar defaults (ver mergeWithDefaults).
-  // Realtime avanzado — defaults conservadores.
+  // Realtime avanzado â€” defaults conservadores.
   realtimePollingReconcileSeconds: 60,
   realtimeSilenceTimeoutSeconds: 45,
   realtimeRefetchOnVisible: true,
@@ -140,12 +140,12 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
   const canUpdPtsVenta = hasPermiso('updptsventa');
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
 
-  // ===== Estado para importar Puntos de Interés =====
+  // ===== Estado para importar Puntos de InterÃ©s =====
   const poiFileInputRef = useRef<HTMLInputElement>(null);
   const [importingPOI, setImportingPOI] = useState(false);
-  const [importResultPOI, setImportResultPOI] = useState<{ ok: boolean; msg: string; skipped?: Array<{ nombre: string; usuario_email: string; motivo: string }> } | null>(null);
+  const [importResultPOI, setImportResultPOI] = useState<{ ok: boolean; msg: string; replaced?: Array<{ deletedId: number; newId: number; nombre: string; usuario_email: string }> } | null>(null);
 
-  // ===== Estado para Auditoría (solo root) =====
+  // ===== Estado para AuditorÃ­a (solo root) =====
   const [auditEnabled, setAuditEnabled] = useState<boolean | null>(null);
   const [auditMeta, setAuditMeta] = useState<{ updated_at: string; updated_by: string | null } | null>(null);
   const [auditToggling, setAuditToggling] = useState(false);
@@ -171,8 +171,8 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
       // El JWT se guarda en localStorage['trackmovil_token'] (key separada
       // del user). El AuthContext mantiene 2 keys: 'trackmovil_user' (objeto
       // sin jwt) y 'trackmovil_token' (string con el JWT).
-      // El JWT del Security Suite NO contiene isRoot — el flag de role se
-      // pasa vía header `x-track-isroot` (mismo patrón que `x-track-user`).
+      // El JWT del Security Suite NO contiene isRoot â€” el flag de role se
+      // pasa vÃ­a header `x-track-isroot` (mismo patrÃ³n que `x-track-user`).
       let token = '';
       let isRootHeader = 'N';
       if (typeof window !== 'undefined') {
@@ -247,14 +247,14 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
       const iId          = idxExact('ID', 'id');
       const iNombre      = idxExact('Nombre', 'name') >= 0 ? idxExact('Nombre', 'name') : idxIncludes('Nombre Corto');
-      const iDescripcion = idxExact('Descripcion', 'Descripción', 'description');
+      const iDescripcion = idxExact('Descripcion', 'DescripciÃ³n', 'description');
       const iLatitud     = idxExact('Latitud', 'lat') >= 0 ? idxExact('Latitud', 'lat') : idxIncludes('CoordX');
       const iLongitud    = idxExact('Longitud', 'lng', 'lon') >= 0 ? idxExact('Longitud', 'lng', 'lon') : idxIncludes('CoordY');
       const iTipo        = idxExact('tipo', 'Tipo');
       const iVisible     = idxExact('Visible', 'visible');
       const iVisibilidad = idxIncludes('Visibilidad'); // legacy
-      const iCategoria   = idxExact('Categoria', 'Categoría', 'category');
-      const iTelefono    = idxExact('Telefono', 'Teléfono', 'phone');
+      const iCategoria   = idxExact('Categoria', 'CategorÃ­a', 'category');
+      const iTelefono    = idxExact('Telefono', 'TelÃ©fono', 'phone');
       // Legacy fields combinados a descripcion si Descripcion exacto no existe
       const iDireccion   = idxIncludes('Direccion');
       const iObs         = idxIncludes('Observaciones');
@@ -273,31 +273,31 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
         } else {
           const direccion     = iDireccion >= 0 ? String(r[iDireccion] ?? '').trim() : '';
           const observaciones = iObs >= 0 ? String(r[iObs] ?? '').trim() : '';
-          descripcionFinal = [direccion, observaciones].filter(Boolean).join(' — ') || null;
+          descripcionFinal = [direccion, observaciones].filter(Boolean).join(' â€” ') || null;
         }
 
         // Determinar tipo (publico/privado) y visible (true/false).
         // Formato nuevo: dos columnas separadas 'tipo' (publico|privado) y 'Visible' (true|false).
-        // Formato legacy: una sola columna 'Visibilidad' (publico|privado) — derivamos visible=true si publico.
+        // Formato legacy: una sola columna 'Visibilidad' (publico|privado) â€” derivamos visible=true si publico.
         let tipo: 'publico' | 'privado';
         let visible: boolean;
         if (iTipo >= 0) {
           const t = String(r[iTipo] ?? '').toLowerCase().trim();
-          tipo = t === 'publico' || t === 'público' || t === 'public' ? 'publico' : 'privado';
+          tipo = t === 'publico' || t === 'pÃºblico' || t === 'public' ? 'publico' : 'privado';
         } else if (iVisibilidad >= 0) {
           const v = String(r[iVisibilidad] ?? '').toLowerCase().trim();
-          tipo = v === 'publico' || v === 'público' || v === 'public' ? 'publico' : 'privado';
+          tipo = v === 'publico' || v === 'pÃºblico' || v === 'public' ? 'publico' : 'privado';
         } else {
           tipo = 'privado';
         }
         if (iVisible >= 0) {
           const v = String(r[iVisible] ?? '').toLowerCase().trim();
-          visible = v === 'true' || v === '1' || v === 'si' || v === 'sí';
+          visible = v === 'true' || v === '1' || v === 'si' || v === 'sÃ­';
         } else if (iVisibilidad >= 0) {
           // En formato legacy 'Visibilidad' tambien funcionaba como visible:
           // publico -> visible, otra cosa -> oculto.
           const v = String(r[iVisibilidad] ?? '').toLowerCase().trim();
-          visible = v === 'publico' || v === 'público' || v === 'true' || v === '1';
+          visible = v === 'publico' || v === 'pÃºblico' || v === 'true' || v === '1';
         } else {
           visible = true; // default visible
         }
@@ -312,7 +312,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
           descripcion:        descripcionFinal,
           visible,
           tipo,
-          icono:              '📍',
+          icono:              'ðŸ“',
           usuario_email:      email,
           escenario_id:       iEscenario >= 0 && r[iEscenario] != null ? Number(r[iEscenario]) : null,
           empresa_fletera_id: iEmpresa >= 0 && r[iEmpresa] != null ? Number(r[iEmpresa]) : null,
@@ -320,7 +320,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
       });
 
       if (rows.length === 0) {
-        setImportResultPOI({ ok: false, msg: 'No se encontraron filas válidas (falta columna ID*).' });
+        setImportResultPOI({ ok: false, msg: 'No se encontraron filas vÃ¡lidas (falta columna ID*).' });
         setImportingPOI(false);
         return;
       }
@@ -334,26 +334,25 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
       if (res.ok && json.success) {
         const parts: string[] = [];
-        if (json.created?.length) parts.push(`${json.created.length} creado(s)`);
-        if (json.updated?.length) parts.push(`${json.updated.length} actualizado(s)`);
-        if (json.skipped?.length) parts.push(`${json.skipped.length} omitido(s) (privados)`);
+        if (json.created?.length) parts.push(`${json.created.length} creado(s)/actualizado(s)`);
+        if (json.replaced?.length) parts.push(`${json.replaced.length} reemplazado(s) (mismo nombre, id distinto)`);
         if (!parts.length) parts.push('0 cambios');
         setImportResultPOI({
           ok: true,
           msg: `✅ ${parts.join(' · ')}`,
-          skipped: json.skipped ?? [],
+          replaced: json.replaced ?? [],
         });
       } else {
-        setImportResultPOI({ ok: false, msg: `❌ Error: ${json.error || 'Error desconocido'}` });
+        setImportResultPOI({ ok: false, msg: `âŒ Error: ${json.error || 'Error desconocido'}` });
       }
     } catch (err: any) {
-      setImportResultPOI({ ok: false, msg: `❌ Error al leer el archivo: ${err.message}` });
+      setImportResultPOI({ ok: false, msg: `âŒ Error al leer el archivo: ${err.message}` });
     } finally {
       setImportingPOI(false);
     }
   }, [user]);
 
-  // Cargar estado inicial del toggle de auditoría (solo para root)
+  // Cargar estado inicial del toggle de auditorÃ­a (solo para root)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (user?.isRoot !== 'S') return;
@@ -368,7 +367,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
       .catch(() => { /* silencioso */ });
   }, [user?.isRoot, isOpen, auditEnabled]);
 
-  // Cargar preferencias desde localStorage al montar (cache local de lo que ya se cargó de DB).
+  // Cargar preferencias desde localStorage al montar (cache local de lo que ya se cargÃ³ de DB).
   // Override de rol: para root lightMode=false, resto true (a menos que el usuario lo haya guardado).
   useEffect(() => {
     const isRootLocal = isRoot(user);
@@ -431,7 +430,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                   </div>
                   <div>
                     <h2 className="text-xl font-bold">Preferencias</h2>
-                    <p className="text-xs text-blue-100">Configura la aplicación según tus necesidades</p>
+                    <p className="text-xs text-blue-100">Configura la aplicaciÃ³n segÃºn tus necesidades</p>
                   </div>
                 </div>
                 <button
@@ -448,29 +447,29 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
             {/* Content */}
             <div className="p-6 space-y-6">
 
-              {/* Botón "Notificaciones de novedades" se movió al FloatingToolbar
-                  (junto a Bloqueos de Login, Logs/Auditoría, Configuración, Incidentes). */}
+              {/* BotÃ³n "Notificaciones de novedades" se moviÃ³ al FloatingToolbar
+                  (junto a Bloqueos de Login, Logs/AuditorÃ­a, ConfiguraciÃ³n, Incidentes). */}
 
-              {/* ═══════════════════════════════════════════════════════════
-                  SECCIÓN 1: Tamaño y Forma de Marcadores
-                  ═══════════════════════════════════════════════════════════ */}
+              {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                  SECCIÃ“N 1: TamaÃ±o y Forma de Marcadores
+                  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
               <div className="space-y-1">
                 <h3 className="flex items-center gap-2 text-sm font-bold text-gray-800 uppercase tracking-wide">
-                  <span>📍</span> Marcadores
+                  <span>ðŸ“</span> Marcadores
                 </h3>
-                <p className="text-xs text-gray-500">Configura tamaño y forma de los marcadores en el mapa</p>
+                <p className="text-xs text-gray-500">Configura tamaÃ±o y forma de los marcadores en el mapa</p>
               </div>
 
-              {/* Tamaño de Marcadores de Móviles */}
+              {/* TamaÃ±o de Marcadores de MÃ³viles */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">🚗</span>
-                  Tamaño de Marcadores de Móviles
+                  <span className="text-lg">ðŸš—</span>
+                  TamaÃ±o de Marcadores de MÃ³viles
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { value: 'normal' as const, label: 'Normal', desc: 'Ícono completo', preview: 'w-10 h-10' },
-                    { value: 'compact' as const, label: 'Compacto', desc: 'Punto + número', preview: 'w-6 h-6' },
+                    { value: 'normal' as const, label: 'Normal', desc: 'Ãcono completo', preview: 'w-10 h-10' },
+                    { value: 'compact' as const, label: 'Compacto', desc: 'Punto + nÃºmero', preview: 'w-6 h-6' },
                     { value: 'mini' as const, label: 'Mini', desc: 'Solo punto', preview: 'w-4 h-4' },
                   ].map(opt => (
                     <button
@@ -503,9 +502,9 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                   ))}
                 </div>
                 <p className="text-xs text-gray-500">
-                  {preferences.markerStyle === 'normal' ? 'Vista detallada con ícono de vehículo y número' :
-                   preferences.markerStyle === 'compact' ? 'Punto con número, ideal para ver muchos móviles' :
-                   'Punto mínimo, máxima visibilidad del mapa'}
+                  {preferences.markerStyle === 'normal' ? 'Vista detallada con Ã­cono de vehÃ­culo y nÃºmero' :
+                   preferences.markerStyle === 'compact' ? 'Punto con nÃºmero, ideal para ver muchos mÃ³viles' :
+                   'Punto mÃ­nimo, mÃ¡xima visibilidad del mapa'}
                 </p>
                 {/* Selector de forma - solo visible en compact/mini */}
                 {preferences.markerStyle !== 'normal' && (
@@ -534,7 +533,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
               {/* Toggle: Halo de moviles */}
               <label className="flex items-center justify-between p-3 hover:bg-green-50 rounded-xl cursor-pointer transition-colors border border-green-100">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600 text-lg">🚗</div>
+                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600 text-lg">ðŸš—</div>
                   <div>
                     <div className="text-sm font-medium text-gray-700">Resaltar moviles con halo</div>
                     <p className="text-xs text-gray-500">Anillo blanco + borde oscuro alrededor del marker</p>
@@ -550,17 +549,17 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
               <hr className="border-gray-200" />
 
-              {/* Tamaño de Marcadores de Pedidos */}
+              {/* TamaÃ±o de Marcadores de Pedidos */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">📦</span>
-                  Tamaño de Marcadores de Pedidos
+                  <span className="text-lg">ðŸ“¦</span>
+                  TamaÃ±o de Marcadores de Pedidos
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { value: 'normal' as const, label: 'Normal', desc: 'Ícono con emoji', preview: 'w-6 h-6', emoji: '📦' },
-                    { value: 'compact' as const, label: 'Compacto', desc: 'Cuadrado pequeño', preview: 'w-4 h-4', emoji: '■' },
-                    { value: 'mini' as const, label: 'Mini', desc: 'Punto mínimo', preview: 'w-3 h-3', emoji: '•' },
+                    { value: 'normal' as const, label: 'Normal', desc: 'Ãcono con emoji', preview: 'w-6 h-6', emoji: 'ðŸ“¦' },
+                    { value: 'compact' as const, label: 'Compacto', desc: 'Cuadrado pequeÃ±o', preview: 'w-4 h-4', emoji: 'â– ' },
+                    { value: 'mini' as const, label: 'Mini', desc: 'Punto mÃ­nimo', preview: 'w-3 h-3', emoji: 'â€¢' },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -594,14 +593,14 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                   ))}
                 </div>
                 <p className="text-xs text-gray-500">
-                  {preferences.pedidoMarkerStyle === 'normal' ? 'Marcador con emoji 📦 y colores de demora' :
-                   preferences.pedidoMarkerStyle === 'compact' ? 'Forma pequeña con color de demora, sin emoji' :
-                   'Punto mínimo con color de demora'}
+                  {preferences.pedidoMarkerStyle === 'normal' ? 'Marcador con emoji ðŸ“¦ y colores de demora' :
+                   preferences.pedidoMarkerStyle === 'compact' ? 'Forma pequeÃ±a con color de demora, sin emoji' :
+                   'Punto mÃ­nimo con color de demora'}
                 </p>
                 {/* Selector de forma para pedidos - solo en compact/mini */}
                 {preferences.pedidoMarkerStyle !== 'normal' && (
                   <div className="mt-3 p-3 bg-orange-50/50 rounded-lg border border-orange-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-2">📦 Forma de Pedidos:</div>
+                    <div className="text-xs font-semibold text-gray-600 mb-2">ðŸ“¦ Forma de Pedidos:</div>
                     <div className="flex gap-2 flex-wrap">
                       {SHAPE_OPTIONS.map(shape => (
                         <button key={shape.value} type="button"
@@ -625,7 +624,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
               {/* Toggle: Halo de pedidos */}
               <label className="flex items-center justify-between p-3 hover:bg-orange-50 rounded-xl cursor-pointer transition-colors border border-orange-100">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 text-lg">📦</div>
+                  <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 text-lg">ðŸ“¦</div>
                   <div>
                     <div className="text-sm font-medium text-gray-700">Resaltar pedidos con halo</div>
                     <p className="text-xs text-gray-500">Anillo blanco + borde oscuro alrededor del marker</p>
@@ -641,17 +640,17 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
               <hr className="border-gray-200" />
 
-              {/* Tamaño de Marcadores de Services */}
+              {/* TamaÃ±o de Marcadores de Services */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">🔧</span>
-                  Tamaño de Marcadores de Services
+                  <span className="text-lg">ðŸ”§</span>
+                  TamaÃ±o de Marcadores de Services
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { value: 'normal' as const, label: 'Normal', desc: 'Ícono con emoji', preview: 'w-6 h-6', emoji: '🔧' },
-                    { value: 'compact' as const, label: 'Compacto', desc: 'Forma pequeña', preview: 'w-4 h-4', emoji: '■' },
-                    { value: 'mini' as const, label: 'Mini', desc: 'Punto mínimo', preview: 'w-3 h-3', emoji: '•' },
+                    { value: 'normal' as const, label: 'Normal', desc: 'Ãcono con emoji', preview: 'w-6 h-6', emoji: 'ðŸ”§' },
+                    { value: 'compact' as const, label: 'Compacto', desc: 'Forma pequeÃ±a', preview: 'w-4 h-4', emoji: 'â– ' },
+                    { value: 'mini' as const, label: 'Mini', desc: 'Punto mÃ­nimo', preview: 'w-3 h-3', emoji: 'â€¢' },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -685,14 +684,14 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                   ))}
                 </div>
                 <p className="text-xs text-gray-500">
-                  {preferences.serviceMarkerStyle === 'normal' ? 'Marcador con emoji 🔧 y colores de demora' :
-                   preferences.serviceMarkerStyle === 'compact' ? 'Forma pequeña con color de demora, sin emoji' :
-                   'Punto mínimo con color de demora'}
+                  {preferences.serviceMarkerStyle === 'normal' ? 'Marcador con emoji ðŸ”§ y colores de demora' :
+                   preferences.serviceMarkerStyle === 'compact' ? 'Forma pequeÃ±a con color de demora, sin emoji' :
+                   'Punto mÃ­nimo con color de demora'}
                 </p>
                 {/* Selector de forma para services - solo en compact/mini */}
                 {preferences.serviceMarkerStyle !== 'normal' && (
                   <div className="mt-3 p-3 bg-red-50/50 rounded-lg border border-red-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-2">🔧 Forma de Services:</div>
+                    <div className="text-xs font-semibold text-gray-600 mb-2">ðŸ”§ Forma de Services:</div>
                     <div className="flex gap-2 flex-wrap">
                       {SHAPE_OPTIONS.map(shape => (
                         <button key={shape.value} type="button"
@@ -716,7 +715,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
               {/* Toggle: Halo de services */}
               <label className="flex items-center justify-between p-3 hover:bg-red-50 rounded-xl cursor-pointer transition-colors border border-red-100">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 text-lg">🔧</div>
+                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 text-lg">ðŸ”§</div>
                   <div>
                     <div className="text-sm font-medium text-gray-700">Resaltar services con halo</div>
                     <p className="text-xs text-gray-500">Anillo blanco + borde oscuro alrededor del marker</p>
@@ -732,16 +731,16 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
               <hr className="border-gray-200" />
 
-              {/* Marcadores Puntos de Interés */}
+              {/* Marcadores Puntos de InterÃ©s */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">🏢</span>
-                  Marcadores Puntos de Interés
+                  <span className="text-lg">ðŸ¢</span>
+                  Marcadores Puntos de InterÃ©s
                 </label>
 
-                {/* Selector de tamaño */}
+                {/* Selector de tamaÃ±o */}
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 w-28 shrink-0">Tamaño en mapa</span>
+                  <span className="text-xs text-gray-500 w-28 shrink-0">TamaÃ±o en mapa</span>
                   <div className="flex gap-2">
                     {([1, 2, 3] as const).map((size) => {
                       const labels = { 1: 'Chico', 2: 'Mediano', 3: 'Grande' };
@@ -767,20 +766,20 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                 </div>
               </div>
 
-              {/* ═══════════════════════════════════════════════════════════
-                  SECCIÓN 2: Comportamiento
-                  ═══════════════════════════════════════════════════════════ */}
+              {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                  SECCIÃ“N 2: Comportamiento
+                  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
               <div className="border-t-2 border-gray-300 pt-6 space-y-1">
                 <h3 className="flex items-center gap-2 text-sm font-bold text-gray-800 uppercase tracking-wide">
-                  <span>⚙️</span> Comportamiento
+                  <span>âš™ï¸</span> Comportamiento
                 </h3>
-                <p className="text-xs text-gray-500">Opciones de visualización y comportamiento del mapa</p>
+                <p className="text-xs text-gray-500">Opciones de visualizaciÃ³n y comportamiento del mapa</p>
               </div>
 
               {/* Toggle: Agrupar Pedidos en Clusters */}
               <label className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 text-lg">📦</div>
+                  <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 text-lg">ðŸ“¦</div>
                   <div>
                     <div className="text-sm font-medium text-gray-700">Agrupar pedidos en clusters</div>
                     <p className="text-xs text-gray-500">Agrupa pedidos y services cercanos en el mapa</p>
@@ -794,27 +793,27 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                 </div>
               </label>
 
-              {/* Toggle "Etiquetas de Demoras" — UI oculta para todos los perfiles.
+              {/* Toggle "Etiquetas de Demoras" â€” UI oculta para todos los perfiles.
                   El valor (showDemoraLabels) sigue su default y se aplica internamente. */}
 
-              {/* Horario Nocturno / Diurno — UI oculta para todos los perfiles.
+              {/* Horario Nocturno / Diurno â€” UI oculta para todos los perfiles.
                   Los valores se mantienen por defecto (20:30 / 06:00) y se usan internamente. */}
 
-              {/* ═══════════════════════════════════════════════════════════
-                  SECCIÓN 3: Configuración Avanzada (Sliders)
-                  ═══════════════════════════════════════════════════════════ */}
+              {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                  SECCIÃ“N 3: ConfiguraciÃ³n Avanzada (Sliders)
+                  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
               <div className="border-t-2 border-gray-300 pt-6 space-y-1">
                 <h3 className="flex items-center gap-2 text-sm font-bold text-gray-800 uppercase tracking-wide">
-                  <span>🔧</span> Configuración Avanzada
+                  <span>ðŸ”§</span> ConfiguraciÃ³n Avanzada
                 </h3>
                 <p className="text-xs text-gray-500">Intervalos, umbrales y opacidad</p>
               </div>
 
-              {/* Retraso Máximo de Coordenadas */}
+              {/* Retraso MÃ¡ximo de Coordenadas */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">⏱️</span>
-                  Retraso Máximo de Coordenadas
+                  <span className="text-lg">â±ï¸</span>
+                  Retraso MÃ¡ximo de Coordenadas
                 </label>
                 <div className="flex items-center gap-4">
                   <input
@@ -831,7 +830,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                   </span>
                 </div>
                 <p className="text-xs text-gray-500">
-                  Mostrar solo coordenadas de los últimos {preferences.maxCoordinateDelayMinutes} minutos
+                  Mostrar solo coordenadas de los Ãºltimos {preferences.maxCoordinateDelayMinutes} minutos
                 </p>
               </div>
 
@@ -840,20 +839,20 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
               {/* Intervalos de Refresco de Capas */}
               <div className="space-y-4">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">🔄</span>
-                  Intervalos de Refresco Automático
+                  <span className="text-lg">ðŸ”„</span>
+                  Intervalos de Refresco AutomÃ¡tico
                 </label>
                 <p className="text-xs text-gray-500">
-                  Configura cada cuántos segundos se actualizan los datos de las vistas Demoras y Móviles en Zonas.
+                  Configura cada cuÃ¡ntos segundos se actualizan los datos de las vistas Demoras y MÃ³viles en Zonas.
                 </p>
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  ⚠️ Aplica únicamente para móviles asociados a zonas y para la vista de Demoras. No afecta la actualización general del mapa.
+                  âš ï¸ Aplica Ãºnicamente para mÃ³viles asociados a zonas y para la vista de Demoras. No afecta la actualizaciÃ³n general del mapa.
                 </p>
 
                 {/* Demoras polling */}
                 <div className="p-3 bg-red-50/50 rounded-lg border border-red-100 space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">⏱️</span>
+                    <span className="text-sm">â±ï¸</span>
                     <span className="text-xs font-semibold text-gray-600">Vista Demoras</span>
                   </div>
                   <div className="flex items-center gap-4">
@@ -875,8 +874,8 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                 {/* Moviles x Zona polling */}
                 <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">🚛</span>
-                    <span className="text-xs font-semibold text-gray-600">Vista Móviles en Zonas</span>
+                    <span className="text-sm">ðŸš›</span>
+                    <span className="text-xs font-semibold text-gray-600">Vista MÃ³viles en Zonas</span>
                   </div>
                   <div className="flex items-center gap-4">
                     <input
@@ -900,7 +899,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
               {/* Modo Ligero */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">⚡</span>
+                  <span className="text-lg">âš¡</span>
                   Modo Ligero
                 </label>
                 <p className="text-xs text-gray-500">
@@ -923,7 +922,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
               {/* Opacidad de Capas de Zonas */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">🎨</span>
+                  <span className="text-lg">ðŸŽ¨</span>
                   Opacidad de Capas de Zonas
                 </label>
                 <div className="flex items-center gap-4">
@@ -941,7 +940,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                   </span>
                 </div>
                 <p className="text-xs text-gray-500">
-                  Controla la intensidad de los colores de las zonas en las vistas de datos (Distribución, Demoras, Móviles por Zona)
+                  Controla la intensidad de los colores de las zonas en las vistas de datos (DistribuciÃ³n, Demoras, MÃ³viles por Zona)
                 </p>
               </div>
 
@@ -951,7 +950,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                   <span className="text-lg">&#9726;</span>
-                  Patrón de Zonas
+                  PatrÃ³n de Zonas
                 </label>
                 <p className="text-xs text-gray-500">
                   Textura superpuesta sobre el color de las zonas. &quot;Liso&quot; mantiene el comportamiento actual.
@@ -978,22 +977,22 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                 <>
                   <hr className="border-gray-200" />
 
-                  {/* ===== Realtime avanzado — solo admin (isRoot='S') ===== */}
+                  {/* ===== Realtime avanzado â€” solo admin (isRoot='S') ===== */}
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">⚡</span>
+                      <span className="text-lg">âš¡</span>
                       <span className="text-sm font-bold text-gray-800">Realtime (avanzado)</span>
                       <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-700">ADMIN</span>
                     </div>
                     <p className="text-xs text-gray-500 -mt-2">
-                      Configuración global de la conexión Realtime. Afecta a todos los usuarios logueados. Cambios en Heartbeat y Eventos/seg requieren recargar la página.
+                      ConfiguraciÃ³n global de la conexiÃ³n Realtime. Afecta a todos los usuarios logueados. Cambios en Heartbeat y Eventos/seg requieren recargar la pÃ¡gina.
                     </p>
 
-                    {/* Polling reconciliación */}
+                    {/* Polling reconciliaciÃ³n */}
                     <div className="space-y-2">
-                      <label className="text-sm font-semibold text-gray-700">Polling de reconciliación</label>
+                      <label className="text-sm font-semibold text-gray-700">Polling de reconciliaciÃ³n</label>
                       <p className="text-xs text-gray-500">
-                        Cada cuántos segundos refrescar los datos completos aunque Realtime esté conectado. Cubre eventos perdidos por desconexiones silenciosas. 0 = desactivado.
+                        Cada cuÃ¡ntos segundos refrescar los datos completos aunque Realtime estÃ© conectado. Cubre eventos perdidos por desconexiones silenciosas. 0 = desactivado.
                       </p>
                       <div className="flex items-center gap-4">
                         <input
@@ -1015,7 +1014,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700">Timeout de silencio del WS</label>
                       <p className="text-xs text-gray-500">
-                        Si no llega ningún evento Realtime en este lapso, forzar reconexión + refetch. Protege contra WS &quot;zombie&quot; (aparenta conectado pero no recibe nada). 0 = desactivado.
+                        Si no llega ningÃºn evento Realtime en este lapso, forzar reconexiÃ³n + refetch. Protege contra WS &quot;zombie&quot; (aparenta conectado pero no recibe nada). 0 = desactivado.
                       </p>
                       <div className="flex items-center gap-4">
                         <input
@@ -1038,7 +1037,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                       <div className="flex-1 pr-3">
                         <div className="text-sm font-semibold text-gray-700">Refetch al volver al tab</div>
                         <div className="text-xs text-gray-500">
-                          Cuando la pestaña sale de segundo plano, hacer refetch de pedidos y services. Cubre cuando Chrome baja la prioridad de los WS en tabs inactivos.
+                          Cuando la pestaÃ±a sale de segundo plano, hacer refetch de pedidos y services. Cubre cuando Chrome baja la prioridad de los WS en tabs inactivos.
                         </div>
                       </div>
                       <button
@@ -1053,10 +1052,10 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                     {/* Heartbeat */}
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700">
-                        Heartbeat del WS <span className="text-[10px] font-normal text-amber-600 ml-1">⚠ requiere recarga</span>
+                        Heartbeat del WS <span className="text-[10px] font-normal text-amber-600 ml-1">âš  requiere recarga</span>
                       </label>
                       <p className="text-xs text-gray-500">
-                        Cada cuánto el cliente Supabase manda un &quot;ping&quot; al server. Valores más bajos detectan caídas antes pero gastan más red.
+                        Cada cuÃ¡nto el cliente Supabase manda un &quot;ping&quot; al server. Valores mÃ¡s bajos detectan caÃ­das antes pero gastan mÃ¡s red.
                       </p>
                       <div className="flex items-center gap-4">
                         <input
@@ -1077,10 +1076,10 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                     {/* Events per second */}
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700">
-                        Eventos/seg máx <span className="text-[10px] font-normal text-amber-600 ml-1">⚠ requiere recarga</span>
+                        Eventos/seg mÃ¡x <span className="text-[10px] font-normal text-amber-600 ml-1">âš  requiere recarga</span>
                       </label>
                       <p className="text-xs text-gray-500">
-                        Tope de eventos por segundo que el cliente acepta del Realtime. Si hay bursts legítimos de muchos cambios simultáneos y estás perdiendo data, subir este valor.
+                        Tope de eventos por segundo que el cliente acepta del Realtime. Si hay bursts legÃ­timos de muchos cambios simultÃ¡neos y estÃ¡s perdiendo data, subir este valor.
                       </p>
                       <div className="flex items-center gap-4">
                         <input
@@ -1101,26 +1100,26 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                 </>
               )}
 
-              {/* ===== Auditoría — solo root (isRoot=S) ===== */}
+              {/* ===== AuditorÃ­a â€” solo root (isRoot=S) ===== */}
               {isRoot(user) && (
                 <>
                   <hr className="border-gray-200" />
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">🔍</span>
-                      <span className="text-sm font-bold text-gray-800">Auditoría</span>
+                      <span className="text-lg">ðŸ”</span>
+                      <span className="text-sm font-bold text-gray-800">AuditorÃ­a</span>
                       <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-red-100 text-red-700">ADMIN</span>
                     </div>
                     <p className="text-xs text-gray-500 -mt-2">
-                      Cuando está ACTIVO, se registran todas las acciones de los usuarios (navegación, llamadas API, etc.).
-                      Por defecto está apagado para no consumir espacio en la base.
+                      Cuando estÃ¡ ACTIVO, se registran todas las acciones de los usuarios (navegaciÃ³n, llamadas API, etc.).
+                      Por defecto estÃ¡ apagado para no consumir espacio en la base.
                     </p>
                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex-1 pr-3">
                         <div className="text-sm font-semibold text-gray-700">Auditar actividad de usuarios</div>
                         {auditMeta && (
                           <div className="text-xs text-gray-400 mt-0.5">
-                            Última actualización:{" "}
+                            Ãšltima actualizaciÃ³n:{" "}
                             {new Date(auditMeta.updated_at).toLocaleString("es-UY", {
                               day: "2-digit", month: "2-digit", year: "2-digit",
                               hour: "2-digit", minute: "2-digit",
@@ -1141,7 +1140,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                           auditEnabled ? "bg-red-500" : "bg-gray-200",
                           auditToggling ? "opacity-50 cursor-not-allowed" : "",
                         ].join(" ")}
-                        title={auditToggling ? "Actualizando..." : auditEnabled ? "Desactivar auditoría" : "Activar auditoría"}
+                        title={auditToggling ? "Actualizando..." : auditEnabled ? "Desactivar auditorÃ­a" : "Activar auditorÃ­a"}
                       >
                         <span className={["inline-block h-4 w-4 transform rounded-full bg-white transition-transform", auditEnabled ? "translate-x-6" : "translate-x-1"].join(" ")} />
                       </button>
@@ -1152,7 +1151,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
               <hr className="border-gray-200" />
 
-              {/* ===== Importar Puntos de Interés — requiere permiso updptsventa =====
+              {/* ===== Importar Puntos de InterÃ©s â€” requiere permiso updptsventa =====
                   Los puntos de venta son una categoria DENTRO de puntos de interes,
                   asi que no hay seccion separada para PTV. Si se necesita importar PTV
                   sin tocar el resto de POIs, filtrar por la columna 'Categoria' en el
@@ -1160,17 +1159,17 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
               {canUpdPtsVenta && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">📍</span>
-                    <span className="text-sm font-bold text-gray-800">Importar Puntos de Interés</span>
+                    <span className="text-lg">ðŸ“</span>
+                    <span className="text-sm font-bold text-gray-800">Importar Puntos de InterÃ©s</span>
                     <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-blue-100 text-blue-700">ADMIN</span>
                   </div>
                   <p className="text-xs text-gray-500 -mt-2">
-                    Importa o actualiza los puntos de interés desde un archivo Excel&nbsp;(.xlsx). Los registros existentes serán sobreescritos por ID.
+                    Importa o actualiza los puntos de interÃ©s desde un archivo Excel&nbsp;(.xlsx). Los registros existentes serÃ¡n sobreescritos por ID.
                   </p>
 
                   {/* Formato esperado POI */}
                   <details className="rounded-lg border border-gray-200 bg-gray-50">
-                    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-gray-600 select-none">📋 Ver formato Excel esperado</summary>
+                    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-gray-600 select-none">ðŸ“‹ Ver formato Excel esperado</summary>
                     <div className="px-4 pb-4 pt-2 space-y-3">
                       <table className="w-full text-xs border-collapse">
                         <thead>
@@ -1183,22 +1182,22 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                         </thead>
                         <tbody>
                           {[
-                            { col: 'ID',                 tipo: 'número',           req: true,  ej: '1000' },
+                            { col: 'ID',                 tipo: 'nÃºmero',           req: true,  ej: '1000' },
                             { col: 'Nombre',             tipo: 'texto',            req: true,  ej: 'Cementerio Central' },
-                            { col: 'Descripcion',        tipo: 'texto',            req: false, ej: 'Gonzalo Ramírez 1290' },
-                            { col: 'Latitud',            tipo: 'número',           req: true,  ej: '-34.9178' },
-                            { col: 'Longitud',           tipo: 'número',           req: true,  ej: '-56.1745' },
+                            { col: 'Descripcion',        tipo: 'texto',            req: false, ej: 'Gonzalo RamÃ­rez 1290' },
+                            { col: 'Latitud',            tipo: 'nÃºmero',           req: true,  ej: '-34.9178' },
+                            { col: 'Longitud',           tipo: 'nÃºmero',           req: true,  ej: '-56.1745' },
                             { col: 'tipo',               tipo: 'publico/privado',  req: false, ej: 'publico' },
                             { col: 'Visible',            tipo: 'true/false',       req: false, ej: 'true' },
                             { col: 'Categoria',          tipo: 'texto',            req: false, ej: 'Cementerio' },
-                            { col: 'Telefono',           tipo: 'número',           req: false, ej: '24001234' },
-                            { col: 'escenario_id',       tipo: 'número',           req: false, ej: '1000' },
-                            { col: 'empresa_fletera_id', tipo: 'número',           req: false, ej: '70' },
+                            { col: 'Telefono',           tipo: 'nÃºmero',           req: false, ej: '24001234' },
+                            { col: 'escenario_id',       tipo: 'nÃºmero',           req: false, ej: '1000' },
+                            { col: 'empresa_fletera_id', tipo: 'nÃºmero',           req: false, ej: '70' },
                           ].map(({ col, tipo, req, ej }) => (
                             <tr key={col} className="even:bg-white odd:bg-gray-50">
                               <td className="px-2 py-1 border border-gray-200 font-mono">{col}</td>
                               <td className="px-2 py-1 border border-gray-200 text-gray-500">{tipo}</td>
-                              <td className="px-2 py-1 border border-gray-200">{req ? <span className="text-red-500 font-bold">✓</span> : <span className="text-gray-400">–</span>}</td>
+                              <td className="px-2 py-1 border border-gray-200">{req ? <span className="text-red-500 font-bold">âœ“</span> : <span className="text-gray-400">â€“</span>}</td>
                               <td className="px-2 py-1 border border-gray-200 text-gray-500">{ej}</td>
                             </tr>
                           ))}
@@ -1216,7 +1215,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                             XLSX.writeFile(wb, 'plantilla-puntos-interes.xlsx');
                           }}
                         >
-                          ⬇ Descargar plantilla
+                          â¬‡ Descargar plantilla
                         </button>
                       </div>
                     </div>
@@ -1252,19 +1251,17 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
 
                       <div>{importResultPOI.msg}</div>
-                      {importResultPOI.ok && importResultPOI.skipped && importResultPOI.skipped.length > 0 && (
+                      {importResultPOI.ok && importResultPOI.replaced && importResultPOI.replaced.length > 0 && (
                         <details className="mt-2 cursor-pointer">
                           <summary className="text-xs font-semibold text-amber-700 hover:underline">
-                            Ver {importResultPOI.skipped.length} POI(s) omitido(s) (privados existentes)
+                            Ver {importResultPOI.replaced.length} POI(s) reemplazado(s) (mismo nombre, id distinto)
                           </summary>
                           <ul className="mt-1 text-xs text-gray-600 list-disc list-inside max-h-32 overflow-y-auto">
-                            {importResultPOI.skipped.map((s, i) => (
-                              <li key={i}><span className="font-medium">{s.nombre}</span> ({s.usuario_email})</li>
+                            {importResultPOI.replaced.map((r, i) => (
+                              <li key={i}><span className="font-medium">{r.nombre}</span> ({r.usuario_email}) — id anterior: {r.deletedId} → nuevo: {r.newId}</li>
                             ))}
                           </ul>
                         </details>
-
-
                       )}
                     </div>
                   )}
@@ -1279,7 +1276,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
 
               {/* ==================================================
-                  SECCION: Conf. Visual — Colores de Refs
+                  SECCION: Conf. Visual â€” Colores de Refs
                   ================================================== */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1302,7 +1299,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                 </div>
               </div>
 
-              {/* Sub-modal Conf. Visual — portaled a document.body para escapar del
+              {/* Sub-modal Conf. Visual â€” portaled a document.body para escapar del
                   contenedor padre que tiene transform (translate-x/y), lo cual rompe
                   el position:fixed de los hijos (los ata al ancestro con transform,
                   no al viewport). Sin portal el sub-modal queda invisible/recortado. */}
@@ -1387,18 +1384,18 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                           onClick={() => {
                             // Aplicar los colores y PERSISTIR (sin esto el cambio solo
                             // queda en memoria del modal y al cerrar+reabrir vuelve al
-                            // anterior — bug reportado).
+                            // anterior â€” bug reportado).
                             const newPrefs = { ...preferences, visualRefs: { ...visualRefsLocal } };
                             setPreferences(newPrefs);
                             try {
                               localStorage.setItem('userPreferences', JSON.stringify(newPrefs));
-                            } catch { /* localStorage lleno o privado — no bloquear */ }
+                            } catch { /* localStorage lleno o privado â€” no bloquear */ }
                             // onSave dispara el PUT a Supabase via el callback del parent.
                             onSave(newPrefs);
                             // Cerrar el sub-modal siempre.
                             setConfVisualOpen(false);
                             // Si el usuario entro al sub-modal directamente desde un Ref#N
-                            // (autoOpenConfVisual=true), tambien cerrar el modal padre —
+                            // (autoOpenConfVisual=true), tambien cerrar el modal padre â€”
                             // no le interesa quedarse en Preferencias, vino solo por el color.
                             // Si entro via Preferencias > Conf. Visual, dejar el modal padre
                             // abierto para que siga editando otras cosas.
@@ -1424,7 +1421,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                 onClick={handleReset}
                 className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
               >
-                🔄 Restablecer
+                ðŸ”„ Restablecer
               </button>
               <div className="flex gap-3">
                 <button
@@ -1437,7 +1434,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
                   onClick={handleSave}
                   className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-lg hover:shadow-xl transition-all"
                 >
-                  💾 Guardar Preferencias
+                  ðŸ’¾ Guardar Preferencias
                 </button>
               </div>
             </div>
@@ -1448,7 +1445,7 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
   );
 }
 
-// Hook para usar preferencias en cualquier componente — persiste en DB con debounce
+// Hook para usar preferencias en cualquier componente â€” persiste en DB con debounce
 export function useUserPreferences() {
   const { user } = useAuth();
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
@@ -1456,9 +1453,9 @@ export function useUserPreferences() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestPrefsRef = useRef<UserPreferences>(DEFAULT_PREFERENCES);
 
-  // Función auxiliar para mergear con defaults (en caso de campos nuevos).
+  // FunciÃ³n auxiliar para mergear con defaults (en caso de campos nuevos).
   // Aplica override de rol: usuarios root tienen lightMode=false por defecto;
-  // resto de perfiles lightMode=true. Si el usuario guardó explícitamente un
+  // resto de perfiles lightMode=true. Si el usuario guardÃ³ explÃ­citamente un
   // valor, ese valor (en `saved`) gana sobre el default.
   const mergeWithDefaults = useCallback((saved: Partial<UserPreferences>): UserPreferences => {
     const isRootLocal = isRoot(user);
@@ -1487,7 +1484,7 @@ export function useUserPreferences() {
             }
           }
         } catch (e) {
-          console.warn('⚠️ No se pudo cargar preferencias de DB, usando localStorage:', e);
+          console.warn('âš ï¸ No se pudo cargar preferencias de DB, usando localStorage:', e);
         }
       }
 
@@ -1532,7 +1529,7 @@ export function useUserPreferences() {
           body: JSON.stringify({ user_id: user.id, preferences: prefs }),
         });
       } catch (e) {
-        console.warn('⚠️ No se pudo guardar preferencias en DB:', e);
+        console.warn('âš ï¸ No se pudo guardar preferencias en DB:', e);
       }
     }, 500);
   }, [user?.id]);
