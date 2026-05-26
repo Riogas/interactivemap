@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -26,7 +26,7 @@ import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
 import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForZonaScope, isRoot } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
-import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConFinalizadosEnFecha } from '@/lib/moviles/visibility';
+import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConPedidosMatching } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
@@ -2802,18 +2802,70 @@ function DashboardContent() {
     bumpSelectionVersion();
     setSelectedMoviles(ids);
   }, [movilesFiltered, applyActivityFilter, bumpSelectionVersion]);
+  // Predicate para inactivos del combo de pedidos: varia segun vista + sub-filtros activos.
+  // Reactivo a pedidosFilters.vista y pedidosFilters.entrega - se recalcula al cambiar la vista en el modal.
+  const pedidosInactivosPredicate = useMemo(() => {
+    return (item: { estado_nro?: number | string | null; sub_estado_nro?: number | null }): boolean => {
+      if (pedidosFilters.vista === 'pendientes') {
+        return Number(item.estado_nro) === 1;
+      }
+      if (pedidosFilters.vista === 'finalizados') {
+        if (Number(item.estado_nro) !== 2) return false;
+        if (pedidosFilters.entrega === 'entregados') {
+          return item.sub_estado_nro != null && [3, 19].includes(Number(item.sub_estado_nro));
+        }
+        if (pedidosFilters.entrega === 'no_entregados') {
+          return item.sub_estado_nro == null || ![3, 19].includes(Number(item.sub_estado_nro));
+        }
+        return true; // entrega = 'todos'
+      }
+      return false;
+    };
+  }, [pedidosFilters.vista, pedidosFilters.entrega]);
 
-  // Moviles inactivos relevantes para el combo del modal en colapsable+finalizados.
-  // Solo se calculan cuando el modal de pedidos esta en colapsable mode.
+  // Predicate para inactivos del combo de services: espejo de pedidosInactivosPredicate.
+  // isServiceEntregado usa sub_estado_nro === 3 (no 19); se replica aqui.
+  const servicesInactivosPredicate = useMemo(() => {
+    return (item: { estado_nro?: number | string | null; sub_estado_nro?: number | null }): boolean => {
+      if (servicesFilters.vista === 'pendientes') {
+        return Number(item.estado_nro) === 1;
+      }
+      if (servicesFilters.vista === 'finalizados') {
+        if (Number(item.estado_nro) !== 2) return false;
+        if (servicesFilters.entrega === 'entregados') {
+          return item.sub_estado_nro != null && Number(item.sub_estado_nro) === 3;
+        }
+        if (servicesFilters.entrega === 'no_entregados') {
+          return item.sub_estado_nro == null || Number(item.sub_estado_nro) !== 3;
+        }
+        return true; // entrega = 'todos'
+      }
+      return false;
+    };
+  }, [servicesFilters.vista, servicesFilters.entrega]);
+
+  // Moviles inactivos relevantes para el combo del modal de pedidos en colapsable mode.
+  // Incluye inactivos con AL MENOS 1 pedido/service que matchea la vista+subfiltros actuales.
   const inactiveMovilesAvailable = useMemo((): MovilOption[] => {
     if (pedidosOpenSource !== 'colapsable') return [];
-    const finalizadosMovilIds = new Set(
-      getMovilesConFinalizadosEnFecha(selectedEmpresas, pedidosCompletos, servicesCompletos)
+    const inactiveIds = new Set(
+      getMovilesConPedidosMatching(selectedEmpresas, pedidosCompletos, servicesCompletos, pedidosInactivosPredicate)
     );
     return moviles
-      .filter(m => !isMovilActiveForUI(m.estadoNro) && finalizadosMovilIds.has(m.id))
+      .filter(m => !isMovilActiveForUI(m.estadoNro) && inactiveIds.has(m.id))
       .map(m => ({ id: m.id, nombre: m.name || String(m.id), activa: false }));
-  }, [pedidosOpenSource, moviles, selectedEmpresas, pedidosCompletos, servicesCompletos]);
+  }, [pedidosOpenSource, moviles, selectedEmpresas, pedidosCompletos, servicesCompletos, pedidosInactivosPredicate]);
+
+  // Moviles inactivos relevantes para el combo del modal de services en colapsable mode.
+  const servicesInactiveMovilesAvailable = useMemo((): MovilOption[] => {
+    if (servicesOpenSource !== 'colapsable') return [];
+    const inactiveIds = new Set(
+      getMovilesConPedidosMatching(selectedEmpresas, pedidosCompletos, servicesCompletos, servicesInactivosPredicate)
+    );
+    return moviles
+      .filter(m => !isMovilActiveForUI(m.estadoNro) && inactiveIds.has(m.id))
+      .map(m => ({ id: m.id, nombre: m.name || String(m.id), activa: false }));
+  }, [servicesOpenSource, moviles, selectedEmpresas, pedidosCompletos, servicesCompletos, servicesInactivosPredicate]);
 
   // Dataset filtrado para el modal cuando openSource=navbar_entregados (respeta selectedEmpresas).
   const pedidosParaModal = useMemo(() => {
@@ -3138,6 +3190,9 @@ function DashboardContent() {
         externalResetToken={servicesResetToken}
         openSource={servicesOpenSource}
         serverNow={serverNow}
+        modalExtraSelectedMoviles={modalExtraSelectedMoviles}
+        onModalExtraSelectedMovilesChange={handleModalExtraSelectedMovilesChange}
+        inactiveMovilesAvailable={servicesInactiveMovilesAvailable}
         minutosAntesSa={minutosAntesSa}
       />
       <OsmImportModal
