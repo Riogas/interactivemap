@@ -59,6 +59,11 @@ interface ZonaMovilesViewModalProps {
   scopedZonaIds?: Set<number> | null;
   /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
   scopedEmpresas?: number[] | null;
+  /** Columna a destacar visualmente al abrir el modal desde una celda de estadísticas.
+   *  'prioridad': abre modal desde click en M.Prio — la columna de prioridad es relevante.
+   *  'transito': abre modal desde click en M.Trans — la columna de tránsito es relevante.
+   *  Ambas columnas siempre se muestran; este prop es solo informativo/contexto. */
+  initialFocusColumn?: 'prioridad' | 'transito';
 }
 
 export default function ZonaMovilesViewModal({
@@ -71,6 +76,10 @@ export default function ZonaMovilesViewModal({
   allHiddenMovilIds,
   scopedZonaIds = null,
   scopedEmpresas = null,
+  // initialFocusColumn unused in render (both columns always shown) — prop exists
+  // for caller context (ZonaEstadisticasModal M.Prio vs M.Trans click differentiation).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  initialFocusColumn,
 }: ZonaMovilesViewModalProps) {
   const { escenarioId } = useAuth();
   const { serverNow } = useServerTime();
@@ -360,7 +369,7 @@ export default function ZonaMovilesViewModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
           <motion.div

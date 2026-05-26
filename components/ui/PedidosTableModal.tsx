@@ -284,7 +284,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
 
   // Aplicar filtro inicial de asignación sólo cuando el prop cambia (no en cada reopen)
   useEffect(() => {
-    setFilters(f => ({ ...f, asignacion: initialAsignacion }));
+    // Bug fix: do NOT override if initialFilters already specifies asignacion.
+    // initialFilters is applied by the isOpen effect and should win.
+    // initialAsignacion was a legacy prop; when initialFilters is present (non-colapsable
+    // open sources like zona_combo), the asignacion from initialFilters takes precedence.
+    if (!initialFilters?.asignacion) {
+      setFilters(f => ({ ...f, asignacion: initialAsignacion }));
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAsignacion]);
 

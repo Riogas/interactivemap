@@ -3307,6 +3307,12 @@ function DashboardContent() {
           // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here
           openZonaView(zonaId);
         }}
+        onMovsTransClick={(zonaId, _movilIds, _svcFilter) => {
+          // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here
+          // ZonaMovilesViewModal shows both columns (prioridad + transito); opening for
+          // the zone is enough â€” the user sees the transito column immediately.
+          openZonaView(zonaId);
+        }}
         onCellClick={onZonaStatsCellClick}
       />
 
