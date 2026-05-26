@@ -88,8 +88,8 @@ describe('isPedidoInScope (scope normal)', () => {
     expect(isPedidoInScope({ movil: 999, zona_nro: 10, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
   });
 
-  it('pendiente sin movil + zona en scope → NO pasa (distribuidor nunca ve sin móvil)', () => {
-    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
+  it('pendiente sin movil + zona en scope + optsHide → pasa (hideEntregadosSinMovil no aplica a pendientes)', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
   });
 
   it('pendiente sin movil + zona FUERA de scope → NO pasa', () => {
@@ -104,8 +104,8 @@ describe('isPedidoInScope (scope normal)', () => {
     expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsHide)).toBe(false);
   });
 
-  it('finalizado sin movil + zona en scope → NO pasa aunque hideEntregadosSinMovil=false (regla distribuidor)', () => {
-    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsKeep)).toBe(false);
+  it('finalizado sin movil + zona en scope + optsKeep → pasa (hideEntregadosSinMovil=false no filtra finalizados)', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsKeep)).toBe(true);
   });
 
   it('movil con zona null → NO pasa bajo scope (no decidible)', () => {
@@ -137,8 +137,8 @@ describe('isServiceInScope', () => {
     expect(isServiceInScope({ movil: 0, zona_nro: 20, estado_nro: 2 }, normalScope, optsHide)).toBe(false);
   });
 
-  it('scope normal + service pendiente sin movil + zona en scope → NO pasa (distribuidor nunca ve sin móvil)', () => {
-    expect(isServiceInScope({ movil: 0, zona_nro: 30, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
+  it('scope normal + service pendiente sin movil + zona en scope + optsHide → pasa (zona gate, no movil gate)', () => {
+    expect(isServiceInScope({ movil: 0, zona_nro: 30, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
   });
 });
 

@@ -6,14 +6,20 @@
  * componentes ejecutan internamente.
  *
  * Cobertura:
- *  - AC1: sinAsignar siempre 0 para distribuidor (isPedidoInScope devuelve false sin movil)
- *  - AC2: PedidosTableModal/ServicesTableModal — isPedidoInScope / isServiceInScope nunca
- *         devuelve true para un item sin movil bajo scope restringido.
+ *  - AC1: sinAsignar en DashboardIndicators — distribuidor ve solo los que tienen
+ *         zona en su scope (gate es la zona, no el rol). Actualizado en run
+ *         20260526-152220-nu2 para reflejar el refactor de scope-filter (e44763f):
+ *         isPedidoInScope ya no bloquea sin-movil a nivel del helper; lo hace el
+ *         caller (canVerSinAsignarUnitario) en MovilSelector/PedidosTableModal.
+ *  - AC2: isPedidoInScope / isServiceInScope — sin movil PASA si zona en scope
+ *         (hideEntregadosSinMovil=false). El gate de visibilidad en la UI es
+ *         responsabilidad del caller (canVerSinAsignarUnitario).
  *  - AC3: Lógica de normalización del filtro persistido sin_asignar→pendientes.
  *         Replicamos el bloque del useEffect de page.tsx como función pura.
  *  - AC4: Cómputo de pendientes con hideSinAsignar — excluye los sin-movil.
- *  - AC5: Helper isPedidoInScope / isServiceInScope — sin movil = false sin importar opts/zona.
- *  - Edge case: distribuidor con scopedZonaIds vacío → todo en 0 sin error.
+ *  - AC5: Helper isPedidoInScope / isServiceInScope — sin movil en scope → pasa
+ *         (new behavior); sin zona o zona fuera de scope → false.
+ *  - Edge case: distribuidor con scopedZonaIds vacío → fail-closed.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -103,7 +109,7 @@ function computePedidosZonaData(
   pedidos.forEach((p) => {
     const estado = Number(p.estado_nro);
     const tieneMovil = p.movil != null && Number(p.movil) !== 0;
-    // Distribuidor: nunca contar pedidos sin móvil
+    // Distribuidor: nunca contar pedidos sin móvil en estadísticas de zona
     if (isScopeRestricted && !tieneMovil) return;
     if (filter === 'pendientes' && estado !== 1) return;
     if (filter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
@@ -121,24 +127,42 @@ function computePedidosZonaData(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AC1: chip "Sin Asignar" — conteo siempre 0 para distribuidor
+// AC1: chip "Sin Asignar" — conteo en DashboardIndicators para distribuidor
+// Actualizado en run 20260526-152220-nu2: scope-filter ya no bloquea sin-movil;
+// distribuidor ve los sin-asignar de sus zonas en el indicador del topbar.
+// La colapsable sigue vacía porque el gate es canVerSinAsignarUnitario en MovilSelector.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('AC1 - DashboardIndicators: sinAsignar siempre 0 para distribuidor', () => {
-  it('distribuidor: pedidos sin movil con zona en scope NO se cuentan', () => {
+describe('AC1 - DashboardIndicators: sinAsignar para distribuidor (zona-scoped)', () => {
+  it('distribuidor: pedidos sin movil con zona en scope SÍ se cuentan en el indicador', () => {
     const pedidos = [
       { movil: 0, zona_nro: 10, estado_nro: 1 },
       { movil: null, zona_nro: 20, estado_nro: 1 },
     ];
+    // isPedidoInScope pasa sin-movil si zona está en scope (gate delegado al caller)
+    expect(computeSinAsignar(pedidos, normalScope)).toBe(2);
+  });
+
+  it('distribuidor: pedido sin movil fuera de zona → NO se cuenta', () => {
+    const pedidos = [
+      { movil: 0, zona_nro: 99, estado_nro: 1 },  // zona 99 no está en normalScope
+    ];
     expect(computeSinAsignar(pedidos, normalScope)).toBe(0);
   });
 
-  it('distribuidor: sinAsignar=0 aunque haya muchos pedidos sin movil', () => {
+  it('distribuidor: pedido sin movil sin zona → NO se cuenta', () => {
+    const pedidos = [
+      { movil: 0, zona_nro: null, estado_nro: 1 },
+    ];
+    expect(computeSinAsignar(pedidos, normalScope)).toBe(0);
+  });
+
+  it('distribuidor: scope vacío → sinAsignar=0 (fail-closed)', () => {
     const pedidos = Array.from({ length: 10 }, (_, i) => ({
       movil: 0,
       zona_nro: (i % 2 === 0) ? 10 : 20,
       estado_nro: 1,
     }));
-    expect(computeSinAsignar(pedidos, normalScope)).toBe(0);
+    expect(computeSinAsignar(pedidos, emptyScope)).toBe(0);
   });
 
   it('root/despacho: sinAsignar cuenta normalmente los pendientes sin movil', () => {
@@ -152,35 +176,46 @@ describe('AC1 - DashboardIndicators: sinAsignar siempre 0 para distribuidor', ()
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AC2: PedidosTableModal / ServicesTableModal — sin movil NUNCA pasa
+// AC2: isPedidoInScope / isServiceInScope — comportamiento post-refactor e44763f.
+// Sin movil + zona en scope → PASA (caller decide si mostrarlo).
+// Sin movil + zona fuera de scope → NO pasa.
+// Finalizado sin movil + hideEntregadosSinMovil=true → NO pasa.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('AC2 - Vista extendida: distribuidor nunca ve items sin movil', () => {
-  it('pedido pendiente sin movil (movil=0) → rechazado bajo scope restringido', () => {
-    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
+describe('AC2 - isPedidoInScope: sin movil pasa si zona en scope (gate delegado al caller)', () => {
+  it('pedido pendiente sin movil (movil=0) + zona en scope + optsKeep → pasa', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(true);
   });
 
-  it('pedido pendiente sin movil (movil=null) → rechazado bajo scope restringido', () => {
-    expect(isPedidoInScope({ movil: null, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
+  it('pedido pendiente sin movil (movil=null) + zona en scope + optsKeep → pasa', () => {
+    expect(isPedidoInScope({ movil: null, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(true);
   });
 
-  it('pedido finalizado sin movil → rechazado bajo scope restringido (hideEntregadosSinMovil=false)', () => {
-    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsKeep)).toBe(false);
+  it('pedido finalizado sin movil + zona en scope + optsKeep → pasa (caller decide)', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsKeep)).toBe(true);
   });
 
-  it('pedido finalizado sin movil → rechazado bajo scope restringido (hideEntregadosSinMovil=true)', () => {
+  it('pedido finalizado sin movil + zona en scope + optsHide → NO pasa (hideEntregadosSinMovil activo)', () => {
     expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsHide)).toBe(false);
   });
 
-  it('service sin movil → rechazado bajo scope restringido', () => {
-    expect(isServiceInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
+  it('service sin movil + zona en scope + optsKeep → pasa', () => {
+    expect(isServiceInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(true);
   });
 
-  it('service finalizado sin movil → rechazado bajo scope restringido', () => {
-    expect(isServiceInScope({ movil: null, zona_nro: 20, estado_nro: 2 }, normalScope, optsKeep)).toBe(false);
+  it('service finalizado sin movil + zona en scope + optsKeep → pasa', () => {
+    expect(isServiceInScope({ movil: null, zona_nro: 20, estado_nro: 2 }, normalScope, optsKeep)).toBe(true);
   });
 
   it('pedido con movil válido en scope → pasa (no debe quedar oculto incorrectamente)', () => {
     expect(isPedidoInScope({ movil: 100, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(true);
+  });
+
+  it('pedido sin movil con zona FUERA de scope → NO pasa', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: 99, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
+  });
+
+  it('pedido sin movil sin zona → NO pasa', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: null, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
   });
 });
 
@@ -278,15 +313,15 @@ describe('AC4 - ZonaEstadisticasModal: pendientes con hideSinAsignar', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AC5: Helper — sin movil = false sin importar opts/zona
+// AC5: Helper isPedidoInScope / isServiceInScope — comportamiento exacto post-refactor
 // ─────────────────────────────────────────────────────────────────────────────
-describe('AC5 - Helper: sin movil siempre false para distribuidor', () => {
-  it('isPedidoInScope: movil=0, zona en scope, opts=keep → false', () => {
-    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
+describe('AC5 - Helper: comportamiento post-refactor (gate en caller, no en scope-filter)', () => {
+  it('isPedidoInScope: movil=0, zona en scope, opts=keep → pasa (zona gate)', () => {
+    expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(true);
   });
 
-  it('isPedidoInScope: movil=null, zona en scope, opts=keep → false', () => {
-    expect(isPedidoInScope({ movil: null, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
+  it('isPedidoInScope: movil=null, zona en scope, opts=keep → pasa', () => {
+    expect(isPedidoInScope({ movil: null, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(true);
   });
 
   it('isPedidoInScope: movil=0, zona fuera de scope, opts=keep → false', () => {
@@ -297,12 +332,16 @@ describe('AC5 - Helper: sin movil siempre false para distribuidor', () => {
     expect(isPedidoInScope({ movil: 0, zona_nro: null, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
   });
 
-  it('isServiceInScope: movil=0, zona en scope, opts=keep → false', () => {
-    expect(isServiceInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(false);
+  it('isServiceInScope: movil=0, zona en scope, opts=keep → pasa', () => {
+    expect(isServiceInScope({ movil: 0, zona_nro: 10, estado_nro: 1 }, normalScope, optsKeep)).toBe(true);
   });
 
-  it('isServiceInScope: movil=null, zona en scope, opts=hide → false', () => {
-    expect(isServiceInScope({ movil: null, zona_nro: 20, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
+  it('isServiceInScope: movil=null, zona en scope, opts=hide + estado=1 → pasa (hide solo aplica a finalizados)', () => {
+    expect(isServiceInScope({ movil: null, zona_nro: 20, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
+  });
+
+  it('isServiceInScope: movil=null, zona en scope, opts=hide + estado=2 → false (finalizado sin movil con hide)', () => {
+    expect(isServiceInScope({ movil: null, zona_nro: 20, estado_nro: 2 }, normalScope, optsHide)).toBe(false);
   });
 });
 
@@ -330,7 +369,7 @@ describe('Edge case: distribuidor con scopedZonaIds vacío', () => {
     expect(result.size).toBe(0);
   });
 
-  it('computeSinAsignar con scope vacío → 0 (fail-closed)', () => {
+  it('computeSinAsignar con scope vacío → 0 (fail-closed: zona no en set vacío)', () => {
     const pedidos = [
       { movil: 0, zona_nro: 10, estado_nro: 1 },
     ];

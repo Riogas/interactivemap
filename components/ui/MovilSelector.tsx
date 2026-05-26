@@ -554,9 +554,6 @@ export default function MovilSelector({
       result = result.filter(pedido => Number(pedido.estado_nro) === 1);
     }
     
-    // Usar el flag que baja del parent. Incluye (a) user no-root con restricción
-    // de empresas y (b) filtro manual parcial de empresas.
-    const isPartialEmpresa = hideUnassigned;
 
     // Caso 6: en vista pendientes los sin-asignar también pasan cuando el
     // usuario filtra explícitamente por asignacion='sin_movil' (gate funcional
@@ -587,26 +584,12 @@ export default function MovilSelector({
         if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
-    } else if (canVerSinAsignarUnitario && !isPartialEmpresa) {
+    } else if (canVerSinAsignarUnitario) {
       // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios" activa:
       // mostrar exclusivamente pedidos sin móvil (sin asignar) del scope.
-      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados.
-      // Sin la funcionalidad este bloque no entra y cae al fallthrough (nada).
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados,
+      // y sin importar si tiene scope parcial o completo de empresa.
       result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
-    } else if (isPartialEmpresa && !privilegedUser) {
-      // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
-      // y también los pedidos (incl. entregados) que NO pertenezcan a los
-      // móviles de las empresas del usuario. `moviles` ya viene filtrado
-      // por empresa desde el dashboard. Incluir también los IDs ocultos-pero-
-      // operativos: sus pedidos igual se ven.
-      // Nota: usuarios privilegiados (root/despacho/supervisor/dashboards) omiten
-      // este bloque y ven todos los pedidos incluyendo sin asignar.
-      const validMovilIds = new Set(moviles.map(m => Number(m.id)));
-      if (hiddenMovilIds) hiddenMovilIds.forEach(id => validMovilIds.add(id));
-      result = result.filter(pedido => {
-        if (!pedido.movil || Number(pedido.movil) === 0) return false;
-        return validMovilIds.has(Number(pedido.movil));
-      });
     } else {
       // Fallthrough: sin móviles seleccionados y sin branch específico que
       // aplique (ej. privilegiado + empresa parcial). El usuario eligió
@@ -714,7 +697,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa, scope]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, allMovilesSelected, serverNow, minutosAntesSa, scope]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -728,9 +711,6 @@ export default function MovilSelector({
       result = result.filter(service => Number(service.estado_nro) === 1);
     }
     
-    // Si el filtro de empresa es parcial (no todas y no ninguna), ocultar sin asignar
-    // Mismo criterio que para pedidos: el parent calcula y baja el flag.
-    const isPartialEmpresaSvc = hideUnassigned;
 
     // Caso 6 (idem filteredPedidos): en vista pendientes acepta asignacion=
     // 'sin_movil' como bypass del gate "Todos". En finalizados queda estricto.
@@ -755,22 +735,12 @@ export default function MovilSelector({
         if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
-    } else if (canVerSinAsignarUnitario && !isPartialEmpresaSvc) {
+    } else if (canVerSinAsignarUnitario) {
       // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios" activa:
       // mostrar exclusivamente services sin móvil (sin asignar) del scope.
-      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados.
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados,
+      // y sin importar si tiene scope parcial o completo de empresa.
       result = result.filter(service => !service.movil || Number(service.movil) === 0);
-    } else if (isPartialEmpresaSvc && !privilegedUser) {
-      // Sin móviles seleccionados pero empresa parcial: restringir también a los
-      // services (incl. finalizados) cuyos móviles estén dentro del set del user.
-      // Incluir también los IDs ocultos-pero-operativos.
-      // Nota: usuarios privilegiados omiten este bloque.
-      const validMovilIds = new Set(moviles.map(m => Number(m.id)));
-      if (hiddenMovilIds) hiddenMovilIds.forEach(id => validMovilIds.add(id));
-      result = result.filter(service => {
-        if (!service.movil || Number(service.movil) === 0) return false;
-        return validMovilIds.has(Number(service.movil));
-      });
     } else {
       // Fallthrough: sin móviles seleccionados y sin branch específico que
       // aplique (ej. privilegiado + empresa parcial). Mismo criterio que
@@ -870,7 +840,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa, scope]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, allMovilesSelected, serverNow, minutosAntesSa, scope]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
