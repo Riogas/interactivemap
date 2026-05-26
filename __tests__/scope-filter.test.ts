@@ -3,6 +3,10 @@
  *
  * Cubren la matriz: root vs distribuidor, scope vacío vs poblado, pedido con
  * móvil vs sin móvil, finalizado vs pendiente, zona dentro vs fuera del scope.
+ *
+ * Actualizado en run 20260526-160734-frj (fix scope-filter-movil-del-user-pasa-siempre):
+ *   - Pedido CON móvil del user → pasa SIEMPRE, sin importar la zona.
+ *   - El check "zona fuera de scope → false" solo aplica a pedidos SIN móvil.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -80,8 +84,15 @@ describe('isPedidoInScope (scope normal)', () => {
     expect(isPedidoInScope({ movil: 100, zona_nro: 10, estado_nro: 2 }, normalScope, optsHide)).toBe(true);
   });
 
-  it('movil en scope + zona FUERA de scope → NO pasa', () => {
-    expect(isPedidoInScope({ movil: 100, zona_nro: 99, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
+  // Fix run 20260526-160734-frj: móvil del user pasa SIEMPRE, sin importar la zona.
+  // Antes: "movil en scope + zona FUERA de scope → NO pasa". Ahora: SÍ pasa.
+  it('movil del user + zona FUERA de scope → pasa (pedido a mano fuera de cobertura habitual)', () => {
+    expect(isPedidoInScope({ movil: 100, zona_nro: 99, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
+  });
+
+  // Fix run 20260526-160734-frj: móvil del user + zona null → pasa (antes fallaba en línea 79).
+  it('movil del user + zona null → pasa (zona irrelevante cuando móvil es del user)', () => {
+    expect(isPedidoInScope({ movil: 100, zona_nro: null, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
   });
 
   it('movil FUERA de scope → NO pasa aunque la zona esté en scope', () => {
@@ -106,10 +117,6 @@ describe('isPedidoInScope (scope normal)', () => {
 
   it('finalizado sin movil + zona en scope + optsKeep → pasa (hideEntregadosSinMovil=false no filtra finalizados)', () => {
     expect(isPedidoInScope({ movil: 0, zona_nro: 10, estado_nro: 2 }, normalScope, optsKeep)).toBe(true);
-  });
-
-  it('movil con zona null → NO pasa bajo scope (no decidible)', () => {
-    expect(isPedidoInScope({ movil: 100, zona_nro: null, estado_nro: 1 }, normalScope, optsHide)).toBe(false);
   });
 
   it('movil null sin zona → NO pasa bajo scope', () => {
@@ -139,6 +146,16 @@ describe('isServiceInScope', () => {
 
   it('scope normal + service pendiente sin movil + zona en scope + optsHide → pasa (zona gate, no movil gate)', () => {
     expect(isServiceInScope({ movil: 0, zona_nro: 30, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
+  });
+
+  // Fix run 20260526-160734-frj: móvil del user + zona fuera de scope → pasa.
+  it('scope normal + service movil del user + zona fuera de scope → pasa', () => {
+    expect(isServiceInScope({ movil: 200, zona_nro: 99, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
+  });
+
+  // Fix run 20260526-160734-frj: móvil del user + zona null → pasa.
+  it('scope normal + service movil del user + zona null → pasa', () => {
+    expect(isServiceInScope({ movil: 200, zona_nro: null, estado_nro: 1 }, normalScope, optsHide)).toBe(true);
   });
 });
 
