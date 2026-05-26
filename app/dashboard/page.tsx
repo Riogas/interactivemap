@@ -169,6 +169,9 @@ function DashboardContent() {
   const [isMovilesSinReportarOpen, setIsMovilesSinReportarOpen] = useState(false);
   const [isZonasNoActivasOpen, setIsZonasNoActivasOpen] = useState(false);
   const [saturacionModalZonaId, setSaturacionModalZonaId] = useState<number | null>(null);
+  // Filtros iniciales para ZonaMovilesViewModal al abrirlo desde ZonaEstadisticasModal
+  const [zonaViewInitialTipoServicio, setZonaViewInitialTipoServicio] = useState<'PEDIDOS' | 'SERVICE' | undefined>(undefined);
+  const [zonaViewInitialSubFiltro, setZonaViewInitialSubFiltro] = useState<'URGENTE' | 'NOCTURNO' | undefined>(undefined);
 
 
   // Mapa completo movil_nro ? estadoNro (para todos los moviles, no solo los con GPS)
@@ -3263,6 +3266,8 @@ function DashboardContent() {
         onClose={() => setZonaViewModalOpen(false)}
         initialZonaId={zonaViewModalZonaId}
         initialServiceFilter={movilesZonasServiceFilter}
+        initialTipoServicio={zonaViewInitialTipoServicio}
+        initialSubFiltro={zonaViewInitialSubFiltro}
         moviles={movilesFiltered}
         movilesZonasData={movilesZonasData}
         allHiddenMovilIds={allHiddenMovilIds}
@@ -3358,14 +3363,20 @@ function DashboardContent() {
             setIsPedidosTableOpen(true);
           }
         }}
-        onMovsPrioClick={(zonaId, _movilIds, _svcFilter) => {
-          // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here
+        onMovsPrioClick={(zonaId, _movilIds, _svcFilter, tipoServicio, subFiltro) => {
+          // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here.
+          // Propagate the parent's combo values so the child pre-loads them.
+          setZonaViewInitialTipoServicio(tipoServicio);
+          setZonaViewInitialSubFiltro(subFiltro);
           openZonaView(zonaId);
         }}
-        onMovsTransClick={(zonaId, _movilIds, _svcFilter) => {
-          // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here
+        onMovsTransClick={(zonaId, _movilIds, _svcFilter, tipoServicio, subFiltro) => {
+          // Child opens on top of parent -- do NOT close ZonaEstadisticasModal here.
           // ZonaMovilesViewModal shows both columns (prioridad + transito); opening for
-          // the zone is enough â€” the user sees the transito column immediately.
+          // the zone is enough — the user sees the transito column immediately.
+          // Propagate the parent's combo values so the child pre-loads them.
+          setZonaViewInitialTipoServicio(tipoServicio);
+          setZonaViewInitialSubFiltro(subFiltro);
           openZonaView(zonaId);
         }}
         onCellClick={onZonaStatsCellClick}

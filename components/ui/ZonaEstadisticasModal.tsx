@@ -35,10 +35,12 @@ interface ZonaEstadisticasModalProps {
   allHiddenMovilIds?: Set<string>;
   /** Callback al clickear una zona: abre vista extendida de pedidos/services */
   onZonaClick?: (zonaId: number, serviceFilter: string) => void;
-  /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona */
-  onMovsPrioClick?: (zonaId: number, movilIds: number[], serviceFilter: string) => void;
-  /** Callback al clickear la celda M.Trans: abre detalle de moviles en transito de esa zona */
-  onMovsTransClick?: (zonaId: number, movilIds: number[], serviceFilter: string) => void;
+  /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona.
+   *  tipoServicio y subFiltro reflejan los combos activos del padre para pre-cargar el hijo. */
+  onMovsPrioClick?: (zonaId: number, movilIds: number[], serviceFilter: string, tipoServicio: 'PEDIDOS' | 'SERVICE', subFiltro?: 'URGENTE' | 'NOCTURNO') => void;
+  /** Callback al clickear la celda M.Trans: abre detalle de moviles en transito de esa zona.
+   *  tipoServicio y subFiltro reflejan los combos activos del padre para pre-cargar el hijo. */
+  onMovsTransClick?: (zonaId: number, movilIds: number[], serviceFilter: string, tipoServicio: 'PEDIDOS' | 'SERVICE', subFiltro?: 'URGENTE' | 'NOCTURNO') => void;
   /** Callback al clickear uno de los 5 números de estadísticas (sinAsignar/pendientes/atrasados/entregados/noEntregados).
    *  Si el valor es 0, el click no se emite (cursor default). */
   onCellClick?: (zonaId: number, kind: ZonaCellKind) => void;
@@ -738,7 +740,7 @@ export default function ZonaEstadisticasModal({
                                   .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito === 1)
                                   .map(r => Number(r.movil_id))
                               )];
-                              onMovsPrioClick(z.zonaId, movilIds, effectiveServiceFilter);
+                              onMovsPrioClick(z.zonaId, movilIds, effectiveServiceFilter, tipoPrincipal as "PEDIDOS" | "SERVICE", tipoPrincipal === "PEDIDOS" && subTipoPedidos !== "TODOS" ? subTipoPedidos as "URGENTE" | "NOCTURNO" : undefined);
                             }
                           }}
                         >
@@ -756,7 +758,7 @@ export default function ZonaEstadisticasModal({
                                   .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito !== 1)
                                   .map(r => Number(r.movil_id))
                               )];
-                              onMovsTransClick(z.zonaId, movilIds, effectiveServiceFilter);
+                              onMovsTransClick(z.zonaId, movilIds, effectiveServiceFilter, tipoPrincipal as "PEDIDOS" | "SERVICE", tipoPrincipal === "PEDIDOS" && subTipoPedidos !== "TODOS" ? subTipoPedidos as "URGENTE" | "NOCTURNO" : undefined);
                             }
                           }}
                         >
