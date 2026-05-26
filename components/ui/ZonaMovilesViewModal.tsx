@@ -241,6 +241,28 @@ export default function ZonaMovilesViewModal({
     return m;
   }, [moviles, allMovilEstados]);
 
+  /**
+   * Returns true if the movil referenced by `record` is ACTIVE
+   * (estado_nro NOT IN MOVIL_ESTADOS_INACTIVOS = {3, 5, 15}).
+   * Moviles with no estado data are assumed active (fail-open).
+   * Note: "ocultos pero operativos" (allHiddenMovilIds) are NOT excluded from
+   * counters — they are still operationally active; only estado_nro drives inactivity.
+   */
+  const isMovilRecordActivo = useCallback((record: MovilZonaRecord): boolean => {
+    const estado = movilEstadosMap.get(String(record.movil_id));
+    if (estado === undefined) return true; // sin dato → asumir activo
+    return !MOVIL_ESTADOS_INACTIVOS.has(estado);
+  }, [movilEstadosMap]);
+
+  /**
+   * Counts the number of ACTIVE moviles in a list of MovilZonaRecord.
+   * Inactivos (estado_nro ∈ {3,5,15}) are excluded from the count but
+   * remain in the list for display (tachados).
+   */
+  const countActivosInList = useCallback((items: MovilZonaRecord[]): number => {
+    return items.filter(isMovilRecordActivo).length;
+  }, [isMovilRecordActivo]);
+
   // Al cambiar el combo principal de PEDIDOS ↔ SERVICE y volver a PEDIDOS,
   // recalcular el sub-filtro por hora actual.
   useEffect(() => {
@@ -282,12 +304,14 @@ export default function ZonaMovilesViewModal({
     return map;
   }, [filteredData]);
 
-  // ========== Conteo total por zona (para badge) ==========
+  // ========== Conteo de ACTIVOS por zona (para badge sidebar) ==========
+  // Solo se cuentan móviles con estado_nro NOT IN {3,5,15}.
+  // Los inactivos siguen apareciendo en la lista (tachados) pero no inflan el badge.
   const countPorZona = useCallback((zonaId: number) => {
     const data = asignacionesPorZona.get(zonaId);
     if (!data) return 0;
-    return data.prioridad.length + data.transito.length;
-  }, [asignacionesPorZona]);
+    return countActivosInList(data.prioridad) + countActivosInList(data.transito);
+  }, [asignacionesPorZona, countActivosInList]);
 
   // ========== Zona seleccionada ==========
   const selectedZona = useMemo(() => zonas.find(z => z.zona_id === selectedZonaId), [zonas, selectedZonaId]);
@@ -350,6 +374,9 @@ export default function ZonaMovilesViewModal({
 
   // ========== Render column (prioridad o transito) ==========
   const renderColumn = (tipo: 'prioridad' | 'transito', label: string, items: MovilZonaRecord[], color: string) => {
+    // Badge shows count of ACTIVE moviles only (estado_nro NOT IN {3,5,15}).
+    // The full `items` list (including inactivos) is still rendered below (tachados).
+    const activoCount = countActivosInList(items);
     return (
       <div className="flex-1 min-h-0 flex flex-col">
         {/* Header */}
@@ -357,7 +384,7 @@ export default function ZonaMovilesViewModal({
           <div className={`w-2.5 h-2.5 rounded-full ${tipo === 'prioridad' ? 'bg-amber-400' : 'bg-cyan-400'}`} />
           <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">{label}</h4>
           <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full ml-auto">
-            {items.length}
+            {activoCount}
           </span>
         </div>
 
@@ -506,7 +533,7 @@ export default function ZonaMovilesViewModal({
                             </div>
                           </div>
 
-                          {/* Counter badge */}
+                          {/* Counter badge — solo activos (estado_nro NOT IN {3,5,15}) */}
                           {count > 0 && (
                             <span className="bg-teal-500/20 text-teal-300 text-xs font-bold px-2 py-0.5 rounded-full">
                               {count}
@@ -523,7 +550,7 @@ export default function ZonaMovilesViewModal({
               <div className="flex-1 flex flex-col min-w-0 p-5 overflow-hidden">
                 {selectedZona ? (
                   <>
-                    {/* Selected zona header */}
+                    {/* Selected zona header — total activos asignados */}
                     <div className="flex items-center gap-3 mb-4">
                       <div
                         className="w-4 h-4 rounded"
@@ -533,7 +560,10 @@ export default function ZonaMovilesViewModal({
                         {selectedZona.zona_desc || `Zona ${selectedZona.zona_nro || selectedZona.zona_id}`}
                       </h3>
                       <span className="text-xs text-gray-500">
-                        {selectedAsignaciones.prioridad.length + selectedAsignaciones.transito.length} móvil{(selectedAsignaciones.prioridad.length + selectedAsignaciones.transito.length) !== 1 ? 'es' : ''} asignado{(selectedAsignaciones.prioridad.length + selectedAsignaciones.transito.length) !== 1 ? 's' : ''}
+                        {(() => {
+                          const activoCount = countActivosInList(selectedAsignaciones.prioridad) + countActivosInList(selectedAsignaciones.transito);
+                          return `${activoCount} móvil${activoCount !== 1 ? 'es' : ''} asignado${activoCount !== 1 ? 's' : ''}`;
+                        })()}
                       </span>
                     </div>
 
