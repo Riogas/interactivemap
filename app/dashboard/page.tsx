@@ -2440,14 +2440,19 @@ function DashboardContent() {
     const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
     hiddenMovilIds.forEach(id => validMovilIds.add(id));
     const targetEstado = isPendientes ? 1 : 2;
+    // Badge "Ninguno": selectedMoviles=[] + userExplicitlyCleared=true.
+    // Con funcionalidad "Ped s/asignar unitarios": solo sin asignar.
+    // Sin funcionalidad: nada (isExplicitlyNone + return false para asignados).
+    const isExplicitlyNone = selectedMoviles.length === 0 && userExplicitlyCleared.current;
     let base = pedidosCompletos.filter(p => {
       if (Number(p.estado_nro) !== targetEstado) return false;
       if (!p.movil || Number(p.movil) === 0) {
         // Caso 6: en pendientes pasa si está en modo "Todos" O si el filtro
         // de asignacion es 'sin_movil' (bypass explícito). En finalizados
         // queda estricto.
+        // Caso "Ninguno" + funcionalidad: también pasa (solo sin asignar visible).
         const allowsUnassigned = isPendientes
-          ? canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil')
+          ? canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil' || (isExplicitlyNone && !isEmpresaPartial))
           : canVerSinAsignarUnitario && allMovilesSelected && isPendientes;
         if (!allowsUnassigned) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
@@ -2461,6 +2466,8 @@ function DashboardContent() {
         if (allMovilesSelected && hiddenMovilIds.has(Number(p.movil))) return true;
         return false;
       }
+      // Badge "Ninguno": pedidos con móvil asignado NO aparecen en el mapa.
+      if (isExplicitlyNone) return false;
       if (isPrivilegedUser) return false;
       if (isEmpresaPartial) {
         return validMovilIds.has(Number(p.movil));
@@ -2494,12 +2501,15 @@ function DashboardContent() {
     const validMovilIds = new Set(movilesFiltered.map(m => Number(m.id)));
     hiddenMovilIds.forEach(id => validMovilIds.add(id));
     const targetEstado = isPendientes ? 1 : 2;
+    // Badge "Ninguno" (idem pedidosForMap).
+    const isExplicitlyNoneSvc = selectedMoviles.length === 0 && userExplicitlyCleared.current;
     let base = servicesCompletos.filter(s => {
       if (Number(s.estado_nro) !== targetEstado) return false;
       if (!s.movil || Number(s.movil) === 0) {
         // Mismo gate Caso 6 que pedidosForMap (con services).
+        // Caso "Ninguno" + funcionalidad: también pasa (solo sin asignar visible).
         const allowsUnassigned = isPendientes
-          ? canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil')
+          ? canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil' || (isExplicitlyNoneSvc && !isEmpresaPartial))
           : canVerSinAsignarUnitario && allMovilesSelected && isPendientes;
         if (!allowsUnassigned) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
@@ -2513,6 +2523,8 @@ function DashboardContent() {
         if (allMovilesSelected && hiddenMovilIds.has(Number(s.movil))) return true;
         return false;
       }
+      // Badge "Ninguno": services con móvil asignado NO aparecen en el mapa.
+      if (isExplicitlyNoneSvc) return false;
       if (isPrivilegedUser) return false;
       if (isEmpresaPartial) {
         return validMovilIds.has(Number(s.movil));

@@ -284,13 +284,14 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       });
     } else if (
       selectedMoviles.length === 0 &&
-      privilegedUser &&
+      canVerSinAsignarUnitario &&
       !hideUnassigned &&
       filters.asignacion === 'todos' &&
       !isFinalizados
     ) {
-      // Privilegiado SIN móviles seleccionados, empresas completas, vista
-      // pendientes: mostramos exclusivamente services sin móvil.
+      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios":
+      // mostrar exclusivamente services sin móvil ("solo sin asignar").
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados.
       result = result.filter(s => !s.movil || Number(s.movil) === 0);
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción de empresa: restringir
