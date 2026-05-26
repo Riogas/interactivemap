@@ -64,6 +64,13 @@ interface ZonaMovilesViewModalProps {
    *  'transito': abre modal desde click en M.Trans — la columna de tránsito es relevante.
    *  Ambas columnas siempre se muestran; este prop es solo informativo/contexto. */
   initialFocusColumn?: 'prioridad' | 'transito';
+  /** Tipo de servicio inicial a mostrar (propagado desde ZonaEstadisticasModal).
+   *  Si se provee, gana sobre el valor por defecto ('PEDIDOS'). */
+  initialTipoServicio?: 'PEDIDOS' | 'SERVICE';
+  /** Sub-filtro inicial dentro de PEDIDOS (propagado desde ZonaEstadisticasModal).
+   *  Si se provee, gana sobre el cálculo por hora actual (determineServicePeriod).
+   *  Si no se provee, sigue calculando por hora como hoy. */
+  initialSubFiltro?: 'URGENTE' | 'NOCTURNO';
 }
 
 export default function ZonaMovilesViewModal({
@@ -80,6 +87,8 @@ export default function ZonaMovilesViewModal({
   // for caller context (ZonaEstadisticasModal M.Prio vs M.Trans click differentiation).
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   initialFocusColumn,
+  initialTipoServicio,
+  initialSubFiltro,
 }: ZonaMovilesViewModalProps) {
   const { escenarioId } = useAuth();
   const { serverNow } = useServerTime();
@@ -105,6 +114,8 @@ export default function ZonaMovilesViewModal({
   const effectiveMzData = movilesZonasData.length > 0 ? movilesZonasData : internalMzData;
 
   // Sincronizar filtro de servicio desde el mapa cuando se abre el modal.
+  // Prioridad (mayor a menor): initialTipoServicio (propagado desde ZonaEstadisticasModal)
+  // > initialServiceFilter (del mapa, usa vocabulario diferente) > default (PEDIDOS).
   // El mapa usa vocabulario 'all' | 'SERVICE' | 'URGENTE' | 'NOCTURNO' | ...
   // El modal usa TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE']. Si se pisa el state
   // con un valor que no esta en TIPOS_SERVICIO (ej. 'all'), el `=== 'PEDIDOS'`
@@ -114,19 +125,26 @@ export default function ZonaMovilesViewModal({
   // NOCTURNO / 'all') → 'PEDIDOS', porque urgente y nocturno son tipos dentro
   // de PEDIDOS. El sub-filtro se calcula por hora actual al abrir.
   useEffect(() => {
-    if (!isOpen || !initialServiceFilter) return;
-    const upper = initialServiceFilter.toUpperCase();
-    setServiceFilter(upper === 'SERVICE' ? 'SERVICE' : 'PEDIDOS');
-  }, [isOpen, initialServiceFilter]);
+    if (!isOpen) return;
+    // initialTipoServicio tiene prioridad sobre initialServiceFilter (mapa).
+    if (initialTipoServicio) {
+      setServiceFilter(initialTipoServicio);
+    } else if (initialServiceFilter) {
+      const upper = initialServiceFilter.toUpperCase();
+      setServiceFilter(upper === 'SERVICE' ? 'SERVICE' : 'PEDIDOS');
+    }
+  }, [isOpen, initialTipoServicio, initialServiceFilter]);
 
   // Al abrir el modal, calcular el default del sub-filtro por hora actual.
+  // Si el caller pasa initialSubFiltro (ZonaEstadisticasModal propagando su combo),
+  // ese valor gana sobre el cálculo por hora. Si no se pasa, calcula por hora como hoy.
   // No recalcular en cada tick de serverNow — solo al abrir para no pisar
   // el valor que el usuario eligió manualmente.
   useEffect(() => {
     if (!isOpen) return;
-    setPedidosSubFilter(calcDefaultSubFilter());
+    setPedidosSubFilter(initialSubFiltro ?? calcDefaultSubFilter());
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]); // calcDefaultSubFilter excluido intencionalmente — solo recalcular al abrir
+  }, [isOpen, initialSubFiltro]); // calcDefaultSubFilter excluido intencionalmente — solo recalcular al abrir
 
   // ========== Fetch zonas + moviles_zonas (si prop está vacío) ==========
   const scopedEmpresasKey = scopedEmpresas ? scopedEmpresas.join(',') : '';
