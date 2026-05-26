@@ -376,14 +376,14 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       });
     } else if (
       selectedMoviles.length === 0 &&
-      privilegedUser &&
+      canVerSinAsignarUnitario &&
       !hideUnassigned &&
       filters.asignacion === 'todos' &&
       !isFinalizados
     ) {
-      // Privilegiado SIN móviles seleccionados (handleClearAll) y empresas
-      // completas, vista pendientes con asignación 'todos': mostramos
-      // exclusivamente pedidos sin móvil ("solo sin asignar").
+      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios":
+      // mostrar exclusivamente pedidos sin móvil ("solo sin asignar").
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados.
       result = result.filter(p => !p.movil || Number(p.movil) === 0);
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción de empresa: restringir

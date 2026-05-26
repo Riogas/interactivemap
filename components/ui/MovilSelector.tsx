@@ -587,11 +587,11 @@ export default function MovilSelector({
         if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
-    } else if (privilegedUser && canVerSinAsignarUnitario && !isPartialEmpresa) {
-      // Privilegiado SIN móviles seleccionados (handleClearAll) y empresas
-      // completas: vista "solo sin asignar". Mostramos exclusivamente pedidos
-      // sin móvil — los asignados quedan ocultos hasta que el usuario seleccione.
-      // Gate funcional: requiere canVerSinAsignarUnitario ademas de privilegio rol.
+    } else if (canVerSinAsignarUnitario && !isPartialEmpresa) {
+      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios" activa:
+      // mostrar exclusivamente pedidos sin móvil (sin asignar) del scope.
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados.
+      // Sin la funcionalidad este bloque no entra y cae al fallthrough (nada).
       result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
     } else if (isPartialEmpresa && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
@@ -755,10 +755,10 @@ export default function MovilSelector({
         if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
-    } else if (privilegedUser && canVerSinAsignarUnitario && !isPartialEmpresaSvc) {
-      // Privilegiado SIN móviles seleccionados y empresas completas: vista
-      // "solo sin asignar". Mostramos exclusivamente services sin móvil.
-      // Gate funcional: requiere canVerSinAsignarUnitario ademas de privilegio rol.
+    } else if (canVerSinAsignarUnitario && !isPartialEmpresaSvc) {
+      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios" activa:
+      // mostrar exclusivamente services sin móvil (sin asignar) del scope.
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados.
       result = result.filter(service => !service.movil || Number(service.movil) === 0);
     } else if (isPartialEmpresaSvc && !privilegedUser) {
       // Sin móviles seleccionados pero empresa parcial: restringir también a los
