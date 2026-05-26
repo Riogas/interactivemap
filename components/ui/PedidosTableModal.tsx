@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -434,7 +434,23 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     return Array.from(set).sort((a, b) => a - b);
   }, [pedidosParaOpciones]);
 
-  const uniqueProductos = useMemo(() => {
+  // En colapsable mode, el combo muestra TODOS los moviles activos del prop moviles
+  // (no solo los que tienen pedidos del dia) + inactivos relevantes por vista.
+  // En otros openSource, uniqueMoviles (del dataset filtrado) sigue siendo la fuente.
+  const activeMovilesForCombo = useMemo((): number[] => {
+    if (openSource !== 'colapsable') return uniqueMoviles;
+    // Importar isMovilActiveForUI inline para no requerir import adicional
+    const isActive = (estadoNro: number | null | undefined) => {
+      if (estadoNro === null || estadoNro === undefined) return true;
+      return estadoNro === 0 || estadoNro === 1 || estadoNro === 2 || estadoNro === 4;
+    };
+    return moviles
+      .filter(m => isActive(m.estadoNro ?? null))
+      .map(m => m.id)
+      .sort((a, b) => a - b);
+  }, [openSource, moviles, uniqueMoviles]);
+
+    const uniqueProductos = useMemo(() => {
     const set = new Set<string>();
     pedidosParaOpciones.forEach(p => { if (p.producto_nom) set.add(p.producto_nom); });
     return Array.from(set).sort();
@@ -895,7 +911,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                       {(() => {
                         const isColapsableMode = openSource === 'colapsable';
                         const displayedMovilIds = isColapsableMode ? selectedMoviles : filters.movil;
-                        const isShowingInactivos = isColapsableMode && isFinalizados && inactiveMovilesAvailable.length > 0;
+                        const isShowingInactivos = isColapsableMode && inactiveMovilesAvailable.length > 0;
                         const handleToggle = (m: number, checked: boolean, isInactivo?: boolean) => {
                           if (isColapsableMode && isInactivo) {
                             onModalExtraSelectedMovilesChange?.(
@@ -922,7 +938,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                         const handleClear = () => {
                           if (isColapsableMode && onSelectedMovilesChange) {
                             // "Todos" en colapsable mode = seleccionar todos los visibles del scope.
-                            onSelectedMovilesChange(uniqueMoviles);
+                            onSelectedMovilesChange(activeMovilesForCombo);
                           } else {
                             setFilters(f => ({ ...f, movil: [] }));
                           }
@@ -931,7 +947,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                         const label = isColapsableMode
                           ? (displayedMovilIds.length === 0
                               ? 'Ninguno'
-                              : displayedMovilIds.length === uniqueMoviles.length
+                              : displayedMovilIds.length === activeMovilesForCombo.length
                               ? 'Todos los móviles'
                               : displayedMovilIds.length === 1
                               ? getMovilName(displayedMovilIds[0])
@@ -942,7 +958,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                               ? getMovilName(displayedMovilIds[0])
                               : `${displayedMovilIds.length} móviles`);
                         const isActive = isColapsableMode
-                          ? displayedMovilIds.length > 0 && displayedMovilIds.length !== uniqueMoviles.length
+                          ? displayedMovilIds.length > 0 && displayedMovilIds.length !== activeMovilesForCombo.length
                           : displayedMovilIds.length > 0;
                         return (
                           <div className="relative" ref={movilDropdownRef}>
@@ -999,7 +1015,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                                     Todos
                                   </button>
                                 )}
-                                {uniqueMoviles.map(m => (
+                                {activeMovilesForCombo.map(m => (
                                   <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
                                     <input
                                       type="checkbox"
@@ -1013,7 +1029,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                                 {isShowingInactivos && inactiveMovilesAvailable.length > 0 && (
                                   <>
                                     <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-700/50 mt-1 pt-2 uppercase tracking-wider">
-                                      Inactivos con finalizados
+                                      Inactivos relevantes
                                     </div>
                                     {inactiveMovilesAvailable.map(m => (
                                       <label key={`inactivo-${m.id}`} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700/50 cursor-pointer">

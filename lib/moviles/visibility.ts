@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Helpers para decidir qué móviles son visibles en la UI.
  *
  * Reglas del negocio:
@@ -172,6 +172,58 @@ export function getMovilesConFinalizadosEnFecha(
       if (Number(s.estado_nro) === 2 && matchesEmpresa(s) && s.movil != null && Number(s.movil) !== 0) {
         ids.add(Number(s.movil));
       }
+    }
+  }
+
+  return Array.from(ids);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper para el combo de moviles del modal extendido
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ItemWithMovilAndEmpresa = {
+  movil?: number | string | null;
+  empresa_fletera_id?: number | null;
+  estado_nro?: number | string | null;
+  sub_estado_nro?: number | null;
+};
+
+/**
+ * Devuelve los movil_id (numeros) que tienen al menos 1 pedido o service
+ * matching el predicate, en las empresas dadas.
+ *
+ * Se usa para construir el combo de moviles del modal extendido — incluye
+ * moviles inactivos que tienen pedidos relevantes segun la vista actual.
+ *
+ * @param empresaIds  IDs de empresas fleteras. Si esta vacio, scope permisivo.
+ * @param pedidos     Lista completa de pedidos del dashboard (pedidosCompletos).
+ * @param services    Lista completa de services del dashboard (servicesCompletos).
+ * @param predicate   Funcion que recibe un item y retorna true si matchea la
+ *                    vista+sub-filtros actuales (sin contar el filtro movil).
+ */
+export function getMovilesConPedidosMatching(
+  empresaIds: number[],
+  pedidos: Array<ItemWithMovilAndEmpresa>,
+  services: Array<ItemWithMovilAndEmpresa>,
+  predicate: (item: ItemWithMovilAndEmpresa) => boolean,
+): number[] {
+  const ids = new Set<number>();
+
+  const matchesEmpresa = (item: ItemWithMovilAndEmpresa): boolean => {
+    if (empresaIds.length === 0) return true;
+    return item.empresa_fletera_id != null && empresaIds.includes(item.empresa_fletera_id);
+  };
+
+  for (const p of pedidos) {
+    if (predicate(p) && matchesEmpresa(p) && p.movil != null && Number(p.movil) !== 0) {
+      ids.add(Number(p.movil));
+    }
+  }
+
+  for (const s of services) {
+    if (predicate(s) && matchesEmpresa(s) && s.movil != null && Number(s.movil) !== 0) {
+      ids.add(Number(s.movil));
     }
   }
 
