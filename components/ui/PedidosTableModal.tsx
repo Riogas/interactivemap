@@ -1062,8 +1062,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                         {uniqueProductos.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
 
-                      {/* Clear */}
-                      {hasActiveFilters && (
+                      {openSource === 'colapsable' && hasActiveFilters && (
                         <button
                           onClick={clearFilters}
                           className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
