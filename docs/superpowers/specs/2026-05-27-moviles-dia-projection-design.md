@@ -131,6 +131,32 @@ CREATE INDEX idx_moviles_dia_activo    ON moviles_dia (escenario_id, fecha, acti
 
 ---
 
+## 4.1 Comportamiento de la barra lateral y el mapa por fecha
+
+> Reglas definidas por el usuario. Refinan y, donde se marca **(cambio vs hoy)**, modifican el comportamiento actual.
+
+### Fecha = HOY (realtime ON)
+- **Orden y agrupación:** móviles **activos** ordenados por ID arriba; luego un **subtítulo "Inactivos"** y debajo el resto (los inactivos presentes en `moviles_dia` de la fecha) ordenados por ID.
+- **Selección inicial:** al primer load, **TODOS** seleccionados (activos e inactivos) y el checkbox "seleccionar todos" tildado. **(cambio vs hoy: el default actual es solo activos.)**
+- **Auto-refresh:** como "seleccionar todos" está activo, cualquier móvil que aparezca nuevo en `moviles_dia` se inserta automáticamente en la lista según su estado e ID y queda seleccionado.
+- **Título de la barra lateral:** indica **cantidad de activos** y **cantidad de inactivos**.
+- **Inactivos:** NO se dibujan en el mapa; al clickearlos en la barra lateral **no pasa nada** (item inerte — no hay marker que enfocar ni toggle de visibilidad).
+
+### Fecha = ANTERIOR (realtime OFF)
+- Realtime **desactivado**.
+- **Todos** los móviles se visualizan como **inactivos**.
+- La app **no** los muestra en el mapa, ni muestra info de lote / capacidad / etc.
+- **Selección inicial:** todos seleccionados por defecto.
+
+## 4.2 Pantalla "Ver recorrido"
+
+- Carga **todos los móviles que tuvieron coordenadas GPS en la fecha seleccionada**, leyendo `moviles_dia` (filas de esa fecha con `last_gps_datetime` no nulo). Reemplaza el escaneo actual de `/api/moviles-with-activity`.
+- Si la fecha es **hoy:** muestra el estado al lado de cada móvil, como hoy.
+- Si la fecha es **anterior:** todos los registros dicen **"inactivo"**.
+- El **dibujo del recorrido** se hace **igual que hasta ahora** (desde `gps_tracking_history`). Eso no cambia.
+
+---
+
 ## 5. Fases de implementación
 
 > Cada fase es entregable y verificable de forma independiente. El sistema queda funcionando tras cada una. Recomendado ejecutarlas 1 a 1.
@@ -147,6 +173,8 @@ Tareas:
 5. Job de "cierre/rollover" de día (la fila del día anterior queda congelada; se crea la fila del día nuevo al primer evento o por cron).
 6. **Backfill** para las fechas recientes navegables.
 7. **Test de paridad** (clave): para una muestra de (escenario, fecha), comparar `moviles_dia` contra el resultado del cálculo client-side actual (`getHiddenMovilIds`, `getMovilesConOperacionEnFecha`, conteos de `/api/moviles-extended`). Debe ser idéntico.
+
+> **Regla de existencia de fila:** existe una fila `(escenario, movil, fecha)` cuando el móvil estaba **activo/visible** (`mostrar_en_mapa`) ese día **O** tuvo al menos un pedido/service/**coordenada GPS**. Esto garantiza el contenido correcto de la barra lateral (hoy y pasado) y de "Ver recorrido" (móviles con GPS en la fecha). Confirmar contra la lógica de inclusión actual de `/api/all-positions`.
 
 **Criterio de aceptación:** `moviles_dia` refleja exactamente lo que hoy calcula el cliente, para hoy y para fechas pasadas. Front sin cambios, todo sigue igual.
 
@@ -195,8 +223,13 @@ Tareas (en `app/dashboard/page.tsx` salvo donde se indique):
    - `allMovilesSelected`, `movilesForMap`, `pedidosForMap`: quitar referencias a `hiddenMovilIds`.
 4. Simplificar los 3 loops de polling: `fetchPositions()` → `fetchMovilesDia()` (1 request en lugar de 2).
 5. `MovilSelector`: consumir los flags precalculados (`activo`, `oculto_operativo`, `inactivo_del_dia`) en vez de recalcular.
+6. **Orden + agrupación (ver §4.1):** activos por ID arriba; subtítulo "Inactivos"; resto por ID debajo.
+7. **Selección inicial = TODOS** (activos + inactivos) con "seleccionar todos" tildado (cambio vs default actual). Auto-seleccionar los móviles nuevos que entren por `moviles_dia`.
+8. **Título de la barra lateral:** mostrar cantidad de activos y de inactivos.
+9. **Inactivos inertes:** no se dibujan en el mapa; click en la barra lateral no dispara acción (ni focus ni toggle).
+10. **Fecha anterior (§4.1):** realtime OFF; todos como inactivos; sin info de lote/capacidad; todos seleccionados por defecto.
 
-**Criterio de aceptación:** el colapsable se comporta idéntico (activos / ocultos / inactivos del día / contadores / selección), pero alimentado por `moviles_dia`. Derivaciones viejas eliminadas.
+**Criterio de aceptación:** el colapsable cumple §4.1 para hoy y para fechas anteriores (orden, agrupación, selección inicial, título con contadores, inactivos inertes), alimentado por `moviles_dia`. Derivaciones viejas eliminadas.
 
 ---
 
@@ -209,9 +242,11 @@ Tareas:
 2. `CulledMovilesLayer`: posición desde `last_gps_*`; `estado`/inactividad desde flags.
 3. `MovilInfoPopup` / `MovilInfoCard`: estado, capacidad, `cant_ped`/`cant_serv`, último GPS desde la fila. (Historial/recorrido sigue desde `gps_tracking_history`.)
 4. `MovilesZonasLayer`: filtrar por el flag `activo` en vez del join de `estado` (elimina el `movilEstados` Map y el chequeo `isMovilActiveForUI` client-side).
-5. (Opcional, evaluable) `SaturacionZonasLayer`: precalcular `capacidad_disponible` por zona en agregación server-side. **Puede diferirse** — no bloquea.
+5. **Inactivos fuera del mapa (§4.1):** los móviles inactivos NO se dibujan (ni hoy ni en fecha anterior). En **fecha anterior** no se dibuja ningún marcador de móvil y no se muestra info de lote/capacidad.
+6. **Pantalla "Ver recorrido" (§4.2):** `RouteAnimationControl` / `TrackingModal` arman la lista de móviles desde `moviles_dia` (filas de la fecha con `last_gps_datetime` no nulo) en vez de `/api/moviles-with-activity`. Estado al lado si es hoy; "inactivo" en todos si es fecha anterior. El **dibujo** del recorrido sigue desde `gps_tracking_history` (sin cambios).
+7. (Opcional, evaluable) `SaturacionZonasLayer`: precalcular `capacidad_disponible` por zona en agregación server-side. **Puede diferirse** — no bloquea.
 
-**Criterio de aceptación:** colores/íconos/popups/capa de móviles-zonas idénticos visualmente, alimentados por la nueva fuente. Sin regresiones en culling ni en el movimiento en vivo del marcador.
+**Criterio de aceptación:** colores/íconos/popups/capa de móviles-zonas idénticos visualmente, alimentados por la nueva fuente. Inactivos no aparecen en el mapa; fecha anterior sin marcadores de móvil. "Ver recorrido" lista desde `moviles_dia` y dibuja igual que antes. Sin regresiones en culling ni en el movimiento en vivo del marcador.
 
 ---
 
@@ -266,15 +301,15 @@ Tareas:
 - **Mantener:** `pedidosCompletos`/`servicesCompletos`, persistencia de `selectedDate`/`selectedMoviles`.
 
 ### Mapa + capas
-- **Afectados (deben migrar):** `getMovilColor`, creación de íconos, `CulledMovilesLayer`, `MovilInfoPopup`, `MovilesZonasLayer`.
+- **Afectados (deben migrar):** `getMovilColor`, creación de íconos, `CulledMovilesLayer`, `MovilInfoPopup`, `MovilesZonasLayer`, `RouteAnimationControl`/`TrackingModal` (lista de móviles del recorrido desde `moviles_dia`; el **dibujo** sigue por `gps_tracking_history`).
 - **Opcional:** `SaturacionZonasLayer` (precompute por zona).
-- **Sin cambios:** `DemorasZonasLayer`, `PedidosZonasLayer`, `ZonasActivasLayer`, `DistribucionZonasLayer`, clustering, viewport culling, `RouteAnimationControl` (recorrido sigue por history).
+- **Sin cambios:** `DemorasZonasLayer`, `PedidosZonasLayer`, `ZonasActivasLayer`, `DistribucionZonasLayer`, clustering, viewport culling, dibujo del recorrido (`gps_tracking_history`).
 
 ### Vista extendida + contadores + estadísticas
 - **Alto impacto:** `ZonaEstadisticasModal`, `LeaderboardModal`.
 - **Medio:** `DashboardIndicators`, `MovilInfoCard`, `PedidosTableModal`/`ServicesTableModal` (combo inactivos), `ZonaMovilesViewModal`.
 - **Directo:** `MovilesSinGPS` (`currentPosition`→`last_gps_*`).
-- **Sin cambios:** `Navbar`, `FloatingToolbar`, `TrackingModal` (endpoint igual).
+- **Sin cambios:** `Navbar`, `FloatingToolbar`.
 
 ---
 
