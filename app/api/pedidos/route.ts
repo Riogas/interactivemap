@@ -156,6 +156,20 @@ export async function GET(request: NextRequest) {
 
     console.log(`${data?.length || 0} pedidos obtenidos`);
 
+    // Recompute moviles_dia (fire-and-forget, gateado por feature flag)
+    if (process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true' && escenario && fecha && data && data.length > 0) {
+      const movilesRef = [...new Set(data.map((p: any) => Number(p.movil)).filter((n: number) => n > 0))];
+      if (movilesRef.length > 0) {
+        (supabase as any).rpc('fn_moviles_dia_recompute_counts_bulk', {
+          p_escenario: Number(escenario),
+          p_fecha: fecha,
+          p_moviles: movilesRef,
+        }).then(({ error: rpcError }: { error: any }) => {
+          if (rpcError) console.error('recompute moviles_dia (pedidos):', rpcError.message);
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       count: data?.length || 0,
