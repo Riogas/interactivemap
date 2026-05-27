@@ -155,6 +155,9 @@ interface MovilSelectorProps {
   /** IDs de móviles "ocultos-pero-operativos" — se excluyen del colapsable de
    *  móviles y contadores, pero sus pedidos/services siguen visibles. */
   hiddenMovilIds?: Set<number>;
+  /** Móviles inactivos que trabajaron en la fecha (al menos 1 pedido/service).
+   *  Se muestran debajo de un separador visual en el colapsable de móviles. */
+  inactivosDelDia?: MovilData[];
   selectedMoviles: number[];
   onToggleMovil: (movilId: number) => void;
   onSelectAll: () => void;
@@ -245,6 +248,7 @@ interface Category {
 export default function MovilSelector({
   moviles,
   hiddenMovilIds,
+  inactivosDelDia = [],
   selectedMoviles,
   onToggleMovil,
   onSelectAll,
@@ -529,18 +533,7 @@ export default function MovilSelector({
     return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
   }, [moviles, selectedMoviles, hiddenMovilIds, allEmpresasSelected, movilesFilters.actividad]);
 
-  // allVisibleOperativosSelected (semántica relajada — label del badge):
-  // true cuando todos los móviles operativos VISIBLES (post filtro de empresa) están
-  // en selectedMoviles. Usado SOLO para el label "Móviles: Todos" del badge — refleja
-  // lo que el usuario ve y operó. NO tiene impacto en canSeeUnassigned ni en visibilidad
-  // de huérfanos. No depende de allEmpresasSelected.
-  const allVisibleOperativosSelected = useMemo(() => {
-    // Usar filteredMoviles (lista visible del colapsable, post activity+capacity+
-    // advanced filters + hidden) en vez de moviles raw. Esto asegura que "Todos"
-    // refleje SOLO los items visibles, no inactivos/filtrados-out que el usuario
-    // no ve.
-    return filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
-  }, [filteredMoviles, selectedMoviles]);
+  // Badge de móviles: ver sección de badges más abajo — usa allActivosSelected calculado inline.
 
   // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
@@ -948,31 +941,30 @@ export default function MovilSelector({
           });
         }
 
-        // Badge de móviles seleccionados.
-        // "Todos" cuando todos los móviles operativos VISIBLES están seleccionados —
-        // usa `allVisibleOperativosSelected` (semántica relajada: no requiere todas
-        // las empresas, solo refleja lo que el usuario ve en el colapsable).
-        // La lista de IDs mostrada y el contador +N se calculan SOLO sobre la
-        // intersección con `filteredMoviles` (lista visible del colapsable post
-        // activity/capacity/advanced/hidden filters). selectedMoviles puede
-        // contener IDs de móviles que se filtraron out (ej. inactivos cuando
-        // `actividad='activo'`, o móviles residuales de una empresa anterior) que
-        // el usuario no ve — esos no deben aparecer en el badge.
+        // Badge de móviles seleccionados: muestra IDs de activos seleccionados.
+        // Badge cuenta SOLO activos — los inactivos del día se pueden seleccionar
+        // pero no aparecen en el badge (por decisión de producto confirmada).
         {
-          const visibleSet = new Set(filteredMoviles.map(m => m.id));
-          const visibleSelectedIds = selectedMoviles.filter(id => visibleSet.has(id));
-          const noneSelected = visibleSelectedIds.length === 0;
+          // Badge cuenta SOLO activos seleccionados (no inactivos del día).
+          // Los inactivos del día pueden estar en selectedMoviles pero el badge
+          // no los refleja — solo los activos visibles en el colapsable normal.
+          const activosSet = new Set(filteredMoviles.filter(m => isMovilActiveForUI(m.estadoNro)).map(m => m.id));
+          const activosSeleccionadosIds = selectedMoviles.filter(id => activosSet.has(id));
+          const nActivosSeleccionados = activosSeleccionadosIds.length;
+          const nActivosTotal = activosSet.size;
+          const allActivosSelected = nActivosTotal > 0 && nActivosSeleccionados === nActivosTotal;
+          const noneSelected = nActivosSeleccionados === 0;
           const VISIBLE_IDS = 5;
           badges.push({
-            label: allVisibleOperativosSelected
+            label: allActivosSelected
               ? '🚗 Móviles: Todos'
               : noneSelected
               ? '🚗 Móviles: Ninguno'
-              : `🚗 Móviles: ${visibleSelectedIds.length <= VISIBLE_IDS
-                  ? visibleSelectedIds.join(', ')
-                  : `${visibleSelectedIds.slice(0, VISIBLE_IDS).join(', ')} +${visibleSelectedIds.length - VISIBLE_IDS}`}`,
+              : `🚗 Móviles: ${activosSeleccionadosIds.length <= VISIBLE_IDS
+                  ? activosSeleccionadosIds.join(', ')
+                  : `${activosSeleccionadosIds.slice(0, VISIBLE_IDS).join(', ')} +${activosSeleccionadosIds.length - VISIBLE_IDS}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: allVisibleOperativosSelected ? undefined : onSelectAll,
+            onClear: allActivosSelected ? undefined : onSelectAll,
           });
         }
 
@@ -1621,6 +1613,55 @@ export default function MovilSelector({
                                 );
                               }}
                             />
+                          )}
+
+                          {/* Sub-sección: inactivos del día */}
+                          {inactivosDelDia.length > 0 && (
+                            <>
+                              <div className="my-2 border-t border-gray-200" />
+                              <div className="text-xs font-medium text-gray-500 mb-1 px-2">
+                                Inactivos del día ({inactivosDelDia.length})
+                              </div>
+                              {inactivosDelDia.map(movil => {
+                                const isSelected = selectedMoviles.includes(movil.id);
+                                return (
+                                  <button
+                                    key={movil.id}
+                                    onClick={() => onToggleMovil(movil.id)}
+                                    className={clsx(
+                                      'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2 opacity-70',
+                                      isSelected
+                                        ? 'bg-gray-500 text-white shadow-md border-transparent'
+                                        : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border-gray-200 italic'
+                                    )}
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      <div className={clsx(
+                                        "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                        isSelected ? "bg-white border-white" : "bg-white border-gray-300"
+                                      )}>
+                                        {isSelected && (
+                                          <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                          </svg>
+                                        )}
+                                      </div>
+                                      <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                      </svg>
+                                      <span className="text-sm font-medium leading-tight text-gray-400 italic">
+                                        {movil.id}
+                                        {' – '}
+                                        {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
+                                        <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                          Inactivo
+                                        </span>
+                                      </span>
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </>
                           )}
                         </div>
                       )}

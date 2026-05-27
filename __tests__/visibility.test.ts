@@ -14,6 +14,7 @@ import {
   isMovilHidden,
   getHiddenMovilIds,
   getHiddenMovilIdsFromEstadosMap,
+  getMovilesConOperacionEnFecha,
 } from '../lib/moviles/visibility';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -429,5 +430,105 @@ describe('getHiddenMovilIdsFromEstadosMap', () => {
     ];
     const result = getHiddenMovilIdsFromEstadosMap(estadosMap, pedidos);
     expect(result.size).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getMovilesConOperacionEnFecha
+// ─────────────────────────────────────────────────────────────────────────────
+describe('getMovilesConOperacionEnFecha', () => {
+  it('retorna Set vacio si no hay pedidos ni services', () => {
+    const result = getMovilesConOperacionEnFecha([], [], []);
+    expect(result.size).toBe(0);
+  });
+
+  it('incluye movil_id de pedidos (cualquier estado)', () => {
+    const pedidos = [
+      { movil: 1, empresa_fletera_id: null },
+      { movil: 2, empresa_fletera_id: null },
+    ];
+    const result = getMovilesConOperacionEnFecha([], pedidos, []);
+    expect(result.has(1)).toBe(true);
+    expect(result.has(2)).toBe(true);
+  });
+
+  it('incluye movil_id de services (cualquier estado)', () => {
+    const services = [
+      { movil: 10, empresa_fletera_id: null },
+    ];
+    const result = getMovilesConOperacionEnFecha([], [], services);
+    expect(result.has(10)).toBe(true);
+  });
+
+  it('union de pedidos y services — no duplicados', () => {
+    const pedidos = [{ movil: 5, empresa_fletera_id: null }];
+    const services = [{ movil: 5, empresa_fletera_id: null }, { movil: 6, empresa_fletera_id: null }];
+    const result = getMovilesConOperacionEnFecha([], pedidos, services);
+    expect(result.size).toBe(2);
+    expect(result.has(5)).toBe(true);
+    expect(result.has(6)).toBe(true);
+  });
+
+  it('filtra por empresaIds cuando se especifican', () => {
+    const pedidos = [
+      { movil: 1, empresa_fletera_id: 100 }, // empresa 100
+      { movil: 2, empresa_fletera_id: 200 }, // empresa 200 — excluido
+    ];
+    const result = getMovilesConOperacionEnFecha([100], pedidos, []);
+    expect(result.has(1)).toBe(true);
+    expect(result.has(2)).toBe(false);
+  });
+
+  it('scope permisivo cuando empresaIds es vacio', () => {
+    const pedidos = [
+      { movil: 1, empresa_fletera_id: 100 },
+      { movil: 2, empresa_fletera_id: 200 },
+    ];
+    const result = getMovilesConOperacionEnFecha([], pedidos, []);
+    expect(result.has(1)).toBe(true);
+    expect(result.has(2)).toBe(true);
+  });
+
+  it('ignora pedidos con movil null o 0', () => {
+    const pedidos = [
+      { movil: null, empresa_fletera_id: null },
+      { movil: 0, empresa_fletera_id: null },
+      { movil: undefined, empresa_fletera_id: null },
+    ];
+    const result = getMovilesConOperacionEnFecha([], pedidos, []);
+    expect(result.size).toBe(0);
+  });
+
+  it('convierte movil string a number en el Set', () => {
+    const pedidos = [{ movil: '7', empresa_fletera_id: null }];
+    const result = getMovilesConOperacionEnFecha([], pedidos, []);
+    expect(result.has(7)).toBe(true);
+    expect(typeof [...result][0]).toBe('number');
+  });
+
+  it('Hoy: inactivo con pedido aparece en el Set', () => {
+    // El helper NO filtra por estado del móvil — devuelve todos los que tienen operación.
+    // La distinción activo/inactivo la hace el dashboard al construir inactivosDelDia.
+    const pedidos = [
+      { movil: 3, empresa_fletera_id: null }, // movil 3 con estado 3 (inactivo) en el dominio
+    ];
+    const result = getMovilesConOperacionEnFecha([], pedidos, []);
+    expect(result.has(3)).toBe(true);
+  });
+
+  it('Fecha histórica: múltiples empresas, filtra correctamente', () => {
+    const pedidos = [
+      { movil: 1, empresa_fletera_id: 101 },
+      { movil: 2, empresa_fletera_id: 102 },
+      { movil: 3, empresa_fletera_id: 103 },
+    ];
+    const services = [
+      { movil: 4, empresa_fletera_id: 101 },
+    ];
+    const result = getMovilesConOperacionEnFecha([101, 102], pedidos, services);
+    expect(result.has(1)).toBe(true);
+    expect(result.has(2)).toBe(true);
+    expect(result.has(3)).toBe(false); // empresa 103 no seleccionada
+    expect(result.has(4)).toBe(true);
   });
 });

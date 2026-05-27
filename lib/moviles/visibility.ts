@@ -229,3 +229,48 @@ export function getMovilesConPedidosMatching(
 
   return Array.from(ids);
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper para colapsable con activos + inactivos que trabajaron en la fecha
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Devuelve Set<number> de movil_id que tienen AL MENOS 1 pedido o service
+ * en la fecha (cualquier estado). NO filtra por estado activo/inactivo del
+ * móvil — incluye tanto activos como inactivos.
+ *
+ * Usado por el colapsable para mostrar la sub-sección de móviles inactivos
+ * que trabajaron en la fecha seleccionada, incluso si hoy están inactivos.
+ *
+ * Nota: los pedidos/services ya vienen pre-filtrados por fecha por el dashboard;
+ * no se necesita un parámetro de fecha aquí.
+ *
+ * @param empresaIds IDs de empresas fleteras seleccionadas. Si está vacío, scope permisivo.
+ * @param pedidos    Lista completa de pedidos del dashboard (pedidosCompletos).
+ * @param services   Lista completa de services del dashboard (servicesCompletos).
+ */
+export function getMovilesConOperacionEnFecha(
+  empresaIds: number[],
+  pedidos: Array<{ movil?: number | string | null; empresa_fletera_id?: number | null }>,
+  services: Array<{ movil?: number | string | null; empresa_fletera_id?: number | null }>,
+): Set<number> {
+  const ids = new Set<number>();
+
+  const matchesEmpresa = (item: { empresa_fletera_id?: number | null }): boolean => {
+    if (empresaIds.length === 0) return true;
+    return item.empresa_fletera_id != null && empresaIds.includes(item.empresa_fletera_id);
+  };
+
+  for (const p of pedidos) {
+    if (matchesEmpresa(p) && p.movil != null && Number(p.movil) !== 0) {
+      ids.add(Number(p.movil));
+    }
+  }
+
+  for (const s of services) {
+    if (matchesEmpresa(s) && s.movil != null && Number(s.movil) !== 0) {
+      ids.add(Number(s.movil));
+    }
+  }
+
+  return ids;
+}

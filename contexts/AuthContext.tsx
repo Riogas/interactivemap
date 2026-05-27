@@ -435,6 +435,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Limpiar fecha seleccionada de sessionStorage — al relogi debe arrancar en hoy.
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('trackmovil:selectedDate');
+      // Limpiar selecciones de móviles por fecha (trackmovil:selectedMoviles:<fecha>)
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith('trackmovil:selectedMoviles:')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => sessionStorage.removeItem(key));
     }
     setEscenarioId(1000);
     console.log('✅ Sesión cerrada completamente');

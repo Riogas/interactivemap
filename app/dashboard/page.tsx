@@ -26,7 +26,7 @@ import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
 import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForZonaScope, isRoot } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
-import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConPedidosMatching } from '@/lib/moviles/visibility';
+import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConPedidosMatching, getMovilesConOperacionEnFecha } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
@@ -99,6 +99,12 @@ function DashboardContent() {
   // handleToggleMovil puedan calcular "modo Todos" sin re-crearse en cada
   // cambio de filtros. Se asigna más abajo después de calcular movilesFiltered.
   const movilesFilteredRef = useRef<MovilData[]>([]);
+  // Ref al Set<number> de IDs de inactivos del día. Permite que el auto-select
+  // effect preserve esos IDs al limpiar huérfanos.
+  const inactivosDelDiaIdsRef = useRef<Set<number>>(new Set());
+  // Señal para el auto-select: si nonempty, agregar estos IDs extra a la
+  // selección inicial (usado para fecha histórica → seleccionar inactivos también).
+  const pendingInactivosIdsRef = useRef<number[]>([]);
 
   // Cache de movilIds que ya verificamos como FUERA del scope del usuario actual
   // (allowedEmpresas). Cuando llega un GPS de uno de estos móviles, hacemos
@@ -1328,7 +1334,10 @@ function DashboardContent() {
 
     setSelectedMoviles(prev => {
       // Limpiar huérfanos siempre (independiente de modo Todos/custom).
-      const cleanPrev = prev.filter(id => visibleSet.has(id));
+      // EXCEPCIÓN: IDs de inactivos del día se preservan aunque no estén en visibleSet
+      // (son seleccionables por el usuario desde el colapsable).
+      const inactivosKnown = inactivosDelDiaIdsRef.current;
+      const cleanPrev = prev.filter(id => visibleSet.has(id) || inactivosKnown.has(id));
       const orphanCount = prev.length - cleanPrev.length;
       const missing = visibleIds.filter(id => !cleanPrev.includes(id));
 
@@ -1339,6 +1348,13 @@ function DashboardContent() {
         // re-selecciona toda la flota ? bug reportado por usuarios.
         if (userExplicitlyCleared.current) {
           return prev;
+        }
+        // Si hay inactivos del día pendientes (fecha histórica), añadirlos a la selección inicial.
+        const pending = pendingInactivosIdsRef.current;
+        pendingInactivosIdsRef.current = [];
+        if (pending.length > 0) {
+          console.log('? Auto-selección inicial + inactivos del día:', visibleIds.length, '+', pending.length);
+          return [...visibleIds, ...pending.filter(id => !visibleIds.includes(id))];
         }
         console.log('? Auto-selección inicial: marcando todos los móviles por defecto:', visibleIds.length);
         return visibleIds;
@@ -1380,6 +1396,50 @@ function DashboardContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEmpresas, isLoadingEmpresas, selectedDate]); // Remover fetchPositions de dependencias para evitar loops
+
+  // Cuando cambia selectedDate, señalar al auto-select effect qué inactivos incluir.
+  // Para sessionStorage: intentar restaurar; si existe, usar esos IDs directamente.
+  // Para fecha histórica sin storage: usar pendingInactivosIdsRef para que el
+  // auto-select effect los incluya cuando corra (después del fetch de posiciones).
+  useEffect(() => {
+    // Intentar restaurar desde sessionStorage para esta fecha
+    if (selectedDate) {
+      const stored = sessionStorage.getItem(`trackmovil:selectedMoviles:${selectedDate}`);
+      if (stored) {
+        try {
+          const ids = JSON.parse(stored) as number[];
+          // Diferir para que se aplique DESPUÉS del setSelectedMoviles([]) del
+          // efecto de recarga (que también tiene selectedDate en sus deps).
+          pendingInactivosIdsRef.current = [];
+          userExplicitlyCleared.current = true;
+          // Usar setTimeout(0) para que el restore se aplique DESPUÉS del reset
+          // del efecto de recarga ([selectedEmpresas, isLoadingEmpresas, selectedDate]).
+          setTimeout(() => {
+            setSelectedMoviles(ids);
+          }, 0);
+          return;
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Sin storage: para fecha histórica, señalar que el auto-select debe incluir inactivos.
+    if (!isToday) {
+      pendingInactivosIdsRef.current = inactivosDelDia.map(m => m.id);
+    } else {
+      pendingInactivosIdsRef.current = [];
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]); // Solo cuando cambia la fecha
+
+  // Persistir selección de móviles por fecha en sessionStorage (sobrevive a F5).
+  // Se limpia en logout (AuthContext) con prefix trackmovil:selectedMoviles:.
+  useEffect(() => {
+    if (!selectedDate) return;
+    sessionStorage.setItem(
+      `trackmovil:selectedMoviles:${selectedDate}`,
+      JSON.stringify(selectedMoviles),
+    );
+  }, [selectedMoviles, selectedDate]);
 
   // ?? Escuchar actualizaciones en tiempo real de Supabase (solo si está activado)
   useEffect(() => {
@@ -2290,6 +2350,32 @@ function DashboardContent() {
   // inicial, reset por cambio de actividad) puedan acceder al último hiddenMovilIds
   // sin TDZ errors por block-scope.
   hiddenMovilIdsRef.current = hiddenMovilIds;
+
+  // Set de movil_id con al menos 1 pedido o service en la fecha (activos e inactivos).
+  // Usado para construir inactivosDelDia — qué inactivos mostrar en el colapsable.
+  const movilesConOperacion = useMemo(
+    () => getMovilesConOperacionEnFecha(selectedEmpresas, pedidosCompletos, servicesCompletos),
+    [selectedEmpresas, pedidosCompletos, servicesCompletos],
+  );
+
+  // Móviles inactivos que trabajaron en la fecha — para la sub-sección visual del colapsable.
+  // Filtrados por empresa (si hay empresas seleccionadas) y con operación en la fecha.
+  const inactivosDelDia = useMemo(() => {
+    if (selectedEmpresas.length === 0 && empresas.length > 0) return [];
+    return moviles
+      .filter(m => {
+        if (isMovilActiveForUI(m.estadoNro)) return false; // Solo inactivos
+        if (!movilesConOperacion.has(m.id)) return false; // Solo los que trabajaron
+        if (selectedEmpresas.length > 0 && empresas.length > 0) {
+          return m.empresaFleteraId != null && selectedEmpresas.includes(m.empresaFleteraId);
+        }
+        return true;
+      })
+      .sort((a, b) => a.id - b.id);
+  }, [moviles, movilesConOperacion, selectedEmpresas, empresas.length]);
+
+  // Mantener el ref de IDs de inactivos del día sincronizado (para el auto-select effect).
+  inactivosDelDiaIdsRef.current = new Set(inactivosDelDia.map(m => m.id));
 
   // allMovilesSelected (espejo del MovilSelector): true sólo cuando estamos en
   // modo "Todos" ? todas las empresas seleccionadas Y todos los móviles
@@ -3508,6 +3594,7 @@ function DashboardContent() {
                 <MovilSelector
                   moviles={movilesFilteredMarked}
                   hiddenMovilIds={hiddenMovilIds}
+                  inactivosDelDia={inactivosDelDia}
                   selectedMoviles={selectedMoviles}
                   onToggleMovil={handleToggleMovil}
                   onSelectAll={handleSelectAll}
