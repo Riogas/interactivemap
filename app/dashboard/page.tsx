@@ -1407,11 +1407,21 @@ function DashboardContent() {
       const stored = sessionStorage.getItem(`trackmovil:selectedMoviles:${selectedDate}`);
       if (stored) {
         try {
-          const ids = JSON.parse(stored) as number[];
+          const parsed = JSON.parse(stored);
+          // Soporte de formato legacy (array plano): tratar como custom para no romper.
+          let ids: number[];
+          let explicitlyCleared: boolean;
+          if (Array.isArray(parsed)) {
+            ids = parsed as number[];
+            explicitlyCleared = true; // safe default para formato viejo
+          } else {
+            ids = (parsed.ids ?? []) as number[];
+            explicitlyCleared = parsed.explicitlyCleared ?? true;
+          }
           // Diferir para que se aplique DESPUÉS del setSelectedMoviles([]) del
           // efecto de recarga (que también tiene selectedDate en sus deps).
           pendingInactivosIdsRef.current = [];
-          userExplicitlyCleared.current = true;
+          userExplicitlyCleared.current = explicitlyCleared;
           // Usar setTimeout(0) para que el restore se aplique DESPUÉS del reset
           // del efecto de recarga ([selectedEmpresas, isLoadingEmpresas, selectedDate]).
           setTimeout(() => {
@@ -1437,7 +1447,7 @@ function DashboardContent() {
     if (!selectedDate) return;
     sessionStorage.setItem(
       `trackmovil:selectedMoviles:${selectedDate}`,
-      JSON.stringify(selectedMoviles),
+      JSON.stringify({ ids: selectedMoviles, explicitlyCleared: userExplicitlyCleared.current }),
     );
   }, [selectedMoviles, selectedDate]);
 
