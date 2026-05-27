@@ -54,6 +54,20 @@ Objetivo: la tabla existe, se puebla y queda verificada contra la realidad. El f
 > - `app/api/all-positions/route.ts` y `app/api/moviles-extended/route.ts` — la lógica de inclusión y los conteos a portar.
 > - `lib/moviles/visibility.ts` — semántica exacta de `isMovilActiveForUI`, `getHiddenMovilIds`, `getMovilesConOperacionEnFecha`.
 
+### Schema real verificado (Task 1.1 — usar estos nombres en TODO el SQL de Fase 1)
+
+> Los snippets SQL de las Tasks 1.3/1.4 más abajo son **ilustrativos** y pueden tener nombres tentativos — **este bloque manda**.
+
+| Tema | Realidad (verificada en `types/supabase.ts` + `docs/sqls/`) |
+|---|---|
+| Identificador de móvil | `moviles.id` es **TEXT**; el id numérico lógico (usado por pedidos/services/colapsable/`MovilData.id`) es **`moviles.nro`** (integer). → `moviles_dia.movil_id` se llena desde **`moviles.nro`**. |
+| GPS | `gps_latest_positions` y `gps_tracking_history` tienen `movil_id` **TEXT** que matchea `moviles.id` (NO `nro`). Columnas: **`latitud`, `longitud`, `fecha_hora`** (timestamptz). Para poblar `last_gps_*` de una fila keyed por `nro`: unir `gps.movil_id = moviles.id` y mapear a `moviles.nro`. |
+| pedidos / services | columna móvil = **`movil`** (integer = `nro`); escenario = **`escenario`** (NO `escenario_id`); `estado_nro`; fecha = **`fch_para` en `YYYYMMDD`** (sin guiones) → comparar con `to_char(fecha,'YYYYMMDD')`; services además tiene `fch_hora_para` (timestamptz). |
+| moviles | `id` (text, PK), `nro` (int), `escenario_id`, `empresa_fletera_id`, `estado_nro`, `estado_desc`, `tamano_lote`, `matricula`, `descripcion`, `mostrar_en_mapa`, `cant_ped`/`cant_serv`/`capacidad`. |
+| Aplicación de SQL | **Manual vía Supabase SQL Editor** (no CLI, no `migrate-supabase.js` contra prod). El controller entrega los `.sql`; el usuario los aplica. |
+
+> **Consecuencia clave para triggers/funciones:** `moviles_dia.movil_id := m.nro`; join a GPS = `gps.movil_id = m.id`; pedidos/services filtran por `escenario`/`movil`/`fch_para`. El trigger de GPS (keyed por `movil_id` TEXT) debe traducir a `nro` vía `moviles`. En el rebuild de fechas pasadas, NO unir directamente `gps_tracking_history.movil_id` (text=id) con `pedidos.movil` (int=nro) — son espacios de id distintos; normalizar todo a `nro` vía `moviles`.
+
 ### Task 1.1: Crear la tabla `moviles_dia`
 
 **Files:**
