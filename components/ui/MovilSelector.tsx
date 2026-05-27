@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, ServiceSupabase, CustomMarker, EmpresaFleteraSupabase } from '@/types';
@@ -303,10 +303,10 @@ export default function MovilSelector({
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
-  
-  // Ref para calcular altura del contenedor virtual  
+
+  // Ref para calcular altura del contenedor virtual
   const listContainerRef = useRef<HTMLDivElement>(null);
-  
+
   // Estados de búsqueda por categoría
   const [movilesSearch, setMovilesSearch] = useState('');
   const [pedidosSearch, setPedidosSearch] = useState('');
@@ -368,9 +368,9 @@ export default function MovilSelector({
       return next;
     });
   }, []);
-  
+
   // Estados de filtros por categoría
-  const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
+  const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({
     capacidad: 'all',
     estado: [], // Inicialmente ningún filtro de estado activo
     actividad: 'activo', // Por defecto mostrar solo activos
@@ -412,17 +412,17 @@ export default function MovilSelector({
   // Filtrar y ordenar móviles
   const filteredMoviles = useMemo(() => {
     let result = [...moviles];
-    
+
     // Filtrar por búsqueda
     if (movilesSearch.trim()) {
       const searchLower = movilesSearch.toLowerCase();
-      result = result.filter(movil => 
+      result = result.filter(movil =>
         movil.id.toString().includes(searchLower) ||
         movil.name.toLowerCase().includes(searchLower) ||
         (movil.matricula && movil.matricula.toLowerCase().includes(searchLower))
       );
     }
-    
+
     // 🔥 Filtrar por capacidad (tamano_lote)
     if (movilesFilters.capacidad !== 'all') {
       result = result.filter(movil => {
@@ -436,7 +436,7 @@ export default function MovilSelector({
         }
       });
     }
-    
+
     // 🆕 Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3=NO ACTIVO)
     {
       result = result.filter(movil => {
@@ -452,41 +452,41 @@ export default function MovilSelector({
     if (hiddenMovilIds && hiddenMovilIds.size > 0) {
       result = result.filter(movil => !hiddenMovilIds.has(movil.id));
     }
-    
+
     // 🆕 Filtrar por estado (multi-selección)
     if (movilesFilters.estado.length > 0) {
       result = result.filter(movil => {
         const tamanoLote = movil.tamanoLote || 6;
         const capacidad = movil.capacidad ?? 0;
-        
+
         // Verificar cada estado seleccionado
         return movilesFilters.estado.some(estado => {
           switch (estado) {
             case 'no_reporta_gps':
               // Móviles sin posición o inactivos
               return !movil.currentPosition || movil.isInactive;
-            
+
             case 'baja_momentanea':
               // Móviles con baja momentánea (estado_nro 4)
               return movil.estadoNro === 4;
-            
+
             case 'con_capacidad':
               // Móviles con capacidad disponible (> 0%) — usa capacidad de la DB
               return tamanoLote > 0 && capacidad < tamanoLote;
-            
+
             case 'sin_capacidad':
               // Móviles sin capacidad: lote completo (4/4) o sobrepasado (6/4).
               // Mismo criterio que loteCompleto en el item del colapsable y el
               // color negro del marker en el mapa.
               return (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
-            
+
             default:
               return true;
           }
         });
       });
     }
-    
+
     // Ordenar por número de móvil (ascendente)
     return result.sort((a, b) => a.id - b.id);
   }, [moviles, movilesSearch, movilesFilters, hiddenMovilIds]);
@@ -535,10 +535,17 @@ export default function MovilSelector({
 
   // Badge de móviles: ver sección de badges más abajo — usa allActivosSelected calculado inline.
 
+  // Cantidad de móviles inactivos del día que están seleccionados manualmente.
+  // Se usa para mostrar el chip secundario "+N inactivos" en el header del colapsable.
+  const inactivosSeleccionados = useMemo(() => {
+    const inactivosIds = new Set(inactivosDelDia?.map(m => m.id) ?? []);
+    return selectedMoviles.filter(id => inactivosIds.has(id)).length;
+  }, [selectedMoviles, inactivosDelDia]);
+
   // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
     let result = [...pedidos];
-    
+
     // Filtrar según vista: pendientes (estado 1, asignados + sin asignar), finalizados (estado 2)
     if (pedidosFilters.vista === 'finalizados') {
       result = result.filter(pedido => Number(pedido.estado_nro) === 2);
@@ -546,7 +553,7 @@ export default function MovilSelector({
       // pendientes: todos estado 1
       result = result.filter(pedido => Number(pedido.estado_nro) === 1);
     }
-    
+
 
     // Caso 6: en vista pendientes los sin-asignar también pasan cuando el
     // usuario filtra explícitamente por asignacion='sin_movil' (gate funcional
@@ -594,20 +601,20 @@ export default function MovilSelector({
     // Filtrar por búsqueda
     if (pedidosSearch.trim()) {
       const searchLower = pedidosSearch.toLowerCase();
-      result = result.filter(pedido => 
+      result = result.filter(pedido =>
         pedido.id.toString().includes(searchLower) ||
         (pedido.servicio_nombre && pedido.servicio_nombre.toLowerCase().includes(searchLower)) ||
         (pedido.cliente_tel && pedido.cliente_tel.includes(searchLower))
       );
     }
-    
+
     // Filtrar por tipo de servicio (solo para pendientes y sin_asignar)
     if (pedidosFilters.vista !== 'finalizados' && pedidosFilters.tipoServicio.length > 0) {
       result = result.filter(pedido =>
         pedido.servicio_nombre && pedidosFilters.tipoServicio.includes(pedido.servicio_nombre)
       );
     }
-    
+
     // Filtrar por atraso (solo para pendientes y sin_asignar)
     if (pedidosFilters.vista !== 'finalizados' && pedidosFilters.atraso.length > 0) {
       result = result.filter(pedido => {
@@ -656,7 +663,7 @@ export default function MovilSelector({
         (pedido.cliente_tel && pedido.cliente_tel.includes(sq))
       );
     }
-    
+
     // Aplicar ventana temporal SA (solo para pendientes, no finalizados)
     if (pedidosFilters.vista !== "finalizados") {
       result = result.filter(p =>
@@ -695,7 +702,7 @@ export default function MovilSelector({
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
     let result = [...services];
-    
+
     // Filtrar según vista: pendientes (estado 1, asignados + sin asignar), finalizados (estado 2)
     if (servicesFilters.vista === 'finalizados') {
       result = result.filter(service => Number(service.estado_nro) === 2);
@@ -703,7 +710,7 @@ export default function MovilSelector({
       // pendientes: todos estado 1
       result = result.filter(service => Number(service.estado_nro) === 1);
     }
-    
+
 
     // Caso 6 (idem filteredPedidos): en vista pendientes acepta asignacion=
     // 'sin_movil' como bypass del gate "Todos". En finalizados queda estricto.
@@ -744,22 +751,22 @@ export default function MovilSelector({
     // Filtrar por búsqueda
     if (servicesSearch.trim()) {
       const searchLower = servicesSearch.toLowerCase();
-      result = result.filter(service => 
+      result = result.filter(service =>
         service.id.toString().includes(searchLower) ||
         (service.defecto && service.defecto.toLowerCase().includes(searchLower)) ||
         (service.cliente_nombre && service.cliente_nombre.toLowerCase().includes(searchLower)) ||
         (service.cliente_tel && service.cliente_tel.includes(searchLower))
       );
     }
-    
+
     // Filtrar por tipo de servicio (solo para pendientes y sin_asignar)
     if (servicesFilters.vista !== 'finalizados' && servicesFilters.tipoServicio && servicesFilters.tipoServicio !== 'all') {
       const tipoUpper = servicesFilters.tipoServicio.toUpperCase();
-      result = result.filter(service => 
+      result = result.filter(service =>
         service.servicio_nombre && service.servicio_nombre.toUpperCase() === tipoUpper
       );
     }
-    
+
     // Filtrar por atraso (solo para pendientes y sin_asignar)
     if (servicesFilters.vista !== 'finalizados' && servicesFilters.atraso.length > 0) {
       result = result.filter(service => {
@@ -809,7 +816,7 @@ export default function MovilSelector({
         (service.cliente_tel && service.cliente_tel.includes(sq))
       );
     }
-    
+
     // Aplicar ventana temporal SA (solo para pendientes, no finalizados)
     if (servicesFilters.vista !== "finalizados") {
       result = result.filter(s =>
@@ -1002,7 +1009,7 @@ export default function MovilSelector({
             });
           }
         }
-        
+
         // Badge de filtros activos en PEDIDOS
         {
           const pCount = (pedidosFilters.vista !== 'pendientes' ? 1 : 0)
@@ -1043,9 +1050,9 @@ export default function MovilSelector({
 
         // Badge de filtros de atraso de pedidos (ya incluido arriba en el count)
         // Badge de filtros de atraso de services (ya incluido arriba en el count)
-        
+
         if (badges.length === 0) return null;
-        
+
         return (
           <div className="flex flex-wrap gap-1 mb-3">
             {badges.map((badge, i) => (
@@ -1063,7 +1070,7 @@ export default function MovilSelector({
           </div>
         );
       })()}
-      
+
       {/* Buscador y Filtros Contextuales - Cambian según la categoría activa */}
       <AnimatePresence mode="wait">
         {expandedCategories.size > 0 && (
@@ -1150,7 +1157,7 @@ export default function MovilSelector({
                 ) : undefined
               }
             />
-            
+
             {activeCategory === 'moviles' && contextualFilters.searchValue && (
               <p className="text-xs text-gray-500 mt-2">
                 {filteredMoviles.length} móvil(es) encontrado(s)
@@ -1159,7 +1166,7 @@ export default function MovilSelector({
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Estructura de árbol con categorías colapsables */}
       <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
         <div className="space-y-2">
@@ -1176,6 +1183,15 @@ export default function MovilSelector({
                   {category.count > 0 && (
                     <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                       {category.count}
+                    </span>
+                  )}
+                  {/* Chip secundario: inactivos del día seleccionados manualmente */}
+                  {category.key === 'moviles' && inactivosSeleccionados > 0 && (
+                    <span
+                      className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full italic"
+                      title={`${inactivosSeleccionados} móvil${inactivosSeleccionados > 1 ? 'es' : ''} inactivo${inactivosSeleccionados > 1 ? 's' : ''} del día seleccionado${inactivosSeleccionados > 1 ? 's' : ''} manualmente`}
+                    >
+                      +{inactivosSeleccionados} inactivo{inactivosSeleccionados > 1 ? 's' : ''}
                     </span>
                   )}
                   {/* Indicador de drift de realtime — solo para usuarios root */}
@@ -1603,7 +1619,7 @@ export default function MovilSelector({
                                             } else if (minutesDiff < 30) {
                                               return <span className={clsx("text-[10px]", isSelected ? "text-orange-200" : "text-orange-600")}>{minutesDiff}m</span>;
                                             } else {
-                                              return <span className={clsx("text-[10px] font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m ⚠️</span>;
+                                              return <span className={clsx("text-[10px] font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m</span>;
                                             }
                                           })()}
                                         </div>
@@ -1666,7 +1682,7 @@ export default function MovilSelector({
                         </div>
                       )}
 
-                      {/* Contenido de Pedidos - 🚀 VIRTUALIZADO para 600+ pedidos */}
+                      {/* Contenido de Pedidos */}
                       {category.key === 'pedidos' && (
                         <div ref={listContainerRef}>
                           {filteredPedidos.length === 0 ? (
@@ -1694,7 +1710,7 @@ export default function MovilSelector({
                                     onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
                                     className={clsx(
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
-                                      isFinalizados 
+                                      isFinalizados
                                         ? esEntregado
                                           ? 'bg-green-50 border-green-200 hover:bg-green-100'
                                           : 'bg-red-50 border-red-200 hover:bg-red-100'
@@ -1707,19 +1723,19 @@ export default function MovilSelector({
                                       <span className="font-bold text-gray-900">#{pedido.id}</span>
                                       {(!pedido.latitud || !pedido.longitud) && (
                                         <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
-                                          📍❌
+                                          Sin coords
                                         </span>
                                       )}
                                       {isSinAsignar ? (
                                         <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Sin asignar</span>
                                       ) : (
-                                        <span className="text-gray-700">🚗{pedido.movil}</span>
+                                        <span className="text-gray-700">{pedido.movil}</span>
                                       )}
                                       {pedido.servicio_nombre && (
-                                        <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
+                                        <span className="text-gray-600 truncate flex-1">{pedido.servicio_nombre}</span>
                                       )}
                                       {isFinalizados ? (
-                                        <span 
+                                        <span
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
                                             esEntregado ? 'text-green-700' : 'text-red-700'
@@ -1727,10 +1743,10 @@ export default function MovilSelector({
                                           style={{ backgroundColor: esEntregado ? '#22c55e22' : '#ef444422' }}
                                           title={esEntregado ? 'Entregado' : 'No Entregado'}
                                         >
-                                          {esEntregado ? '✔ Entregado' : '✗ No Entregado'}
+                                          {esEntregado ? 'Entregado' : 'No Entregado'}
                                         </span>
                                       ) : (
-                                        <span 
+                                        <span
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
                                             isSinAsignar ? 'text-gray-500' : delayInfo?.textColor
@@ -1738,7 +1754,7 @@ export default function MovilSelector({
                                           style={{ backgroundColor: isSinAsignar ? '#9CA3AF22' : `${delayInfo?.color}22` }}
                                           title={isSinAsignar ? 'Sin asignar' : delayInfo?.label}
                                         >
-                                          ⏱{delayInfo?.badgeText}
+                                          {delayInfo?.badgeText}
                                         </span>
                                       )}
                                     </div>
@@ -1787,16 +1803,16 @@ export default function MovilSelector({
                                       <span className="font-bold text-gray-900">#{service.id}</span>
                                       {(!service.latitud || !service.longitud) && (
                                         <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
-                                          📍❌
+                                          Sin coords
                                         </span>
                                       )}
                                       {isSinAsignar ? (
                                         <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Sin asignar</span>
                                       ) : (
-                                        <span className="text-gray-700">🚗{service.movil}</span>
+                                        <span className="text-gray-700">{service.movil}</span>
                                       )}
                                       {service.defecto && (
-                                        <span className="text-gray-600 truncate flex-1">🔧{service.defecto}</span>
+                                        <span className="text-gray-600 truncate flex-1">{service.defecto}</span>
                                       )}
                                       {isFinalizados ? (
                                         <span
@@ -1804,7 +1820,7 @@ export default function MovilSelector({
                                           style={{ backgroundColor: '#22c55e22' }}
                                           title="Finalizado"
                                         >
-                                          ✔ Finalizado
+                                          Finalizado
                                         </span>
                                       ) : (
                                         <span
@@ -1815,7 +1831,7 @@ export default function MovilSelector({
                                           style={{ backgroundColor: isSinAsignar ? '#9CA3AF22' : `${delayInfo?.color}22` }}
                                           title={isSinAsignar ? 'Sin asignar' : delayInfo?.label}
                                         >
-                                          ⏱{delayInfo?.badgeText}
+                                          {delayInfo?.badgeText}
                                         </span>
                                       )}
                                     </div>
@@ -1831,11 +1847,10 @@ export default function MovilSelector({
                         <div className="space-y-1">
                           {puntosInteres.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
-                              <p>📍 Sin puntos de interés</p>
-                              <p className="text-xs mt-1">Crea uno haciendo clic en el botón verde del header</p>
+                              <p>Sin puntos de interes</p>
+                              <p className="text-xs mt-1">Crea uno haciendo clic en el boton verde del header</p>
                             </div>
                           ) : poiByCategory.length === 0 ? (
-                            /* Sin categorías, mostrar lista plana */
                             puntosInteres.map((punto) => (
                               <motion.button
                                 key={punto.id}
@@ -1851,13 +1866,11 @@ export default function MovilSelector({
                               </motion.button>
                             ))
                           ) : (
-                            /* Categorías agrupadas con sub-collapsibles */
                             poiByCategory.map(([catKey, group]) => {
                               const isCatHidden = hiddenPoiCategories.has(group.label);
                               const isCatExpanded = expandedPoiCategories.has(catKey);
                               return (
                                 <div key={catKey} className="rounded-lg overflow-hidden border border-gray-200/50 dark:border-gray-600/50">
-                                  {/* Header de categoría */}
                                   <button
                                     onClick={() => togglePoiSubCategory(catKey)}
                                     className={clsx(
@@ -1867,7 +1880,6 @@ export default function MovilSelector({
                                         : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
                                     )}
                                   >
-                                    {/* Flecha expandir/colapsar */}
                                     <svg
                                       className={clsx('w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0', isCatExpanded && 'rotate-90')}
                                       fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -1885,7 +1897,6 @@ export default function MovilSelector({
                                     <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono flex-shrink-0">
                                       {group.items.length}
                                     </span>
-                                    {/* Eye toggle por categoría */}
                                     {onTogglePoiCategory && (
                                       <span
                                         role="button"
@@ -1910,7 +1921,6 @@ export default function MovilSelector({
                                         )}
                                       </span>
                                     )}
-                                    {/* Botón cambiar ícono de categoría */}
                                     {onSetPoiCategoryIcon && group.label.toLowerCase() !== 'punto de venta' && (
                                       <span
                                         role="button"
@@ -1930,7 +1940,6 @@ export default function MovilSelector({
                                         </svg>
                                       </span>
                                     )}
-                                    {/* Seleccionar todos/ninguno por categoría */}
                                     {(onSelectCategoryPois || onClearCategoryPois) && (
                                       <span
                                         role="button"
@@ -1950,7 +1959,6 @@ export default function MovilSelector({
                                       </span>
                                     )}
                                   </button>
-                                  {/* Lista de POIs de esta categoría */}
                                   <AnimatePresence>
                                     {isCatExpanded && (
                                       <motion.div
@@ -1962,7 +1970,6 @@ export default function MovilSelector({
                                       >
                                         <div className="p-1 space-y-0.5 max-h-48 overflow-y-auto">
                                           {group.items.map((punto) => {
-                                            // Quitar prefijo [Category] de observacion para mostrar limpio
                                             const cleanObs = punto.observacion?.replace(/^\[[^\]]+\]\s*/, '') || '';
                                             const isPoiSelected = !selectedPois || selectedPois.has(punto.id);
                                             return (
@@ -2032,14 +2039,14 @@ export default function MovilSelector({
         </div>
       </div>
 
-      {/* Modal de guía del mapa */}
+      {/* Modal de guia del mapa */}
       <MapGuideModal
         isOpen={guideCategory !== null}
         onClose={() => setGuideCategory(null)}
         category={guideCategory || 'moviles'}
       />
     </div>
-    {/* Popover selector de icono de categoria POI — usa createPortal para evitar problemas con transform en ancestros */}
+    {/* Popover selector de icono de categoria POI */}
     {iconPickerCategory && iconPickerAnchor && (
       <EmojiPickerPopover
         category={iconPickerCategory}
