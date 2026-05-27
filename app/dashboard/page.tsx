@@ -82,6 +82,9 @@ function DashboardContent() {
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
   
+  // URL dinámica del manual — se carga desde /api/manual/current al montar
+  const [manualUrl, setManualUrl] = useState<string>('/manual/InstructivoRiogasTracking.pdf');
+
   const [moviles, setMoviles] = useState<MovilData[]>([]);
   const movilesRef = useRef<MovilData[]>([]); // Ref para acceso sincrónico en callbacks
   movilesRef.current = moviles;
@@ -219,6 +222,14 @@ function DashboardContent() {
   // Estado para puntos de interés
   const [puntosInteres, setPuntosInteres] = useState<CustomMarker[]>([]);
   const [selectedPois, setSelectedPois] = useState<Set<string>>(new Set());
+
+  // Cargar URL dinámica del manual al montar (fallback al PDF estático si falla)
+  useEffect(() => {
+    fetch('/api/manual/current')
+      .then((r) => r.json())
+      .then((d: { url: string }) => { if (d.url) setManualUrl(d.url); })
+      .catch(() => { /* fallback al estado inicial (PDF estático) */ });
+  }, []);
 
   // Inicializar selección cuando se cargan POIs
   useEffect(() => {
@@ -3065,7 +3076,7 @@ function DashboardContent() {
             (antes abría un tour interactivo  reemplazado por pedido del usuario). */}
         <a
           id="tour-help-btn"
-          href="/manual/InstructivoRiogasTracking.pdf"
+          href={manualUrl}
           download
           target="_blank"
           rel="noopener noreferrer"
