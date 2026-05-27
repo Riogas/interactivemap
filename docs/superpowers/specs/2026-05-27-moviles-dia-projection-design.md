@@ -117,7 +117,7 @@ CREATE INDEX idx_moviles_dia_activo    ON moviles_dia (escenario_id, fecha, acti
 - **Contadores de cumplimiento** (finalizados / entregados / entregados tarde / % cumplimiento): se calculan **on-demand** desde `pedidos`/`services` como hasta ahora — NO se persisten. Evita cualquier riesgo de *drift* en esas estadísticas.
 - **Color / capacidad** del móvil: hoy `getMovilColor` usa `tamano_lote` + pedidos asignados. Se reproduce con `tamano_lote` + `pedidos_pendientes` (los pedidos asignados de un móvil ≡ sus pendientes). Por eso se quitaron `capacidad` y `pedidos_asignados` del esquema. Verificar en paridad.
 
-**Reconstruibilidad (corregibilidad):** `moviles_dia` es una *cache / read model reconstruible*, no un snapshot de una sola escritura. Cada columna se re-deriva desde las fuentes (`pedidos`, `services`, `moviles`, `gps_tracking_history`). Si aparece un bug: se corrige la función de recompute y se re-ejecuta el recompute/backfill (**utilidad en Preferencias Globales**, pide fecha o rango) sobre las fechas afectadas → los valores persistidos se corrigen. Requiere **retener** las tablas fuente (ver Puntos abiertos). Además, al no persistir cumplimiento, el grueso de las estadísticas nunca puede quedar "congelado mal".
+**Reconstruibilidad (corregibilidad):** `moviles_dia` es una *cache / read model reconstruible*, no un snapshot de una sola escritura. Cada columna se re-deriva desde las fuentes (`pedidos`, `services`, `moviles`, `gps_tracking_history`). Si aparece un bug: se corrige la función de recompute y se re-ejecuta el recompute/backfill (**utilidad en Preferencias Globales**, pide fecha o rango) sobre las fechas afectadas → los valores persistidos se corrigen. Las fuentes se retienen **180 días**, así que se reconstruye/corrige hasta 180 días atrás. Además, al no persistir cumplimiento, el grueso de las estadísticas nunca puede quedar "congelado mal".
 
 **RLS / scope:** la lectura inicial va por `/api/moviles-dia` (server, service-role, scope fail-closed por `allowedEmpresas`, igual que `/api/pedidos` hoy). Para el realtime client-side se replica el filtro de canal por `empresa_fletera_id` (como los canales actuales) y **se añade política RLS** sobre `moviles_dia` como endurecimiento (ver Fase 3).
 
@@ -162,6 +162,11 @@ CREATE INDEX idx_moviles_dia_activo    ON moviles_dia (escenario_id, fecha, acti
 - Si la fecha es **anterior:** todos los registros dicen **"inactivo"**.
 - El **dibujo del recorrido** se hace **igual que hasta ahora** (desde `gps_tracking_history`). Eso no cambia.
 
+## 4.3 Combo de móviles en la tabla extendida
+
+- El combo/selector de móviles de la **tabla extendida** (`PedidosTableModal` / `ServicesTableModal`) se muestra **igual que la barra lateral**: **activos arriba, inactivos abajo** (mismo orden por ID, §4.1).
+- Mantiene **la misma selección con la que se entró desde la barra lateral** (los `selectedMoviles` del colapsable al abrir el modal). Por defecto, **todos** (hereda el default de la barra lateral).
+
 ---
 
 ## 5. Fases de implementación
@@ -200,7 +205,7 @@ Tareas:
 2. Scope server-side fail-closed por `allowedEmpresas` (espejo de `/api/pedidos`).
 3. Feature flag (`NEXT_PUBLIC_USE_MOVILES_DIA`) para poder activar/desactivar el nuevo camino sin borrar el viejo.
 4. Test de contrato: el shape y los valores que devuelve `/api/moviles-dia` == los que producía el pipeline viejo, sobre la misma data.
-5. **Utilidad de reconstrucción en Preferencias Globales:** endpoint admin (p. ej. `POST /api/moviles-dia/rebuild?desde=&hasta=`) + botón/form en `PreferenciasGlobalesModal` que **pide una fecha o un rango** y dispara el recompute/backfill (tarea 6 de Fase 1). Es la herramienta para **reconstruir la lista de móviles de días anteriores** y para corregir datos ante un bug.
+5. **Utilidad de reconstrucción en Preferencias Globales:** endpoint admin (p. ej. `POST /api/moviles-dia/rebuild?desde=&hasta=`) + botón/form en `PreferenciasGlobalesModal` que **pide una fecha o un rango** y dispara el recompute/backfill (tarea 6 de Fase 1). Es la herramienta para **reconstruir la lista de móviles de días anteriores** y para corregir datos ante un bug. El rango admitido es hasta **180 días** atrás (límite de retención de las fuentes).
 
 **Criterio de aceptación:** el endpoint devuelve datos idénticos en estructura y valores. La utilidad de reconstrucción funciona desde Preferencias Globales para una fecha o rango. El dashboard sigue usando el camino viejo (flag off).
 
@@ -271,7 +276,7 @@ Tareas:
 2. `MovilesSinGPS`: `WHERE last_gps_lat IS NULL` — móvil que **nunca reportó** posición (distinto de "sin reportar hace X min", que es el punto 1). Reemplaza el filtro del array.
 3. `LeaderboardModal`: la lista, los `pedidos_pendientes`/`services_pendientes` y los flags vienen de `moviles_dia`. El cumplimiento / entregados / atrasados del ranking se siguen calculando **on-demand** desde `pedidos`/`services` (NO precalculados). Exclusión de ocultos vía `oculto_operativo`.
 4. `ZonaEstadisticasModal`: usa `moviles_dia` para la lista/estado/flags de móviles y los pendientes; las **stats de cumplimiento por zona** se siguen calculando on-demand desde `pedidos`/`services` (correctitud). La ganancia se concentra en no re-derivar visibilidad/estado, no en los agregados de cumplimiento.
-5. `PedidosTableModal` / `ServicesTableModal`: el combo de "móviles inactivos" se arma desde `moviles_dia` en vez de `getMovilesConPedidosMatching` / `getMovilesConFinalizadosEnFecha`.
+5. `PedidosTableModal` / `ServicesTableModal`: el combo de móviles se arma desde `moviles_dia` (reemplaza `getMovilesConPedidosMatching` / `getMovilesConFinalizadosEnFecha`) y se muestra **igual que la barra lateral** — activos arriba, inactivos abajo (§4.3) — **conservando la selección con la que se entró** desde el colapsable (por defecto, todos).
 
 **Criterio de aceptación:** lista de móviles, estado, flags y pendientes vienen de `moviles_dia`; las stats de cumplimiento se siguen calculando on-demand y dan los mismos números que hoy (sin riesgo de drift). Sin regresiones.
 
@@ -339,8 +344,7 @@ Tareas:
 
 ## 8. Puntos abiertos a confirmar antes de implementar
 
-1. **Retención de las tablas fuente** (`pedidos` / `services` / `gps_tracking_history`): ¿se conservan o se purgan tras X tiempo? Define hasta qué fecha `moviles_dia` es reconstruible/corregible.
-2. Números de **flota por escenario + frecuencia de GPS** (solo afinan el throttle de Fase 3; no cambian la arquitectura).
-3. Validar **nombres/tipos reales** de columnas contra el schema actual de Supabase.
+1. Números de **flota por escenario + frecuencia de GPS** (solo afinan el throttle de Fase 3; no cambian la arquitectura).
+2. Validar **nombres/tipos reales** de columnas contra el schema actual de Supabase.
 
-**Ya decidido:** mantenimiento = recompute a nivel aplicación en las APIs de pedidos/services + triggers para estado/GPS; cumplimiento = on-demand (no se persiste); GPS = Opción A; `cant_atrasados`/`movilesSinReportar` = cliente.
+**Ya decidido:** **retención = 180 días** (las fuentes conservan ~180 días → `moviles_dia` es reconstruible/corregible hasta 180 días atrás; la utilidad de Preferencias Globales acepta rango dentro de esa ventana); mantenimiento = recompute a nivel aplicación en las APIs de pedidos/services + triggers para estado/GPS; cumplimiento = on-demand (no se persiste); GPS = Opción A; `cant_atrasados`/`movilesSinReportar` = cliente.
