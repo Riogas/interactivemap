@@ -33,6 +33,11 @@ export default function PreferenciasGlobalesModal({
   const [auditMeta, setAuditMeta] = useState<{ updated_at: string; updated_by: string | null } | null>(null);
   const [auditToggling, setAuditToggling] = useState(false);
 
+  // ===== Estado para Manual de usuario =====
+  const [manualInfo, setManualInfo] = useState<{ url: string; updated_at: string | null; updated_by: string | null } | null>(null);
+  const [uploadingManual, setUploadingManual] = useState(false);
+  const [uploadManualResult, setUploadManualResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
   // Local copy of preferences for realtime sliders (committed on save)
   const [localPrefs, setLocalPrefs] = useState<UserPreferences>(preferences);
 
@@ -53,6 +58,18 @@ export default function PreferenciasGlobalesModal({
       })
       .catch(() => { /* silencioso */ });
   }, [isOpen, auditEnabled]);
+
+  // Cargar info del manual actual al abrir (solo para root)
+  useEffect(() => {
+    if (!isOpen) return;
+    if (user?.isRoot !== 'S') return;
+    fetch('/api/manual/current')
+      .then((r) => r.json())
+      .then((d: { url: string; updated_at: string | null; updated_by: string | null }) => {
+        setManualInfo(d);
+      })
+      .catch(() => { /* silencioso */ });
+  }, [isOpen, user?.isRoot]);
 
   const handleAuditToggle = async () => {
     if (auditToggling || auditEnabled === null) return;
@@ -222,6 +239,73 @@ export default function PreferenciasGlobalesModal({
       setImportingPOI(false);
     }
   }, [user]);
+
+  // Handler para subir el manual PDF a Supabase Storage
+  const handleUploadManual = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Limpiar el input para permitir re-subir el mismo archivo
+    if (e.target) e.target.value = '';
+
+    // Validaciones client-side (el servidor también valida)
+    if (file.type !== 'application/pdf') {
+      setUploadManualResult({ ok: false, msg: 'Solo se aceptan archivos PDF (.pdf)' });
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadManualResult({ ok: false, msg: 'El archivo supera el límite de 20MB' });
+      return;
+    }
+
+    setUploadingManual(true);
+    setUploadManualResult(null);
+
+    try {
+      let token = '';
+      let isRootHeader = 'N';
+      let username = '';
+      if (typeof window !== 'undefined') {
+        token = authStorage.getItem('trackmovil_token') ?? '';
+        try {
+          const raw = authStorage.getItem('trackmovil_user');
+          if (raw) {
+            const u = JSON.parse(raw) as { isRoot?: string; username?: string; email?: string };
+            isRootHeader = u.isRoot ?? 'N';
+            username = u.username ?? u.email ?? '';
+          }
+        } catch { /* silencioso */ }
+      }
+
+      const fd = new FormData();
+      fd.append('file', file);
+
+      const res = await fetch('/api/admin/upload-manual', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + token,
+          'x-track-isroot': isRootHeader,
+          'x-track-user': username,
+        },
+        body: fd,
+      });
+      const json = await res.json() as { success: boolean; url?: string; uploadedAt?: string; uploadedBy?: string; error?: string };
+
+      if (json.success && json.url) {
+        setManualInfo({
+          url: json.url,
+          updated_at: json.uploadedAt ?? null,
+          updated_by: json.uploadedBy ?? null,
+        });
+        setUploadManualResult({ ok: true, msg: 'Manual actualizado correctamente' });
+      } else {
+        setUploadManualResult({ ok: false, msg: json.error ?? 'Error al subir el manual' });
+      }
+    } catch (err: any) {
+      setUploadManualResult({ ok: false, msg: `Error al subir: ${err.message}` });
+    } finally {
+      setUploadingManual(false);
+    }
+  }, []);
 
   const handleSaveRealtime = () => {
     onPreferencesChange(localPrefs);
@@ -552,6 +636,87 @@ export default function PreferenciasGlobalesModal({
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* ===== Manual de usuario (solo root) ===== */}
+              {user?.isRoot === 'S' && (
+                <>
+                  <hr className="border-gray-200" />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">📘</span>
+                      <span className="text-sm font-bold text-gray-800">Manual de usuario</span>
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-indigo-100 text-indigo-700">ADMIN</span>
+                    </div>
+                    <p className="text-xs text-gray-500 -mt-2">
+                      Subí un nuevo manual (.pdf, máx 20MB). Reemplaza al actual para todos los usuarios — el botón&nbsp;? del dashboard apuntará al nuevo archivo.
+                    </p>
+
+                    {/* Info del manual actual */}
+                    {manualInfo && (
+                      <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
+                        <span>Actual: </span>
+                        <a
+                          href={manualInfo.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline font-medium"
+                        >
+                          descargar
+                        </a>
+                        {manualInfo.updated_at && (
+                          <span className="ml-2">
+                            · Actualizado:{' '}
+                            {new Date(manualInfo.updated_at).toLocaleString('es-UY', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                            {manualInfo.updated_by ? (
+                              <> por <strong>{manualInfo.updated_by}</strong></>
+                            ) : null}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Drop zone para subir nuevo PDF */}
+                    <div
+                      className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all"
+                      onClick={() => document.getElementById('manual-upload-input')?.click()}
+                    >
+                      <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <p className="text-sm text-gray-600 font-medium">
+                        {uploadingManual ? 'Subiendo manual...' : 'Seleccionar archivo .pdf'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">Haz clic para elegir el archivo (máx 20MB)</p>
+                      <input
+                        id="manual-upload-input"
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="hidden"
+                        onChange={handleUploadManual}
+                        disabled={uploadingManual}
+                      />
+                    </div>
+
+                    {uploadManualResult && (
+                      <div
+                        className={`text-sm px-4 py-3 rounded-lg border ${
+                          uploadManualResult.ok
+                            ? 'bg-green-50 border-green-200 text-green-700'
+                            : 'bg-red-50 border-red-200 text-red-700'
+                        }`}
+                      >
+                        {uploadManualResult.msg}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
             </div>
