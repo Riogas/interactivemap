@@ -221,7 +221,7 @@ Tareas (en `app/dashboard/page.tsx` salvo donde se indique):
    - `inactivosDelDia` / `movilesConOperacion` → filtro por `inactivo_del_dia`.
    - `pedidosAsignadosClientMap` / `movilesFilteredMarked` → `cant_ped`/`cant_serv` y color desde la tabla. *(Nota: mantener un recálculo client-side ligero del contador solo si se quiere reflejar al instante eventos de pedido entre refrescos; evaluar.)*
    - `allMovilesSelected`, `movilesForMap`, `pedidosForMap`: quitar referencias a `hiddenMovilIds`.
-4. Simplificar los 3 loops de polling: `fetchPositions()` → `fetchMovilesDia()` (1 request en lugar de 2).
+4. **Adaptar los 3 loops de polling a `moviles_dia`:** `fetchPositions()` → `fetchMovilesDia()`. La **reconciliación** deja de ser el diff multi-fuente (add/remove contra `moviles`+`gps_latest_positions`) y pasa a ser un **re-fetch del snapshot de `moviles_dia`** (`SELECT` por escenario+fecha+empresas) que reconcilia el estado del cliente — *safety net* por si el realtime perdió eventos. El re-fetch respeta "seleccionar todos" (los móviles nuevos quedan seleccionados, §4.1). `silence-detection` y `visibility-refetch` hacen el mismo re-query trivial.
 5. `MovilSelector`: consumir los flags precalculados (`activo`, `oculto_operativo`, `inactivo_del_dia`) en vez de recalcular.
 6. **Orden + agrupación (ver §4.1):** activos por ID arriba; subtítulo "Inactivos"; resto por ID debajo.
 7. **Selección inicial = TODOS** (activos + inactivos) con "seleccionar todos" tildado (cambio vs default actual). Auto-seleccionar los móviles nuevos que entren por `moviles_dia`.
@@ -272,7 +272,7 @@ Tareas:
 Tareas:
 1. Borrar endpoints `/api/all-positions` y `/api/moviles-extended`.
 2. Borrar funciones de `lib/moviles/visibility.ts` que quedan sin uso (`getHiddenMovilIds`, `getHiddenMovilIdsFromEstadosMap`, `getMovilesConOperacionEnFecha`, y posiblemente `getMovilesConPedidosMatching` / `getMovilesConFinalizadosEnFecha` si se migran a query). **Mantener** `isMovilActiveForUI` (regla de negocio pura, usada en server-port y tests).
-3. Retirar canales realtime viejos (`gps`, `moviles`) y la lógica de reconciliación/debounce de eventos de móvil.
+3. Retirar canales realtime viejos (`gps`, `moviles`) y la **reconciliación multi-fuente vieja** / debounce de eventos de móvil (queda solo el re-query simple del snapshot de `moviles_dia`).
 4. Quitar el feature flag.
 5. **Tests** (rewrite/ajuste):
    - `dashboard-lifecycle.test.ts`: mocks de `/api/moviles-dia` en vez de all-positions + extended; 1 request.
@@ -296,8 +296,8 @@ Tareas:
 - **Se retira:** `/api/all-positions`, `/api/moviles-extended`.
 
 ### Colapsable + dashboard (`app/dashboard/page.tsx`)
-- **Borrar:** `enrichMovilesWithExtendedData`, `hiddenMovilIds`, `allHiddenMovilIds`, `inactivosDelDia`, `movilesConOperacion`, `pedidosAsignadosClientMap`, `movilesFilteredMarked`, lógica de reconciliación, debounce de eventos de móvil.
-- **Simplificar:** `fetchPositions`→`fetchMovilesDia`, los 3 polling loops, los effects de merge realtime, `allMovilesSelected`, `movilesForMap`, `pedidosForMap`, auto-select.
+- **Borrar:** `enrichMovilesWithExtendedData`, `hiddenMovilIds`, `allHiddenMovilIds`, `inactivosDelDia`, `movilesConOperacion`, `pedidosAsignadosClientMap`, `movilesFilteredMarked`, la **reconciliación multi-fuente** (diff add/remove) + cache `outOfScopeMovilIds`, debounce de eventos de móvil.
+- **Simplificar:** `fetchPositions`→`fetchMovilesDia`, los 3 polling loops (la reconciliación pasa a ser un re-query trivial del snapshot de `moviles_dia`, como *safety net*), los effects de merge realtime, `allMovilesSelected`, `movilesForMap`, `pedidosForMap`, auto-select.
 - **Mantener:** `pedidosCompletos`/`servicesCompletos`, persistencia de `selectedDate`/`selectedMoviles`.
 
 ### Mapa + capas
