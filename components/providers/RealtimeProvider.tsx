@@ -52,6 +52,15 @@ interface RealtimeContextType {
    */
   onMovilEvent: ((payload: MovilSupabase) => void) | null;
   setOnMovilEvent: (fn: ((payload: MovilSupabase) => void) | null) => void;
+  /**
+   * Habilita o deshabilita los canales GPS y Móviles del Realtime.
+   * El dashboard lo llama con false cuando entra en modo histórico (fecha anterior a hoy)
+   * y con true al volver a la fecha actual.
+   * Cuando es false, todos los channels GPS/Móviles son eliminados (0 conexiones colgadas).
+   */
+  setRealtimeEnabled: (enabled: boolean) => void;
+  /** Estado actual del flag enabled (para leer desde el dashboard si hace falta). */
+  realtimeEnabled: boolean;
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined);
@@ -99,6 +108,8 @@ const NOOP_CONTEXT: RealtimeContextType = {
   setOnReconnect: () => undefined,
   onMovilEvent: null,
   setOnMovilEvent: () => undefined,
+  setRealtimeEnabled: () => undefined,
+  realtimeEnabled: true,
 };
 
 function RealtimeProviderActive({
@@ -127,6 +138,20 @@ function RealtimeProviderActive({
   // Firma actualizada a (payload: MovilSupabase) => void para que el consumidor pueda
   // evaluar el evento y hacer bail-out si no hay cambios relevantes (perf-round-4).
   const [onMovilEvent, setOnMovilEvent] = React.useState<((payload: MovilSupabase) => void) | null>(null);
+
+  // Estado de habilitación del Realtime GPS/Móviles.
+  // false = modo histórico activo → los hooks subyacentes no crean channels.
+  const [realtimeEnabled, setRealtimeEnabledState] = React.useState<boolean>(true);
+
+  // setRealtimeEnabled estable — no recrear en cada render
+  const setRealtimeEnabled = useCallback((enabled: boolean) => {
+    setRealtimeEnabledState(enabled);
+    if (!enabled) {
+      console.log('🔌 Realtime pausado (modo histórico)');
+    } else {
+      console.log('🔄 Realtime reanudado');
+    }
+  }, []);
 
   // perf-round-3 Fix 1: buffer de posiciones GPS para debounce.
   // En lugar de llamar setLatestPosition en cada evento (que dispara un re-render
@@ -207,22 +232,26 @@ function RealtimeProviderActive({
   // server-side en gps_latest_positions via empresa_fletera_id.
   // Si allowedEmpresaIds es undefined (root), useGPSTracking recibe undefined → sin filtro de empresa.
   // Requiere migration: docs/sqls/2026-05-18-gps-latest-empresa-fletera.sql
+  // 6to param: enabled — false en modo histórico para pausar Realtime GPS.
   const { positions, isConnected: gpsConnected, error: gpsError } = useGPSTracking(
     escenarioId,
     undefined,
     onNewPosition,
     onReconnectGps,
     allowedEmpresaIds,
+    realtimeEnabled,
   );
 
   // Hook de Móviles en tiempo real (para detectar móviles nuevos)
   // Fix 3 perf-round-2: pasar allowedEmpresaIds para filtrar server-side en Supabase Realtime
   // Si allowedEmpresaIds es undefined (root), useMoviles recibe undefined → sin filtro server-side
+  // 5to param: enabled — false en modo histórico para pausar Realtime Móviles.
   const { isConnected: movilesConnected } = useMoviles(
     escenarioId,
     allowedEmpresaIds,
     onMovilChange,
     onReconnectMoviles,
+    realtimeEnabled,
   );
 
   const isConnected = gpsConnected && movilesConnected;
@@ -274,8 +303,10 @@ function RealtimeProviderActive({
       setOnReconnect: setOnReconnectStable,
       onMovilEvent,
       setOnMovilEvent: setOnMovilEventStable,
+      setRealtimeEnabled,
+      realtimeEnabled,
     }),
-    [positions, isConnected, error, latestPosition, latestMovil, getLastEventAt, onReconnect, setOnReconnectStable, onMovilEvent, setOnMovilEventStable],
+    [positions, isConnected, error, latestPosition, latestMovil, getLastEventAt, onReconnect, setOnReconnectStable, onMovilEvent, setOnMovilEventStable, setRealtimeEnabled, realtimeEnabled],
   );
 
   return (

@@ -41,6 +41,7 @@ import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
 import NovedadesModal from '@/components/ui/NovedadesModal';
+import HistoricalBanner from '@/components/ui/HistoricalBanner';
 import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
 import { getMaxRoleAttribute } from '@/lib/role-attributes';
 import { useServerTime } from '@/hooks/useServerTime';
@@ -77,7 +78,7 @@ function DashboardContent() {
   const aplicaNocturno = escenarioSettings?.aplicaServNocturno ?? true;
   
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
-  const { latestPosition, latestMovil, isConnected, getLastEventAt: getLastMovilEventAt, setOnReconnect, setOnMovilEvent } = useRealtime();
+  const { latestPosition, latestMovil, isConnected, getLastEventAt: getLastMovilEventAt, setOnReconnect, setOnMovilEvent, setRealtimeEnabled } = useRealtime();
   
   // Hook de preferencias de usuario
   const { preferences, updatePreferences, updatePreference } = useUserPreferences();
@@ -591,46 +592,6 @@ function DashboardContent() {
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
   
-  // Refs para callbacks de fetch ? permiten pasarlos a hooks antes de que estén definidos
-  const fetchPedidosRef = useRef<(() => void) | null>(null);
-  const fetchServicesRef = useRef<(() => void) | null>(null);
-
-  // ?? NUEVO: Hook para escuchar cambios en pedidos en tiempo real
-  const {
-    pedidos: pedidosRealtime,
-    isConnected: pedidosConnected,
-    error: pedidosError,
-    lastEventAt: lastPedidoEventAt,
-  } = usePedidosRealtime(
-    escenarioId,
-    undefined,
-    undefined,
-    useCallback(() => { fetchPedidosRef.current?.(); }, [])
-  );
-
-  // ?? Hook para escuchar cambios en services en tiempo real
-  const {
-    services: servicesRealtime,
-    isConnected: servicesConnected,
-    error: servicesError,
-    lastEventAt: lastServiceEventAt,
-  } = useServicesRealtime(
-    escenarioId,
-    undefined,
-    undefined,
-    useCallback(() => { fetchServicesRef.current?.(); }, [])
-  );
-  
-  // Estado para pedidos cargados inicialmente
-  const [pedidosIniciales, setPedidosIniciales] = useState<PedidoSupabase[]>([]);
-  const [isLoadingPedidos, setIsLoadingPedidos] = useState(true);
-
-  // Estado para services cargados inicialmente
-  const [servicesIniciales, setServicesIniciales] = useState<ServiceSupabase[]>([]);
-  const [isLoadingServices, setIsLoadingServices] = useState(true);
-  
-  const [isLoadingEmpresas, setIsLoadingEmpresas] = useState(true);
-  
   // Estado para fecha seleccionada (por defecto hoy)
   // Persiste en sessionStorage para sobrevivir a F5. Se borra al cerrar la pestana
   // (sessionStorage) y en el flujo de logout (AuthContext lo limpia explicitamente).
@@ -654,10 +615,64 @@ function DashboardContent() {
     setSelectedDateRaw(date);
   }, []);
 
+  // Refs para callbacks de fetch ? permiten pasarlos a hooks antes de que estén definidos
+  const fetchPedidosRef = useRef<(() => void) | null>(null);
+  const fetchServicesRef = useRef<(() => void) | null>(null);
+
+  // ?? NUEVO: Hook para escuchar cambios en pedidos en tiempo real
+  const {
+    pedidos: pedidosRealtime,
+    isConnected: pedidosConnected,
+    error: pedidosError,
+    lastEventAt: lastPedidoEventAt,
+  } = usePedidosRealtime(
+    escenarioId,
+    undefined,
+    undefined,
+    useCallback(() => { fetchPedidosRef.current?.(); }, []),
+    selectedDate === todayMontevideo() // enabled: false en modo histórico
+  );
+
+  // ?? Hook para escuchar cambios en services en tiempo real
+  const {
+    services: servicesRealtime,
+    isConnected: servicesConnected,
+    error: servicesError,
+    lastEventAt: lastServiceEventAt,
+  } = useServicesRealtime(
+    escenarioId,
+    undefined,
+    undefined,
+    useCallback(() => { fetchServicesRef.current?.(); }, []),
+    selectedDate === todayMontevideo() // enabled: false en modo histórico
+  );
+  
+  // Estado para pedidos cargados inicialmente
+  const [pedidosIniciales, setPedidosIniciales] = useState<PedidoSupabase[]>([]);
+  const [isLoadingPedidos, setIsLoadingPedidos] = useState(true);
+
+  // Estado para services cargados inicialmente
+  const [servicesIniciales, setServicesIniciales] = useState<ServiceSupabase[]>([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(true);
+  
+  const [isLoadingEmpresas, setIsLoadingEmpresas] = useState(true);
+  
   // True solo si selectedDate es la fecha de hoy. Usado para deshabilitar
   // capas/botones que solo tienen sentido en modo live (demoras, saturación,
   // distribución, móviles/zonas, pedidos/zona, estadísticas por zona).
   const isToday = selectedDate === todayMontevideo();
+
+  // Modo histórico: true cuando el usuario está viendo una fecha anterior a hoy.
+  // En modo histórico: Realtime se pausa, solo se muestran pedidos/services finalizados,
+  // solo capas 'normal' (Sin capa) y 'distribucion' quedan disponibles, y se muestra
+  // un banner ámbar persistente indicando la fecha histórica y que Realtime está pausado.
+  const isViewingHistorical = !isToday;
+
+  // Sincronizar Realtime GPS/Móviles con el modo histórico.
+  // false = fecha histórica → pausa channels. true = hoy → reanuda channels.
+  useEffect(() => {
+    setRealtimeEnabled(!isViewingHistorical);
+  }, [isViewingHistorical, setRealtimeEnabled]);
 
   // Fix 4: Resetear capa a 'distribucion' si la fecha activa no es hoy y
   // el modo actual es solo válido en tiempo real.
@@ -2190,6 +2205,12 @@ function DashboardContent() {
     // Backup por si algun pedido historico llega via realtime o por otro endpoint no cubierto.
     resultado = filterPedidosVisibles(resultado);
 
+    // Modo histórico: solo mostrar finalizados (estado_nro=2).
+    // No tiene sentido mostrar pedidos pendientes de un día pasado que ya cerró.
+    if (isViewingHistorical) {
+      resultado = resultado.filter(p => Number(p.estado_nro) === 2);
+    }
+
     // ?? "Empresas: Ninguna" (selección explícita de cero empresas con empresas cargadas)
     // ? no mostrar ningún pedido (ni asignados ni sin-asignar). El usuario eligió ver nada.
     if (empresas.length > 0 && selectedEmpresas.length === 0) {
@@ -2211,7 +2232,7 @@ function DashboardContent() {
     dbg(`?? Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
 
     return resultado;
-  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length]);
+  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
 
   // Combinar services iniciales con updates de realtime
   const servicesCompletos = useMemo(() => {
@@ -2226,6 +2247,11 @@ function DashboardContent() {
       if (!s.fch_para && !s.fch_hora_para) return true;
       return false;
     });
+
+    // Modo histórico: solo mostrar finalizados (estado_nro=2).
+    if (isViewingHistorical) {
+      resultado = resultado.filter(s => Number(s.estado_nro) === 2);
+    }
 
     // ?? "Empresas: Ninguna" ? no mostrar ningún service (idem pedidosCompletos).
     if (empresas.length > 0 && selectedEmpresas.length === 0) {
@@ -2242,7 +2268,7 @@ function DashboardContent() {
 
     dbg(`?? DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
-  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length]);
+  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
 
   // Mantener refs sincronizadas con las listas memoizadas para acceso sincrónico
   // desde callbacks definidos antes en el render.
@@ -2959,6 +2985,11 @@ function DashboardContent() {
           />
         </NavbarSimple>
       </div>
+
+      {/* Banner modo histórico — aparece cuando selectedDate < hoy */}
+      {isViewingHistorical && (
+        <HistoricalBanner date={selectedDate} />
+      )}
 
       {/* Floating Toolbar - Filtros, Preferencias, Usuario */}
       <FloatingToolbar

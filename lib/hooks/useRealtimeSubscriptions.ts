@@ -75,13 +75,16 @@ function scheduleReconnect(
  *   Requiere que la columna empresa_fletera_id exista en gps_latest_positions
  *   (migration: docs/sqls/2026-05-18-gps-latest-empresa-fletera.sql).
  *   Si es null/undefined (root o sin restricción): NO se aplica filtro server-side.
+ * @param enabled - Si false, no se crea ningún channel y se limpian los existentes.
+ *   Usado por el modo histórico para pausar Realtime sin desmontar el hook.
  */
 export function useGPSTracking(
   escenarioId: number = 1,
   movilIds?: string[],
   onUpdate?: (position: GPSTrackingSupabase) => void,
   onReconnect?: () => void,
-  empresaIds?: number[]
+  empresaIds?: number[],
+  enabled: boolean = true
 ) {
   const [positions, setPositions] = useState<Map<string, GPSTrackingSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -96,6 +99,13 @@ export function useGPSTracking(
   onReconnectRef.current = onReconnect;
 
   useEffect(() => {
+    // Modo histórico: no crear channels, marcar como desconectado.
+    if (!enabled) {
+      console.log('🔌 Realtime GPS pausado (modo histórico)');
+      setIsConnected(false);
+      return () => {};
+    }
+
     console.log('🔄 Iniciando suscripción GPS Tracking...');
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
@@ -253,9 +263,9 @@ export function useGPSTracking(
         supabase.removeChannel(channel);
       }
     };
-  // Re-suscribir si cambian los filtros (escenario, moviles, o empresas)
+  // Re-suscribir si cambian los filtros (escenario, moviles, empresas, o enabled)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [escenarioId, movilIds?.join(','), empresaIds?.join(',')]);
+  }, [escenarioId, movilIds?.join(','), empresaIds?.join(','), enabled]);
 
   return { positions, isConnected, error };
 }
@@ -267,12 +277,14 @@ export function useGPSTracking(
  * @param onUpdate - Callback cuando se recibe una actualización de móvil
  * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
  *   El consumidor debe usarlo para hacer refetch del estado completo.
+ * @param enabled - Si false, no se crea ningún channel. Usado en modo histórico.
  */
 export function useMoviles(
   escenarioId: number = 1,
   empresaIds?: number[],
   onUpdate?: (movil: MovilSupabase) => void,
-  onReconnect?: () => void
+  onReconnect?: () => void,
+  enabled: boolean = true
 ) {
   const [moviles, setMoviles] = useState<MovilSupabase[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -284,6 +296,13 @@ export function useMoviles(
   onReconnectRef.current = onReconnect;
 
   useEffect(() => {
+    // Modo histórico: no crear channels, marcar como desconectado.
+    if (!enabled) {
+      console.log('🔌 Realtime Móviles pausado (modo histórico)');
+      setIsConnected(false);
+      return () => {};
+    }
+
     console.log('🔄 Iniciando suscripción a móviles...');
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
@@ -390,7 +409,7 @@ export function useMoviles(
       if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
     };
-  }, [escenarioId, empresaIds?.join(',')]);
+  }, [escenarioId, empresaIds?.join(','), enabled]);
 
   return { moviles, isConnected };
 }
@@ -527,12 +546,15 @@ export function useEmpresasFleteras(
  * @param movilIds - Array de IDs de móviles a filtrar (opcional)
  * @param onUpdate - Callback cuando se recibe una actualización de pedido
  * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
+ * @param enabled - Si false, no se crea ningún channel y se limpian los existentes.
+ *   Usado en modo histórico para pausar Realtime sin desmontar el hook.
  */
 export function usePedidosRealtime(
   escenarioId: number = 1,
   movilIds?: number[],
   onUpdate?: (pedido: PedidoSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
-  onReconnect?: () => void
+  onReconnect?: () => void,
+  enabled: boolean = true
 ) {
   const [pedidos, setPedidos] = useState<Map<number, PedidoSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -551,6 +573,18 @@ export function usePedidosRealtime(
   const pendingPatchesRef = useRef<Array<{ type: 'upsert' | 'delete'; pedido: PedidoSupabase }>>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    // Modo histórico: no crear channels, limpiar estado pendiente.
+    if (!enabled) {
+      console.log('🔌 Realtime Pedidos pausado (modo histórico)');
+      setIsConnected(false);
+      if (flushTimerRef.current != null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      pendingPatchesRef.current = [];
+      return () => {};
+    }
+
     console.log('🔄 Suscripción pedidos realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
@@ -715,7 +749,7 @@ export function usePedidosRealtime(
       }
       pendingPatchesRef.current = [];
     };
-  }, [escenarioId, movilIds?.join(',')]); // Recrear si cambian los móviles
+  }, [escenarioId, movilIds?.join(','), enabled]); // Recrear si cambian los móviles o enabled
 
   return {
     pedidos: Array.from(pedidos.values()),
@@ -730,12 +764,15 @@ export function usePedidosRealtime(
  *
  * perf-round-3: misma estrategia de debounce que usePedidosRealtime — los eventos
  * se coalescen en PEDIDOS_DEBOUNCE_MS antes de actualizar el state.
+ *
+ * @param enabled - Si false, no se crea ningún channel. Usado en modo histórico.
  */
 export function useServicesRealtime(
   escenarioId: number = 1,
   movilIds?: number[],
   onUpdate?: (service: ServiceSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
-  onReconnect?: () => void
+  onReconnect?: () => void,
+  enabled: boolean = true
 ) {
   const [services, setServices] = useState<Map<number, ServiceSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -751,6 +788,18 @@ export function useServicesRealtime(
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Modo histórico: no crear channels, limpiar estado pendiente.
+    if (!enabled) {
+      console.log('🔌 Realtime Services pausado (modo histórico)');
+      setIsConnected(false);
+      if (flushTimerRef.current != null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      pendingPatchesRef.current = [];
+      return () => {};
+    }
+
     console.log('🔄 Suscripción services realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
@@ -902,7 +951,7 @@ export function useServicesRealtime(
       }
       pendingPatchesRef.current = [];
     };
-  }, [escenarioId, movilIds?.join(',')]);
+  }, [escenarioId, movilIds?.join(','), enabled]);
 
   return {
     services: Array.from(services.values()),
