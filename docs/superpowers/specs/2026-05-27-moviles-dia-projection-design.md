@@ -183,7 +183,10 @@ Tareas:
 3. Trigger sobre la ingesta de GPS (el mismo punto que mantiene `gps_latest_positions`): escribe `last_gps_lat/lng/datetime` en la fila de hoy del móvil.
 4. Función de recálculo de `pedidos_pendientes` / `services_pendientes` + flags `oculto_operativo` / `inactivo_del_dia` por móvil, **invocable a nivel aplicación** desde las APIs de pedidos/services (§2) y desde el backfill. (Port de `visibility.ts`.) Cumplimiento y `atrasados` NO se guardan.
 5. Job de "cierre/rollover" de día (la fila del día anterior queda congelada; se crea la fila del día nuevo al primer evento o por cron).
-6. **Recompute/backfill re-ejecutable por rango de fechas** (idempotente). Es a la vez (a) la carga inicial histórica, (b) el mecanismo de corrección ante bugs, y (c) la reconstrucción de la lista de móviles de fechas pasadas (§4.1). Para fechas pasadas reconstruye desde `pedidos`/`services`/`gps_tracking_history` (sin pendientes ni `tamano_lote`).
+6. **Recompute/backfill re-ejecutable por rango de fechas** (idempotente). Es a la vez (a) la carga inicial histórica, (b) el mecanismo de corrección ante bugs, y (c) la reconstrucción de la lista de móviles de fechas pasadas (§4.1). Distingue por fecha:
+   - **Día en curso:** calcula la fila **completa** (estado live, `tamano_lote`, `pedidos_pendientes`/`services_pendientes`, posición, flags).
+   - **Fechas pasadas:** reconstrucción **reducida** desde `pedidos`/`services`/`gps_tracking_history` (móvil inactivo, con `last_gps_*` e identidad, **sin** pendientes ni `tamano_lote`).
+   - **Despliegue a prod:** hay que **ejecutar la utilidad** para la población inicial — el día en curso (completo) + el histórico hasta 180 días (reducido).
 7. **Test de paridad** (clave): para una muestra de (escenario, fecha), comparar `moviles_dia` contra el resultado del cálculo client-side actual (`getHiddenMovilIds`, `getMovilesConOperacionEnFecha`, conteos de `/api/moviles-extended`). Debe ser idéntico.
 
 > **Regla de existencia de fila:**
