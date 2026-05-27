@@ -20,7 +20,7 @@ export default function PreferenciasGlobalesModal({
   preferences,
   onPreferencesChange,
 }: PreferenciasGlobalesModalProps) {
-  const { user, hasPermiso } = useAuth();
+  const { user, hasPermiso, escenarioId } = useAuth();
   const canUpdPtsVenta = hasPermiso('updptsventa');
 
   // ===== Estado para importar Puntos de Interés =====
@@ -37,6 +37,13 @@ export default function PreferenciasGlobalesModal({
   const [manualInfo, setManualInfo] = useState<{ url: string; updated_at: string | null; updated_by: string | null } | null>(null);
   const [uploadingManual, setUploadingManual] = useState(false);
   const [uploadManualResult, setUploadManualResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // ===== Estado para Reconstruir móviles_dia =====
+  const today = new Date().toISOString().slice(0, 10);
+  const [rebuildDesde, setRebuildDesde] = useState(today);
+  const [rebuildHasta, setRebuildHasta] = useState(today);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildResult, setRebuildResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // Local copy of preferences for realtime sliders (committed on save)
   const [localPrefs, setLocalPrefs] = useState<UserPreferences>(preferences);
@@ -306,6 +313,54 @@ export default function PreferenciasGlobalesModal({
       setUploadingManual(false);
     }
   }, []);
+
+  const rebuildRangeDays = (() => {
+    const d0 = new Date(rebuildDesde);
+    const d1 = new Date(rebuildHasta);
+    if (isNaN(d0.getTime()) || isNaN(d1.getTime())) return -1;
+    return Math.round((d1.getTime() - d0.getTime()) / (1000 * 60 * 60 * 24));
+  })();
+  const rebuildRangeValid = rebuildRangeDays >= 0 && rebuildRangeDays <= 180;
+
+  const handleRebuildMovilesDia = async () => {
+    if (rebuilding || !rebuildRangeValid) return;
+    setRebuilding(true);
+    setRebuildResult(null);
+    try {
+      let token = '';
+      let isRootHeader = 'N';
+      if (typeof window !== 'undefined') {
+        token = authStorage.getItem('trackmovil_token') ?? '';
+        try {
+          const raw = authStorage.getItem('trackmovil_user');
+          if (raw) {
+            const u = JSON.parse(raw) as { isRoot?: string };
+            isRootHeader = u.isRoot ?? 'N';
+          }
+        } catch { /* silencioso */ }
+      }
+      const res = await fetch('/api/moviles-dia/rebuild', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+          'x-track-isroot': isRootHeader,
+        },
+        body: JSON.stringify({ desde: rebuildDesde, hasta: rebuildHasta, escenario: escenarioId }),
+      });
+      const json = await res.json() as { ok?: boolean; error?: string };
+      if (res.ok && json.ok) {
+        setRebuildResult({ ok: true, msg: `Reconstrucción completada (${rebuildDesde} → ${rebuildHasta})` });
+      } else {
+        setRebuildResult({ ok: false, msg: json.error ?? 'Error desconocido' });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error de red';
+      setRebuildResult({ ok: false, msg });
+    } finally {
+      setRebuilding(false);
+    }
+  };
 
   const handleSaveRealtime = () => {
     onPreferencesChange(localPrefs);
@@ -639,6 +694,72 @@ export default function PreferenciasGlobalesModal({
               )}
 
               {/* ===== Manual de usuario (solo root) ===== */}
+              {/* ===== Reconstruir lista de móviles (solo root) ===== */}
+              {user?.isRoot === 'S' && (
+                <>
+                  <hr className="border-gray-200" />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🔧</span>
+                      <span className="text-sm font-bold text-gray-800">Reconstruir lista de móviles</span>
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-orange-100 text-orange-700">ROOT</span>
+                    </div>
+                    <p className="text-xs text-gray-500 -mt-2">
+                      Reconstruye la tabla del día (completo) o de fechas pasadas (reducido). Máximo 180 días.
+                    </p>
+
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-xs font-semibold text-gray-600">Desde</label>
+                        <input
+                          type="date"
+                          value={rebuildDesde}
+                          onChange={(e) => { setRebuildDesde(e.target.value); setRebuildResult(null); }}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <label className="text-xs font-semibold text-gray-600">Hasta</label>
+                        <input
+                          type="date"
+                          value={rebuildHasta}
+                          onChange={(e) => { setRebuildHasta(e.target.value); setRebuildResult(null); }}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        />
+                      </div>
+                    </div>
+
+                    {!rebuildRangeValid && rebuildDesde && rebuildHasta && (
+                      <p className="text-xs text-red-600">
+                        {rebuildRangeDays < 0
+                          ? '"Hasta" debe ser igual o posterior a "Desde".'
+                          : 'El rango no puede superar 180 días.'}
+                      </p>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={rebuilding || !rebuildRangeValid}
+                      onClick={() => void handleRebuildMovilesDia()}
+                      className={[
+                        "px-4 py-2 text-sm font-medium rounded-lg transition-all",
+                        rebuilding || !rebuildRangeValid
+                          ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                          : "bg-orange-500 hover:bg-orange-600 text-white shadow hover:shadow-md",
+                      ].join(" ")}
+                    >
+                      {rebuilding ? "Reconstruyendo..." : "Reconstruir"}
+                    </button>
+
+                    {rebuildResult && (
+                      <div className={`text-sm px-4 py-3 rounded-lg border ${rebuildResult.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                        {rebuildResult.msg}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
               {user?.isRoot === 'S' && (
                 <>
                   <hr className="border-gray-200" />
