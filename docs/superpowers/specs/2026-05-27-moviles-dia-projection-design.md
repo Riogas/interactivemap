@@ -117,7 +117,7 @@ CREATE INDEX idx_moviles_dia_activo    ON moviles_dia (escenario_id, fecha, acti
 - **Contadores de cumplimiento** (finalizados / entregados / entregados tarde / % cumplimiento): se calculan **on-demand** desde `pedidos`/`services` como hasta ahora — NO se persisten. Evita cualquier riesgo de *drift* en esas estadísticas.
 - **Color / capacidad** del móvil: hoy `getMovilColor` usa `tamano_lote` + pedidos asignados. Se reproduce con `tamano_lote` + `pedidos_pendientes` (los pedidos asignados de un móvil ≡ sus pendientes). Por eso se quitaron `capacidad` y `pedidos_asignados` del esquema. Verificar en paridad.
 
-**Reconstruibilidad (corregibilidad):** `moviles_dia` es una *cache / read model reconstruible*, no un snapshot de una sola escritura. Cada columna se re-deriva desde las fuentes (`pedidos`, `services`, `moviles`, `gps_tracking_history`). Si aparece un bug: se corrige la función de recompute y se re-ejecuta el backfill sobre las fechas afectadas → los valores persistidos se corrigen. Requiere **retener** las tablas fuente (ver Puntos abiertos). Además, al no persistir cumplimiento, el grueso de las estadísticas nunca puede quedar "congelado mal".
+**Reconstruibilidad (corregibilidad):** `moviles_dia` es una *cache / read model reconstruible*, no un snapshot de una sola escritura. Cada columna se re-deriva desde las fuentes (`pedidos`, `services`, `moviles`, `gps_tracking_history`). Si aparece un bug: se corrige la función de recompute y se re-ejecuta el recompute/backfill (**utilidad en Preferencias Globales**, pide fecha o rango) sobre las fechas afectadas → los valores persistidos se corrigen. Requiere **retener** las tablas fuente (ver Puntos abiertos). Además, al no persistir cumplimiento, el grueso de las estadísticas nunca puede quedar "congelado mal".
 
 **RLS / scope:** la lectura inicial va por `/api/moviles-dia` (server, service-role, scope fail-closed por `allowedEmpresas`, igual que `/api/pedidos` hoy). Para el realtime client-side se replica el filtro de canal por `empresa_fletera_id` (como los canales actuales) y **se añade política RLS** sobre `moviles_dia` como endurecimiento (ver Fase 3).
 
@@ -148,9 +148,12 @@ CREATE INDEX idx_moviles_dia_activo    ON moviles_dia (escenario_id, fecha, acti
 
 ### Fecha = ANTERIOR (realtime OFF)
 - Realtime **desactivado**.
-- **Todos** los móviles se visualizan como **inactivos**.
+- **Qué móviles aparecen:** los que esa fecha estuvieron **referenciados en `pedidos` o `services`, o enviaron coordenadas GPS**. No aplica el concepto de "activo/visible" — la lista se reconstruye de los hechos de esa fecha.
+- **Todos** se visualizan como **inactivos**.
+- `pedidos_pendientes`, `services_pendientes` y `tamano_lote` **no aplican** para fechas pasadas (van `null`) — "pendiente" es un concepto del día en curso.
 - La app **no** los muestra en el mapa, ni muestra info de lote / capacidad / etc.
 - **Selección inicial:** todos seleccionados por defecto.
+- La lista de móviles de fechas pasadas se arma con la **utilidad de reconstrucción** (§3 / Preferencias Globales).
 
 ## 4.2 Pantalla "Ver recorrido"
 
@@ -175,10 +178,14 @@ Tareas:
 3. Trigger sobre la ingesta de GPS (el mismo punto que mantiene `gps_latest_positions`): escribe `last_gps_lat/lng/datetime` en la fila de hoy del móvil.
 4. Función de recálculo de `pedidos_pendientes` / `services_pendientes` + flags `oculto_operativo` / `inactivo_del_dia` por móvil, **invocable a nivel aplicación** desde las APIs de pedidos/services (§2) y desde el backfill. (Port de `visibility.ts`.) Cumplimiento y `atrasados` NO se guardan.
 5. Job de "cierre/rollover" de día (la fila del día anterior queda congelada; se crea la fila del día nuevo al primer evento o por cron).
-6. **Backfill** para las fechas recientes navegables.
+6. **Recompute/backfill re-ejecutable por rango de fechas** (idempotente). Es a la vez (a) la carga inicial histórica, (b) el mecanismo de corrección ante bugs, y (c) la reconstrucción de la lista de móviles de fechas pasadas (§4.1). Para fechas pasadas reconstruye desde `pedidos`/`services`/`gps_tracking_history` (sin pendientes ni `tamano_lote`).
 7. **Test de paridad** (clave): para una muestra de (escenario, fecha), comparar `moviles_dia` contra el resultado del cálculo client-side actual (`getHiddenMovilIds`, `getMovilesConOperacionEnFecha`, conteos de `/api/moviles-extended`). Debe ser idéntico.
 
-> **Regla de existencia de fila:** existe una fila `(escenario, movil, fecha)` cuando el móvil estaba **activo/visible** (`mostrar_en_mapa`) ese día **O** tuvo al menos un pedido/service/**coordenada GPS**. Esto garantiza el contenido correcto de la barra lateral (hoy y pasado) y de "Ver recorrido" (móviles con GPS en la fecha). Confirmar contra la lógica de inclusión actual de `/api/all-positions`.
+> **Regla de existencia de fila:**
+> - **Hoy:** existe fila para los móviles **activos/visibles** (`mostrar_en_mapa`) **y** para cualquiera con pedido/service/GPS del día. Lleva estado live, `tamano_lote`, `pedidos_pendientes`/`services_pendientes`, posición y flags.
+> - **Fecha pasada (reconstruida):** existe fila para los móviles **referenciados en `pedidos`/`services` o con coordenadas GPS** esa fecha. Todos **inactivos**; `pedidos_pendientes`/`services_pendientes`/`tamano_lote` van **null** (no aplican); se conserva `last_gps_*` (para "Ver recorrido") e identidad.
+>
+> Confirmar la inclusión de "hoy" contra la lógica actual de `/api/all-positions`.
 
 **Criterio de aceptación:** `moviles_dia` refleja exactamente lo que hoy calcula el cliente, para hoy y para fechas pasadas. Front sin cambios, todo sigue igual.
 
@@ -193,8 +200,9 @@ Tareas:
 2. Scope server-side fail-closed por `allowedEmpresas` (espejo de `/api/pedidos`).
 3. Feature flag (`NEXT_PUBLIC_USE_MOVILES_DIA`) para poder activar/desactivar el nuevo camino sin borrar el viejo.
 4. Test de contrato: el shape y los valores que devuelve `/api/moviles-dia` == los que producía el pipeline viejo, sobre la misma data.
+5. **Utilidad de reconstrucción en Preferencias Globales:** endpoint admin (p. ej. `POST /api/moviles-dia/rebuild?desde=&hasta=`) + botón/form en `PreferenciasGlobalesModal` que **pide una fecha o un rango** y dispara el recompute/backfill (tarea 6 de Fase 1). Es la herramienta para **reconstruir la lista de móviles de días anteriores** y para corregir datos ante un bug.
 
-**Criterio de aceptación:** el endpoint devuelve datos idénticos en estructura y valores. El dashboard sigue usando el camino viejo (flag off).
+**Criterio de aceptación:** el endpoint devuelve datos idénticos en estructura y valores. La utilidad de reconstrucción funciona desde Preferencias Globales para una fecha o rango. El dashboard sigue usando el camino viejo (flag off).
 
 ---
 
@@ -295,7 +303,7 @@ Tareas:
 ## 6. Inventario de impacto (resumen de los 3 análisis)
 
 ### Capa de datos / backend
-- **Nueva:** tabla `moviles_dia`, triggers, función de recálculo, job de rollover, RLS, `/api/moviles-dia`.
+- **Nueva:** tabla `moviles_dia`, triggers, función de recálculo, job de rollover, RLS, `/api/moviles-dia`, endpoint admin de rebuild + **utilidad de reconstrucción en `PreferenciasGlobalesModal`** (pide fecha/rango).
 - **Se mantiene:** `gps_latest_positions` + `gps_tracking_history` (ingesta), `pedidos`/`services`, `empresas_fleteras`, `zonas`/`demoras`/`moviles_zonas`.
 - **Se retira:** `/api/all-positions`, `/api/moviles-extended`.
 
