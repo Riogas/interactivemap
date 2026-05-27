@@ -44,6 +44,7 @@ Mover el "armado" al servidor mediante una tabla denormalizada **`moviles_dia`**
 | `gps_latest_positions` / `gps_tracking_history` | **Se mantienen** como tablas de ingesta/fuente (no se rompe la ingesta). Un trigger refleja la última posición en `moviles_dia`. El historial (`gps_tracking_history`) sigue alimentando recorrido/animación. |
 | Pedidos / Services (detalle) | Siguen cargándose como hoy (1 lectura + 1 canal cada uno). Se mantienen sus colapsables y la vista extendida. Lo que cambia: **dejan de usarse para derivar la visibilidad de móviles** (eso viene precalculado en `moviles_dia`). |
 | Empresas fleteras | Sin cambios: 1 query liviana a `empresas_fleteras`. |
+| Sin-asignar (pedidos/services sin móvil) | **Sin cambios.** Sigue dependiendo de las funcionalidades (`canVerSinAsignarUnitario`) y del gate `allMovilesSelected`. Al no haber móvil involucrado, `moviles_dia` no lo afecta. **Única intersección:** `allMovilesSelected` debe seguir calculándose correctamente (ahora desde `moviles_dia` + selección) para no alterar el gate. |
 | Campos "EPS" / "fecha de tercerización" | **Descartados** — fueron un error de transcripción del audio, no son campos reales. |
 | Campos relativos a tiempo / preferencias | **NO se guardan** en la tabla; se derivan en el cliente. La tabla guarda solo *hechos* (estado, contadores por estado, `last_gps_datetime`). Lo que depende del **reloj** o de una **preferencia** (`atrasados`, `móviles sin reportar`, ventana SA) se calcula en vivo en el cliente. |
 
