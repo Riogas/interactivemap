@@ -47,11 +47,15 @@ Mover el "armado" al servidor mediante una tabla denormalizada **`moviles_dia`**
 | Campos "EPS" / "fecha de tercerización" | **Descartados** — fueron un error de transcripción del audio, no son campos reales. |
 | Campos relativos a tiempo / preferencias | **NO se guardan** en la tabla; se derivan en el cliente. La tabla guarda solo *hechos* (estado, contadores por estado, `last_gps_datetime`). Lo que depende del **reloj** o de una **preferencia** (`atrasados`, `móviles sin reportar`, ventana SA) se calcula en vivo en el cliente. |
 
-### Decisión de mantenimiento de la tabla (recomendada, a confirmar)
+### Mantenimiento de la tabla (decidido)
 
-**Híbrido (C):**
-- **Triggers** para lo crítico e instantáneo: `estado_nro` / `capacidad` (sobre `moviles`) y `last_gps_*` (sobre la ingesta de GPS).
-- **Recompute por función** para contadores y flags derivados que cruzan tablas (`cant_ped`, `cant_serv`, `cant_entregados`, `oculto_operativo`, `inactivo_del_dia`): trigger sobre `pedidos`/`services` que marca el móvil como *dirty* + recálculo debounced (evita recomputar en cada uno de miles de eventos de pedido). `atrasados` NO entra acá — se calcula en el cliente (depende del reloj).
+Cada columna se actualiza en el punto natural donde cambia su fuente:
+- **`estado_nro` / `estado_desc` / `tamano_lote` / identidad / `activo`**: trigger sobre `moviles` (instantáneo).
+- **`last_gps_*`**: trigger en la ingesta de GPS (mismo punto que ya mantiene `gps_latest_positions`).
+- **`pedidos_pendientes` / `services_pendientes` + flags `oculto_operativo` / `inactivo_del_dia`**: **recompute a nivel aplicación**. Cada vez que se consume `/api/pedidos` y se referencia un móvil, se recalculan sus pedidos pendientes y se impacta `moviles_dia`. Ídem `/api/services`. **No** hay trigger de DB sobre `pedidos`/`services`.
+- **Contadores de cumplimiento** (finalizados / entregados / entregados tarde / % cumplimiento): **NO se almacenan** — se calculan on-demand desde `pedidos`/`services`, como hasta ahora (decisión: correctitud > perf en esas stats).
+
+Esto se apoya en que las APIs de pedidos/services se consumen en el load inicial, en cada vuelta de polling y al reconectar realtime → los pendientes quedan frescos sin lógica de triggers pesada sobre tablas de alto volumen.
 
 ---
 
@@ -74,14 +78,10 @@ CREATE TABLE moviles_dia (
   estado_nro          integer,
   estado_desc         text,
   tamano_lote         integer,
-  capacidad           integer,
-  pedidos_asignados   integer,
 
-  -- contadores del día (pendientes salvo donde se indique)
-  cant_ped            integer     NOT NULL DEFAULT 0,  -- pendientes (estado 1)
-  cant_serv           integer     NOT NULL DEFAULT 0,  -- pendientes (estado 1)
-  cant_entregados     integer     NOT NULL DEFAULT 0,  -- finalizados/entregados del día
-  -- NOTA: cant_atrasados NO se guarda (depende del reloj) → se calcula en el cliente.
+  -- contadores del día (SOLO pendientes; cumplimiento/atrasados NO se guardan)
+  pedidos_pendientes  integer,
+  services_pendientes integer,
 
   -- última posición GPS (Opción A)
   last_gps_lat        double precision,
@@ -114,6 +114,10 @@ CREATE INDEX idx_moviles_dia_activo    ON moviles_dia (escenario_id, fecha, acti
 - `móviles sin reportar` = `last_gps_datetime < (ahora − X min)`, donde **X sale de las preferencias** del usuario. Depende del reloj y de la pref → cliente.
 - `ventana SA` (visibilidad de sin-asignar) = depende de `serverNow` + pref `minutosAntesSa` → cliente.
 - Distinto de **móvil sin GPS** = `last_gps_lat IS NULL` (nunca reportó posición): eso sí es un hecho estable, se consulta directo en la tabla.
+- **Contadores de cumplimiento** (finalizados / entregados / entregados tarde / % cumplimiento): se calculan **on-demand** desde `pedidos`/`services` como hasta ahora — NO se persisten. Evita cualquier riesgo de *drift* en esas estadísticas.
+- **Color / capacidad** del móvil: hoy `getMovilColor` usa `tamano_lote` + pedidos asignados. Se reproduce con `tamano_lote` + `pedidos_pendientes` (los pedidos asignados de un móvil ≡ sus pendientes). Por eso se quitaron `capacidad` y `pedidos_asignados` del esquema. Verificar en paridad.
+
+**Reconstruibilidad (corregibilidad):** `moviles_dia` es una *cache / read model reconstruible*, no un snapshot de una sola escritura. Cada columna se re-deriva desde las fuentes (`pedidos`, `services`, `moviles`, `gps_tracking_history`). Si aparece un bug: se corrige la función de recompute y se re-ejecuta el backfill sobre las fechas afectadas → los valores persistidos se corrigen. Requiere **retener** las tablas fuente (ver Puntos abiertos). Además, al no persistir cumplimiento, el grueso de las estadísticas nunca puede quedar "congelado mal".
 
 **RLS / scope:** la lectura inicial va por `/api/moviles-dia` (server, service-role, scope fail-closed por `allowedEmpresas`, igual que `/api/pedidos` hoy). Para el realtime client-side se replica el filtro de canal por `empresa_fletera_id` (como los canales actuales) y **se añade política RLS** sobre `moviles_dia` como endurecimiento (ver Fase 3).
 
@@ -169,7 +173,7 @@ Tareas:
 1. Migración SQL: tabla `moviles_dia` + índices (sección 3).
 2. Trigger sobre `moviles` (INSERT/UPDATE): refleja `estado_nro`, `estado_desc`, `empresa_fletera_id`, `tamano_lote`, `capacidad`, `matricula`, `descripcion` en la fila de **hoy**; recalcula `activo`.
 3. Trigger sobre la ingesta de GPS (el mismo punto que mantiene `gps_latest_positions`): escribe `last_gps_lat/lng/datetime` en la fila de hoy del móvil.
-4. Función de recálculo de contadores/flags cruzados (`cant_ped`, `cant_serv`, `cant_entregados`, `oculto_operativo`, `inactivo_del_dia`) + trigger *dirty-flag + debounce* sobre `pedidos`/`services`. ( Port de `visibility.ts` y de la lógica de `/api/moviles-extended`.) `atrasados` NO se guarda — se calcula en el cliente (depende del reloj).
+4. Función de recálculo de `pedidos_pendientes` / `services_pendientes` + flags `oculto_operativo` / `inactivo_del_dia` por móvil, **invocable a nivel aplicación** desde las APIs de pedidos/services (§2) y desde el backfill. (Port de `visibility.ts`.) Cumplimiento y `atrasados` NO se guardan.
 5. Job de "cierre/rollover" de día (la fila del día anterior queda congelada; se crea la fila del día nuevo al primer evento o por cron).
 6. **Backfill** para las fechas recientes navegables.
 7. **Test de paridad** (clave): para una muestra de (escenario, fecha), comparar `moviles_dia` contra el resultado del cálculo client-side actual (`getHiddenMovilIds`, `getMovilesConOperacionEnFecha`, conteos de `/api/moviles-extended`). Debe ser idéntico.
@@ -219,9 +223,9 @@ Tareas (en `app/dashboard/page.tsx` salvo donde se indique):
 3. **Borrar/derivar de flags**:
    - `hiddenMovilIds` (memo + ref) → usar `oculto_operativo`.
    - `inactivosDelDia` / `movilesConOperacion` → filtro por `inactivo_del_dia`.
-   - `pedidosAsignadosClientMap` / `movilesFilteredMarked` → `cant_ped`/`cant_serv` y color desde la tabla. *(Nota: mantener un recálculo client-side ligero del contador solo si se quiere reflejar al instante eventos de pedido entre refrescos; evaluar.)*
+   - `pedidosAsignadosClientMap` / `movilesFilteredMarked` → `pedidos_pendientes`/`services_pendientes` y color desde `tamano_lote` + `pedidos_pendientes`. *(Nota: mantener un recálculo client-side ligero del contador solo si se quiere reflejar al instante eventos de pedido entre refrescos; evaluar.)*
    - `allMovilesSelected`, `movilesForMap`, `pedidosForMap`: quitar referencias a `hiddenMovilIds`.
-4. **Adaptar los 3 loops de polling a `moviles_dia`:** `fetchPositions()` → `fetchMovilesDia()`. La **reconciliación** deja de ser el diff multi-fuente (add/remove contra `moviles`+`gps_latest_positions`) y pasa a ser un **re-fetch del snapshot de `moviles_dia`** (`SELECT` por escenario+fecha+empresas) que reconcilia el estado del cliente — *safety net* por si el realtime perdió eventos. El re-fetch respeta "seleccionar todos" (los móviles nuevos quedan seleccionados, §4.1). `silence-detection` y `visibility-refetch` hacen el mismo re-query trivial.
+4. **Adaptar los 3 loops de polling a `moviles_dia`:** `fetchPositions()` → `fetchMovilesDia()`. La **reconciliación** deja de ser el diff multi-fuente (add/remove contra `moviles`+`gps_latest_positions`) y pasa a ser un **re-fetch del snapshot de `moviles_dia`** (`SELECT` por escenario+fecha+empresas) que reconcilia el estado del cliente — *safety net* por si el realtime perdió eventos. El re-fetch respeta "seleccionar todos" (los móviles nuevos quedan seleccionados, §4.1). `silence-detection` y `visibility-refetch` hacen el mismo re-query trivial. Los loops siguen re-fetcheando también `pedidos`/`services` (lo que de paso recomputa `pedidos_pendientes`/`services_pendientes` en `moviles_dia`).
 5. `MovilSelector`: consumir los flags precalculados (`activo`, `oculto_operativo`, `inactivo_del_dia`) en vez de recalcular.
 6. **Orden + agrupación (ver §4.1):** activos por ID arriba; subtítulo "Inactivos"; resto por ID debajo.
 7. **Selección inicial = TODOS** (activos + inactivos) con "seleccionar todos" tildado (cambio vs default actual). Auto-seleccionar los móviles nuevos que entren por `moviles_dia`.
@@ -238,7 +242,7 @@ Tareas (en `app/dashboard/page.tsx` salvo donde se indique):
 **Objetivo:** marcadores, colores e íconos de móviles alimentados por `moviles_dia`.
 
 Tareas:
-1. `MapView.getMovilColor()` e `createCustomIcon/Compact/Mini`: leer `estado_nro`, `capacidad`, `tamano_lote`, `pedidos_asignados` desde la fila de `moviles_dia` (mismo cálculo, misma salida).
+1. `MapView.getMovilColor()` e `createCustomIcon/Compact/Mini`: leer `estado_nro`, `tamano_lote`, `pedidos_pendientes` desde la fila (color y barra de capacidad = `tamano_lote` + `pedidos_pendientes`, que reemplaza a `capacidad`/`pedidos_asignados`). Verificar en paridad misma salida.
 2. `CulledMovilesLayer`: posición desde `last_gps_*`; `estado`/inactividad desde flags.
 3. `MovilInfoPopup` / `MovilInfoCard`: estado, capacidad, `cant_ped`/`cant_serv`, último GPS desde la fila. (Historial/recorrido sigue desde `gps_tracking_history`.)
 4. `MovilesZonasLayer`: filtrar por el flag `activo` en vez del join de `estado` (elimina el `movilEstados` Map y el chequeo `isMovilActiveForUI` client-side).
@@ -255,13 +259,13 @@ Tareas:
 **Objetivo:** eliminar los re-escaneos O(n×z) y O(n×m) usando los agregados de `moviles_dia`.
 
 Tareas:
-1. `DashboardIndicators`: `movilesSinReportar` se deriva **en el cliente** comparando `last_gps_datetime` contra (ahora − X min), donde **X sale de las preferencias** del usuario (no es un flag guardado: depende del reloj y de la pref). `sin-asignar` también se deriva en cliente porque depende de la ventana SA (`serverNow` + pref `minutosAntesSa`). `cant_entregados` sí puede venir precalculado de la tabla.
+1. `DashboardIndicators`: `movilesSinReportar` se deriva **en el cliente** comparando `last_gps_datetime` contra (ahora − X min), donde **X sale de las preferencias** del usuario (no es un flag guardado: depende del reloj y de la pref). `sin-asignar` también se deriva en cliente porque depende de la ventana SA (`serverNow` + pref `minutosAntesSa`). Entregados / cumplimiento se calculan on-demand desde `pedidos` como hasta ahora (no se persisten).
 2. `MovilesSinGPS`: `WHERE last_gps_lat IS NULL` — móvil que **nunca reportó** posición (distinto de "sin reportar hace X min", que es el punto 1). Reemplaza el filtro del array.
-3. `LeaderboardModal`: ranking desde `cant_ped`/`cant_serv`/`cant_entregados` precalculados, en vez de filtrar pedidos/services por móvil. (Los `atrasados` del ranking se calculan en el cliente desde los pendientes.) Exclusión de ocultos vía `oculto_operativo`.
-4. `ZonaEstadisticasModal` (mayor ganancia): stats por zona desde agregados de `moviles_dia` en vez del re-escaneo por zona. *(Si requiere agregación por zona que no está en la fila por-móvil, evaluar una vista/materialized view complementaria; decisión dentro de esta fase.)*
+3. `LeaderboardModal`: la lista, los `pedidos_pendientes`/`services_pendientes` y los flags vienen de `moviles_dia`. El cumplimiento / entregados / atrasados del ranking se siguen calculando **on-demand** desde `pedidos`/`services` (NO precalculados). Exclusión de ocultos vía `oculto_operativo`.
+4. `ZonaEstadisticasModal`: usa `moviles_dia` para la lista/estado/flags de móviles y los pendientes; las **stats de cumplimiento por zona** se siguen calculando on-demand desde `pedidos`/`services` (correctitud). La ganancia se concentra en no re-derivar visibilidad/estado, no en los agregados de cumplimiento.
 5. `PedidosTableModal` / `ServicesTableModal`: el combo de "móviles inactivos" se arma desde `moviles_dia` en vez de `getMovilesConPedidosMatching` / `getMovilesConFinalizadosEnFecha`.
 
-**Criterio de aceptación:** todos los contadores y estadísticas dan los mismos números que hoy, sin los escaneos client-side. Tiempos de apertura de modales mejorados.
+**Criterio de aceptación:** lista de móviles, estado, flags y pendientes vienen de `moviles_dia`; las stats de cumplimiento se siguen calculando on-demand y dan los mismos números que hoy (sin riesgo de drift). Sin regresiones.
 
 ---
 
@@ -327,7 +331,8 @@ Tareas:
 
 ## 8. Puntos abiertos a confirmar antes de implementar
 
-1. Confirmar el **mecanismo de mantenimiento** (recomendado: híbrido C).
+1. **Retención de las tablas fuente** (`pedidos` / `services` / `gps_tracking_history`): ¿se conservan o se purgan tras X tiempo? Define hasta qué fecha `moviles_dia` es reconstruible/corregible.
 2. Números de **flota por escenario + frecuencia de GPS** (solo afinan el throttle de Fase 3; no cambian la arquitectura).
 3. Validar **nombres/tipos reales** de columnas contra el schema actual de Supabase.
-4. `ZonaEstadisticasModal`: decidir si alcanza con la fila por-móvil o conviene una vista agregada por zona (dentro de Fase 6).
+
+**Ya decidido:** mantenimiento = recompute a nivel aplicación en las APIs de pedidos/services + triggers para estado/GPS; cumplimiento = on-demand (no se persiste); GPS = Opción A; `cant_atrasados`/`movilesSinReportar` = cliente.
