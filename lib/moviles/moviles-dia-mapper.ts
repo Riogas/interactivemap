@@ -6,7 +6,6 @@
  */
 
 import type { MovilData } from '@/types/index';
-import { getMovilColor } from '@/types/index';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Forma de la fila que devuelve la vista moviles_dia
@@ -41,8 +40,10 @@ export interface MovilDiaRow {
  * componentes del dashboard y el hook de realtime.
  *
  * Reglas:
- *  - color se asigna de forma determinista por movil_id para mantener
- *    estabilidad visual entre renders.
+ *  - color se deja vacío deliberadamente. El color real (capacity/status-derived)
+ *    lo calcula MapView.getMovilColor(movil) a partir de estadoNro + tamanoLote +
+ *    pedidosAsignados. Asignar aquí un color "arcoíris" por movil_id sobreescribía
+ *    esa lógica y producía colores incorrectos.
  *  - currentPosition solo se construye cuando AMBAS coordenadas están presentes.
  *  - Counts con null → 0 (el móvil existe pero no tiene asignaciones hoy).
  */
@@ -63,7 +64,8 @@ export function mapMovilDiaRowToMovilData(row: MovilDiaRow): MovilData {
   return {
     id: row.movil_id,
     name: row.descripcion ?? String(row.movil_id),
-    color: getMovilColor(row.movil_id),
+    // color vacío: MapView.getMovilColor(movil) lo calcula de estadoNro+tamanoLote+pedidosAsignados.
+    color: '',
     empresaFleteraId: row.empresa_fletera_id ?? undefined,
     matricula: row.matricula ?? undefined,
     estadoNro: row.estado_nro ?? undefined,

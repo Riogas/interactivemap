@@ -1471,6 +1471,27 @@ function DashboardContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moviles, moviles.length, isInitialLoad]);
 
+  // Fix #8a: cuando USE_NEW y el usuario cambia el filtro de empresa, purgar de
+  // selectedMoviles los IDs que ya no pertenecen a las empresas seleccionadas.
+  // Sin esto, móviles de otras empresas permanecen en selectedMoviles y sus
+  // pedidos/services aparecen en filteredPedidos aunque la empresa esté desactivada.
+  // Se usa un ref para el flag de "todos seleccionados" para no crear un loop:
+  // el effect solo filtra (reduce) selectedMoviles, nunca lo amplía.
+  useEffect(() => {
+    if (!USE_NEW) return;
+    if (selectedEmpresas.length === 0 || empresas.length === 0) return;
+    const allowedIds = new Set(
+      moviles
+        .filter(m => m.empresaFleteraId != null && selectedEmpresas.includes(m.empresaFleteraId))
+        .map(m => m.id)
+    );
+    setSelectedMoviles(prev => {
+      const next = prev.filter(id => allowedIds.has(id));
+      if (next.length === prev.length) return prev; // sin cambios → no re-render
+      return next;
+    });
+  }, [selectedEmpresas, empresas.length, moviles]); // moviles cambia al recargar tras cambio de empresa
+
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
     if (!isLoadingEmpresas) {

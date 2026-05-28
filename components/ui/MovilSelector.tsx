@@ -414,23 +414,72 @@ export default function MovilSelector({
   }, [movilesFilters, onFiltersChange]);
 
   // §4.1 (NEXT_PUBLIC_USE_MOVILES_DIA): listas derivadas para el nuevo comportamiento.
-  // Cuando el flag está ON: activos = m.activo===true; inactivos = resto.
+  // Cuando el flag está ON: activos = m.activo===true; inactivos = m.inactivoDelDia===true.
   // Cuando el flag está OFF: estas listas se ignoran y el camino viejo sigue.
+  // Fix #2: se aplica el mismo movilesSearch + filter chips que el camino viejo,
+  //         para que el buscador del colapsable funcione en este branch.
+  // Fix #3: inactivos filtrados por inactivoDelDia (móviles que hoy tuvieron op
+  //         y ya no están activos), no por !activo (que incluiría toda la flota inactiva).
   const USE_MOVILES_DIA_SELECTOR = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
+
+  // Helper reutilizado: aplica movilesSearch + movilesFilters de capacidad y estado
+  // a una lista de MovilData para el branch USE_NEW.
+  const applyMovilesSearchAndChips = useCallback((list: MovilData[]) => {
+    let result = [...list];
+
+    if (movilesSearch.trim()) {
+      const searchLower = movilesSearch.toLowerCase();
+      result = result.filter(m =>
+        m.id.toString().includes(searchLower) ||
+        m.name.toLowerCase().includes(searchLower) ||
+        (m.matricula && m.matricula.toLowerCase().includes(searchLower))
+      );
+    }
+
+    if (movilesFilters.capacidad !== 'all') {
+      result = result.filter(m => {
+        const cap = m.tamanoLote || 0;
+        switch (movilesFilters.capacidad) {
+          case '1-3': return cap >= 1 && cap <= 3;
+          case '4-6': return cap >= 4 && cap <= 6;
+          case '7-10': return cap >= 7 && cap <= 10;
+          case '10+': return cap > 10;
+          default: return true;
+        }
+      });
+    }
+
+    if (movilesFilters.estado.length > 0) {
+      result = result.filter(m => {
+        const tam = m.tamanoLote || 6;
+        const cap = m.capacidad ?? 0;
+        return movilesFilters.estado.some(estado => {
+          switch (estado) {
+            case 'no_reporta_gps': return !m.currentPosition || m.isInactive;
+            case 'baja_momentanea': return m.estadoNro === 4;
+            case 'con_capacidad': return tam > 0 && cap < tam;
+            case 'sin_capacidad': return (m.tamanoLote ?? 0) > 0 && (m.capacidad ?? 0) >= (m.tamanoLote ?? 0);
+            default: return true;
+          }
+        });
+      });
+    }
+
+    return result;
+  }, [movilesSearch, movilesFilters]);
 
   const activosNuevo = useMemo(() => {
     if (!USE_MOVILES_DIA_SELECTOR) return [];
-    return moviles
-      .filter(m => m.activo === true)
-      .sort((a, b) => a.id - b.id);
-  }, [USE_MOVILES_DIA_SELECTOR, moviles]);
+    const base = moviles.filter(m => m.activo === true);
+    return applyMovilesSearchAndChips(base).sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_SELECTOR, moviles, applyMovilesSearchAndChips]);
 
   const inactivosNuevo = useMemo(() => {
     if (!USE_MOVILES_DIA_SELECTOR) return [];
-    return moviles
-      .filter(m => m.activo !== true)
-      .sort((a, b) => a.id - b.id);
-  }, [USE_MOVILES_DIA_SELECTOR, moviles]);
+    // Fix #3: solo móviles que tuvieron operación hoy y ya no están activos.
+    const base = moviles.filter(m => m.inactivoDelDia === true);
+    return applyMovilesSearchAndChips(base).sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_SELECTOR, moviles, applyMovilesSearchAndChips]);
 
   // Filtrar y ordenar móviles
   const filteredMoviles = useMemo(() => {
@@ -876,10 +925,10 @@ export default function MovilSelector({
     return empresas.filter(e => e.nombre.toLowerCase().includes(q));
   }, [empresas, empresaSearch]);
 
-  // §4.1: título del colapsable de móviles con contadores de activos e inactivos
-  const movilesCategoryTitle = USE_MOVILES_DIA_SELECTOR
-    ? `Activos: ${activosNuevo.length} | Inactivos: ${inactivosNuevo.length}`
-    : 'Móviles';
+  // §4.1: título del colapsable de móviles — en el camino viejo solo "Móviles".
+  // Fix #4: en USE_NEW el título ya no embebe los contadores como texto; en cambio,
+  // el header del colapsable renderiza 3 "globitos" separados (ver más abajo).
+  const movilesCategoryTitle = 'Móviles';
 
   // Categorías disponibles
   const categories: Category[] = [
@@ -983,26 +1032,38 @@ export default function MovilSelector({
         // Badge cuenta SOLO activos — los inactivos del día se pueden seleccionar
         // pero no aparecen en el badge (por decisión de producto confirmada).
         {
-          // Badge cuenta SOLO activos seleccionados (no inactivos del día).
-          // Los inactivos del día pueden estar en selectedMoviles pero el badge
-          // no los refleja — solo los activos visibles en el colapsable normal.
-          const activosSet = new Set(filteredMoviles.filter(m => isMovilActiveForUI(m.estadoNro)).map(m => m.id));
-          const activosSeleccionadosIds = selectedMoviles.filter(id => activosSet.has(id));
-          const nActivosSeleccionados = activosSeleccionadosIds.length;
-          const nActivosTotal = activosSet.size;
-          const allActivosSelected = nActivosTotal > 0 && nActivosSeleccionados === nActivosTotal;
-          const noneSelected = nActivosSeleccionados === 0;
+          // Fix #6: con USE_NEW + selección-inicial-todos, el check "todos seleccionados"
+          // debe considerar activos + inactivos del día; el camino viejo solo consideraba
+          // los activos del filtro local (filteredMoviles).
+          let badgeIds: number[];
+          let totalCount: number;
+          if (USE_MOVILES_DIA_SELECTOR) {
+            // Universo completo del branch nuevo: activos + inactivos del día.
+            const allNewIds = new Set([
+              ...activosNuevo.map(m => m.id),
+              ...inactivosNuevo.map(m => m.id),
+            ]);
+            totalCount = allNewIds.size;
+            badgeIds = selectedMoviles.filter(id => allNewIds.has(id));
+          } else {
+            const activosSet = new Set(filteredMoviles.filter(m => isMovilActiveForUI(m.estadoNro)).map(m => m.id));
+            totalCount = activosSet.size;
+            badgeIds = selectedMoviles.filter(id => activosSet.has(id));
+          }
+          const nSeleccionados = badgeIds.length;
+          const allBadgeSelected = totalCount > 0 && nSeleccionados === totalCount;
+          const noneSelected = nSeleccionados === 0;
           const VISIBLE_IDS = 5;
           badges.push({
-            label: allActivosSelected
+            label: allBadgeSelected
               ? '🚗 Móviles: Todos'
               : noneSelected
               ? '🚗 Móviles: Ninguno'
-              : `🚗 Móviles: ${activosSeleccionadosIds.length <= VISIBLE_IDS
-                  ? activosSeleccionadosIds.join(', ')
-                  : `${activosSeleccionadosIds.slice(0, VISIBLE_IDS).join(', ')} +${activosSeleccionadosIds.length - VISIBLE_IDS}`}`,
+              : `🚗 Móviles: ${badgeIds.length <= VISIBLE_IDS
+                  ? badgeIds.join(', ')
+                  : `${badgeIds.slice(0, VISIBLE_IDS).join(', ')} +${badgeIds.length - VISIBLE_IDS}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: allActivosSelected ? undefined : onSelectAll,
+            onClear: allBadgeSelected ? undefined : onSelectAll,
           });
         }
 
@@ -1103,8 +1164,9 @@ export default function MovilSelector({
       })()}
 
       {/* Buscador y Filtros Contextuales - Cambian según la categoría activa */}
+      {/* Fix #8b: la categoría 'empresas' tiene su propio buscador interno; no mostrar FilterBar aquí. */}
       <AnimatePresence mode="wait">
-        {expandedCategories.size > 0 && (
+        {expandedCategories.size > 0 && activeCategory !== 'empresas' && (
           <motion.div
             key={activeCategory}
             initial={{ height: 0, opacity: 0 }}
@@ -1211,19 +1273,42 @@ export default function MovilSelector({
                 <div className="flex items-center gap-2">
                   <span className="text-lg">{category.icon}</span>
                   <span className="font-semibold text-gray-700">{category.title}</span>
-                  {category.count > 0 && (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                      {category.count}
-                    </span>
-                  )}
-                  {/* Chip secundario: inactivos del día seleccionados manualmente */}
-                  {category.key === 'moviles' && inactivosSeleccionados > 0 && (
-                    <span
-                      className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full italic"
-                      title={`${inactivosSeleccionados} móvil${inactivosSeleccionados > 1 ? 'es' : ''} inactivo${inactivosSeleccionados > 1 ? 's' : ''} del día seleccionado${inactivosSeleccionados > 1 ? 's' : ''} manualmente`}
-                    >
-                      +{inactivosSeleccionados} inactivo{inactivosSeleccionados > 1 ? 's' : ''}
-                    </span>
+                  {/* Fix #4: cuando USE_NEW, mostrar 3 globitos separados en lugar del count único */}
+                  {category.key === 'moviles' && USE_MOVILES_DIA_SELECTOR ? (
+                    <>
+                      {/* Globito "Seleccionados" */}
+                      <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                        {selectedMoviles.length}/{activosNuevo.length + inactivosNuevo.length}
+                      </span>
+                      <span className="text-gray-300 text-xs">|</span>
+                      {/* Globito "Activos" */}
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                        Activos: {activosNuevo.length}
+                      </span>
+                      {/* Globito "Inactivos" — solo si hay alguno */}
+                      {inactivosNuevo.length > 0 && (
+                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                          Inactivos: {inactivosNuevo.length}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {category.count > 0 && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                          {category.count}
+                        </span>
+                      )}
+                      {/* Chip secundario: inactivos del día seleccionados manualmente (camino viejo) */}
+                      {category.key === 'moviles' && inactivosSeleccionados > 0 && (
+                        <span
+                          className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full italic"
+                          title={`${inactivosSeleccionados} móvil${inactivosSeleccionados > 1 ? 'es' : ''} inactivo${inactivosSeleccionados > 1 ? 's' : ''} del día seleccionado${inactivosSeleccionados > 1 ? 's' : ''} manualmente`}
+                        >
+                          +{inactivosSeleccionados} inactivo{inactivosSeleccionados > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </>
                   )}
                   {/* Indicador de drift de realtime — solo para usuarios root */}
                   {category.key === 'moviles' && isRootUser && (
@@ -1603,50 +1688,53 @@ export default function MovilSelector({
                                 );
                               })}
 
-                              {/* Subtítulo "Inactivos" y lista de inactivos (inertes — click = no-op) */}
+                              {/* Fix #3: Inactivos del día — seleccionables (checkbox funciona),
+                                  pero sin foco de mapa al hacer click (no hay marker). */}
                               {inactivosNuevo.length > 0 && (
                                 <>
                                   <div className="my-2 border-t border-gray-200" />
                                   <div className="text-xs font-medium text-gray-500 mb-1 px-2">
-                                    Inactivos ({inactivosNuevo.length})
+                                    Inactivos del día ({inactivosNuevo.length})
                                   </div>
                                   {inactivosNuevo.map((movil) => {
                                     const isSelected = selectedMoviles.includes(movil.id);
+                                    const loteColor = '#9CA3AF'; // gris para inactivos del día
                                     return (
-                                      // Inactivos inertes: cursor-default, sin onClick. La selección visual
-                                      // queda como estaba (no se puede cambiar haciendo click).
-                                      // Task 5.2 excluirá estos del mapa; acá solo los mostramos sin acción.
-                                      <div
+                                      <button
                                         key={movil.id}
+                                        onClick={() => onToggleMovil(movil.id)}
                                         className={clsx(
-                                          'w-full py-2 px-3 rounded-lg font-medium border-2 opacity-60 cursor-default select-none',
+                                          'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2',
                                           isSelected
-                                            ? 'bg-gray-400 text-white border-transparent'
-                                            : 'bg-gray-50 text-gray-400 border-gray-200 italic'
+                                            ? 'text-white shadow-md border-transparent bg-gray-400'
+                                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border-gray-200'
                                         )}
                                       >
-                                        <span className="flex items-center gap-2">
-                                          <div className={clsx(
-                                            "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
-                                            isSelected ? "bg-white border-white" : "bg-white border-gray-300"
-                                          )}>
-                                            {isSelected && (
-                                              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                              </svg>
-                                            )}
-                                          </div>
-                                          <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                                          </svg>
-                                          <span className="text-sm font-medium leading-tight text-gray-400 italic">
-                                            {movil.id}
-                                            <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full font-semibold uppercase">
-                                              Inactivo
+                                        <span className="flex items-center justify-between">
+                                          <span className="flex items-center gap-2">
+                                            <div className={clsx(
+                                              "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                              isSelected ? "bg-white border-white" : "bg-white border-gray-300"
+                                            )}>
+                                              {isSelected && (
+                                                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                              )}
+                                            </div>
+                                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: loteColor }} />
+                                            <span className="text-sm font-medium leading-tight text-gray-500">
+                                              {movil.id}
+                                              {isToday && (
+                                                <>{' – '}{movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}</>
+                                              )}
+                                              <span className="ml-1.5 text-[9px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                Inactivo
+                                              </span>
                                             </span>
                                           </span>
                                         </span>
-                                      </div>
+                                      </button>
                                     );
                                   })}
                                 </>

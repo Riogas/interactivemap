@@ -118,9 +118,11 @@ describe('mapMovilDiaRowToMovilData', () => {
     expect(result.inactivoDelDia).toBe(true);
   });
 
-  it('Caso 4: color siempre es string (no vacío)', () => {
+  it('Caso 4: color es string vacío (el mapper no asigna color; MapView lo computa)', () => {
     const result = mapMovilDiaRowToMovilData(baseRow);
     expect(typeof result.color).toBe('string');
-    expect(result.color.length).toBeGreaterThan(0);
+    // El mapper intencionalmente deja color='' para que MapView.getMovilColor(movil)
+    // lo derive de estadoNro + tamanoLote + pedidosAsignados.
+    expect(result.color).toBe('');
   });
 });
