@@ -788,7 +788,7 @@ function CulledPedidosLayer({
         <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
           <div className="text-xs">
             <div className="font-bold">Pedido #{pedido.id}</div>
-            <div>{pedido.cliente_nombre}</div>
+            {pedido.cliente_tel && <div>{pedido.cliente_tel}</div>}
             <div className="text-gray-600">{pedido.servicio_nombre || pedido.producto_nom}</div>
             {isSinAsignar && (
               <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
@@ -864,7 +864,7 @@ function CulledServicesLayer({
         <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
           <div className="text-xs">
             <div className="font-bold">Service #{service.id}</div>
-            <div>{service.cliente_nombre}</div>
+            {service.cliente_tel && <div>{service.cliente_tel}</div>}
             <div className="text-gray-600">{service.servicio_nombre || service.defecto}</div>
             {isSinAsignar && (
               <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>

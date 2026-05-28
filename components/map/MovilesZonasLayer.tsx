@@ -233,11 +233,14 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   }, [movilesZonasData, serviceFilter, movilEstados, hiddenMovilIds]);
 
   // Computar conteos por zona: { prioridad, transito }
+  // Para URGENTE y NOCTURNO, prioridad y tránsito suman al mismo contador (prioridad).
+  const MERGE_FILTERS = ['URGENTE', 'NOCTURNO'];
+  const mergeAll = MERGE_FILTERS.includes(serviceFilter.toUpperCase());
   const zonaCounts = useMemo(() => {
     const map = new Map<number, { prioridad: number; transito: number }>();
     for (const mz of filteredData) {
       const existing = map.get(mz.zona_id) || { prioridad: 0, transito: 0 };
-      if (mz.prioridad_o_transito === 1) {
+      if (mergeAll || mz.prioridad_o_transito === 1) {
         existing.prioridad++;
       } else {
         existing.transito++;
@@ -245,7 +248,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
       map.set(mz.zona_id, existing);
     }
     return map;
-  }, [filteredData]);
+  }, [filteredData, mergeAll]);
 
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
@@ -345,7 +348,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
               html: `
                 <div class="mz-label-inner">
                   <span class="mz-label-zona">${zona.zona_id}</span>
-                  ${showCountLabels && counts.prioridad !== counts.transito ? `<span class="mz-label-counts ${total === 0 ? 'mz-counts-zero' : ''}">${counts.prioridad}/${counts.transito}</span>` : ''}
+                  ${showCountLabels && (mergeAll ? total > 0 : counts.prioridad !== counts.transito) ? `<span class="mz-label-counts ${total === 0 ? 'mz-counts-zero' : ''}">${mergeAll ? total : `${counts.prioridad}/${counts.transito}`}</span>` : ''}
                 </div>
               `,
               iconSize: [60, 40],

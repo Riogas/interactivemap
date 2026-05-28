@@ -332,8 +332,6 @@ function StatsContent() {
   const [selectedEmpresa, setSelectedEmpresa] = useState<string>('Todas');
   const [selectedProducto, setSelectedProducto] = useState<string>('Todos');
   const [refreshSeconds, setRefreshSeconds] = useState<number>(60);
-  // Valor del input manual de refresh (segundos). Se sincroniza con el select.
-  const [refreshInputVal, setRefreshInputVal] = useState<string>('60');
   const [refreshTick, setRefreshTick] = useState<number>(0);
   const [zonasNoActivasCount, setZonasNoActivasCount] = useState<number | null>(null);
   const [zonasSinMovilCount, setZonasSinMovilCount] = useState<number | null>(null);
@@ -935,64 +933,18 @@ function StatsContent() {
           </div>
           {/* Acciones */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            {/* Combo refresh: 19 opciones 1m-10m cada 30s + input manual de segundos */}
+            {/* Combo refresh: 1m–30m en pasos de 1 minuto */}
             <select
-              value={[60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360, 390, 420, 450, 480, 510, 540, 570, 600].includes(refreshSeconds) ? refreshSeconds : 0}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (v > 0) { setRefreshSeconds(v); setRefreshInputVal(String(v)); }
-              }}
+              value={refreshSeconds}
+              onChange={(e) => setRefreshSeconds(Number(e.target.value))}
               className="text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-stats-info cursor-pointer bg-white border border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               aria-label="Intervalo de refresh"
               title="Intervalo de refresh"
             >
-              {![60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360, 390, 420, 450, 480, 510, 540, 570, 600].includes(refreshSeconds) && (
-                <option value={0} disabled>Personalizado ({refreshSeconds}s)</option>
-              )}
-              <option value={60}>1m</option>
-              <option value={90}>1m 30s</option>
-              <option value={120}>2m</option>
-              <option value={150}>2m 30s</option>
-              <option value={180}>3m</option>
-              <option value={210}>3m 30s</option>
-              <option value={240}>4m</option>
-              <option value={270}>4m 30s</option>
-              <option value={300}>5m</option>
-              <option value={330}>5m 30s</option>
-              <option value={360}>6m</option>
-              <option value={390}>6m 30s</option>
-              <option value={420}>7m</option>
-              <option value={450}>7m 30s</option>
-              <option value={480}>8m</option>
-              <option value={510}>8m 30s</option>
-              <option value={540}>9m</option>
-              <option value={570}>9m 30s</option>
-              <option value={600}>10m</option>
+              {Array.from({ length: 30 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m * 60}>{m}m</option>
+              ))}
             </select>
-            {/* Input manual de segundos */}
-            <input
-              type="number"
-              min={10}
-              max={3600}
-              step={1}
-              value={refreshInputVal}
-              onChange={(e) => setRefreshInputVal(e.target.value)}
-              onBlur={(e) => {
-                const v = Math.max(10, Math.min(3600, Number(e.target.value) || 60));
-                setRefreshSeconds(v);
-                setRefreshInputVal(String(v));
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  const v = Math.max(10, Math.min(3600, Number(refreshInputVal) || 60));
-                  setRefreshSeconds(v);
-                  setRefreshInputVal(String(v));
-                }
-              }}
-              className="text-xs w-14 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-stats-info bg-white border border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              aria-label="Segundos de refresh personalizado"
-              title="Segundos (10-3600)"
-            />
             <button
               onClick={() => setRefreshTick((t) => t + 1)}
               title="Actualizar ahora"
