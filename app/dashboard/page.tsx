@@ -56,6 +56,10 @@ import { useViewStateSync } from '@/hooks/dashboard/useViewStateSync';
 const DEBUG = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1';
 const dbg = (...args: any[]) => { if (DEBUG) console.log(...args); };
 
+// Task 4.3: when ON, derive visibility/counts from precomputed fields in MovilData
+// instead of running client-side scans over pedidosCompletos/servicesCompletos.
+const USE_NEW = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
+
 // Import MapView dynamically to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import('@/components/map/MapView'), {
   ssr: false,
@@ -2426,10 +2430,14 @@ function DashboardContent() {
   // pero sus pedidos/services SIGUEN visibles en los colapsables de
   // pedidos/services y vistas extendidas. Estado 4 (BAJA MOMENTÁNEA) cuenta
   // como activo y se renderiza con estilo violeta/pausa.
-  const hiddenMovilIds = useMemo(
-    () => getHiddenMovilIds(movilesFiltered, pedidosCompletos, servicesCompletos),
-    [movilesFiltered, pedidosCompletos, servicesCompletos],
-  );
+  const hiddenMovilIds = useMemo(() => {
+    if (USE_NEW) {
+      const s = new Set<number>();
+      for (const m of movilesFiltered) if (m.ocultoOperativo) s.add(m.id);
+      return s;
+    }
+    return getHiddenMovilIds(movilesFiltered, pedidosCompletos, servicesCompletos);
+  }, [movilesFiltered, pedidosCompletos, servicesCompletos]);
 
   // Ref para que useCallback/useEffect definidos ANTES (handleSelectAll, auto-select
   // inicial, reset por cambio de actividad) puedan acceder al último hiddenMovilIds
@@ -2438,6 +2446,7 @@ function DashboardContent() {
 
   // Set de movil_id con al menos 1 pedido o service en la fecha (activos e inactivos).
   // Usado para construir inactivosDelDia — qué inactivos mostrar en el colapsable.
+  // When USE_NEW: inactivosDelDia bypasses this scan and reads m.inactivoDelDia directly.
   const movilesConOperacion = useMemo(
     () => getMovilesConOperacionEnFecha(selectedEmpresas, pedidosCompletos, servicesCompletos),
     [selectedEmpresas, pedidosCompletos, servicesCompletos],
@@ -2446,6 +2455,9 @@ function DashboardContent() {
   // Móviles inactivos que trabajaron en la fecha — para la sub-sección visual del colapsable.
   // Filtrados por empresa (si hay empresas seleccionadas) y con operación en la fecha.
   const inactivosDelDia = useMemo(() => {
+    if (USE_NEW) {
+      return moviles.filter(m => m.inactivoDelDia).sort((a, b) => a.id - b.id);
+    }
     if (selectedEmpresas.length === 0 && empresas.length > 0) return [];
     return moviles
       .filter(m => {
@@ -2606,7 +2618,13 @@ function DashboardContent() {
   // Conteo client-side de pedidos+services estado=1 por móvil, derivado de los datos
   // ya cargados en memoria. Es la fuente de verdad para el badge de lote en el sidebar ?
   // evita dependencias de timing en el endpoint /api/moviles-extended.
+  // When USE_NEW: built directly from m.pedidosAsignados ?? m.cant_ped (precomputed by mapper).
   const pedidosAsignadosClientMap = useMemo(() => {
+    if (USE_NEW) {
+      const map = new Map<number, number>();
+      for (const m of movilesFiltered) map.set(m.id, m.pedidosAsignados ?? m.cant_ped ?? 0);
+      return map;
+    }
     const map = new Map<number, number>();
     pedidosCompletos.forEach(p => {
       if (p.movil && Number(p.movil) !== 0 && Number(p.estado_nro) === 1) {
@@ -2621,7 +2639,7 @@ function DashboardContent() {
       }
     });
     return map;
-  }, [pedidosCompletos, servicesCompletos]);
+  }, [movilesFiltered, pedidosCompletos, servicesCompletos]);
 
   const movilesFilteredMarked = useMemo(
     () => markInactiveMoviles(movilesFiltered).map(m => {
@@ -2635,6 +2653,8 @@ function DashboardContent() {
         ...(isPaused ? {} : { color: getMovilColorByOccupancy(count, m.tamanoLote ?? 0) }),
       };
     }),
+    // When USE_NEW, pedidosAsignadosClientMap already encodes movilesFiltered counts;
+    // the map shape and consumer logic here are identical for both paths.
     [movilesFiltered, markInactiveMoviles, pedidosAsignadosClientMap, getMovilColorByOccupancy],
   );
 
