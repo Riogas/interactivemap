@@ -2002,7 +2002,12 @@ function DashboardContent() {
   const handleSelectAll = useCallback(() => {
     userExplicitlyCleared.current = false;
     const hidden = hiddenMovilIdsRef.current;
-    const filteredIds = movilesFiltered.filter(m => !hidden.has(m.id)).map(m => m.id);
+    // USE_NEW: seleccionar atómicamente activos + inactivos del día visibles en un
+    // solo setState, evitando el two-pass (activos primero → inactivos por auto-sync).
+    const base = USE_NEW
+      ? movilesFiltered.filter(m => m.activo === true || m.inactivoDelDia === true)
+      : movilesFiltered;
+    const filteredIds = base.filter(m => !hidden.has(m.id)).map(m => m.id);
     bumpSelectionVersion();
     setSelectedMoviles(filteredIds);
     setFocusedMovil(undefined);
