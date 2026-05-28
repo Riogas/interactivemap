@@ -16,6 +16,7 @@ import { useUserPreferences } from '@/components/ui/PreferencesModal';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
+import { useMovilesDiaRealtime } from '@/lib/hooks/useMovilesDiaRealtime';
 import { useZonaCapacidadSnapshot, invalidateZonaCapacidadSnapshot } from '@/lib/hooks/use-zona-capacidad-snapshot';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
@@ -667,6 +668,10 @@ function DashboardContent() {
   // capas/botones que solo tienen sentido en modo live (demoras, saturación,
   // distribución, móviles/zonas, pedidos/zona, estadísticas por zona).
   const isToday = selectedDate === todayMontevideo();
+
+  // Hook realtime para moviles_dia. Se invoca SIEMPRE (regla de hooks); el hook
+  // mismo hace early-return cuando !isToday || !escenarioId, sin abrir canal.
+  const { updates: movilesDiaUpdates } = useMovilesDiaRealtime(escenarioId, selectedDate, isToday);
 
   // Modo histórico: true cuando el usuario está viendo una fecha anterior a hoy.
   // En modo histórico: Realtime se pausa, solo se muestran pedidos/services finalizados,
@@ -1728,6 +1733,26 @@ function DashboardContent() {
 
     setLastUpdate(new Date());
   }, [latestMovil, removeDuplicateMoviles, preferences.realtimeEnabled, user?.allowedEmpresas, selectedEmpresas]);
+
+  // Merge de actualizaciones de moviles_dia al state local.
+  // Solo activo cuando NEXT_PUBLIC_USE_MOVILES_DIA === 'true'; de lo contrario
+  // este effect es no-op y el camino viejo (latestPosition/latestMovil) sigue solo.
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_USE_MOVILES_DIA !== 'true') return;
+    if (movilesDiaUpdates.length === 0) return;
+    setMoviles(prev => {
+      const byId = new Map<number, MovilData>(prev.map(m => [m.id, m]));
+      let changed = false;
+      for (const updated of movilesDiaUpdates) {
+        const existing = byId.get(updated.id);
+        if (existing !== updated) {
+          byId.set(updated.id, updated);
+          changed = true;
+        }
+      }
+      return changed ? Array.from(byId.values()) : prev;
+    });
+  }, [movilesDiaUpdates]);
 
   // Función para cargar el historial de un móvil específico
   const fetchMovilHistory = useCallback(async (movilId: number) => {
