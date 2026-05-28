@@ -72,6 +72,7 @@ export function mapMovilDiaRowToMovilData(row: MovilDiaRow): MovilData {
     estadoDesc: row.estado_desc ?? undefined,
     tamanoLote: row.tamano_lote ?? undefined,
     pedidosAsignados: row.pedidos_pendientes ?? 0,
+    capacidad: row.pedidos_pendientes ?? 0,
     cant_ped: row.pedidos_pendientes ?? 0,
     cant_serv: row.services_pendientes ?? 0,
     currentPosition,

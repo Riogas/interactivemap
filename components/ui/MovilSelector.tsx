@@ -427,13 +427,18 @@ export default function MovilSelector({
   const applyMovilesSearchAndChips = useCallback((list: MovilData[]) => {
     let result = [...list];
 
-    if (movilesSearch.trim()) {
-      const searchLower = movilesSearch.toLowerCase();
-      result = result.filter(m =>
-        m.id.toString().includes(searchLower) ||
-        m.name.toLowerCase().includes(searchLower) ||
-        (m.matricula && m.matricula.toLowerCase().includes(searchLower))
-      );
+    const search = movilesSearch.trim();
+    if (search.length > 0) {
+      const isNumeric = /^\d+$/.test(search);
+      if (isNumeric) {
+        result = result.filter(m => String(m.id).startsWith(search));
+      } else {
+        const lower = search.toLowerCase();
+        result = result.filter(m =>
+          m.name.toLowerCase().includes(lower) ||
+          (m.matricula && m.matricula.toLowerCase().includes(lower))
+        );
+      }
     }
 
     if (movilesFilters.capacidad !== 'all') {

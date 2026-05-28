@@ -43,6 +43,7 @@ describe('mapMovilDiaRowToMovilData', () => {
     expect(result.estadoDesc).toBe('ACTIVO');
     expect(result.tamanoLote).toBe(8);
     expect(result.pedidosAsignados).toBe(3);
+    expect(result.capacidad).toBe(3);
     expect(result.cant_ped).toBe(3);
     expect(result.cant_serv).toBe(2);
     expect(result.empresaFleteraId).toBe(3);
@@ -113,6 +114,7 @@ describe('mapMovilDiaRowToMovilData', () => {
     expect(result.cant_ped).toBe(0);
     expect(result.cant_serv).toBe(0);
     expect(result.pedidosAsignados).toBe(0);
+    expect(result.capacidad).toBe(0);
     expect(result.currentPosition).toBeUndefined();
     expect(result.activo).toBe(false);
     expect(result.inactivoDelDia).toBe(true);
