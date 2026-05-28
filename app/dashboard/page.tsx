@@ -701,6 +701,21 @@ function DashboardContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isToday, dataViewMode]);
 
+  // USE_NEW + fecha anterior: forzar vista 'finalizados' en pedidos y services.
+  // No hay pendientes en fechas históricas (fn_moviles_dia_rebuild solo genera finalizados).
+  // Al volver a hoy se restaura 'pendientes' (el default del sistema).
+  useEffect(() => {
+    if (!USE_NEW) return;
+    if (!isToday) {
+      setPedidosFilters(prev => prev.vista === 'finalizados' ? prev : { ...prev, vista: 'finalizados' });
+      setServicesFilters(prev => prev.vista === 'finalizados' ? prev : { ...prev, vista: 'finalizados' });
+    } else {
+      setPedidosFilters(prev => prev.vista === 'pendientes' ? prev : { ...prev, vista: 'pendientes' });
+      setServicesFilters(prev => prev.vista === 'pendientes' ? prev : { ...prev, vista: 'pendientes' });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToday]);
+
   // ?? Filter helpers (extracted to useFilterHelpers hook)
   const {
     isInUruguay, filterByDelay, filterByTipoServicio,

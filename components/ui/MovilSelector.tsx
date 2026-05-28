@@ -1293,11 +1293,15 @@ export default function MovilSelector({
                           </span>
                         );
                       })()}
-                      <span className="text-gray-300 text-xs">|</span>
-                      {/* Globito "Activos" */}
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                        {activosNuevo.length}
-                      </span>
+                      {/* Globito "Activos" — oculto en fecha anterior (USE_NEW + !isToday: no hay activos) */}
+                      {(isToday) && (
+                        <>
+                          <span className="text-gray-300 text-xs">|</span>
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                            {activosNuevo.length}
+                          </span>
+                        </>
+                      )}
                       {/* Globito "Inactivos" — solo si hay alguno */}
                       {inactivosNuevo.length > 0 && (
                         <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
@@ -1323,8 +1327,8 @@ export default function MovilSelector({
                       )}
                     </>
                   )}
-                  {/* Indicador de drift de realtime — solo para usuarios root */}
-                  {category.key === 'moviles' && isRootUser && (
+                  {/* Indicador de drift de realtime — solo para usuarios root; oculto en fecha anterior (USE_NEW + !isToday: realtime está pausado) */}
+                  {category.key === 'moviles' && isRootUser && (isToday || !USE_MOVILES_DIA_SELECTOR) && (
                     <RealtimeDriftIndicator
                       lastSync={lastSync}
                       pollingSeconds={pollingSeconds}
@@ -1983,6 +1987,33 @@ export default function MovilSelector({
                       {/* Contenido de Pedidos */}
                       {category.key === 'pedidos' && (
                         <div ref={listContainerRef}>
+                          {/* Toggle Pendientes / Finalizados — oculto en fecha anterior (USE_NEW + !isToday: no hay pendientes) */}
+                          {(!USE_MOVILES_DIA_SELECTOR || isToday) && (
+                            <div className="flex gap-1 mb-2">
+                              <button
+                                onClick={() => setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }))}
+                                className={clsx(
+                                  'flex-1 text-xs py-1 rounded font-medium transition-colors',
+                                  pedidosFilters.vista !== 'finalizados'
+                                    ? 'bg-orange-500 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                )}
+                              >
+                                Pendientes
+                              </button>
+                              <button
+                                onClick={() => setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }))}
+                                className={clsx(
+                                  'flex-1 text-xs py-1 rounded font-medium transition-colors',
+                                  pedidosFilters.vista === 'finalizados'
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                )}
+                              >
+                                Finalizados
+                              </button>
+                            </div>
+                          )}
                           {filteredPedidos.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
                               <p>{pedidosFilters.vista === 'finalizados' ? '✅ Sin pedidos finalizados' : '📦 Sin pedidos'}</p>
@@ -2066,6 +2097,33 @@ export default function MovilSelector({
 
                       {category.key === 'services' && (
                         <div>
+                          {/* Toggle Pendientes / Finalizados — oculto en fecha anterior (USE_NEW + !isToday: no hay pendientes) */}
+                          {(!USE_MOVILES_DIA_SELECTOR || isToday) && (
+                            <div className="flex gap-1 mb-2">
+                              <button
+                                onClick={() => setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }))}
+                                className={clsx(
+                                  'flex-1 text-xs py-1 rounded font-medium transition-colors',
+                                  servicesFilters.vista !== 'finalizados'
+                                    ? 'bg-violet-500 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                )}
+                              >
+                                Pendientes
+                              </button>
+                              <button
+                                onClick={() => setServicesFilters(prev => ({ ...prev, vista: 'finalizados' }))}
+                                className={clsx(
+                                  'flex-1 text-xs py-1 rounded font-medium transition-colors',
+                                  servicesFilters.vista === 'finalizados'
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                )}
+                              >
+                                Finalizados
+                              </button>
+                            </div>
+                          )}
                           {filteredServices.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
                               <p>{servicesFilters.vista === 'finalizados' ? '✅ Sin services finalizados' : '🔧 Sin services pendientes'}</p>
