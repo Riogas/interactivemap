@@ -1444,8 +1444,8 @@ function DashboardContent() {
   }, [movilesFiltered.length, isInitialLoad, movilesFiltered, applyActivityFilter]);
 
   // §4.1 (NEXT_PUBLIC_USE_MOVILES_DIA): selección automática para el camino nuevo.
-  //  - Primera carga: seleccionar todos (activos + inactivos).
-  //  - Llega un móvil nuevo y el usuario tenía "todos" → auto-agregar.
+  //  - Primera carga: seleccionar solo los visibles (activos + inactivos del día).
+  //  - Llega un móvil nuevo y el usuario tenía "todos" → auto-agregar SOLO si es visible.
   //  - Si el usuario deseleccionó alguno (userExplicitlyCleared=true), no tocar.
   // TODO §5.2: los inactivos del día no deben dibujarse en el mapa (fuera del scope de esta tarea).
   useEffect(() => {
@@ -1454,18 +1454,20 @@ function DashboardContent() {
     if (moviles.length === 0) return;
 
     setSelectedMoviles(prev => {
+      // Visibles = activos + inactivos del día; excluye móviles sin operación hoy.
+      const visibles = moviles.filter(m => m.activo === true || m.inactivoDelDia === true);
       if (prev.length === 0) {
         if (userExplicitlyCleared.current) return prev;
-        const allIds = moviles.map(m => m.id);
-        console.log('§4.1 Auto-selección inicial (USE_NEW): marcando todos:', allIds.length);
-        return allIds;
+        const visibleIds = visibles.map(m => m.id);
+        console.log('§4.1 Auto-selección inicial (USE_NEW): marcando visibles:', visibleIds.length);
+        return visibleIds;
       }
       if (userExplicitlyCleared.current) return prev;
-      // Modo "Todos": auto-agregar nuevos que llegaron por realtime/refetch.
+      // Modo "Todos": auto-agregar nuevos visibles que llegaron por realtime/refetch.
       const prevSet = new Set(prev);
-      const newIds = moviles.map(m => m.id).filter(id => !prevSet.has(id));
+      const newIds = visibles.map(m => m.id).filter(id => !prevSet.has(id));
       if (newIds.length === 0) return prev;
-      console.log(`§4.1 Auto-agrego ${newIds.length} móvil(es) nuevo(s) (USE_NEW)`);
+      console.log(`§4.1 Auto-agrego ${newIds.length} móvil(es) visible(s) nuevo(s) (USE_NEW)`);
       return [...prev, ...newIds];
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps

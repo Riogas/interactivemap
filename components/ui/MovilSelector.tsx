@@ -1276,19 +1276,25 @@ export default function MovilSelector({
                   {/* Fix #4: cuando USE_NEW, mostrar 3 globitos separados en lugar del count único */}
                   {category.key === 'moviles' && USE_MOVILES_DIA_SELECTOR ? (
                     <>
-                      {/* Globito "Seleccionados" */}
-                      <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                        {selectedMoviles.length}/{activosNuevo.length + inactivosNuevo.length}
-                      </span>
+                      {/* Globito "Seleccionados": solo los visibles (activos + inactivos del día) */}
+                      {(() => {
+                        const visibleIds = new Set([...activosNuevo, ...inactivosNuevo].map(m => m.id));
+                        const seleccionadosVisibles = selectedMoviles.filter(id => visibleIds.has(id)).length;
+                        return (
+                          <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                            {seleccionadosVisibles}
+                          </span>
+                        );
+                      })()}
                       <span className="text-gray-300 text-xs">|</span>
                       {/* Globito "Activos" */}
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                        Activos: {activosNuevo.length}
+                        {activosNuevo.length}
                       </span>
                       {/* Globito "Inactivos" — solo si hay alguno */}
                       {inactivosNuevo.length > 0 && (
                         <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                          Inactivos: {inactivosNuevo.length}
+                          {inactivosNuevo.length}
                         </span>
                       )}
                     </>
