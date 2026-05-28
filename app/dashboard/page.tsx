@@ -2692,16 +2692,19 @@ function DashboardContent() {
     [movilesFiltered, markInactiveMoviles, pedidosAsignadosClientMap, getMovilColorByOccupancy],
   );
 
-  const movilesForMap = useMemo(
-    () => movilesHidden
-      ? []
-      : applyActivityFilter(applyAdvancedFilters(movilesFilteredMarked)).filter(
-          m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) &&
-               !hiddenMovilIds.has(m.id) &&
-               (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY))
-        ),
-    [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters],
-  );
+  const movilesForMap = useMemo(() => {
+    if (movilesHidden) return [];
+    const result = applyActivityFilter(applyAdvancedFilters(movilesFilteredMarked)).filter(
+      m => (selectedMoviles.includes(m.id) || m.id === selectedMovil2) &&
+           !hiddenMovilIds.has(m.id) &&
+           (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY))
+    );
+    if (process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true') {
+      if (!isToday) return [];                      // fecha anterior: sin marcadores
+      return result.filter(m => m.activo === true); // inactivos no en mapa
+    }
+    return result;
+  }, [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters, isToday]);
 
   // ?? Fix 1 perf-round-2: pedidosForMap memoizado  evita invalidar React.memo del MapView en cada render
   const pedidosForMap = useMemo((): PedidoSupabase[] => {
