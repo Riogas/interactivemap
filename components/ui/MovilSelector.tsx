@@ -1746,6 +1746,32 @@ export default function MovilSelector({
                                               </span>
                                             </span>
                                           </span>
+                                          {movil.currentPosition?.fechaInsLog && (
+                                            <div className="flex flex-col items-end">
+                                              <span className={clsx("text-[11px]", isSelected ? "opacity-90" : "text-gray-600")}>
+                                                {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                })}
+                                              </span>
+                                              {(() => {
+                                                const now = Date.now();
+                                                const coordDate = new Date(movil.currentPosition!.fechaInsLog).getTime();
+                                                const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
+                                                if (minutesDiff < 1) {
+                                                  return <span className={clsx("text-[10px] font-medium", isSelected ? "text-green-200" : "text-green-600")}>Ahora</span>;
+                                                } else if (minutesDiff < 5) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-green-200" : "text-green-500")}>{minutesDiff}m</span>;
+                                                } else if (minutesDiff < 15) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-yellow-200" : "text-yellow-600")}>{minutesDiff}m</span>;
+                                                } else if (minutesDiff < 30) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-orange-200" : "text-orange-600")}>{minutesDiff}m</span>;
+                                                } else {
+                                                  return <span className={clsx("text-[10px] font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m</span>;
+                                                }
+                                              })()}
+                                            </div>
+                                          )}
                                         </span>
                                       </button>
                                     );
