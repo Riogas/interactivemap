@@ -1271,7 +1271,8 @@ function DashboardContent() {
       console.log(`?? Polling reconciliación (${seconds}s) ? sincronizando datos con la API`);
       fetchPedidos();
       fetchServices();
-      const result = await fetchPositions();
+      const loadFn = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true' ? fetchMovilesDia : fetchPositions;
+      const result = await loadFn();
       if (result.success) {
         setLastSync({ at: Date.now(), trigger: 'interval', added: result.added, removed: result.removed });
       }
@@ -1312,7 +1313,8 @@ function DashboardContent() {
         console.warn(`?? Silencio de WS > ${seconds}s (${Math.round(silenceMs / 1000)}s). Forzando refetch.`);
         fetchPedidos();
         fetchServices();
-        fetchPositions().then((result) => {
+        const silenceFn = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true' ? fetchMovilesDia : fetchPositions;
+        silenceFn().then((result) => {
           if (result.success) {
             setLastSync({ at: Date.now(), trigger: 'silence', added: result.added, removed: result.removed });
           }
@@ -1347,7 +1349,8 @@ function DashboardContent() {
         console.log('?? Pestaña visible ? refetch completo por preferencia');
         fetchPedidos();
         fetchServices();
-        const result = await fetchPositions();
+        const visibleFn = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true' ? fetchMovilesDia : fetchPositions;
+        const result = await visibleFn();
         if (result.success) {
           setLastSync({ at: Date.now(), trigger: 'visibility', added: result.added, removed: result.removed });
         }
