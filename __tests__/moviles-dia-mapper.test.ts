@@ -42,8 +42,9 @@ describe('mapMovilDiaRowToMovilData', () => {
     expect(result.estadoNro).toBe(1);
     expect(result.estadoDesc).toBe('ACTIVO');
     expect(result.tamanoLote).toBe(8);
-    expect(result.pedidosAsignados).toBe(3);
-    expect(result.capacidad).toBe(3);
+    // pedidosAsignados y capacidad = pedidos_pendientes + services_pendientes (3+2=5)
+    expect(result.pedidosAsignados).toBe(5);
+    expect(result.capacidad).toBe(5);
     expect(result.cant_ped).toBe(3);
     expect(result.cant_serv).toBe(2);
     expect(result.empresaFleteraId).toBe(3);
@@ -132,33 +133,52 @@ describe('mapMovilDiaRowToMovilData', () => {
     expect(result.color).toBe('#8B5CF6');
   });
 
-  it('Color: tamano_lote=4, pedidos_pendientes=4 → negro (#1F2937, lote completo)', () => {
+  it('Color: tamano_lote=4, pedidos_pendientes=4, services_pendientes=0 → negro (#1F2937, lote completo)', () => {
     const result = mapMovilDiaRowToMovilData({
       ...baseRow,
       estado_nro: 1,
       tamano_lote: 4,
       pedidos_pendientes: 4,
+      services_pendientes: 0,
     });
     expect(result.color).toBe('#1F2937');
   });
 
-  it('Color: tamano_lote=4, pedidos_pendientes=1 → 75% disponible → verde (#22C55E)', () => {
+  it('Color: tamano_lote=4, pedidos_pendientes=1, services_pendientes=0 → 75% disponible → verde (#22C55E)', () => {
     const result = mapMovilDiaRowToMovilData({
       ...baseRow,
       estado_nro: 1,
       tamano_lote: 4,
       pedidos_pendientes: 1,
+      services_pendientes: 0,
     });
     expect(result.color).toBe('#22C55E');
   });
 
-  it('Color: tamano_lote=4, pedidos_pendientes=3 → 25% disponible → amarillo (#F59E0B)', () => {
+  it('Color: tamano_lote=4, pedidos_pendientes=3, services_pendientes=0 → 25% disponible → amarillo (#F59E0B)', () => {
     const result = mapMovilDiaRowToMovilData({
       ...baseRow,
       estado_nro: 1,
       tamano_lote: 4,
       pedidos_pendientes: 3,
+      services_pendientes: 0,
     });
+    expect(result.color).toBe('#F59E0B');
+  });
+
+  it('Color: tamano_lote=10, pedidos_pendientes=2, services_pendientes=4 → suma=6, 40% disponible → amarillo (#F59E0B)', () => {
+    // 6 ocupados de 10 = 60% ocupado, 40% disponible < 50% → amarillo
+    const result = mapMovilDiaRowToMovilData({
+      ...baseRow,
+      estado_nro: 1,
+      tamano_lote: 10,
+      pedidos_pendientes: 2,
+      services_pendientes: 4,
+    });
+    expect(result.capacidad).toBe(6);
+    expect(result.pedidosAsignados).toBe(6);
+    expect(result.cant_ped).toBe(2);
+    expect(result.cant_serv).toBe(4);
     expect(result.color).toBe('#F59E0B');
   });
 });

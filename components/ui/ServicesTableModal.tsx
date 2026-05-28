@@ -354,7 +354,8 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
 
   const inactivosForCombo = useMemo((): MovilData[] => {
     if (!USE_MOVILES_DIA_COMBO || openSource !== 'colapsable') return [];
-    return moviles.filter(m => m.activo !== true).sort((a, b) => a.id - b.id);
+    // Usa exactamente el mismo filtro que el colapsable: solo móviles del día marcados como inactivos.
+    return moviles.filter(m => m.inactivoDelDia === true).sort((a, b) => a.id - b.id);
   }, [USE_MOVILES_DIA_COMBO, openSource, moviles]);
 
   // En colapsable mode, el combo muestra TODOS los moviles activos del prop moviles

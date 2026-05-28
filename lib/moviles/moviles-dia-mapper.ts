@@ -66,7 +66,10 @@ export interface MovilDiaRow {
  *  - Counts con null → 0 (el móvil existe pero no tiene asignaciones hoy).
  */
 export function mapMovilDiaRowToMovilData(row: MovilDiaRow): MovilData {
-  const pedidosAsignados = row.pedidos_pendientes ?? 0;
+  const cantPed = row.pedidos_pendientes ?? 0;
+  const cantServ = row.services_pendientes ?? 0;
+  // pedidosAsignados y capacidad reflejan el lote total ocupado (pedidos + services).
+  const pedidosAsignados = cantPed + cantServ;
 
   const currentPosition =
     row.last_gps_lat !== null && row.last_gps_lng !== null
@@ -92,8 +95,8 @@ export function mapMovilDiaRowToMovilData(row: MovilDiaRow): MovilData {
     tamanoLote: row.tamano_lote ?? undefined,
     pedidosAsignados,
     capacidad: pedidosAsignados,
-    cant_ped: pedidosAsignados,
-    cant_serv: row.services_pendientes ?? 0,
+    cant_ped: cantPed,
+    cant_serv: cantServ,
     currentPosition,
     activo: row.activo,
     ocultoOperativo: row.oculto_operativo,
