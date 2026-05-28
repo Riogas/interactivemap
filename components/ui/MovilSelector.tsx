@@ -1750,7 +1750,9 @@ export default function MovilSelector({
                                               </span>
                                             </span>
                                           </span>
-                                          {movil.currentPosition?.fechaInsLog && (
+                                          {/* Bug B fix: en fecha anterior (USE_NEW + !isToday) no mostrar
+                                              indicador de frescura GPS — el concepto de realtime no aplica. */}
+                                          {isToday && movil.currentPosition?.fechaInsLog && (
                                             <div className="flex flex-col items-end">
                                               <span className={clsx("text-[11px]", isSelected ? "opacity-90" : "text-gray-600")}>
                                                 {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {

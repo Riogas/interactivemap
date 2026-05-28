@@ -1533,8 +1533,15 @@ function DashboardContent() {
   // Para fecha histórica sin storage: usar pendingInactivosIdsRef para que el
   // auto-select effect los incluya cuando corra (después del fetch de posiciones).
   useEffect(() => {
+    // Bug A fix: bajo USE_NEW + fecha anterior, NO restaurar sessionStorage.
+    // El auto-select effect (§4.1) es la fuente de verdad: selecciona todos los
+    // visibles (activo || inactivoDelDia) de la nueva fecha. Restaurar IDs de
+    // una fecha previa produce la intersección incorrecta que causaba los conteos
+    // absurdos (ej. 24 o 216 cuando hay 131 inactivos).
+    const isPastDateUnderNew = USE_NEW && selectedDate !== todayMontevideo();
+
     // Intentar restaurar desde sessionStorage para esta fecha
-    if (selectedDate) {
+    if (!isPastDateUnderNew && selectedDate) {
       const stored = sessionStorage.getItem(`trackmovil:selectedMoviles:${selectedDate}`);
       if (stored) {
         try {
@@ -1563,7 +1570,8 @@ function DashboardContent() {
       }
     }
 
-    // Sin storage: para fecha histórica, señalar que el auto-select debe incluir inactivos.
+    // Sin storage (o USE_NEW + fecha anterior): para fecha histórica, señalar que
+    // el auto-select debe incluir inactivos.
     if (!isToday) {
       pendingInactivosIdsRef.current = inactivosDelDia.map(m => m.id);
     } else {
@@ -3230,7 +3238,9 @@ function DashboardContent() {
 
   return (
     <MotionConfig reducedMotion={preferences.lightMode ? 'always' : 'user'}>
-    <RealtimeHealthBanner />
+    {/* Bug C fix: ocultar banner de salud de realtime en fecha anterior bajo USE_NEW
+        (realtime está pausado; el banner no tiene sentido y puede mostrar "Reconectando"). */}
+    {!(USE_NEW && !isToday) && <RealtimeHealthBanner />}
     <UserEqPassBanner />
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 relative">
       {/* Navbar Simple - Solo logo y espacio para indicadores */}
@@ -3734,30 +3744,33 @@ function DashboardContent() {
       />
 
       {/* Indicador de conexión Realtime - Debajo del navbar, a la derecha */}
+      {/* Bug C fix: ocultar bajo USE_NEW + fecha anterior (realtime pausado, no hay "Conectando"). */}
       {/* right-4 siempre, los botones ya no están en < xl */}
+      {!(USE_NEW && !isToday) && (
       <div id="tour-realtime-indicator" className="absolute right-4 top-[68px] z-50">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           className={`px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-medium ${
-            preferences.realtimeEnabled 
-              ? (isConnected 
-                  ? 'bg-green-500 text-white' 
+            preferences.realtimeEnabled
+              ? (isConnected
+                  ? 'bg-green-500 text-white'
                   : 'bg-yellow-500 text-white')
               : 'bg-gray-500 text-white'
           }`}
         >
           <div className={`w-2 h-2 rounded-full ${
-            preferences.realtimeEnabled 
+            preferences.realtimeEnabled
               ? (isConnected ? 'bg-white animate-pulse' : 'bg-white')
               : 'bg-gray-300'
           }`} />
-          {preferences.realtimeEnabled 
-            ? (isConnected ? '?? Tiempo Real Activo' : '?? Conectando...') 
+          {preferences.realtimeEnabled
+            ? (isConnected ? '?? Tiempo Real Activo' : '?? Conectando...')
             : '?? Modo Estático'
           }
         </motion.div>
       </div>
+      )}
 
       {/* Main Content - Flex grow to fill remaining space */}
       <main className="flex-1 flex overflow-hidden relative">{error && (
