@@ -1042,7 +1042,20 @@ function DashboardContent() {
       const result = await response.json();
 
       if (result.data) {
-        setMoviles(result.data);
+        // Merge preserving client-side state (history, etc.) so that an active
+        // RouteAnimationControl is not dismissed when this fetch completes.
+        // Without this, setMoviles(result.data) wipes `history` and the
+        // condition `selectedMovil && movil.history` in MapView becomes falsy,
+        // closing the animation panel mid-session (Bug #1.2).
+        setMoviles(prev => {
+          const prevById = new Map(prev.map((m) => [m.id, m]));
+          return (result.data as import('@/types').MovilData[]).map((fresh) => {
+            const existing = prevById.get(fresh.id);
+            if (!existing) return fresh;
+            // Preserve client-only fields that the API never returns.
+            return { ...fresh, history: existing.history };
+          });
+        });
         setIsInitialLoad(false);
         setLastUpdate(new Date());
         setError(null);
