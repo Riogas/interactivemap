@@ -84,7 +84,7 @@ export default function TrackingModal({
     const useMovilesDia = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
 
     if (useMovilesDia && escenarioId) {
-      // Rama moviles_dia: leer filas de la fecha con GPS y extraer Set<id>
+      // Rama moviles_dia: leer filas de la fecha y extraer Set<id>
       const params = new URLSearchParams({ escenario: String(escenarioId), fecha: date });
       if (selectedEmpresas && selectedEmpresas.length > 0) {
         params.set('empresas', selectedEmpresas.join(','));
@@ -94,11 +94,11 @@ export default function TrackingModal({
         headers: { 'x-track-isroot': isRoot ?? 'N' },
       })
         .then((res) => res.json())
-        .then((result: { data?: Array<{ id: number; currentPosition?: unknown }> }) => {
+        .then((result: { data?: Array<{ id: number; activo?: boolean; inactivoDelDia?: boolean }> }) => {
           if (Array.isArray(result.data)) {
-            // Solo móviles que tuvieron GPS en la fecha (currentPosition definido)
+            // Universo: activos del día + inactivos del día (igual que el colapsable)
             const ids = new Set<number>(
-              result.data.filter((m) => m.currentPosition != null).map((m) => m.id)
+              result.data.filter((m) => m.activo === true || m.inactivoDelDia === true).map((m) => m.id)
             );
             setActivityMovilIds(ids);
           } else {
@@ -162,15 +162,20 @@ export default function TrackingModal({
       ? base.filter(m => activityMovilIds.has(m.id))
       : base;
 
-    // Filtrar por búsqueda
+    // Filtrar por búsqueda — replica Fix B del colapsable:
+    // numérico puro → startsWith sobre id; con letras → includes sobre name/matricula
     const withSearch = !search.trim()
       ? withActivity
       : (() => {
-          const q = search.toLowerCase();
+          const q = search.trim();
+          const isNumeric = /^\d+$/.test(q);
+          if (isNumeric) {
+            return withActivity.filter(m => String(m.id).startsWith(q));
+          }
+          const lower = q.toLowerCase();
           return withActivity.filter(m =>
-            String(m.id).includes(q) ||
-            (m.name && m.name.toLowerCase().includes(q)) ||
-            (m.matricula && m.matricula.toLowerCase().includes(q))
+            (m.name && m.name.toLowerCase().includes(lower)) ||
+            (m.matricula && m.matricula.toLowerCase().includes(lower))
           );
         })();
 
@@ -276,21 +281,19 @@ export default function TrackingModal({
                         </div>
                       ) : (
                         filteredMoviles.map((m) => {
-                          // R4: Estilo del círculo y texto del estado según fecha
-                          // Si es hoy → usar estado real del móvil (isInactive)
-                          // Si es fecha pasada → gris/inactivo para todos
-                          const forceInactive = !isToday;
+                          // R4: Estilo del círculo y texto del estado según fecha.
+                          // HOY: verde si activo===true; gris si inactivoDelDia===true.
+                          // FECHA ANTERIOR: todos gris (rebuild marca activo=false, inactivo_del_dia=true).
+                          const isActiveToday = isToday && m.activo === true;
                           const circleClass = movilId === m.id
                             ? 'bg-purple-500 text-white'
-                            : (forceInactive || m.isInactive)
-                              ? 'bg-gray-200 text-gray-500'
-                              : 'bg-green-100 text-green-700';
+                            : isActiveToday
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-200 text-gray-500';
 
-                          const statusText = forceInactive
-                            ? '⚪ Inactivo'
-                            : m.isInactive
-                              ? '⚠️ Sin reportar'
-                              : '🟢 Activo';
+                          const statusText = isActiveToday
+                            ? '🟢 Activo'
+                            : '⚪ Inactivo';
 
                           return (
                             <button

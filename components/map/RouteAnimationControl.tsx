@@ -104,7 +104,7 @@ export default function RouteAnimationControl({
     const useMovilesDia = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
 
     if (useMovilesDia && escenarioId) {
-      // Rama moviles_dia: leer filas de la fecha con GPS y extraer Set<id>
+      // Rama moviles_dia: leer filas de la fecha y extraer Set<id>
       const params = new URLSearchParams({ escenario: String(escenarioId), fecha: selectedDate });
       if (selectedEmpresas && selectedEmpresas.length > 0) {
         params.set('empresas', selectedEmpresas.join(','));
@@ -114,11 +114,11 @@ export default function RouteAnimationControl({
         headers: { 'x-track-isroot': isRoot ?? 'N' },
       })
         .then((res) => res.json())
-        .then((result: { data?: Array<{ id: number; currentPosition?: unknown }> }) => {
+        .then((result: { data?: Array<{ id: number; activo?: boolean; inactivoDelDia?: boolean }> }) => {
           if (Array.isArray(result.data)) {
-            // Solo móviles que tuvieron GPS en la fecha (currentPosition definido)
+            // Universo: activos del día + inactivos del día (igual que el colapsable)
             const ids = new Set<number>(
-              result.data.filter((m) => m.currentPosition != null).map((m) => m.id)
+              result.data.filter((m) => m.activo === true || m.inactivoDelDia === true).map((m) => m.id)
             );
             setActivityMovilIds(ids);
           } else {
@@ -171,16 +171,21 @@ export default function RouteAnimationControl({
 
   // Filtrar por actividad + búsqueda para el dropdown primario
   // (excluir el secundario si está seleccionado)
+  // Buscador: numérico puro → startsWith sobre id; con letras → includes sobre name/matricula
   const filteredMoviles = useMemo(() => {
     const base = activityMovilIds !== null
       ? allMoviles.filter(m => activityMovilIds.has(m.id))
       : allMoviles;
     if (!movilSearch.trim()) return base;
-    const q = movilSearch.toLowerCase();
+    const q = movilSearch.trim();
+    const isNumeric = /^\d+$/.test(q);
+    if (isNumeric) {
+      return base.filter(m => String(m.id).startsWith(q));
+    }
+    const lower = q.toLowerCase();
     return base.filter(m =>
-      String(m.id).includes(q) ||
-      (m.name && m.name.toLowerCase().includes(q)) ||
-      (m.matricula && m.matricula.toLowerCase().includes(q))
+      (m.name && m.name.toLowerCase().includes(lower)) ||
+      (m.matricula && m.matricula.toLowerCase().includes(lower))
     );
   }, [allMoviles, movilSearch, activityMovilIds]);
 
@@ -188,17 +193,22 @@ export default function RouteAnimationControl({
   const secondaryMovil = allMoviles.find(m => m.id === secondaryMovilId);
 
   // Filtrar móviles para el dropdown secundario (excluir el primario, filtrar por actividad)
+  // Buscador: numérico puro → startsWith sobre id; con letras → includes sobre name/matricula
   const filteredSecondaryMoviles = useMemo(() => {
     const base = activityMovilIds !== null
       ? allMoviles.filter(m => activityMovilIds.has(m.id))
       : allMoviles;
     const available = base.filter(m => m.id !== selectedMovilId);
     if (!secondarySearch.trim()) return available;
-    const q = secondarySearch.toLowerCase();
+    const q = secondarySearch.trim();
+    const isNumeric = /^\d+$/.test(q);
+    if (isNumeric) {
+      return available.filter(m => String(m.id).startsWith(q));
+    }
+    const lower = q.toLowerCase();
     return available.filter(m =>
-      String(m.id).includes(q) ||
-      (m.name && m.name.toLowerCase().includes(q)) ||
-      (m.matricula && m.matricula.toLowerCase().includes(q))
+      (m.name && m.name.toLowerCase().includes(lower)) ||
+      (m.matricula && m.matricula.toLowerCase().includes(lower))
     );
   }, [allMoviles, selectedMovilId, secondarySearch, activityMovilIds]);
 
@@ -344,13 +354,13 @@ export default function RouteAnimationControl({
                       )}
                       <div className="overflow-y-auto max-h-[200px]">
                         {filteredMoviles.map(m => {
-                          // Badge: si es hoy → estado real, si pasado → gris
-                          const forceInactive = !isToday;
+                          // Badge: verde si activo===true y es hoy; gris en cualquier otro caso
+                          const isActiveToday = isToday && m.activo === true;
                           const circleClass = m.id === selectedMovilId
                             ? 'bg-purple-500 text-white'
-                            : (forceInactive || m.isInactive)
-                              ? 'bg-gray-200 text-gray-600'
-                              : 'bg-green-100 text-green-700';
+                            : isActiveToday
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-200 text-gray-600';
                           return (
                             <button
                               key={m.id}
@@ -451,11 +461,11 @@ export default function RouteAnimationControl({
                         )}
                         <div className="overflow-y-auto max-h-[200px]">
                           {filteredSecondaryMoviles.map(m => {
-                            // Badge: si es hoy → estado real, si pasado → gris
-                            const forceInactive = !isToday;
-                            const circleClass = (forceInactive || m.isInactive)
-                              ? 'bg-gray-200 text-gray-600'
-                              : 'bg-teal-100 text-teal-700';
+                          // Badge: verde si activo===true y es hoy; gris en cualquier otro caso
+                            const isActiveToday = isToday && m.activo === true;
+                            const circleClass = isActiveToday
+                              ? 'bg-teal-100 text-teal-700'
+                              : 'bg-gray-200 text-gray-600';
                             return (
                               <button
                                 key={m.id}
