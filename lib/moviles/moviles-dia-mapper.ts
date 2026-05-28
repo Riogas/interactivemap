@@ -8,6 +8,25 @@
 import type { MovilData } from '@/types/index';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Color helper (lógica legacy de MapView.getMovilColor — sin dep React)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function computeMovilColor(
+  estadoNro: number | null,
+  tamanoLote: number | null,
+  pedidosAsignados: number,
+): string {
+  if (estadoNro === 3) return '#9CA3AF';
+  if (estadoNro === 4) return '#8B5CF6';
+  const tamano = tamanoLote ?? 0;
+  if (tamano > 0 && pedidosAsignados >= tamano) return '#1F2937';
+  const tamanoForPct = tamano || 6;
+  const capacidadRestante = tamanoForPct - pedidosAsignados;
+  const porcentajeDisponible = (capacidadRestante / tamanoForPct) * 100;
+  return porcentajeDisponible < 50 ? '#F59E0B' : '#22C55E';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Forma de la fila que devuelve la vista moviles_dia
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -40,14 +59,15 @@ export interface MovilDiaRow {
  * componentes del dashboard y el hook de realtime.
  *
  * Reglas:
- *  - color se deja vacío deliberadamente. El color real (capacity/status-derived)
- *    lo calcula MapView.getMovilColor(movil) a partir de estadoNro + tamanoLote +
- *    pedidosAsignados. Asignar aquí un color "arcoíris" por movil_id sobreescribía
- *    esa lógica y producía colores incorrectos.
+ *  - color se computa con computeMovilColor (lógica legacy de MapView.getMovilColor)
+ *    a partir de estadoNro + tamanoLote + pedidosAsignados. Los componentes que
+ *    renderizan m.color directamente (ej: colapsable items) obtienen el color correcto.
  *  - currentPosition solo se construye cuando AMBAS coordenadas están presentes.
  *  - Counts con null → 0 (el móvil existe pero no tiene asignaciones hoy).
  */
 export function mapMovilDiaRowToMovilData(row: MovilDiaRow): MovilData {
+  const pedidosAsignados = row.pedidos_pendientes ?? 0;
+
   const currentPosition =
     row.last_gps_lat !== null && row.last_gps_lng !== null
       ? {
@@ -64,16 +84,15 @@ export function mapMovilDiaRowToMovilData(row: MovilDiaRow): MovilData {
   return {
     id: row.movil_id,
     name: row.descripcion ?? String(row.movil_id),
-    // color vacío: MapView.getMovilColor(movil) lo calcula de estadoNro+tamanoLote+pedidosAsignados.
-    color: '',
+    color: computeMovilColor(row.estado_nro ?? null, row.tamano_lote ?? null, pedidosAsignados),
     empresaFleteraId: row.empresa_fletera_id ?? undefined,
     matricula: row.matricula ?? undefined,
     estadoNro: row.estado_nro ?? undefined,
     estadoDesc: row.estado_desc ?? undefined,
     tamanoLote: row.tamano_lote ?? undefined,
-    pedidosAsignados: row.pedidos_pendientes ?? 0,
-    capacidad: row.pedidos_pendientes ?? 0,
-    cant_ped: row.pedidos_pendientes ?? 0,
+    pedidosAsignados,
+    capacidad: pedidosAsignados,
+    cant_ped: pedidosAsignados,
     cant_serv: row.services_pendientes ?? 0,
     currentPosition,
     activo: row.activo,

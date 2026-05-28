@@ -120,11 +120,45 @@ describe('mapMovilDiaRowToMovilData', () => {
     expect(result.inactivoDelDia).toBe(true);
   });
 
-  it('Caso 4: color es string vacío (el mapper no asigna color; MapView lo computa)', () => {
-    const result = mapMovilDiaRowToMovilData(baseRow);
-    expect(typeof result.color).toBe('string');
-    // El mapper intencionalmente deja color='' para que MapView.getMovilColor(movil)
-    // lo derive de estadoNro + tamanoLote + pedidosAsignados.
-    expect(result.color).toBe('');
+  // ── Color tests ──────────────────────────────────────────────────────────
+
+  it('Color: estado_nro=3 → gris (#9CA3AF, NO ACTIVO)', () => {
+    const result = mapMovilDiaRowToMovilData({ ...baseRow, estado_nro: 3 });
+    expect(result.color).toBe('#9CA3AF');
+  });
+
+  it('Color: estado_nro=4 → violeta (#8B5CF6, BAJA MOMENTÁNEA)', () => {
+    const result = mapMovilDiaRowToMovilData({ ...baseRow, estado_nro: 4 });
+    expect(result.color).toBe('#8B5CF6');
+  });
+
+  it('Color: tamano_lote=4, pedidos_pendientes=4 → negro (#1F2937, lote completo)', () => {
+    const result = mapMovilDiaRowToMovilData({
+      ...baseRow,
+      estado_nro: 1,
+      tamano_lote: 4,
+      pedidos_pendientes: 4,
+    });
+    expect(result.color).toBe('#1F2937');
+  });
+
+  it('Color: tamano_lote=4, pedidos_pendientes=1 → 75% disponible → verde (#22C55E)', () => {
+    const result = mapMovilDiaRowToMovilData({
+      ...baseRow,
+      estado_nro: 1,
+      tamano_lote: 4,
+      pedidos_pendientes: 1,
+    });
+    expect(result.color).toBe('#22C55E');
+  });
+
+  it('Color: tamano_lote=4, pedidos_pendientes=3 → 25% disponible → amarillo (#F59E0B)', () => {
+    const result = mapMovilDiaRowToMovilData({
+      ...baseRow,
+      estado_nro: 1,
+      tamano_lote: 4,
+      pedidos_pendientes: 3,
+    });
+    expect(result.color).toBe('#F59E0B');
   });
 });
