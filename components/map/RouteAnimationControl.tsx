@@ -28,6 +28,10 @@ interface RouteAnimationControlProps {
   currentAnimTimeStr?: string; // Hora actual de la animación (modo timeline unificado)
   /** IDs de empresas fleteras seleccionadas — se pasan al endpoint para filtrar actividad. */
   selectedEmpresas?: number[];
+  /** ID del escenario activo — requerido para la rama moviles_dia (flag NEXT_PUBLIC_USE_MOVILES_DIA). */
+  escenarioId?: number;
+  /** 'S' si el usuario es root — se usa para el header x-track-isroot en la rama moviles_dia. */
+  isRoot?: string;
 }
 
 const SPEED_OPTIONS = [
@@ -61,6 +65,8 @@ export default function RouteAnimationControl({
   onMovilDateChange,
   currentAnimTimeStr = '',
   selectedEmpresas,
+  escenarioId,
+  isRoot,
 }: RouteAnimationControlProps) {
   const [movilSearch, setMovilSearch] = useState('');
   const [isMovilDropdownOpen, setIsMovilDropdownOpen] = useState(false);
@@ -95,36 +101,73 @@ export default function RouteAnimationControl({
     setActivityError(false);
     setActivityMovilIds(null);
 
-    const params = new URLSearchParams({ date: selectedDate });
-    if (selectedEmpresas && selectedEmpresas.length > 0) {
-      params.set('empresaIds', selectedEmpresas.join(','));
-    }
+    const useMovilesDia = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
 
-    fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
-      .then((res) => res.json())
-      .then((result: { success: boolean; data?: number[] }) => {
-        if (result.success && Array.isArray(result.data)) {
-          setActivityMovilIds(new Set(result.data));
-        } else {
-          console.warn('[RouteAnimationControl] moviles-with-activity respondió sin data:', result);
+    if (useMovilesDia && escenarioId) {
+      // Rama moviles_dia: leer filas de la fecha con GPS y extraer Set<id>
+      const params = new URLSearchParams({ escenario: String(escenarioId), fecha: selectedDate });
+      if (selectedEmpresas && selectedEmpresas.length > 0) {
+        params.set('empresas', selectedEmpresas.join(','));
+      }
+      fetch(`/api/moviles-dia?${params.toString()}`, {
+        signal: controller.signal,
+        headers: { 'x-track-isroot': isRoot ?? 'N' },
+      })
+        .then((res) => res.json())
+        .then((result: { data?: Array<{ id: number; currentPosition?: unknown }> }) => {
+          if (Array.isArray(result.data)) {
+            // Solo móviles que tuvieron GPS en la fecha (currentPosition definido)
+            const ids = new Set<number>(
+              result.data.filter((m) => m.currentPosition != null).map((m) => m.id)
+            );
+            setActivityMovilIds(ids);
+          } else {
+            console.warn('[RouteAnimationControl] moviles-dia respondió sin data:', result);
+            setActivityError(true);
+            setActivityMovilIds(null);
+          }
+        })
+        .catch((err: Error) => {
+          if (err.name === 'AbortError') return;
+          console.error('[RouteAnimationControl] Error al cargar moviles-dia:', err);
           setActivityError(true);
           setActivityMovilIds(null);
-        }
-      })
-      .catch((err: Error) => {
-        if (err.name === 'AbortError') return;
-        console.error('[RouteAnimationControl] Error al cargar móviles con actividad:', err);
-        setActivityError(true);
-        setActivityMovilIds(null); // Fallback: mostrar todos
-      })
-      .finally(() => {
-        setActivityLoading(false);
-      });
+        })
+        .finally(() => {
+          setActivityLoading(false);
+        });
+    } else {
+      // Rama original: /api/moviles-with-activity
+      const params = new URLSearchParams({ date: selectedDate });
+      if (selectedEmpresas && selectedEmpresas.length > 0) {
+        params.set('empresaIds', selectedEmpresas.join(','));
+      }
+      fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((result: { success: boolean; data?: number[] }) => {
+          if (result.success && Array.isArray(result.data)) {
+            setActivityMovilIds(new Set(result.data));
+          } else {
+            console.warn('[RouteAnimationControl] moviles-with-activity respondió sin data:', result);
+            setActivityError(true);
+            setActivityMovilIds(null);
+          }
+        })
+        .catch((err: Error) => {
+          if (err.name === 'AbortError') return;
+          console.error('[RouteAnimationControl] Error al cargar móviles con actividad:', err);
+          setActivityError(true);
+          setActivityMovilIds(null); // Fallback: mostrar todos
+        })
+        .finally(() => {
+          setActivityLoading(false);
+        });
+    }
 
     return () => {
       controller.abort();
     };
-  }, [selectedDate, selectedEmpresas]);
+  }, [selectedDate, selectedEmpresas, escenarioId, isRoot]);
 
   // Filtrar por actividad + búsqueda para el dropdown primario
   // (excluir el secundario si está seleccionado)

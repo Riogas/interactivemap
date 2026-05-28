@@ -151,6 +151,10 @@ interface MapViewProps {
   zonaPattern?: ZonaPattern;
   /** Overrides de colores del usuario para las refs visuales Ref#1..Ref#26 */
   visualRefs?: Record<string, string> | null;
+  /** ID del escenario activo — se pasa al RouteAnimationControl para la rama moviles_dia. */
+  escenarioId?: number;
+  /** 'S' si el usuario es root — se pasa al RouteAnimationControl para el header x-track-isroot. */
+  isRoot?: string;
 }
 
 
@@ -1098,6 +1102,8 @@ const MapView = memo(function MapView({
   serviceHalo = false,
   zonaPattern = 'liso',
   visualRefs,
+  escenarioId,
+  isRoot,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -3408,6 +3414,8 @@ const MapView = memo(function MapView({
           onMovilDateChange={onMovilDateChange}
           currentAnimTimeStr={currentAnimTimeStr}
           selectedEmpresas={selectedEmpresas}
+          escenarioId={escenarioId}
+          isRoot={isRoot}
         />
       )}
 

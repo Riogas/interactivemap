@@ -3406,6 +3406,8 @@ function DashboardContent() {
               })()
             : undefined
         }
+        escenarioId={escenarioId ?? undefined}
+        isRoot={user?.isRoot}
       />
 
       {/* Modal de Vista Extendida de Pedidos */}
@@ -3974,6 +3976,8 @@ function DashboardContent() {
                 serviceHalo={preferences.serviceHalo ?? false}
                 zonaPattern={preferences.zonaPattern ?? 'liso'}
                 visualRefs={preferences.visualRefs}
+                escenarioId={escenarioId ?? undefined}
+                isRoot={user?.isRoot}
               />
             </motion.div>
           </>

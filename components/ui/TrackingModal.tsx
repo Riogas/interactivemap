@@ -22,6 +22,10 @@ interface TrackingModalProps {
    * Si es undefined no se aplica restricción (comportamiento original).
    */
   minDate?: string;
+  /** ID del escenario activo — requerido para la rama moviles_dia (flag NEXT_PUBLIC_USE_MOVILES_DIA). */
+  escenarioId?: number;
+  /** 'S' si el usuario es root — se usa para el header x-track-isroot en la rama moviles_dia. */
+  isRoot?: string;
 }
 
 export default function TrackingModal({
@@ -34,6 +38,8 @@ export default function TrackingModal({
   selectedMovil: preSelectedMovil,
   selectedEmpresas,
   minDate,
+  escenarioId,
+  isRoot,
 }: TrackingModalProps) {
   const [movilId, setMovilId] = useState<number | ''>(preSelectedMovil || '');
   const [date, setDate] = useState(selectedDate);
@@ -75,37 +81,74 @@ export default function TrackingModal({
     setActivityError(false);
     setActivityMovilIds(null);
 
-    const params = new URLSearchParams({ date });
-    if (selectedEmpresas && selectedEmpresas.length > 0) {
-      params.set('empresaIds', selectedEmpresas.join(','));
-    }
+    const useMovilesDia = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
 
-    fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
-      .then((res) => res.json())
-      .then((result: { success: boolean; data?: number[] }) => {
-        if (result.success && Array.isArray(result.data)) {
-          setActivityMovilIds(new Set(result.data));
-        } else {
-          // API respondió con error — fallback: mostrar todos
-          console.warn('[TrackingModal] moviles-with-activity respondió sin data:', result);
+    if (useMovilesDia && escenarioId) {
+      // Rama moviles_dia: leer filas de la fecha con GPS y extraer Set<id>
+      const params = new URLSearchParams({ escenario: String(escenarioId), fecha: date });
+      if (selectedEmpresas && selectedEmpresas.length > 0) {
+        params.set('empresas', selectedEmpresas.join(','));
+      }
+      fetch(`/api/moviles-dia?${params.toString()}`, {
+        signal: controller.signal,
+        headers: { 'x-track-isroot': isRoot ?? 'N' },
+      })
+        .then((res) => res.json())
+        .then((result: { data?: Array<{ id: number; currentPosition?: unknown }> }) => {
+          if (Array.isArray(result.data)) {
+            // Solo móviles que tuvieron GPS en la fecha (currentPosition definido)
+            const ids = new Set<number>(
+              result.data.filter((m) => m.currentPosition != null).map((m) => m.id)
+            );
+            setActivityMovilIds(ids);
+          } else {
+            console.warn('[TrackingModal] moviles-dia respondió sin data:', result);
+            setActivityError(true);
+            setActivityMovilIds(null);
+          }
+        })
+        .catch((err: Error) => {
+          if (err.name === 'AbortError') return;
+          console.error('[TrackingModal] Error al cargar moviles-dia:', err);
           setActivityError(true);
           setActivityMovilIds(null);
-        }
-      })
-      .catch((err: Error) => {
-        if (err.name === 'AbortError') return; // Fetch cancelado intencionalmente
-        console.error('[TrackingModal] Error al cargar móviles con actividad:', err);
-        setActivityError(true);
-        setActivityMovilIds(null); // Fallback: mostrar todos
-      })
-      .finally(() => {
-        setActivityLoading(false);
-      });
+        })
+        .finally(() => {
+          setActivityLoading(false);
+        });
+    } else {
+      // Rama original: /api/moviles-with-activity
+      const params = new URLSearchParams({ date });
+      if (selectedEmpresas && selectedEmpresas.length > 0) {
+        params.set('empresaIds', selectedEmpresas.join(','));
+      }
+      fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((result: { success: boolean; data?: number[] }) => {
+          if (result.success && Array.isArray(result.data)) {
+            setActivityMovilIds(new Set(result.data));
+          } else {
+            // API respondió con error — fallback: mostrar todos
+            console.warn('[TrackingModal] moviles-with-activity respondió sin data:', result);
+            setActivityError(true);
+            setActivityMovilIds(null);
+          }
+        })
+        .catch((err: Error) => {
+          if (err.name === 'AbortError') return; // Fetch cancelado intencionalmente
+          console.error('[TrackingModal] Error al cargar móviles con actividad:', err);
+          setActivityError(true);
+          setActivityMovilIds(null); // Fallback: mostrar todos
+        })
+        .finally(() => {
+          setActivityLoading(false);
+        });
+    }
 
     return () => {
       controller.abort();
     };
-  }, [isOpen, date, selectedEmpresas]);
+  }, [isOpen, date, selectedEmpresas, escenarioId, isRoot]);
 
   // R2 + R3: Filtrar por actividad + ocultos + búsqueda, ordenar por nro (m.id)
   const filteredMoviles = useMemo(() => {
