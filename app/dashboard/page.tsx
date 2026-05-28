@@ -987,6 +987,55 @@ function DashboardContent() {
     }
   }, [selectedEmpresas, empresas.length, isInitialLoad, enrichMovilesWithExtendedData, removeDuplicateMoviles, user?.allowedEmpresas]);
 
+  // Función que lee la lista de móviles desde el read model moviles_dia.
+  // Se usa en lugar de fetchPositions() cuando NEXT_PUBLIC_USE_MOVILES_DIA === 'true'.
+  // Reemplaza el state completo (sin reconciliación add/remove): la tabla es fuente de verdad.
+  const fetchMovilesDia = useCallback(async (): Promise<{ added: number; removed: number; success: boolean }> => {
+    try {
+      const userHasRestriction = (user?.allowedEmpresas?.length ?? 0) > 0;
+      if (userHasRestriction && selectedEmpresas.length === 0) {
+        setMoviles([]);
+        setIsLoading(false);
+        setIsInitialLoad(false);
+        return { added: 0, removed: 0, success: true };
+      }
+
+      const params = new URLSearchParams();
+      params.append('escenario', String(escenarioId));
+      if (selectedDate) {
+        params.append('fecha', selectedDate);
+      }
+
+      const userDeselectedSome = selectedEmpresas.length > 0 && selectedEmpresas.length < empresas.length;
+      if (selectedEmpresas.length > 0 && (userHasRestriction || userDeselectedSome)) {
+        params.append('empresas', selectedEmpresas.join(','));
+      }
+
+      const url = `/api/moviles-dia?${params.toString()}`;
+      const response = await fetch(url, {
+        headers: { 'x-track-isroot': user?.isRoot ?? 'N' },
+      });
+      const result = await response.json();
+
+      if (result.data) {
+        setMoviles(result.data);
+        setIsInitialLoad(false);
+        setLastUpdate(new Date());
+        setError(null);
+        return { added: 0, removed: 0, success: true };
+      } else {
+        setError(result.error || 'Error al cargar datos desde moviles_dia');
+        return { added: 0, removed: 0, success: false };
+      }
+    } catch (err) {
+      console.error('? Error fetching moviles-dia:', err);
+      setError('Error de conexión');
+      return { added: 0, removed: 0, success: false };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedEmpresas, empresas.length, escenarioId, selectedDate, user?.allowedEmpresas, user?.isRoot]);
+
   // Función para cargar TODOS los pedidos del día desde API
   // El filtrado por móviles seleccionados se hace client-side en MovilSelector y MapView
   const fetchPedidos = useCallback(async () => {
@@ -1386,7 +1435,8 @@ function DashboardContent() {
       setIsInitialLoad(true); // Forzar recarga completa cuando cambian las empresas o la fecha
       userExplicitlyCleared.current = false; // Reset: recarga = nueva selección automática
       setSelectedMoviles([]); // Limpiar selección para que auto-selección re-seleccione los filtrados
-      fetchPositions().then((result) => {
+      const loadFn = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true' ? fetchMovilesDia : fetchPositions;
+      loadFn().then((result) => {
         if (result.success) {
           // Marcar el initial load como un sync exitoso para que el indicador
           // arranque en ?? en vez de ?? "sin sync" durante los primeros 60s.
@@ -1395,7 +1445,7 @@ function DashboardContent() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEmpresas, isLoadingEmpresas, selectedDate]); // Remover fetchPositions de dependencias para evitar loops
+  }, [selectedEmpresas, isLoadingEmpresas, selectedDate]); // Remover fetchPositions/fetchMovilesDia de dependencias para evitar loops
 
   // Cuando cambia selectedDate, señalar al auto-select effect qué inactivos incluir.
   // Para sessionStorage: intentar restaurar; si existe, usar esos IDs directamente.
@@ -2761,10 +2811,15 @@ function DashboardContent() {
     });
   }, [pedidosCompletos, isTabVisible]); // Se ejecuta cada vez que cambian los pedidos o visibilidad
 
-  // Initial fetch - posiciones
+  // Initial fetch - posiciones (gated por feature flag NEXT_PUBLIC_USE_MOVILES_DIA)
   useEffect(() => {
-    fetchPositions();
-  }, [fetchPositions]);
+    if (process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true') {
+      fetchMovilesDia();
+    } else {
+      fetchPositions();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchMovilesDia, fetchPositions]);
 
   // Fetch pedidos cuando cambian los móviles seleccionados o la fecha
   useEffect(() => {
