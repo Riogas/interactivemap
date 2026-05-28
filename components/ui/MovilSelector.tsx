@@ -1715,7 +1715,9 @@ export default function MovilSelector({
                                   </div>
                                   {inactivosNuevo.map((movil) => {
                                     const isSelected = selectedMoviles.includes(movil.id);
-                                    const loteColor = '#9CA3AF'; // gris para inactivos del día
+                                    // Para fecha anterior: dot y estilos totalmente grises (neutro).
+                                    // Para hoy: dot rojo — señal de alarma ("algo salió mal").
+                                    const dotColor = isToday ? '#DC2626' : '#9CA3AF';
                                     return (
                                       <button
                                         key={movil.id}
@@ -1723,9 +1725,14 @@ export default function MovilSelector({
                                         className={clsx(
                                           'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2',
                                           isSelected
-                                            ? 'text-white shadow-md border-transparent bg-gray-400'
-                                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border-gray-200'
+                                            ? 'text-white shadow-md border-transparent'
+                                            : isToday
+                                              ? 'bg-red-50 border-red-200 hover:bg-red-100'
+                                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
                                         )}
+                                        style={{
+                                          backgroundColor: isSelected ? (isToday ? '#DC2626' : '#9CA3AF') : undefined,
+                                        }}
                                       >
                                         <span className="flex items-center justify-between">
                                           <span className="flex items-center gap-2">
@@ -1734,23 +1741,29 @@ export default function MovilSelector({
                                               isSelected ? "bg-white border-white" : "bg-white border-gray-300"
                                             )}>
                                               {isSelected && (
-                                                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <svg className="w-3 h-3" style={{ color: isToday ? '#DC2626' : '#9CA3AF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                                 </svg>
                                               )}
                                             </div>
-                                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: loteColor }} />
-                                            <span className="text-sm font-medium leading-tight text-gray-500">
+                                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: dotColor }} />
+                                            <span className={clsx("text-sm font-medium leading-tight", isToday ? "text-gray-700" : "text-gray-700")}>
                                               {movil.id}
                                               {isToday && (
                                                 <>{' – '}{movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}</>
                                               )}
-                                              <span className="ml-1.5 text-[9px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
-                                                Inactivo
-                                              </span>
+                                              {isToday ? (
+                                                <span className="ml-1.5 text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                  Inactivo
+                                                </span>
+                                              ) : (
+                                                <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                  Inactivo
+                                                </span>
+                                              )}
                                             </span>
                                           </span>
-                                          {/* Bug B fix: en fecha anterior (USE_NEW + !isToday) no mostrar
+                                          {/* En fecha anterior (USE_NEW + !isToday) no mostrar
                                               indicador de frescura GPS — el concepto de realtime no aplica. */}
                                           {isToday && movil.currentPosition?.fechaInsLog && (
                                             <div className="flex flex-col items-end">
