@@ -194,6 +194,9 @@ interface MovilSelectorProps {
   tiposServicio?: string[]; // Tipos de servicio dinámicos desde moviles_zonas
   onOpenRanking?: () => void; // Abrir modal de ranking de móviles
   onOpenTracking?: () => void; // Abrir modal de ver recorrido de un móvil
+  /** §4.1: true cuando la fecha seleccionada es hoy (realtime ON). Solo relevante con
+   *  NEXT_PUBLIC_USE_MOVILES_DIA=true; ignorado en el camino viejo. */
+  isToday?: boolean;
   // Empresa fletera props
   empresas?: EmpresaFleteraSupabase[];
   selectedEmpresas?: number[];
@@ -285,6 +288,7 @@ export default function MovilSelector({
   tiposServicio = [],
   onOpenRanking,
   onOpenTracking,
+  isToday = true,
   empresas = [],
   selectedEmpresas = [],
   onEmpresasChange,
@@ -409,6 +413,25 @@ export default function MovilSelector({
     }
   }, [movilesFilters, onFiltersChange]);
 
+  // §4.1 (NEXT_PUBLIC_USE_MOVILES_DIA): listas derivadas para el nuevo comportamiento.
+  // Cuando el flag está ON: activos = m.activo===true; inactivos = resto.
+  // Cuando el flag está OFF: estas listas se ignoran y el camino viejo sigue.
+  const USE_MOVILES_DIA_SELECTOR = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
+
+  const activosNuevo = useMemo(() => {
+    if (!USE_MOVILES_DIA_SELECTOR) return [];
+    return moviles
+      .filter(m => m.activo === true)
+      .sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_SELECTOR, moviles]);
+
+  const inactivosNuevo = useMemo(() => {
+    if (!USE_MOVILES_DIA_SELECTOR) return [];
+    return moviles
+      .filter(m => m.activo !== true)
+      .sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_SELECTOR, moviles]);
+
   // Filtrar y ordenar móviles
   const filteredMoviles = useMemo(() => {
     let result = [...moviles];
@@ -494,7 +517,10 @@ export default function MovilSelector({
   // allSelected (alcance "colapsable"): se usa para el botón "Seleccionar/
   // Deseleccionar todos" del panel y refleja si todos los visibles del filtro
   // local (search + filtros del colapsable) están marcados.
-  const allSelected = filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
+  // §4.1: cuando el flag está ON, "todos" = activos + inactivos.
+  const allSelected = USE_MOVILES_DIA_SELECTOR
+    ? moviles.length > 0 && moviles.every(m => selectedMoviles.includes(m.id))
+    : filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
 
   // allEmpresasSelected: true cuando el usuario tiene seleccionadas todas las
   // empresas disponibles (o cuando no tiene multi-empresa selector — caso
@@ -850,10 +876,15 @@ export default function MovilSelector({
     return empresas.filter(e => e.nombre.toLowerCase().includes(q));
   }, [empresas, empresaSearch]);
 
+  // §4.1: título del colapsable de móviles con contadores de activos e inactivos
+  const movilesCategoryTitle = USE_MOVILES_DIA_SELECTOR
+    ? `Activos: ${activosNuevo.length} | Inactivos: ${inactivosNuevo.length}`
+    : 'Móviles';
+
   // Categorías disponibles
   const categories: Category[] = [
     ...(showEmpresaSelector ? [{ key: 'empresas' as CategoryKey, title: 'Empresa Fletera', icon: '🏢', count: selectedEmpresas.length }] : []),
-    { key: 'moviles', title: 'Móviles', icon: '🚗', count: filteredMoviles.length },
+    { key: 'moviles', title: movilesCategoryTitle, icon: '🚗', count: USE_MOVILES_DIA_SELECTOR ? moviles.length : filteredMoviles.length },
     { key: 'pedidos', title: 'Pedidos', icon: '📦', count: filteredPedidos.length },
     { key: 'services', title: 'Services', icon: '🔧', count: filteredServices.length },
     { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: puntosInteres.length },
@@ -1485,15 +1516,11 @@ export default function MovilSelector({
                             </span>
                           </button>
 
-                          {/* Lista de moviles - virtualizada con react-window */}
-                          {filteredMoviles.length === 0 ? null : (
-                            <VirtualList
-                              items={filteredMoviles}
-                              // itemHeight 55: button real ~54px (py-2 + border-2 + 2 lineas) + 1px gap.
-                              height={Math.min(filteredMoviles.length * 55, Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 300))}
-                              itemHeight={55}
-                              overscanCount={5}
-                              renderItem={(movil) => {
+                          {/* §4.1 — Nuevo camino (NEXT_PUBLIC_USE_MOVILES_DIA) */}
+                          {USE_MOVILES_DIA_SELECTOR ? (
+                            <>
+                              {/* Activos: lista ordenada por ID, items interactivos normales */}
+                              {activosNuevo.map((movil) => {
                                 const isSelected = selectedMoviles.includes(movil.id);
                                 const isInactive = movil.isInactive;
                                 const isNoActivo = movil.estadoNro === 3;
@@ -1527,12 +1554,9 @@ export default function MovilSelector({
                                   >
                                     <span className="flex items-center justify-between">
                                       <span className="flex items-center gap-2">
-                                        {/* Checkbox visual */}
                                         <div className={clsx(
                                           "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
-                                          isSelected
-                                            ? "bg-white border-white"
-                                            : "bg-white border-gray-300"
+                                          isSelected ? "bg-white border-white" : "bg-white border-gray-300"
                                         )}>
                                           {isSelected && (
                                             <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#7C3AED' : loteColor }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1540,67 +1564,17 @@ export default function MovilSelector({
                                             </svg>
                                           )}
                                         </div>
-
-                                        {isNoActivo ? (
-                                          <span className="relative inline-block">
-                                            <svg
-                                              className="w-5 h-5 text-gray-400"
-                                              fill="currentColor"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                                            </svg>
-                                          </span>
-                                        ) : isBajaMomentanea ? (
-                                          <span className="relative inline-block">
-                                            <svg
-                                              className="w-5 h-5 text-violet-500"
-                                              fill="currentColor"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                                            </svg>
-                                          </span>
-                                        ) : isInactive ? (
-                                          <span className="relative inline-block">
-                                            <svg
-                                              className="w-5 h-5 text-red-600 animate-pulse"
-                                              fill="currentColor"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
-                                            </svg>
-                                            <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                            </span>
-                                          </span>
-                                        ) : (
-                                          <div
-                                            className="w-4 h-4 rounded-full"
-                                            style={{ backgroundColor: loteColor }}
-                                          />
-                                        )}
-                                        {/* Formato compacto: NroMovil - PedAsignados/Capacidad */}
-                                        <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
+                                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: loteColor }} />
+                                        <span className={clsx("text-sm font-medium leading-tight", !isSelected && (loteCompleto ? "text-gray-900 font-semibold" : ""))}>
                                           {movil.id}
-                                          {' – '}
-                                          {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
-                                          {isNoActivo && (
-                                            <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
-                                              No activo
-                                            </span>
-                                          )}
-                                          {isBajaMomentanea && (
-                                            <span className="ml-1.5 text-[9px] bg-violet-200 text-violet-700 px-1.5 py-0.5 rounded-full font-semibold uppercase">
-                                              Baja mom.
-                                            </span>
+                                          {isToday && (
+                                            <>{' – '}{movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}</>
                                           )}
                                         </span>
                                       </span>
-                                      {movil.currentPosition && (
+                                      {isToday && movil.currentPosition && (
                                         <div className="flex flex-col items-end">
-                                          <span className={clsx("text-[11px]", isInactive ? "text-red-100 font-semibold" : isSelected ? "opacity-90" : "text-gray-600")}>
+                                          <span className={clsx("text-[11px]", isSelected ? "opacity-90" : "text-gray-600")}>
                                             {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
                                               hour: '2-digit',
                                               minute: '2-digit',
@@ -1608,7 +1582,7 @@ export default function MovilSelector({
                                           </span>
                                           {(() => {
                                             const now = Date.now();
-                                            const coordDate = new Date(movil.currentPosition.fechaInsLog).getTime();
+                                            const coordDate = new Date(movil.currentPosition!.fechaInsLog).getTime();
                                             const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
                                             if (minutesDiff < 1) {
                                               return <span className={clsx("text-[10px] font-medium", isSelected ? "text-green-200" : "text-green-600")}>Ahora</span>;
@@ -1627,56 +1601,253 @@ export default function MovilSelector({
                                     </span>
                                   </button>
                                 );
-                              }}
-                            />
-                          )}
-
-                          {/* Sub-sección: inactivos del día */}
-                          {inactivosDelDia.length > 0 && (
-                            <>
-                              <div className="my-2 border-t border-gray-200" />
-                              <div className="text-xs font-medium text-gray-500 mb-1 px-2">
-                                Inactivos del día ({inactivosDelDia.length})
-                              </div>
-                              {inactivosDelDia.map(movil => {
-                                const isSelected = selectedMoviles.includes(movil.id);
-                                return (
-                                  <button
-                                    key={movil.id}
-                                    onClick={() => onToggleMovil(movil.id)}
-                                    className={clsx(
-                                      'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2 opacity-70',
-                                      isSelected
-                                        ? 'bg-gray-500 text-white shadow-md border-transparent'
-                                        : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border-gray-200 italic'
-                                    )}
-                                  >
-                                    <span className="flex items-center gap-2">
-                                      <div className={clsx(
-                                        "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
-                                        isSelected ? "bg-white border-white" : "bg-white border-gray-300"
-                                      )}>
-                                        {isSelected && (
-                                          <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                          </svg>
-                                        )}
-                                      </div>
-                                      <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                                      </svg>
-                                      <span className="text-sm font-medium leading-tight text-gray-400 italic">
-                                        {movil.id}
-                                        {' – '}
-                                        {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
-                                        <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
-                                          Inactivo
-                                        </span>
-                                      </span>
-                                    </span>
-                                  </button>
-                                );
                               })}
+
+                              {/* Subtítulo "Inactivos" y lista de inactivos (inertes — click = no-op) */}
+                              {inactivosNuevo.length > 0 && (
+                                <>
+                                  <div className="my-2 border-t border-gray-200" />
+                                  <div className="text-xs font-medium text-gray-500 mb-1 px-2">
+                                    Inactivos ({inactivosNuevo.length})
+                                  </div>
+                                  {inactivosNuevo.map((movil) => {
+                                    const isSelected = selectedMoviles.includes(movil.id);
+                                    return (
+                                      // Inactivos inertes: cursor-default, sin onClick. La selección visual
+                                      // queda como estaba (no se puede cambiar haciendo click).
+                                      // Task 5.2 excluirá estos del mapa; acá solo los mostramos sin acción.
+                                      <div
+                                        key={movil.id}
+                                        className={clsx(
+                                          'w-full py-2 px-3 rounded-lg font-medium border-2 opacity-60 cursor-default select-none',
+                                          isSelected
+                                            ? 'bg-gray-400 text-white border-transparent'
+                                            : 'bg-gray-50 text-gray-400 border-gray-200 italic'
+                                        )}
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          <div className={clsx(
+                                            "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                            isSelected ? "bg-white border-white" : "bg-white border-gray-300"
+                                          )}>
+                                            {isSelected && (
+                                              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                              </svg>
+                                            )}
+                                          </div>
+                                          <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                          </svg>
+                                          <span className="text-sm font-medium leading-tight text-gray-400 italic">
+                                            {movil.id}
+                                            <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                              Inactivo
+                                            </span>
+                                          </span>
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {/* Camino viejo: VirtualList de filteredMoviles + sub-sección inactivosDelDia */}
+                              {filteredMoviles.length === 0 ? null : (
+                                <VirtualList
+                                  items={filteredMoviles}
+                                  // itemHeight 55: button real ~54px (py-2 + border-2 + 2 lineas) + 1px gap.
+                                  height={Math.min(filteredMoviles.length * 55, Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 300))}
+                                  itemHeight={55}
+                                  overscanCount={5}
+                                  renderItem={(movil) => {
+                                    const isSelected = selectedMoviles.includes(movil.id);
+                                    const isInactive = movil.isInactive;
+                                    const isNoActivo = movil.estadoNro === 3;
+                                    const isBajaMomentanea = movil.estadoNro === 4;
+                                    const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
+                                    const loteColor = loteCompleto
+                                      ? '#1F2937'
+                                      : (() => {
+                                          const tam = movil.tamanoLote || 6;
+                                          const ped = movil.capacidad || 0;
+                                          const pct = ((tam - ped) / tam) * 100;
+                                          return pct < 50 ? '#F59E0B' : movil.color;
+                                        })();
+                                    return (
+                                      <button
+                                        key={movil.id}
+                                        onClick={() => onToggleMovil(movil.id)}
+                                        className={clsx(
+                                          'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2',
+                                          isSelected
+                                            ? 'text-white shadow-md border-transparent'
+                                            : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
+                                          isInactive && !isSelected && 'bg-red-50 border-red-200',
+                                          isInactive && !isNoActivo && !isBajaMomentanea && 'animate-pulse-slow',
+                                          isNoActivo && !isSelected && 'bg-gray-50 border-gray-300 opacity-75',
+                                          isBajaMomentanea && !isSelected && 'bg-violet-50 border-violet-300 opacity-85'
+                                        )}
+                                        style={{
+                                          backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#8B5CF6' : loteColor) : undefined,
+                                        }}
+                                      >
+                                        <span className="flex items-center justify-between">
+                                          <span className="flex items-center gap-2">
+                                            {/* Checkbox visual */}
+                                            <div className={clsx(
+                                              "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                              isSelected
+                                                ? "bg-white border-white"
+                                                : "bg-white border-gray-300"
+                                            )}>
+                                              {isSelected && (
+                                                <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#7C3AED' : loteColor }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                              )}
+                                            </div>
+
+                                            {isNoActivo ? (
+                                              <span className="relative inline-block">
+                                                <svg
+                                                  className="w-5 h-5 text-gray-400"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                                </svg>
+                                              </span>
+                                            ) : isBajaMomentanea ? (
+                                              <span className="relative inline-block">
+                                                <svg
+                                                  className="w-5 h-5 text-violet-500"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                                                </svg>
+                                              </span>
+                                            ) : isInactive ? (
+                                              <span className="relative inline-block">
+                                                <svg
+                                                  className="w-5 h-5 text-red-600 animate-pulse"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                                                </svg>
+                                                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                </span>
+                                              </span>
+                                            ) : (
+                                              <div
+                                                className="w-4 h-4 rounded-full"
+                                                style={{ backgroundColor: loteColor }}
+                                              />
+                                            )}
+                                            {/* Formato compacto: NroMovil - PedAsignados/Capacidad */}
+                                            <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
+                                              {movil.id}
+                                              {' – '}
+                                              {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
+                                              {isNoActivo && (
+                                                <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                  No activo
+                                                </span>
+                                              )}
+                                              {isBajaMomentanea && (
+                                                <span className="ml-1.5 text-[9px] bg-violet-200 text-violet-700 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                  Baja mom.
+                                                </span>
+                                              )}
+                                            </span>
+                                          </span>
+                                          {movil.currentPosition && (
+                                            <div className="flex flex-col items-end">
+                                              <span className={clsx("text-[11px]", isInactive ? "text-red-100 font-semibold" : isSelected ? "opacity-90" : "text-gray-600")}>
+                                                {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                })}
+                                              </span>
+                                              {(() => {
+                                                const now = Date.now();
+                                                const coordDate = new Date(movil.currentPosition!.fechaInsLog).getTime();
+                                                const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
+                                                if (minutesDiff < 1) {
+                                                  return <span className={clsx("text-[10px] font-medium", isSelected ? "text-green-200" : "text-green-600")}>Ahora</span>;
+                                                } else if (minutesDiff < 5) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-green-200" : "text-green-500")}>{minutesDiff}m</span>;
+                                                } else if (minutesDiff < 15) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-yellow-200" : "text-yellow-600")}>{minutesDiff}m</span>;
+                                                } else if (minutesDiff < 30) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-orange-200" : "text-orange-600")}>{minutesDiff}m</span>;
+                                                } else {
+                                                  return <span className={clsx("text-[10px] font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m</span>;
+                                                }
+                                              })()}
+                                            </div>
+                                          )}
+                                        </span>
+                                      </button>
+                                    );
+                                  }}
+                                />
+                              )}
+
+                              {/* Sub-sección: inactivos del día */}
+                              {inactivosDelDia.length > 0 && (
+                                <>
+                                  <div className="my-2 border-t border-gray-200" />
+                                  <div className="text-xs font-medium text-gray-500 mb-1 px-2">
+                                    Inactivos del día ({inactivosDelDia.length})
+                                  </div>
+                                  {inactivosDelDia.map(movil => {
+                                    const isSelected = selectedMoviles.includes(movil.id);
+                                    return (
+                                      <button
+                                        key={movil.id}
+                                        onClick={() => onToggleMovil(movil.id)}
+                                        className={clsx(
+                                          'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2 opacity-70',
+                                          isSelected
+                                            ? 'bg-gray-500 text-white shadow-md border-transparent'
+                                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border-gray-200 italic'
+                                        )}
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          <div className={clsx(
+                                            "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                            isSelected ? "bg-white border-white" : "bg-white border-gray-300"
+                                          )}>
+                                            {isSelected && (
+                                              <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                              </svg>
+                                            )}
+                                          </div>
+                                          <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                          </svg>
+                                          <span className="text-sm font-medium leading-tight text-gray-400 italic">
+                                            {movil.id}
+                                            {' – '}
+                                            {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
+                                            <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                              Inactivo
+                                            </span>
+                                          </span>
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </>
+                              )}
                             </>
                           )}
                         </div>

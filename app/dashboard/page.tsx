@@ -1378,7 +1378,10 @@ function DashboardContent() {
   //  c) Modo custom (flag=true): NO auto-agregar nuevos, pero sí limpiar
   //     huérfanos (IDs que ya no están en visibleIds), porque sino el
   //     badge cuenta selecciones inexistentes.
+  // §4.1: cuando NEXT_PUBLIC_USE_MOVILES_DIA=true este efecto no corre;
+  //       la selección inicial la maneja el efecto USE_NEW de abajo.
   useEffect(() => {
+    if (USE_NEW) return;
     if (isInitialLoad) return;
     if (movilesFiltered.length === 0) return;
 
@@ -1439,6 +1442,34 @@ function DashboardContent() {
       return prev;
     });
   }, [movilesFiltered.length, isInitialLoad, movilesFiltered, applyActivityFilter]);
+
+  // §4.1 (NEXT_PUBLIC_USE_MOVILES_DIA): selección automática para el camino nuevo.
+  //  - Primera carga: seleccionar todos (activos + inactivos).
+  //  - Llega un móvil nuevo y el usuario tenía "todos" → auto-agregar.
+  //  - Si el usuario deseleccionó alguno (userExplicitlyCleared=true), no tocar.
+  // TODO §5.2: los inactivos del día no deben dibujarse en el mapa (fuera del scope de esta tarea).
+  useEffect(() => {
+    if (!USE_NEW) return;
+    if (isInitialLoad) return;
+    if (moviles.length === 0) return;
+
+    setSelectedMoviles(prev => {
+      if (prev.length === 0) {
+        if (userExplicitlyCleared.current) return prev;
+        const allIds = moviles.map(m => m.id);
+        console.log('§4.1 Auto-selección inicial (USE_NEW): marcando todos:', allIds.length);
+        return allIds;
+      }
+      if (userExplicitlyCleared.current) return prev;
+      // Modo "Todos": auto-agregar nuevos que llegaron por realtime/refetch.
+      const prevSet = new Set(prev);
+      const newIds = moviles.map(m => m.id).filter(id => !prevSet.has(id));
+      if (newIds.length === 0) return prev;
+      console.log(`§4.1 Auto-agrego ${newIds.length} móvil(es) nuevo(s) (USE_NEW)`);
+      return [...prev, ...newIds];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moviles, moviles.length, isInitialLoad]);
 
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
@@ -3775,6 +3806,7 @@ function DashboardContent() {
                   serverNow={serverNow}
                   minutosAntesSa={minutosAntesSa}
                   scope={scope}
+                  isToday={isToday}
                 />
               </div>
             </motion.div>
