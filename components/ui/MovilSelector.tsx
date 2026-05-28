@@ -475,9 +475,10 @@ export default function MovilSelector({
 
   const activosNuevo = useMemo(() => {
     if (!USE_MOVILES_DIA_SELECTOR) return [];
+    if (!isToday) return [];  // past dates have no activos by spec
     const base = moviles.filter(m => m.activo === true);
     return applyMovilesSearchAndChips(base).sort((a, b) => a.id - b.id);
-  }, [USE_MOVILES_DIA_SELECTOR, moviles, applyMovilesSearchAndChips]);
+  }, [USE_MOVILES_DIA_SELECTOR, isToday, moviles, applyMovilesSearchAndChips]);
 
   const inactivosNuevo = useMemo(() => {
     if (!USE_MOVILES_DIA_SELECTOR) return [];
