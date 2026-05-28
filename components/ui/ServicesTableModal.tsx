@@ -340,12 +340,37 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     return Array.from(set).sort((a, b) => a - b);
   }, [servicesParaOpciones]);
 
+  // §4.3 (NEXT_PUBLIC_USE_MOVILES_DIA): cuando el flag está ON y openSource='colapsable',
+  // el combo se construye desde el prop moviles completo (activo precalculado por el mapper):
+  // activos (m.activo===true) por id asc arriba, luego inactivos por id asc.
+  // Cuando el flag está OFF o no es colapsable, comportamiento existente sin cambio.
+  const USE_MOVILES_DIA_COMBO = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
+
+  // §4.3: listas activos/inactivos para el combo cuando el flag está ON.
+  const activosForCombo = useMemo((): MovilData[] => {
+    if (!USE_MOVILES_DIA_COMBO || openSource !== 'colapsable') return [];
+    return moviles.filter(m => m.activo === true).sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_COMBO, openSource, moviles]);
+
+  const inactivosForCombo = useMemo((): MovilData[] => {
+    if (!USE_MOVILES_DIA_COMBO || openSource !== 'colapsable') return [];
+    return moviles.filter(m => m.activo !== true).sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_COMBO, openSource, moviles]);
+
   // En colapsable mode, el combo muestra TODOS los moviles activos del prop moviles
   // (no solo los que tienen pedidos del dia) + inactivos relevantes por vista.
   // En otros openSource, uniqueMoviles (del dataset filtrado) sigue siendo la fuente.
+  // §4.3: cuando el flag está ON, incluye todos los móviles (activos + inactivos).
   const activeMovilesForCombo = useMemo((): number[] => {
     if (openSource !== 'colapsable') return uniqueMoviles;
-    // Importar isMovilActiveForUI inline para no requerir import adicional
+    if (USE_MOVILES_DIA_COMBO) {
+      // Flag ON: todos los moviles del prop, activos por id asc, luego inactivos por id asc.
+      return [
+        ...activosForCombo.map(m => m.id),
+        ...inactivosForCombo.map(m => m.id),
+      ];
+    }
+    // Flag OFF: comportamiento existente (solo activos por isActive).
     const isActive = (estadoNro: number | null | undefined) => {
       if (estadoNro === null || estadoNro === undefined) return true;
       return estadoNro === 0 || estadoNro === 1 || estadoNro === 2 || estadoNro === 4;
@@ -354,7 +379,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       .filter(m => isActive(m.estadoNro ?? null))
       .map(m => m.id)
       .sort((a, b) => a - b);
-  }, [openSource, moviles, uniqueMoviles]);
+  }, [openSource, moviles, uniqueMoviles, USE_MOVILES_DIA_COMBO, activosForCombo, inactivosForCombo]);
 
     const uniqueDefectos = useMemo(() => {
     const set = new Set<string>();
@@ -810,34 +835,73 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                                     Todos
                                   </button>
                                 )}
-                                {activeMovilesForCombo.map(m => (
-                                  <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={displayedMovilIds.includes(m)}
-                                      onChange={(e) => handleToggle(m, e.target.checked, false)}
-                                      className="accent-violet-500"
-                                    />
-                                    {getMovilName(m)}
-                                  </label>
-                                ))}
-                                {isShowingInactivos && inactiveMovilesAvailable.length > 0 && (
+                                {USE_MOVILES_DIA_COMBO && isColapsableMode ? (
+                                  // §4.3 flag ON: activos arriba por id, separador "Inactivos", inactivos abajo por id.
+                                  // Inactivos son seleccionables (a diferencia de la barra lateral que es inerte).
                                   <>
-                                    <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-700/50 mt-1 pt-2 uppercase tracking-wider">
-                                      Inactivos relevantes
-                                    </div>
-                                    {inactiveMovilesAvailable.map(m => (
-                                      <label key={`inactivo-${m.id}`} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700/50 cursor-pointer">
+                                    {activosForCombo.map(m => (
+                                      <label key={m.id} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
                                         <input
                                           type="checkbox"
-                                          checked={modalExtraSelectedMoviles.includes(m.id)}
-                                          onChange={(e) => handleToggle(m.id, e.target.checked, true)}
-                                          className="accent-gray-500"
+                                          checked={displayedMovilIds.includes(m.id)}
+                                          onChange={(e) => handleToggle(m.id, e.target.checked, false)}
+                                          className="accent-violet-500"
                                         />
-                                        <span>{m.nombre}</span>
-                                        <span className="ml-auto text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded-full">inactivo</span>
+                                        {getMovilName(m.id)}
                                       </label>
                                     ))}
+                                    {inactivosForCombo.length > 0 && (
+                                      <>
+                                        <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-700/50 mt-1 pt-2 uppercase tracking-wider">
+                                          Inactivos
+                                        </div>
+                                        {inactivosForCombo.map(m => (
+                                          <label key={`inactivo-${m.id}`} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700/50 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={displayedMovilIds.includes(m.id)}
+                                              onChange={(e) => handleToggle(m.id, e.target.checked, false)}
+                                              className="accent-violet-500"
+                                            />
+                                            <span>{getMovilName(m.id)}</span>
+                                            <span className="ml-auto text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded-full">inactivo</span>
+                                          </label>
+                                        ))}
+                                      </>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {activeMovilesForCombo.map(m => (
+                                      <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={displayedMovilIds.includes(m)}
+                                          onChange={(e) => handleToggle(m, e.target.checked, false)}
+                                          className="accent-violet-500"
+                                        />
+                                        {getMovilName(m)}
+                                      </label>
+                                    ))}
+                                    {isShowingInactivos && inactiveMovilesAvailable.length > 0 && (
+                                      <>
+                                        <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-700/50 mt-1 pt-2 uppercase tracking-wider">
+                                          Inactivos relevantes
+                                        </div>
+                                        {inactiveMovilesAvailable.map(m => (
+                                          <label key={`inactivo-${m.id}`} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700/50 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={modalExtraSelectedMoviles.includes(m.id)}
+                                              onChange={(e) => handleToggle(m.id, e.target.checked, true)}
+                                              className="accent-gray-500"
+                                            />
+                                            <span>{m.nombre}</span>
+                                            <span className="ml-auto text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded-full">inactivo</span>
+                                          </label>
+                                        ))}
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </div>
