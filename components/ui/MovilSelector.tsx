@@ -571,10 +571,12 @@ export default function MovilSelector({
   // allSelected (alcance "colapsable"): se usa para el botón "Seleccionar/
   // Deseleccionar todos" del panel y refleja si todos los visibles del filtro
   // local (search + filtros del colapsable) están marcados.
-  // §4.1: cuando el flag está ON, "todos" = activos + inactivos.
-  const allSelected = USE_MOVILES_DIA_SELECTOR
-    ? moviles.length > 0 && moviles.every(m => selectedMoviles.includes(m.id))
-    : filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
+  // §4.1 (USE_NEW): el set visible es activosNuevo + inactivosNuevo (ya filtrados
+  // por search + chips). El camino viejo queda exactamente igual (filteredMoviles).
+  const allVisibles = USE_MOVILES_DIA_SELECTOR
+    ? [...activosNuevo, ...inactivosNuevo]
+    : filteredMoviles;
+  const allSelected = allVisibles.length > 0 && allVisibles.every(m => selectedMoviles.includes(m.id));
 
   // allEmpresasSelected: true cuando el usuario tiene seleccionadas todas las
   // empresas disponibles (o cuando no tiene multi-empresa selector — caso
