@@ -2528,9 +2528,19 @@ function DashboardContent() {
 
   // Versión basada en el Map completo allMovilEstados (cubre móviles sin GPS).
   // Devuelve Set<string> con movil_id crudo para matchear moviles_zonas.movil_id.
+  // Task 5.3: When USE_NEW, allMovilEstados is always empty (enrichMovilesWithExtendedData
+  // is never called), so getHiddenMovilIdsFromEstadosMap falls into its orphan-fallback branch
+  // and produces the wrong set. Gate: derive directly from m.activo flag instead.
   const allHiddenMovilIds = useMemo(
-    () => getHiddenMovilIdsFromEstadosMap(allMovilEstados, pedidosCompletos, servicesCompletos),
-    [allMovilEstados, pedidosCompletos, servicesCompletos],
+    () => {
+      if (USE_NEW) {
+        const s = new Set<string>();
+        for (const m of movilesFiltered) if (!m.activo) s.add(String(m.id));
+        return s;
+      }
+      return getHiddenMovilIdsFromEstadosMap(allMovilEstados, pedidosCompletos, servicesCompletos);
+    },
+    [movilesFiltered, allMovilEstados, pedidosCompletos, servicesCompletos],
   );
 
   // Derivar tipos de servicio dinámicos de servicio_nombre de pedidos y services
