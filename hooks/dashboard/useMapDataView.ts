@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { EmpresaFleteraSupabase } from '@/types';
 import { determineServicePeriod } from '@/lib/horario-servicio';
+import { supabase } from '@/lib/supabase';
 
 interface MapDataViewOptions {
   dataViewMode: string;
@@ -64,6 +65,14 @@ export function useMapDataView({
   const movilesZonasPollingRef = useRef(movilesZonasPollingSeconds);
   useEffect(() => { demorasPollingRef.current = demorasPollingSeconds; }, [demorasPollingSeconds]);
   useEffect(() => { movilesZonasPollingRef.current = movilesZonasPollingSeconds; }, [movilesZonasPollingSeconds]);
+
+  // Smart polling: timestamps del ultimo fetch exitoso, por dataset.
+  // useRef (no state) para no causar re-renders al actualizar.
+  // Se persiste en localStorage para sobrevivir reloads de pestaña.
+  const lastFetchedAt = useRef<{ demoras: Date | null; moviles_zonas: Date | null }>({
+    demoras: null,
+    moviles_zonas: null,
+  });
 
   // Deteccion de transicion horaria.
   // Corre cada vez que serverNow cambia (tick 1s de useServerTime).
@@ -161,6 +170,26 @@ export function useMapDataView({
   // Clave estable basada en el contenido de escenarios (evita resets del intervalo por nueva referencia de array)
   const uniqueEscenariosKey = uniqueEscenarios.join(',');
 
+  // Leer lastFetchedAt desde localStorage al conocer el escenario primario.
+  // Se ejecuta una sola vez cuando uniqueEscenariosKey cambia (mount o cambio de escenario).
+  const primaryEscenarioId = uniqueEscenarios[0] ?? null;
+  useEffect(() => {
+    if (primaryEscenarioId === null) return;
+    try {
+      const raw = localStorage.getItem(`smart-polling-last-fetch-${primaryEscenarioId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { demoras?: string; moviles_zonas?: string };
+        lastFetchedAt.current = {
+          demoras: parsed.demoras ? new Date(parsed.demoras) : null,
+          moviles_zonas: parsed.moviles_zonas ? new Date(parsed.moviles_zonas) : null,
+        };
+      }
+    } catch {
+      // localStorage no disponible o JSON corrupto — arrancar con null (fetch siempre en primer tick)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primaryEscenarioId]);
+
   // Cargar datos de vista (demoras / moviles en zonas) con polling automatico.
   // Los valores de polling se leen via ref para no reiniciar el intervalo cuando el usuario
   // ajusta los segundos en Preferencias.
@@ -208,41 +237,141 @@ export function useMapDataView({
     };
     loadZonasGeojson();
 
-    // Solo los datos dinamicos (demoras / moviles-zonas) se recargan en cada tick
-    const loadDataView = async () => {
-      try {
-        console.log(`Polling "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
+    // Fetch pesado de demoras (sin guard de timestamp — se llama cuando se sabe que hay cambios)
+    const fetchDemoras = async () => {
+      const demorasRes = await fetch(`/api/demoras${empresaIdsParam}`);
+      const demorasResult = await demorasRes.json();
+      if (demorasResult.success && demorasResult.data) {
+        const dMap = new Map<number, { minutos: number; activa: boolean }>();
+        for (const d of demorasResult.data) {
+          if (!uniqueEscenarios.includes(d.escenario_id)) continue;
+          if (scopedZonaIds != null && !scopedZonaIds.has(d.zona_id)) continue;
+          const existing = dMap.get(d.zona_id);
+          if (!existing || d.minutos > existing.minutos) {
+            dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
+          }
+        }
+        console.log(`${dMap.size} demoras actualizadas`);
+        setDemorasData(dMap);
+      }
+    };
 
+    // Fetch pesado de moviles-zonas (sin guard de timestamp)
+    const fetchMovilesZonas = async () => {
+      const mzRes = await fetch(`/api/moviles-zonas${empresaIdsParam}`);
+      const mzResult = await mzRes.json();
+      if (mzResult.success && mzResult.data) {
+        const mzFiltered = scopedZonaIds == null
+          ? mzResult.data
+          : mzResult.data.filter((r: any) => scopedZonaIds.has(r.zona_id));
+        setMovilesZonasData(mzFiltered);
+      }
+    };
+
+    // Persiste lastFetchedAt en localStorage tras un fetch exitoso
+    const persistLastFetch = (escId: number) => {
+      try {
+        localStorage.setItem(
+          `smart-polling-last-fetch-${escId}`,
+          JSON.stringify({
+            demoras: lastFetchedAt.current.demoras?.toISOString() ?? null,
+            moviles_zonas: lastFetchedAt.current.moviles_zonas?.toISOString() ?? null,
+          })
+        );
+      } catch {
+        // localStorage no disponible — ignorar silenciosamente
+      }
+    };
+
+    // Tick del polling: query minima a escenario_settings (1 fila, 2 columnas).
+    // Si la marca del servidor es mas nueva que el ultimo fetch local → fetch pesado.
+    // Si la query falla → fallback al fetch pesado directamente (no romper el polling).
+    // Se comparten ambas marcas en una sola query por tick.
+    const loadDataView = async (forceAll = false) => {
+      console.log(`Tick polling "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
+
+      const escId = uniqueEscenarios[0] ?? null;
+
+      const needsDemoras = dataViewMode !== 'distribucion';
+      const needsMovilesZonas = dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion';
+
+      // Si no necesitamos ninguna de las dos capas en esta vista, salir
+      if (!needsDemoras && !needsMovilesZonas) return;
+
+      // Query minima para obtener ambas marcas de timestamp del servidor
+      let serverDemoras: Date | null = null;
+      let serverMovilesZonas: Date | null = null;
+      let queryFailed = false;
+
+      if (escId !== null && !forceAll) {
+        try {
+          // Las columnas demoras_last_api_update y moviles_zonas_last_api_update
+          // se agregaron en Phase 1 pero los tipos generados aun no las incluyen.
+          // Casteamos a unknown para saltear la validacion de la DB typedef.
+          const { data: settingsData, error: settingsError } = await (supabase
+            .from('escenario_settings')
+            .select('demoras_last_api_update, moviles_zonas_last_api_update')
+            .eq('escenario_id', escId)
+            .single() as unknown as Promise<{
+              data: { demoras_last_api_update: string | null; moviles_zonas_last_api_update: string | null } | null;
+              error: unknown;
+            }>);
+
+          if (settingsError || !settingsData) {
+            console.warn('Smart polling: no se pudo leer escenario_settings — fallback a fetch pesado', settingsError);
+            queryFailed = true;
+          } else {
+            serverDemoras = settingsData.demoras_last_api_update
+              ? new Date(settingsData.demoras_last_api_update)
+              : null;
+            serverMovilesZonas = settingsData.moviles_zonas_last_api_update
+              ? new Date(settingsData.moviles_zonas_last_api_update)
+              : null;
+          }
+        } catch (err) {
+          console.warn('Smart polling: excepcion al leer escenario_settings — fallback a fetch pesado', err);
+          queryFailed = true;
+        }
+      }
+
+      try {
         // Demoras: requerido por TODAS las capas que muestran zonas inactivas
         // como transparente+punteado (todas excepto 'distribucion'). Sin esto,
         // al pasar de normal → saturacion las zonas inactivas se ven rellenas.
-        if (dataViewMode !== 'distribucion') {
-          const demorasRes = await fetch(`/api/demoras${empresaIdsParam}`);
-          const demorasResult = await demorasRes.json();
-          if (demorasResult.success && demorasResult.data) {
-            const dMap = new Map<number, { minutos: number; activa: boolean }>();
-            for (const d of demorasResult.data) {
-              if (!uniqueEscenarios.includes(d.escenario_id)) continue;
-              if (scopedZonaIds != null && !scopedZonaIds.has(d.zona_id)) continue;
-              const existing = dMap.get(d.zona_id);
-              if (!existing || d.minutos > existing.minutos) {
-                dMap.set(d.zona_id, { minutos: d.minutos, activa: d.activa });
-              }
-            }
-            console.log(`${dMap.size} demoras actualizadas`);
-            setDemorasData(dMap);
+        if (needsDemoras) {
+          const localDemoras = lastFetchedAt.current.demoras;
+          const shouldFetchDemoras =
+            queryFailed ||               // si fallo la query minima, fetch siempre (fallback)
+            localDemoras === null ||      // primer tick: siempre fetchear
+            serverDemoras === null ||     // columna aun sin valor → fetch por las dudas
+            serverDemoras > localDemoras; // dato del servidor es mas nuevo que lo local
+
+          if (shouldFetchDemoras) {
+            console.log('Smart polling: demoras — hay cambios o primer fetch, fetching...');
+            await fetchDemoras();
+            lastFetchedAt.current.demoras = serverDemoras ?? new Date();
+            if (escId !== null) persistLastFetch(escId);
+          } else {
+            console.log('Smart polling: demoras — sin cambios, skip');
           }
         }
 
         // Moviles en Zonas o Saturacion
-        if (dataViewMode === 'moviles-zonas' || dataViewMode === 'saturacion') {
-          const mzRes = await fetch(`/api/moviles-zonas${empresaIdsParam}`);
-          const mzResult = await mzRes.json();
-          if (mzResult.success && mzResult.data) {
-            const mzFiltered = scopedZonaIds == null
-              ? mzResult.data
-              : mzResult.data.filter((r: any) => scopedZonaIds.has(r.zona_id));
-            setMovilesZonasData(mzFiltered);
+        if (needsMovilesZonas) {
+          const localMovilesZonas = lastFetchedAt.current.moviles_zonas;
+          const shouldFetchMovilesZonas =
+            queryFailed ||
+            localMovilesZonas === null ||
+            serverMovilesZonas === null ||
+            serverMovilesZonas > localMovilesZonas;
+
+          if (shouldFetchMovilesZonas) {
+            console.log('Smart polling: moviles_zonas — hay cambios o primer fetch, fetching...');
+            await fetchMovilesZonas();
+            lastFetchedAt.current.moviles_zonas = serverMovilesZonas ?? new Date();
+            if (escId !== null) persistLastFetch(escId);
+          } else {
+            console.log('Smart polling: moviles_zonas — sin cambios, skip');
           }
         }
       } catch (err) {
@@ -250,8 +379,11 @@ export function useMapDataView({
       }
     };
 
-    // Carga inicial inmediata
-    loadDataView();
+    // Carga inicial inmediata: en mount siempre fetchea (forceAll evita la query minima
+    // cuando lastFetchedAt ya viene de localStorage con un valor reciente — no queremos
+    // saltear el primer fetch aunque los timestamps parezcan iguales, porque el estado
+    // React del componente esta vacio al montar).
+    loadDataView(true);
 
     // Polling: intervalo segun vista activa, leido desde ref para no reiniciar si cambian las prefs
     const getIntervalMs = () => {
@@ -272,10 +404,12 @@ export function useMapDataView({
       intervalId = setInterval(loadDataView, intervalMs);
     }
 
-    // Reactivar polling al volver al foco (evita que RD/tab en segundo plano lo suspenda)
+    // Reactivar polling al volver al foco (evita que RD/tab en segundo plano lo suspenda).
+    // Al volver visible, se hace un tick inmediato con smart polling (no forceAll):
+    // si la data no cambio mientras estaba en segundo plano, no se hace fetch pesado.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('Tab visible — refetch inmediato y reinicio de polling');
+        console.log('Tab visible — tick inmediato y reinicio de polling');
         loadDataView();
         if (intervalId) clearInterval(intervalId);
         const ms = getIntervalMs();
