@@ -621,66 +621,6 @@ export default function PreferencesModal({ isOpen, onClose, onSave, autoOpenConf
 
               <hr className="border-gray-200" />
 
-              {/* Intervalos de Refresco de Capas */}
-              <div className="space-y-4">
-                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className="text-lg">🔄</span>
-                  Intervalos de Refresco Automático
-                </label>
-                <p className="text-xs text-gray-500">
-                  Configura cada cuántos segundos se actualizan los datos de las vistas Demoras y Móviles en Zonas.
-                </p>
-                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  ⚠️ Aplica únicamente para móviles asociados a zonas y para la vista de Demoras. No afecta la actualización general del mapa.
-                </p>
-
-                {/* Demoras polling */}
-                <div className="p-3 bg-red-50/50 rounded-lg border border-red-100 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">⏱️</span>
-                    <span className="text-xs font-semibold text-gray-600">Vista Demoras</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="range"
-                      min="10"
-                      max="120"
-                      step="5"
-                      value={preferences.demorasPollingSeconds}
-                      onChange={(e) => setPreferences({ ...preferences, demorasPollingSeconds: parseInt(e.target.value) })}
-                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-red-500"
-                    />
-                    <span className="min-w-[60px] px-2 py-1 bg-red-100 text-red-700 font-bold rounded-lg text-center text-xs">
-                      {preferences.demorasPollingSeconds}s
-                    </span>
-                  </div>
-                </div>
-
-                {/* Moviles x Zona polling */}
-                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">🚛</span>
-                    <span className="text-xs font-semibold text-gray-600">Vista Móviles en Zonas</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="range"
-                      min="10"
-                      max="120"
-                      step="5"
-                      value={preferences.movilesZonasPollingSeconds}
-                      onChange={(e) => setPreferences({ ...preferences, movilesZonasPollingSeconds: parseInt(e.target.value) })}
-                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                    />
-                    <span className="min-w-[60px] px-2 py-1 bg-blue-100 text-blue-700 font-bold rounded-lg text-center text-xs">
-                      {preferences.movilesZonasPollingSeconds}s
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <hr className="border-gray-200" />
-
               {/* Modo Ligero */}
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
