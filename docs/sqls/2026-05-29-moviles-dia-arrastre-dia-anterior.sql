@@ -50,8 +50,6 @@ CREATE OR REPLACE FUNCTION fn_moviles_dia_recompute_counts(
   p_fecha     date
 ) RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
-  v_fecha_ymd      text;
-  v_fecha_prev_ymd text;   -- D-1 en formato YYYYMMDD
   v_fecha_inicio   text;
   v_fecha_fin      text;
   v_hoy_mvd        date;   -- hoy segun America/Montevideo
@@ -64,9 +62,7 @@ BEGIN
   -- Hoy segun America/Montevideo (no current_date UTC crudo)
   v_hoy_mvd := (now() AT TIME ZONE 'America/Montevideo')::date;
 
-  -- Literales de fecha para p_fecha
-  v_fecha_ymd      := to_char(p_fecha, 'YYYYMMDD');
-  v_fecha_prev_ymd := to_char(p_fecha - 1, 'YYYYMMDD');  -- D-1 estricto
+  -- Literales de fecha para p_fecha (solo para casts de fch_hora_para timestamptz)
   v_fecha_inicio   := to_char(p_fecha, 'YYYY-MM-DD') || 'T00:00:00';
   v_fecha_fin      := to_char(p_fecha, 'YYYY-MM-DD') || 'T23:59:59';
 
@@ -82,8 +78,8 @@ BEGIN
     AND movil      = p_movil
     AND estado_nro = 1
     AND (
-      fch_para = v_fecha_ymd
-      OR (v_es_hoy AND fch_para = v_fecha_prev_ymd)
+      fch_para = p_fecha
+      OR (v_es_hoy AND fch_para = p_fecha - 1)
     );
 
   -- ── Services pendientes ──────────────────────────────────────────────────────
@@ -98,8 +94,8 @@ BEGIN
     AND (
       (fch_hora_para >= v_fecha_inicio::timestamptz
        AND fch_hora_para <= v_fecha_fin::timestamptz)
-      OR fch_para = v_fecha_ymd
-      OR (v_es_hoy AND fch_para = v_fecha_prev_ymd)
+      OR fch_para = p_fecha
+      OR (v_es_hoy AND fch_para = p_fecha - 1)
     );
 
   -- ── tiene_op: cualquier pedido o service en la fecha (cualquier estado) ──────
@@ -110,7 +106,7 @@ BEGIN
       SELECT 1 FROM pedidos
       WHERE escenario  = p_escenario
         AND movil      = p_movil
-        AND fch_para   = v_fecha_ymd
+        AND fch_para   = p_fecha
         AND NOT (estado_nro = 2 AND sub_estado_nro = 17)
     )
     OR
@@ -120,7 +116,7 @@ BEGIN
         AND (
           (fch_hora_para >= v_fecha_inicio::timestamptz
            AND fch_hora_para <= v_fecha_fin::timestamptz)
-          OR fch_para = v_fecha_ymd
+          OR fch_para = p_fecha
         )
     )
   );
