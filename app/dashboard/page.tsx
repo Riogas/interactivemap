@@ -2439,11 +2439,17 @@ function DashboardContent() {
     // Actualizar/agregar pedidos de realtime (sobrescriben los iniciales si existen)
     pedidosRealtime.forEach(p => pedidosMap.set(p.id, p));
 
-    // ?? Filtrar por fecha seleccionada: solo incluir pedidos de la fecha actual
-    // Esto evita que realtime inyecte pedidos de otras fechas
+    // Filtrar por fecha seleccionada: solo incluir pedidos de la fecha actual.
+    // Esto evita que realtime inyecte pedidos de otras fechas.
+    // Arrastre (feature 2026-05-29): cuando isToday, aceptar tambien fch_para === ayerCompact
+    // pero SOLO para pendientes (estado_nro === 1). Los finalizados de ayer quedan excluidos
+    // (asimetria intencional: finalizados = fch_para === hoy solamente).
+    const ayerCompact = isToday ? daysAgoMontevideo(1).replace(/-/g, '') : null;
     let resultado = Array.from(pedidosMap.values()).filter(p => {
       // Verificar por fch_para (formato YYYYMMDD) o por fch_hora_para (timestamp)
       if (p.fch_para && p.fch_para === selectedDateCompact) return true;
+      // Arrastre: pedido de ayer estado=1 en la vista de hoy
+      if (isToday && ayerCompact && Number(p.estado_nro) === 1 && p.fch_para === ayerCompact) return true;
       if (p.fch_hora_para && p.fch_hora_para.startsWith(selectedDate)) return true;
       // Si no tiene ninguno de los dos campos, incluir (para no perder datos)
       if (!p.fch_para && !p.fch_hora_para) return true;
@@ -2481,7 +2487,7 @@ function DashboardContent() {
     dbg(`?? Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
 
     return resultado;
-  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
+  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, isToday, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
 
   // Combinar services iniciales con updates de realtime
   const servicesCompletos = useMemo(() => {
@@ -2489,9 +2495,14 @@ function DashboardContent() {
     servicesIniciales.forEach(s => servicesMap.set(s.id, s));
     servicesRealtime.forEach(s => servicesMap.set(s.id, s));
 
-    // ?? Filtrar por fecha seleccionada
+    // Filtrar por fecha seleccionada.
+    // Arrastre (feature 2026-05-29): cuando isToday, aceptar tambien fch_para === ayerCompact
+    // pero SOLO para pendientes (estado_nro === 1), igual que pedidosCompletos.
+    const ayerCompactSvc = isToday ? daysAgoMontevideo(1).replace(/-/g, '') : null;
     let resultado = Array.from(servicesMap.values()).filter(s => {
       if (s.fch_para && s.fch_para === selectedDateCompact) return true;
+      // Arrastre: service de ayer estado=1 en la vista de hoy
+      if (isToday && ayerCompactSvc && Number(s.estado_nro) === 1 && s.fch_para === ayerCompactSvc) return true;
       if (s.fch_hora_para && s.fch_hora_para.startsWith(selectedDate)) return true;
       if (!s.fch_para && !s.fch_hora_para) return true;
       return false;
@@ -2517,7 +2528,7 @@ function DashboardContent() {
 
     dbg(`?? DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
-  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
+  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, isToday, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
 
   // Mantener refs sincronizadas con las listas memoizadas para acceso sincrónico
   // desde callbacks definidos antes en el render.

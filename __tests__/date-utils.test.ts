@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { todayMontevideo, todayInTimezone, daysAgoMontevideo } from '@/lib/date-utils';
+import { todayMontevideo, todayInTimezone, daysAgoMontevideo, pendienteDateRange, pendienteDateRangeCompact } from '@/lib/date-utils';
 
 describe('todayMontevideo()', () => {
   it('AC3-1: 21:40 Montevideo (=00:40 UTC del día siguiente) → devuelve día local Montevideo', () => {
@@ -113,5 +113,94 @@ describe('todayInTimezone()', () => {
     const result = todayInTimezone('America/New_York', now);
     // New York en mayo está en EDT (UTC-4), 00:40 UTC = 20:40 del día anterior
     expect(result).toBe('2026-05-02');
+  });
+});
+
+// ─── Tests de pendienteDateRange (feature: arrastre de pendientes del dia anterior) ───
+
+describe('pendienteDateRange()', () => {
+  const HOY_UTC = new Date('2026-05-29T15:00:00Z'); // 2026-05-29T12:00 -03 → hoy UY = '2026-05-29'
+
+  it('fecha === hoy → devuelve [hoy, ayer]', () => {
+    const result = pendienteDateRange('2026-05-29', HOY_UTC);
+    expect(result).toEqual(['2026-05-29', '2026-05-28']);
+  });
+
+  it('fecha pasada → devuelve solo [fecha] (sin arrastre)', () => {
+    const result = pendienteDateRange('2026-05-28', HOY_UTC);
+    expect(result).toEqual(['2026-05-28']);
+  });
+
+  it('fecha futura (edge case) → devuelve solo [fecha] (sin arrastre)', () => {
+    const result = pendienteDateRange('2026-05-30', HOY_UTC);
+    expect(result).toEqual(['2026-05-30']);
+  });
+
+  it('hoy a mediodia → arrastre activo', () => {
+    // 2026-05-29T15:00Z = 12:00 UY. Hoy es '2026-05-29'.
+    const result = pendienteDateRange('2026-05-29', new Date('2026-05-29T15:00:00Z'));
+    expect(result).toEqual(['2026-05-29', '2026-05-28']);
+  });
+
+  it('franja nocturna: 23:30 UY (=02:30 UTC+1dia) → arrastre activo con fecha UY correcta', () => {
+    // 2026-05-29 23:30 -03 = 2026-05-30T02:30:00Z
+    // todayMontevideo en ese momento = '2026-05-29'
+    const now = new Date('2026-05-30T02:30:00Z');
+    expect(todayMontevideo(now)).toBe('2026-05-29'); // confirmar TZ
+    const result = pendienteDateRange('2026-05-29', now);
+    expect(result).toEqual(['2026-05-29', '2026-05-28']);
+  });
+
+  it('cruce de mes: hoy=01/06 → ayer=31/05', () => {
+    // 2026-06-01T15:00:00Z = 12:00 UY → hoy = '2026-06-01'
+    const now = new Date('2026-06-01T15:00:00Z');
+    const result = pendienteDateRange('2026-06-01', now);
+    expect(result).toEqual(['2026-06-01', '2026-05-31']);
+  });
+
+  it('cruce de año: hoy=01/01/2027 → ayer=31/12/2026', () => {
+    // 2027-01-01T15:00:00Z → hoy UY = '2027-01-01'
+    const now = new Date('2027-01-01T15:00:00Z');
+    const result = pendienteDateRange('2027-01-01', now);
+    expect(result).toEqual(['2027-01-01', '2026-12-31']);
+  });
+
+  it('devuelve exactamente 2 elementos cuando es hoy', () => {
+    expect(pendienteDateRange('2026-05-29', HOY_UTC)).toHaveLength(2);
+  });
+
+  it('devuelve exactamente 1 elemento para fecha pasada', () => {
+    expect(pendienteDateRange('2026-05-01', HOY_UTC)).toHaveLength(1);
+  });
+
+  it('formato de salida siempre YYYY-MM-DD', () => {
+    const result = pendienteDateRange('2026-05-29', HOY_UTC);
+    result.forEach(f => expect(f).toMatch(/^\d{4}-\d{2}-\d{2}$/));
+  });
+});
+
+describe('pendienteDateRangeCompact()', () => {
+  const HOY_UTC = new Date('2026-05-29T15:00:00Z');
+
+  it('hoy → devuelve [YYYYMMDD_hoy, YYYYMMDD_ayer] sin guiones', () => {
+    const result = pendienteDateRangeCompact('2026-05-29', HOY_UTC);
+    expect(result).toEqual(['20260529', '20260528']);
+  });
+
+  it('fecha pasada → devuelve [YYYYMMDD] sin guiones', () => {
+    const result = pendienteDateRangeCompact('2026-05-28', HOY_UTC);
+    expect(result).toEqual(['20260528']);
+  });
+
+  it('formato siempre YYYYMMDD (sin guiones)', () => {
+    const result = pendienteDateRangeCompact('2026-05-29', HOY_UTC);
+    result.forEach(f => expect(f).toMatch(/^\d{8}$/));
+  });
+
+  it('franja nocturna: resultado compacto correcto', () => {
+    // 2026-05-29 23:30 UY = 2026-05-30T02:30Z → hoy UY = '2026-05-29'
+    const now = new Date('2026-05-30T02:30:00Z');
+    const result = pendienteDateRangeCompact('2026-05-29', now);
+    expect(result).toEqual(['20260529', '20260528']);
   });
 });
