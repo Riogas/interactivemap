@@ -877,6 +877,59 @@ function DashboardContent() {
         return { added: 0, removed: 0, success: true };
       }
 
+      // HISTORICO: cuando el usuario ve una fecha pasada, usar el endpoint
+      // /api/moviles-actividad-dia que construye el universo correcto:
+      // pedidos UNION services UNION GPS de ese dia, sin filtrar por
+      // mostrar_en_mapa ni estado_nro actual.
+      // En modo HOY (isToday), continuar usando /api/all-positions como antes.
+      if (isViewingHistorical && selectedDate) {
+        const histParams = new URLSearchParams();
+        histParams.append('fecha', selectedDate);
+        if (selectedEmpresas.length > 0) {
+          histParams.append('empresaIds', selectedEmpresas.join(','));
+        }
+
+        console.log(`?? [historico] Fetching universo de moviles para fecha=${selectedDate}`);
+        const histResponse = await fetch(`/api/moviles-actividad-dia?${histParams.toString()}`);
+        const histResult = await histResponse.json();
+
+        if (histResult.success) {
+          console.log(`? [historico] Recibidos ${histResult.count} moviles con actividad en ${selectedDate}`);
+
+          const histMoviles: MovilData[] = histResult.data.map((item: {
+            movilId: number;
+            movilName: string;
+            color: string;
+            empresa_fletera_id: number;
+            estado: number | null;
+            matricula: string | null;
+            position: any;
+          }) => ({
+            id: Number(item.movilId),
+            name: item.movilName,
+            color: item.color,
+            empresaFleteraId: item.empresa_fletera_id,
+            estadoNro: item.estado ?? undefined,
+            matricula: item.matricula ?? undefined,
+            currentPosition: item.position ?? undefined,
+            history: undefined,
+          }));
+
+          const uniqueHistMoviles = removeDuplicateMoviles(histMoviles);
+          const enrichedHistMoviles = await enrichMovilesWithExtendedData(uniqueHistMoviles);
+
+          setMoviles(enrichedHistMoviles);
+          setIsInitialLoad(false);
+          setLastUpdate(new Date());
+          setError(null);
+          console.log(`?? [historico] ${enrichedHistMoviles.length} moviles del dia cargados`);
+          return { added: enrichedHistMoviles.length, removed: 0, success: true };
+        } else {
+          setError(histResult.error || 'Error al cargar datos historicos');
+          return { added: 0, removed: 0, success: false };
+        }
+      }
+
       console.log('?? Fetching all positions from API...');
 
       // Construir URL con filtro de empresas y fecha
@@ -892,20 +945,20 @@ function DashboardContent() {
       if (selectedEmpresas.length > 0 && (userHasRestriction || userDeselectedSome)) {
         params.append('empresaIds', selectedEmpresas.join(','));
       }
-      
+
       let url = '/api/all-positions';
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
-      
+
       const response = await fetch(url);
       const result = await response.json();
 
       if (result.success) {
-        console.log(`? Received ${result.count} móviles from API`);
-        
+        console.log(`? Received ${result.count} moviles from API`);
+
         if (isInitialLoad) {
-          // PRIMERA CARGA: Crear array completo de móviles
+          // PRIMERA CARGA: Crear array completo de moviles
           const newMoviles: MovilData[] = result.data.map((item: {
             movilId: number;
             movilName: string;
@@ -918,10 +971,10 @@ function DashboardContent() {
             color: item.color,
             empresaFleteraId: item.empresa_fletera_id,
             currentPosition: item.position,
-            history: undefined, // Se cargará bajo demanda
+            history: undefined, // Se cargara bajo demanda
           }));
 
-          console.log('?? Sample movil from API:', newMoviles[0]); // Ver ID del móvil
+          console.log('?? Sample movil from API:', newMoviles[0]); // Ver ID del movil
 
           // Eliminar duplicados antes de establecer
           const uniqueMoviles = removeDuplicateMoviles(newMoviles);
@@ -931,18 +984,18 @@ function DashboardContent() {
 
           setMoviles(enrichedMoviles);
           setIsInitialLoad(false); // Marcar que ya no es carga inicial
-          console.log(`?? Carga inicial completa con ${enrichedMoviles.length} móviles únicos enriquecidos`);
+          console.log(`?? Carga inicial completa con ${enrichedMoviles.length} moviles unicos enriquecidos`);
         } else {
-          // RECONCILIACIÓN (post-initial): la API trae el set "verdadero" de
-          // móviles con posición vigente. Detectamos:
-          //   a) móviles NUEVOS (en API y no en state) ? los agregamos.
-          //   b) móviles BAJADOS (en state y no en API) ? los removemos.
-          //   c) móviles existentes ? solo actualizamos currentPosition,
+          // RECONCILIACION (post-initial): la API trae el set "verdadero" de
+          // moviles con posicion vigente. Detectamos:
+          //   a) moviles NUEVOS (en API y no en state) ? los agregamos.
+          //   b) moviles BAJADOS (en state y no en API) ? los removemos.
+          //   c) moviles existentes ? solo actualizamos currentPosition,
           //      preservando history/pedidosAsignados/tamanoLote/etc.
           //
-          // Antes este path solo hacía (c) y los nuevos se silenciaban ?
-          // por eso un F5 traía móviles que el polling/silence/visibility
-          // ya había recibido de la API pero no se habían incorporado.
+          // Antes este path solo hacia (c) y los nuevos se silenciaban ?
+          // por eso un F5 traia moviles que el polling/silence/visibility
+          // ya habia recibido de la API pero no se habian incorporado.
           const prevSnapshot = movilesRef.current;
           const prevById = new Map(prevSnapshot.map(m => [m.id, m]));
           const apiIds = new Set<number>(result.data.map((item: any) => Number(item.movilId)));
@@ -953,11 +1006,11 @@ function DashboardContent() {
           const removedCount = prevSnapshot.filter(m => !apiIds.has(m.id)).length;
 
           if (newApiMoviles.length === 0 && removedCount === 0) {
-            // Sin altas/bajas: updates de posición + propagación de estadoNro.
-            // El endpoint /api/all-positions devuelve `estado` (= estado_nro
+            // Sin altas/bajas: updates de posicion + propagacion de estadoNro.
+            // El endpoint /api/all-positions devuelve estado (= estado_nro
             // fresco de la tabla moviles). Sin esto, un cambio de estado
-            // (ej. 0?5 vía importer o SQL directo) no se reflejaba en el
-            // colapsable hasta el próximo enrich/F5.
+            // (ej. 0?5 via importer o SQL directo) no se reflejaba en el
+            // colapsable hasta el proximo enrich/F5.
             setMoviles(prevMoviles => prevMoviles.map(movil => {
               const updatedData = result.data.find((item: any) => Number(item.movilId) === movil.id);
               if (!updatedData) return movil;
@@ -976,7 +1029,7 @@ function DashboardContent() {
             // (history, pedidosAsignados, tamanoLote, etc.) y enriquecer los
             // nuevos via enrichMovilesWithExtendedData.
             console.log(
-              `?? Reconciliación: ${newApiMoviles.length} alta(s), ${removedCount} baja(s) detectada(s)`,
+              `?? Reconciliacion: ${newApiMoviles.length} alta(s), ${removedCount} baja(s) detectada(s)`,
             );
 
             const merged: MovilData[] = result.data.map((item: any) => {
@@ -998,15 +1051,15 @@ function DashboardContent() {
             const enriched = await enrichMovilesWithExtendedData(uniqueMerged);
             setMoviles(enriched);
             console.log(
-              `? Reconciliación aplicada: state ahora tiene ${enriched.length} móviles`,
+              `? Reconciliacion aplicada: state ahora tiene ${enriched.length} moviles`,
             );
             return { added: newApiMoviles.length, removed: removedCount, success: true };
           }
         }
-        
+
         setLastUpdate(new Date());
         setError(null);
-        // Fallback: path sin altas/bajas ya retornó arriba
+        // Fallback: path sin altas/bajas ya retorno arriba
         return { added: 0, removed: 0, success: true };
       } else {
         setError(result.error || 'Error al cargar datos');
@@ -1014,12 +1067,12 @@ function DashboardContent() {
       }
     } catch (err) {
       console.error('? Error fetching positions:', err);
-      setError('Error de conexión');
+      setError('Error de conexion');
       return { added: 0, removed: 0, success: false };
     } finally {
       setIsLoading(false);
     }
-  }, [selectedEmpresas, empresas.length, isInitialLoad, enrichMovilesWithExtendedData, removeDuplicateMoviles, user?.allowedEmpresas]);
+  }, [selectedEmpresas, empresas.length, isInitialLoad, enrichMovilesWithExtendedData, removeDuplicateMoviles, user?.allowedEmpresas, isViewingHistorical, selectedDate]);
 
   // Función que lee la lista de móviles desde el read model moviles_dia.
   // Se usa en lugar de fetchPositions() cuando NEXT_PUBLIC_USE_MOVILES_DIA === 'true'.
@@ -2583,14 +2636,18 @@ function DashboardContent() {
     return moviles
       .filter(m => {
         if (isMovilActiveForUI(m.estadoNro)) return false; // Solo inactivos
-        if (!movilesConOperacion.has(m.id)) return false; // Solo los que trabajaron
+        // FIX historico: en modo historico el universo de moviles ya viene del
+        // endpoint /api/moviles-actividad-dia (pedidos U services U GPS del dia).
+        // No necesitamos el check de movilesConOperacion (que no incluye GPS).
+        // En modo HOY, el check se mantiene para no romper el comportamiento actual.
+        if (!isViewingHistorical && !movilesConOperacion.has(m.id)) return false; // Solo los que trabajaron (modo HOY)
         if (selectedEmpresas.length > 0 && empresas.length > 0) {
           return m.empresaFleteraId != null && selectedEmpresas.includes(m.empresaFleteraId);
         }
         return true;
       })
       .sort((a, b) => a.id - b.id);
-  }, [moviles, movilesConOperacion, selectedEmpresas, empresas.length]);
+  }, [moviles, movilesConOperacion, selectedEmpresas, empresas.length, isViewingHistorical]);
 
   // Mantener el ref de IDs de inactivos del día sincronizado (para el auto-select effect).
   inactivosDelDiaIdsRef.current = new Set(inactivosDelDia.map(m => m.id));
