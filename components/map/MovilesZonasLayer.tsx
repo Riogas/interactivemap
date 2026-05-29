@@ -9,11 +9,13 @@ import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import { getRefColor } from '@/lib/visual-refs-catalog';
 
 /**
- * Color por cantidad de moviles EN PRIORIDAD en la zona.
+ * Color por cantidad de moviles en el subconjunto elegido (prioridad, transito, o ambos).
  * 0 = rojo, 1 = verde claro, 2 = verde fuerte, 3 = celeste, 4+ = violeta
+ * (Antes: getColorByPrioridad — renombrado para reflejar que el conteo ahora puede ser
+ *  cualquier subconjunto, no solo prioridad.)
  */
-function getColorByPrioridad(prioridadCount: number, visualRefs?: Record<string, string> | null): string {
-  switch (prioridadCount) {
+function getColorByCount(count: number, visualRefs?: Record<string, string> | null): string {
+  switch (count) {
     case 0: return getRefColor('Ref#8', visualRefs);
     case 1: return getRefColor('Ref#9', visualRefs);
     case 2: return getRefColor('Ref#10', visualRefs);
@@ -44,6 +46,13 @@ export interface MovilZonaRecord {
 /** Filtro: 'all' = sin filtro, o un valor de servicio_nombre concreto */
 export type MovilesZonasServiceFilter = string; // 'all' | 'URGENTE' | 'SERVICE' | etc.
 
+/**
+ * Subconjunto de moviles a contar por zona (combo "Moviles").
+ * prio_transito = todos (default), prioridad = solo prioridad_o_transito===1,
+ * transito = solo prioridad_o_transito!==1.
+ */
+export type MovilSubset = 'prio_transito' | 'prioridad' | 'transito';
+
 interface MovilesZonasLayerProps {
   zonas: MovilesZonaData[];
   /** Registros crudos de moviles_zonas */
@@ -52,7 +61,11 @@ interface MovilesZonasLayerProps {
   serviceFilter: MovilesZonasServiceFilter;
   /** Callback para cambiar filtro */
   onServiceFilterChange: (f: MovilesZonasServiceFilter) => void;
-  /** Mostrar etiquetas de cantidad pr/tr en zonas con diferencia */
+  /** Subconjunto de moviles a contar: prio_transito / prioridad / transito */
+  movilFilter?: MovilSubset;
+  /** Callback para cambiar el subconjunto */
+  onMovilFilterChange?: (f: MovilSubset) => void;
+  /** Mostrar etiquetas de cantidad en zonas */
   showCountLabels?: boolean;
   /** Callback para cambiar showCountLabels */
   onShowCountLabelsChange?: (v: boolean) => void;
@@ -114,15 +127,19 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
 /** Opciones fijas de tipo de servicio */
 const TIPOS_SERVICIO_FIJOS = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;
 
-/** Control Leaflet para filtro por tipo de servicio */
+/** Control Leaflet para filtro por tipo de servicio + subconjunto de moviles */
 function MovilesZonasFilterControl({
   serviceFilter,
   onServiceFilterChange,
+  movilFilter,
+  onMovilFilterChange,
   showCountLabels,
   onShowCountLabelsChange,
 }: {
   serviceFilter: MovilesZonasServiceFilter;
   onServiceFilterChange: (f: MovilesZonasServiceFilter) => void;
+  movilFilter: MovilSubset;
+  onMovilFilterChange: (f: MovilSubset) => void;
   showCountLabels: boolean;
   onShowCountLabelsChange: (v: boolean) => void;
 }) {
@@ -139,8 +156,14 @@ function MovilesZonasFilterControl({
         container.innerHTML = `
           <div class="mz-filter-inner">
             <span class="mz-filter-label">Tipo Servicio:</span>
-            <select class="mz-filter-select">
+            <select class="mz-filter-select mz-service-select">
               ${TIPOS_SERVICIO_FIJOS.map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()}</option>`).join('')}
+            </select>
+            <span class="mz-filter-label" style="margin-top:4px">Moviles:</span>
+            <select class="mz-filter-select mz-movil-select">
+              <option value="prio_transito">Prioridad + Transito</option>
+              <option value="prioridad">Prioridad</option>
+              <option value="transito">Transito</option>
             </select>
             <label class="mz-toggle-label" title="Mostrar/ocultar conteo de moviles">
               <input type="checkbox" class="mz-toggle-check" ${showCountLabels ? 'checked' : ''} />
@@ -150,10 +173,16 @@ function MovilesZonasFilterControl({
           </div>
         `;
 
-        const select = container.querySelector('.mz-filter-select') as HTMLSelectElement;
-        select.value = serviceFilter;
-        select.addEventListener('change', () => {
-          onServiceFilterChange(select.value);
+        const serviceSelect = container.querySelector('.mz-service-select') as HTMLSelectElement;
+        serviceSelect.value = serviceFilter;
+        serviceSelect.addEventListener('change', () => {
+          onServiceFilterChange(serviceSelect.value);
+        });
+
+        const movilSelect = container.querySelector('.mz-movil-select') as HTMLSelectElement;
+        movilSelect.value = movilFilter;
+        movilSelect.addEventListener('change', () => {
+          onMovilFilterChange(movilSelect.value as MovilSubset);
         });
 
         const checkbox = container.querySelector('.mz-toggle-check') as HTMLInputElement;
@@ -168,12 +197,12 @@ function MovilesZonasFilterControl({
     const ctrl = new FilterCtrl();
     ctrl.addTo(map);
     return () => { ctrl.remove(); };
-  }, [map, serviceFilter, onServiceFilterChange, showCountLabels, onShowCountLabelsChange]);
+  }, [map, serviceFilter, onServiceFilterChange, movilFilter, onMovilFilterChange, showCountLabels, onShowCountLabelsChange]);
 
   return null;
 }
 
-/** Leyenda de colores de moviles-zonas (prioridad) como control Leaflet */
+/** Leyenda de colores de moviles-zonas como control Leaflet */
 function MovilesZonasLegend({ visualRefs }: { visualRefs?: Record<string, string> | null }) {
   const map = useMap();
   useEffect(() => {
@@ -181,7 +210,7 @@ function MovilesZonasLegend({ visualRefs }: { visualRefs?: Record<string, string
       onAdd() {
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
-          <div class="demora-legend-title">Móviles / Zona</div>
+          <div class="demora-legend-title">Tabla de Ref.</div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#8', visualRefs)}"></span><span class="demora-legend-label">0 móviles</span><span class="demora-legend-ref" title="Click para editar este color">Ref#8</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#9', visualRefs)}"></span><span class="demora-legend-label">1 móvil</span><span class="demora-legend-ref" title="Click para editar este color">Ref#9</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#10', visualRefs)}"></span><span class="demora-legend-label">2 móviles</span><span class="demora-legend-ref" title="Click para editar este color">Ref#10</span></div>
@@ -204,6 +233,8 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   movilesZonasData,
   serviceFilter,
   onServiceFilterChange,
+  movilFilter = 'prio_transito',
+  onMovilFilterChange,
   showCountLabels = false,
   onShowCountLabelsChange,
   tiposServicioDisponibles = [],
@@ -232,23 +263,23 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
     return data;
   }, [movilesZonasData, serviceFilter, movilEstados, hiddenMovilIds]);
 
-  // Computar conteos por zona: { prioridad, transito }
-  // Para URGENTE y NOCTURNO, prioridad y tránsito suman al mismo contador (prioridad).
-  const MERGE_FILTERS = ['URGENTE', 'NOCTURNO'];
-  const mergeAll = MERGE_FILTERS.includes(serviceFilter.toUpperCase());
+  // Computar conteo por zona segun el subconjunto elegido (combo "Moviles").
+  // Unifica el comportamiento para todos los tipos de servicio (URGENTE/NOCTURNO/SERVICE):
+  // el color SIEMPRE refleja el conteo del subconjunto, corrigiendo la rareza anterior
+  // donde SERVICE coloreaba solo por prioridad.
   const zonaCounts = useMemo(() => {
-    const map = new Map<number, { prioridad: number; transito: number }>();
+    const map = new Map<number, number>();
     for (const mz of filteredData) {
-      const existing = map.get(mz.zona_id) || { prioridad: 0, transito: 0 };
-      if (mergeAll || mz.prioridad_o_transito === 1) {
-        existing.prioridad++;
-      } else {
-        existing.transito++;
-      }
-      map.set(mz.zona_id, existing);
+      const isPrioridad = mz.prioridad_o_transito === 1;
+      const incluir =
+        movilFilter === 'prio_transito' ? true
+        : movilFilter === 'prioridad'   ? isPrioridad
+        : /* 'transito' */                !isPrioridad;
+      if (!incluir) continue;
+      map.set(mz.zona_id, (map.get(mz.zona_id) ?? 0) + 1);
     }
     return map;
-  }, [filteredData, mergeAll]);
+  }, [filteredData, movilFilter]);
 
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
@@ -278,22 +309,20 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
       const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
       const center: [number, number] = polygonCentroid(validGeo);
 
-      const counts = zonaCounts.get(zona.zona_id) || { prioridad: 0, transito: 0 };
-      const total = counts.prioridad + counts.transito;
-      const fillColor = getColorByPrioridad(counts.prioridad, visualRefs);
+      const count = zonaCounts.get(zona.zona_id) ?? 0;
+      const fillColor = getColorByCount(count, visualRefs);
 
       // Opacidad fija para que los colores sean bien visibles
       const fillOpacity = 0.45;
 
-      return { zona, positions, center, fillColor, fillOpacity, counts, total };
+      return { zona, positions, center, fillColor, fillOpacity, count };
     }).filter(Boolean) as Array<{
       zona: MovilesZonaData;
       positions: LatLngExpression[];
       center: [number, number];
       fillColor: string;
       fillOpacity: number;
-      counts: { prioridad: number; transito: number };
-      total: number;
+      count: number;
     }>;
   }, [zonas, zonaCounts, visualRefs]);
 
@@ -304,11 +333,13 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
       <MovilesZonasFilterControl
         serviceFilter={serviceFilter}
         onServiceFilterChange={onServiceFilterChange}
+        movilFilter={movilFilter}
+        onMovilFilterChange={onMovilFilterChange ?? (() => {})}
         showCountLabels={showCountLabels}
         onShowCountLabelsChange={onShowCountLabelsChange ?? (() => {})}
       />
       <MovilesZonasLegend visualRefs={visualRefs} />
-      {items.map(({ zona, positions, center, fillColor, fillOpacity, counts, total }) => {
+      {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => {
         const isInactive = demoras?.get(zona.zona_id)?.activa === false;
         return (
         <React.Fragment key={zona.zona_id}>
@@ -348,7 +379,7 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
               html: `
                 <div class="mz-label-inner">
                   <span class="mz-label-zona">${zona.zona_id}</span>
-                  ${showCountLabels && (mergeAll ? total > 0 : counts.prioridad !== counts.transito) ? `<span class="mz-label-counts ${total === 0 ? 'mz-counts-zero' : ''}">${mergeAll ? total : `${counts.prioridad}/${counts.transito}`}</span>` : ''}
+                  ${showCountLabels && count > 0 ? `<span class="mz-label-counts">${count}</span>` : ''}
                 </div>
               `,
               iconSize: [60, 40],

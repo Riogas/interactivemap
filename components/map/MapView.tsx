@@ -26,10 +26,10 @@ import DataViewControl, { DataViewMode } from './DataViewControl';
 import CenterMapControl from './CenterMapControl';
 import FullscreenControl from './FullscreenControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
-import PedidosZonasLayer, { PedidoZonaData, PedidosZonaFilter } from './PedidosZonasLayer';
+import PedidosZonasLayer, { PedidoZonaData, PedidosZonaFilter, ZonaLayerTipo } from './PedidosZonasLayer';
 import DistanceMeasurement from './DistanceMeasurement';
 import DistribucionZonasLayer from './DistribucionZonasLayer';
-import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from './MovilesZonasLayer';
+import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter, MovilSubset } from './MovilesZonasLayer';
 import ZonasActivasLayer from './ZonasActivasLayer';
 import SaturacionZonasLayer, { SaturacionZonaData, SaturacionZonaStats } from './SaturacionZonasLayer';
 import dynamic from 'next/dynamic';
@@ -155,6 +155,14 @@ interface MapViewProps {
   escenarioId?: number;
   /** 'S' si el usuario es root — se pasa al RouteAnimationControl para el header x-track-isroot. */
   isRoot?: string;
+  /** Tipo de la capa de pedidos/zona: pedidos (default) o services */
+  zonaLayerTipo?: ZonaLayerTipo;
+  /** Callback para cambiar el tipo de la capa pedidos/zona */
+  onZonaLayerTipoChange?: (t: ZonaLayerTipo) => void;
+  /** Subconjunto de moviles a contar en la capa moviles-zonas */
+  movilesZonaMovilFilter?: MovilSubset;
+  /** Callback para cambiar el subconjunto de moviles */
+  onMovilesZonaMovilFilterChange?: (f: MovilSubset) => void;
 }
 
 
@@ -609,6 +617,8 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.hideSinAsignarOption === next.hideSinAsignarOption &&
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
+    prev.zonaLayerTipo === next.zonaLayerTipo &&
+    prev.movilesZonaMovilFilter === next.movilesZonaMovilFilter &&
     prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
     prev.saturacionData?.size === next.saturacionData?.size &&
     prev.showDemoraLabels === next.showDemoraLabels &&
@@ -1104,6 +1114,10 @@ const MapView = memo(function MapView({
   visualRefs,
   escenarioId,
   isRoot,
+  zonaLayerTipo = "pedidos",
+  onZonaLayerTipoChange,
+  movilesZonaMovilFilter = "prio_transito",
+  onMovilesZonaMovilFilterChange,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2656,12 +2670,12 @@ const MapView = memo(function MapView({
           <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} tipo={zonaLayerTipo} onTipoChange={onZonaLayerTipoChange} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
         {/* ?? Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} zonaPattern={zonaPattern} visualRefs={visualRefs} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} movilFilter={movilesZonaMovilFilter} onMovilFilterChange={onMovilesZonaMovilFilterChange} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
         {/* ? Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}

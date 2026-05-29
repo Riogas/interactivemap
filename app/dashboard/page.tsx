@@ -376,6 +376,8 @@ function DashboardContent() {
   const [pedidosModalInitialFilters, setPedidosModalInitialFilters] = useState<Partial<{ asignacion: 'todos' | 'con_movil' | 'sin_movil'; entrega: 'todos' | 'entregados' | 'no_entregados'; tipoServicio: string[] }> | undefined>(undefined);
   const [servicesModalInitialFilters, setServicesModalInitialFilters] = useState<Partial<{ asignacion: 'todos' | 'con_movil' | 'sin_movil'; entrega: 'todos' | 'entregados' | 'no_entregados' }> | undefined>(undefined);
   const [pedidosModalVista, setPedidosModalVista] = useState<'pendientes' | 'finalizados'>('pendientes');
+  // Tipo inicial del modal de pedidos al abrirlo desde la capa zona (feature 2026-05-29)
+  const [pedidosModalTipo, setPedidosModalTipo] = useState<'pedidos' | 'services'>('pedidos');
   const [servicesModalVista, setServicesModalVista] = useState<'pendientes' | 'finalizados'>('pendientes');
   const [pedidosInitialAsignacion, setPedidosInitialAsignacion] = useState<'todos' | 'con_movil' | 'sin_movil'>('todos');
   // Filtro de atraso inicial a inyectar en PedidosTableModal al abrirlo (ej.
@@ -383,6 +385,10 @@ function DashboardContent() {
   // undefined = no toca el filtro de atraso interno del modal.
   const [pedidosInitialAtraso, setPedidosInitialAtraso] = useState<('muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora')[] | undefined>(undefined);
   const [pedidosZonaFilter, setPedidosZonaFilter] = useState<'pendientes' | 'sin_asignar' | 'atrasados'>('pendientes');
+  // Filtro de subconjunto de moviles para la capa moviles-zonas (feature 2026-05-29)
+  const [movilesZonaMovilFilter, setMovilesZonaMovilFilter] = useState<'prio_transito' | 'prioridad' | 'transito'>('prio_transito');
+  // Tipo de la capa pedidos-zona: pedidos o services (feature 2026-05-29)
+  const [zonaLayerTipo, setZonaLayerTipo] = useState<'pedidos' | 'services'>('pedidos');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>(defaultServicesFilters);
   const [servicesResetToken, setServicesResetToken] = useState(0);
 
@@ -541,6 +547,8 @@ function DashboardContent() {
     showCompletados,
     pedidosZonaFilter,
     movilesZonasServiceFilter,
+    movilesZonaMovilFilter,
+    zonaLayerTipo,
     modal: modalSnapshot,
   });
 
@@ -562,6 +570,8 @@ function DashboardContent() {
     if (hydration.showCompletados !== null) setShowCompletados(hydration.showCompletados);
     if (hydration.pedidosZonaFilter !== null) setPedidosZonaFilter(hydration.pedidosZonaFilter);
     if (hydration.movilesZonasServiceFilter !== null) setMovilesZonasServiceFilter(hydration.movilesZonasServiceFilter);
+    if (hydration.movilesZonaMovilFilter !== null) setMovilesZonaMovilFilter(hydration.movilesZonaMovilFilter);
+    if (hydration.zonaLayerTipo !== null) setZonaLayerTipo(hydration.zonaLayerTipo);
 
     // Modales: abrir el modal correspondiente
     const m = hydration.modal;
@@ -2660,6 +2670,35 @@ function DashboardContent() {
     return map;
   }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, serverNow, minutosAntesSa, canVerSinAsigPorZona]);
 
+  // Conteo de services por zona — analogo a pedidosZonaData pero usando servicesCompletos.
+  // Misma logica de los 3 estados (pendientes/sin_asignar/atrasados) con los mismos gates.
+  // Feature 2026-05-29: capa "Pedidos por zona" combo Tipo=Services.
+  const servicesZonaData = useMemo(() => {
+    const map = new Map<number, number>();
+    if (pedidosZonaFilter === 'sin_asignar' && !canVerSinAsigPorZona) return map;
+    servicesCompletos.forEach(s => {
+      const estado = Number(s.estado_nro);
+      const tieneMovil = s.movil != null && Number(s.movil) !== 0;
+      if (!tieneMovil && !canVerSinAsigPorZona) return;
+      if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
+      if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
+      if (pedidosZonaFilter === 'sin_asignar' && serverNow && !isWithinSaWindow(s.fch_hora_para ?? null, serverNow, minutosAntesSa)) return;
+      if (pedidosZonaFilter === 'atrasados') {
+        if (estado !== 1) return;
+        const diff = computeDelayMinutes(s.fch_hora_max_ent_comp ?? null);
+        if (diff === null || diff >= 0) return;
+      }
+      const zona = s.zona_nro != null ? Number(s.zona_nro) : null;
+      if (!zona || zona === 0) return;
+      if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
+      map.set(zona, (map.get(zona) ?? 0) + 1);
+    });
+    return map;
+  }, [servicesCompletos, pedidosZonaFilter, scopedZonaIds, serverNow, minutosAntesSa, canVerSinAsigPorZona]);
+
+  // Seleccionar la fuente correcta segun zonaLayerTipo
+  const zonaCountData = zonaLayerTipo === 'services' ? servicesZonaData : pedidosZonaData;
+
   // Si el filtro pedidos/zona quedo en 'sin_asignar' pero el usuario no tiene la funcionalidad,
   // forzarlo a 'pendientes' (ej. estado persistido entre sesiones).
   useEffect(() => {
@@ -3996,7 +4035,7 @@ function DashboardContent() {
                 isToday={isToday}
                 hideCapEntrega={!canSeeCapEntregaLayer}
                 demorasData={demorasData}
-                pedidosZonaData={pedidosZonaData}
+                pedidosZonaData={zonaCountData}
                 pedidosZonaFilter={pedidosZonaFilter}
                 onPedidosZonaFilterChange={setPedidosZonaFilter}
                 hideSinAsignarOption={!canVerSinAsigPorZona}
@@ -4005,6 +4044,10 @@ function DashboardContent() {
                 movilesZonasData={movilesZonasData}
                 movilesZonasServiceFilter={movilesZonasServiceFilter}
                 onMovilesZonasServiceFilterChange={setMovilesZonasServiceFilter}
+                zonaLayerTipo={zonaLayerTipo}
+                onZonaLayerTipoChange={setZonaLayerTipo}
+                movilesZonaMovilFilter={movilesZonaMovilFilter}
+                onMovilesZonaMovilFilterChange={setMovilesZonaMovilFilter}
                 tiposServicioDisponibles={tiposServicio}
                 allZonas={allZonasData}
                 saturacionData={saturacionData}

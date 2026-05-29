@@ -9,6 +9,12 @@ import { getRefColor } from '@/lib/visual-refs-catalog';
 
 export type PedidosZonaFilter = 'pendientes' | 'sin_asignar' | 'atrasados';
 
+/**
+ * Tipo de la capa: pedidos o services.
+ * Controla la fuente de datos que se muestra en la capa de zonas.
+ */
+export type ZonaLayerTipo = 'pedidos' | 'services';
+
 export interface PedidoZonaData {
   zona_id: number;
   nombre: string | null;
@@ -20,12 +26,16 @@ export interface PedidoZonaData {
 
 interface PedidosZonasLayerProps {
   zonas: PedidoZonaData[];
-  /** Map from zona_id → cantidad de pedidos */
+  /** Map from zona_id → cantidad de pedidos o services */
   pedidosCount: Map<number, number>;
-  /** Filtro activo (pendientes totales / sin asignar / atrasados) */
+  /** Filtro de estado activo (pendientes totales / sin asignar / atrasados) */
   filter: PedidosZonaFilter;
-  /** Callback para cambiar el filtro desde el mapa */
+  /** Callback para cambiar el filtro de estado */
   onFilterChange: (f: PedidosZonaFilter) => void;
+  /** Tipo de la capa: pedidos (default) o services */
+  tipo?: ZonaLayerTipo;
+  /** Callback para cambiar el tipo de la capa */
+  onTipoChange?: (t: ZonaLayerTipo) => void;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
   /** Callback al hacer click en una zona (abre modal de moviles en zona) */
@@ -97,8 +107,20 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
   return Math.min(1, base + (1 - base) * (f - 1));
 }
 
-/** Control Leaflet con combo de filtro (pendientes / sin asignar / atrasados) */
-function PedidosZonaFilterControl({ filter, onFilterChange, hideSinAsignarOption = false }: { filter: PedidosZonaFilter; onFilterChange: (f: PedidosZonaFilter) => void; hideSinAsignarOption?: boolean }) {
+/** Control Leaflet con combo "Tipo:" (pedidos/services) + combo "Estado:" (pendientes/sin asignar/atrasados) */
+function PedidosZonaFilterControl({
+  filter,
+  onFilterChange,
+  tipo = 'pedidos',
+  onTipoChange,
+  hideSinAsignarOption = false,
+}: {
+  filter: PedidosZonaFilter;
+  onFilterChange: (f: PedidosZonaFilter) => void;
+  tipo?: ZonaLayerTipo;
+  onTipoChange?: (t: ZonaLayerTipo) => void;
+  hideSinAsignarOption?: boolean;
+}) {
   const map = useMap();
   useEffect(() => {
     const FilterCtrl = L.Control.extend({
@@ -112,24 +134,35 @@ function PedidosZonaFilterControl({ filter, onFilterChange, hideSinAsignarOption
           : '<option value="sin_asignar">Sin asignar</option>';
         container.innerHTML = `
           <div class="mz-filter-inner">
-            <span class="mz-filter-label">Pedidos:</span>
-            <select class="mz-filter-select">
+            <span class="mz-filter-label">Tipo:</span>
+            <select class="mz-filter-select mz-tipo-select">
+              <option value="pedidos">Pedidos</option>
+              <option value="services">Services</option>
+            </select>
+            <span class="mz-filter-label" style="margin-top:4px">Estado:</span>
+            <select class="mz-filter-select mz-estado-select">
               <option value="pendientes">Pendientes</option>
               ${sinAsignarOption}
               <option value="atrasados">Atrasados</option>
             </select>
           </div>
         `;
-        const select = container.querySelector('.mz-filter-select') as HTMLSelectElement;
-        select.value = filter;
-        select.addEventListener('change', () => onFilterChange(select.value as PedidosZonaFilter));
+        const tipoSelect = container.querySelector('.mz-tipo-select') as HTMLSelectElement;
+        tipoSelect.value = tipo;
+        tipoSelect.addEventListener('change', () => {
+          if (onTipoChange) onTipoChange(tipoSelect.value as ZonaLayerTipo);
+        });
+
+        const estadoSelect = container.querySelector('.mz-estado-select') as HTMLSelectElement;
+        estadoSelect.value = filter;
+        estadoSelect.addEventListener('change', () => onFilterChange(estadoSelect.value as PedidosZonaFilter));
         return container;
       },
     });
     const ctrl = new FilterCtrl();
     ctrl.addTo(map);
     return () => { ctrl.remove(); };
-  }, [map, filter, onFilterChange, hideSinAsignarOption]);
+  }, [map, filter, onFilterChange, tipo, onTipoChange, hideSinAsignarOption]);
   return null;
 }
 
@@ -203,6 +236,8 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({
   pedidosCount,
   filter,
   onFilterChange,
+  tipo = 'pedidos',
+  onTipoChange,
   zonaOpacity = 50,
   onZonaClick,
   hideSinAsignarOption = false,
@@ -258,7 +293,13 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({
 
   return (
     <>
-      <PedidosZonaFilterControl filter={filter} onFilterChange={onFilterChange} hideSinAsignarOption={hideSinAsignarOption} />
+      <PedidosZonaFilterControl
+        filter={filter}
+        onFilterChange={onFilterChange}
+        tipo={tipo}
+        onTipoChange={onTipoChange}
+        hideSinAsignarOption={hideSinAsignarOption}
+      />
       <PedidosZonasLegend filter={filter} showLabels={showLabels} onToggleLabels={onToggleLabels} visualRefs={visualRefs} />
       {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => {
         const isInactive = demoras?.get(zona.zona_id)?.activa === false || zona.activa === false;

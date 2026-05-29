@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PedidoSupabase, MovilData, MovilOption } from '@/types';
+import { PedidoSupabase, ServiceSupabase, MovilData, MovilOption } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion, isPedidoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
@@ -131,6 +131,10 @@ interface PedidosTableModalProps {
    *  Al abrirse el modal, localFilters se inicializa con DEFAULT_FILTERS + initialFilters.
    *  Los cambios internos quedan en state local y NO se propagan al dashboard. */
   initialFilters?: Partial<Filters>;
+  /** Services a mostrar en modo Tipo=Services (feature 2026-05-29). */
+  services?: ServiceSupabase[];
+  /** Tipo inicial del modal al abrirse: pedidos (default) o services (feature 2026-05-29). */
+  initialTipo?: "pedidos" | "services";
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -154,11 +158,27 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters, services, initialTipo }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   // Cuando el openSource no es 'colapsable', todos los filtros excepto search
   // se muestran disabled+grisaceos (visibles pero no clickeables).
   const isFilterDisabled = openSource !== 'colapsable';
+
+  // Tipo activo del modal: pedidos o services. Controlado por initialTipo (feature 2026-05-29).
+  // Solo relevante cuando services prop esta provisto.
+  const [modalTipo, setModalTipo] = useState<"pedidos" | "services">(initialTipo ?? "pedidos");
+  // Sincronizar modalTipo con initialTipo cada vez que el modal se abre
+  const prevIsOpenForTipo = useRef(false);
+  useEffect(() => {
+    if (isOpen && !prevIsOpenForTipo.current) {
+      setModalTipo(initialTipo ?? "pedidos");
+    }
+    prevIsOpenForTipo.current = isOpen;
+  }, [isOpen, initialTipo]);
+
+  // Fuente de datos activa segun el tipo seleccionado
+  // Tipo=Services usa services[], Tipo=Pedidos usa pedidos[]
+  const activeData = modalTipo === "services" ? (services ?? []) : pedidos;
 
   // Modo controlled vs uncontrolled:
   //   - Controlled (externalFilters definido): los filtros viven en el parent.
@@ -310,9 +330,10 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     // Gate funcional: si el usuario no tiene "Ped s/asignar unitarios", excluir
     // pedidos sin movil desde el inicio. El filtro de asignacion sin_movil
     // tampoco aplica en ese caso (su boton queda oculto en la UI).
+    // activeData = pedidos or services depending on modalTipo
     const pedidosFiltradosPorGate = !canVerSinAsignarUnitario
-      ? pedidos.filter(p => p.movil && Number(p.movil) !== 0)
-      : pedidos;
+      ? (activeData as PedidoSupabase[]).filter(p => p.movil && Number(p.movil) !== 0)
+      : (activeData as PedidoSupabase[]);
     let result: PedidoSupabase[];
     if (isFinalizados) {
       result = pedidosFiltradosPorGate.filter(p => Number(p.estado_nro) === 2);
@@ -406,7 +427,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     
     return result;
-  }, [pedidos, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, modalExtraSelectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource]);
+  }, [activeData, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, modalExtraSelectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
@@ -414,13 +435,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
   // También respetamos `scope` para que un distribuidor solo vea sus móviles/zonas/productos en los dropdowns.
   const pedidosParaOpciones = useMemo(() => {
     let result: PedidoSupabase[];
-    if (isFinalizados) result = pedidos.filter(p => Number(p.estado_nro) === 2);
-    else result = pedidos.filter(p => Number(p.estado_nro) === 1);
+    if (isFinalizados) result = (activeData as PedidoSupabase[]).filter(p => Number(p.estado_nro) === 2);
+    else result = (activeData as PedidoSupabase[]).filter(p => Number(p.estado_nro) === 1);
     if (scope?.isRestricted) {
       result = result.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: isFinalizados }));
     }
     return result;
-  }, [pedidos, isFinalizados, scope]);
+  }, [activeData, isFinalizados, scope]);
 
   const uniqueZonas = useMemo(() => {
     const set = new Set<number>();
@@ -704,6 +725,24 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                   Finalizados
                 </button>
               </div>
+
+              {/* Tipo toggle (Pedidos / Services) — solo cuando services prop esta disponible */}
+              {services && services.length >= 0 && (
+                <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setModalTipo("pedidos")}
+                    className={"px-3 py-1.5 text-xs rounded-md transition-all font-medium " + (modalTipo === "pedidos" ? "bg-blue-500/30 text-blue-300 shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                  >
+                    Pedidos
+                  </button>
+                  <button
+                    onClick={() => setModalTipo("services")}
+                    className={"px-3 py-1.5 text-xs rounded-md transition-all font-medium " + (modalTipo === "services" ? "bg-purple-500/30 text-purple-300 shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                  >
+                    Services
+                  </button>
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 {/* Toggle Filters */}
