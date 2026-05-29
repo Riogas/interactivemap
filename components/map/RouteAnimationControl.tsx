@@ -176,17 +176,17 @@ export default function RouteAnimationControl({
     const base = activityMovilIds !== null
       ? allMoviles.filter(m => activityMovilIds.has(m.id))
       : allMoviles;
-    if (!movilSearch.trim()) return base;
+    if (!movilSearch.trim()) return base.slice().sort((a, b) => a.id - b.id);
     const q = movilSearch.trim();
     const isNumeric = /^\d+$/.test(q);
     if (isNumeric) {
-      return base.filter(m => String(m.id).startsWith(q));
+      return base.filter(m => String(m.id).startsWith(q)).sort((a, b) => a.id - b.id);
     }
     const lower = q.toLowerCase();
     return base.filter(m =>
       (m.name && m.name.toLowerCase().includes(lower)) ||
       (m.matricula && m.matricula.toLowerCase().includes(lower))
-    );
+    ).sort((a, b) => a.id - b.id);
   }, [allMoviles, movilSearch, activityMovilIds]);
 
   const currentMovil = allMoviles.find(m => m.id === selectedMovilId);
@@ -208,6 +208,7 @@ export default function RouteAnimationControl({
       (m.matricula && m.matricula.toLowerCase().includes(lower))
     );
   }, [filteredMoviles, selectedMovilId, secondarySearch]);
+
 
   return (
     <motion.div
