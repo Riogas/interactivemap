@@ -1843,7 +1843,9 @@ function DashboardContent() {
       for (const updated of movilesDiaUpdates) {
         const existing = byId.get(updated.id);
         if (existing !== updated) {
-          byId.set(updated.id, updated);
+          // Preservar history del state anterior para no cerrar "Ver recorrido"
+          // cuando llega un update de realtime (Bug #1.2 v2).
+          byId.set(updated.id, { ...updated, history: existing?.history ?? updated.history });
           changed = true;
         }
       }
