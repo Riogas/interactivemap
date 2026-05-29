@@ -192,13 +192,10 @@ export default function RouteAnimationControl({
   const currentMovil = allMoviles.find(m => m.id === selectedMovilId);
   const secondaryMovil = allMoviles.find(m => m.id === secondaryMovilId);
 
-  // Filtrar móviles para el dropdown secundario (excluir el primario, filtrar por actividad)
-  // Buscador: numérico puro → startsWith sobre id; con letras → includes sobre name/matricula
+  // Filtrar móviles para el dropdown secundario (excluir el primario).
+  // Usa el mismo base filtrado por actividad que el primario; aplica búsqueda sobre ese resultado.
   const filteredSecondaryMoviles = useMemo(() => {
-    const base = activityMovilIds !== null
-      ? allMoviles.filter(m => activityMovilIds.has(m.id))
-      : allMoviles;
-    const available = base.filter(m => m.id !== selectedMovilId);
+    const available = filteredMoviles.filter(m => m.id !== selectedMovilId);
     if (!secondarySearch.trim()) return available;
     const q = secondarySearch.trim();
     const isNumeric = /^\d+$/.test(q);
@@ -210,7 +207,7 @@ export default function RouteAnimationControl({
       (m.name && m.name.toLowerCase().includes(lower)) ||
       (m.matricula && m.matricula.toLowerCase().includes(lower))
     );
-  }, [allMoviles, selectedMovilId, secondarySearch, activityMovilIds]);
+  }, [filteredMoviles, selectedMovilId, secondarySearch]);
 
   return (
     <motion.div

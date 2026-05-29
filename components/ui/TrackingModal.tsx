@@ -57,6 +57,13 @@ export default function TrackingModal({
   // R4: ¿La fecha seleccionada es hoy?
   const isToday = date === todayMontevideo();
 
+  // C: Sincronizar la fecha del dashboard → estado local cuando la prop cambia.
+  // Cubre el caso en que el usuario cambia la fecha en el dashboard mientras el modal está cerrado
+  // (y también si el modal está abierto y la prop se actualiza externamente).
+  useEffect(() => {
+    setDate(selectedDate);
+  }, [selectedDate]);
+
   // Reset cuando se abre el modal
   const handleOpen = () => {
     setMovilId(preSelectedMovil || '');
@@ -245,18 +252,25 @@ export default function TrackingModal({
                   🚗 Móvil
                 </label>
 
-                {/* Búsqueda */}
-                <div className="relative mb-2">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar por ID, descripción o patente..."
-                    className="w-full pl-9 pr-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-purple-400 focus:outline-none transition-colors"
-                  />
+                {/* Búsqueda + contador */}
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="relative flex-1">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Buscar por ID, descripción o patente..."
+                      className="w-full pl-9 pr-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-purple-400 focus:outline-none transition-colors"
+                    />
+                  </div>
+                  {!activityLoading && (
+                    <span className="ml-2 text-xs text-gray-500 whitespace-nowrap">
+                      {filteredMoviles.length} móviles
+                    </span>
+                  )}
                 </div>
 
                 {/* Lista de móviles */}
