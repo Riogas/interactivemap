@@ -374,7 +374,7 @@ function DashboardContent() {
   // Al cerrar el modal, se resetean a undefined (restorePedidosState los limpia via setPedidosModalInitialFilters).
   // Nota: vista queda en pedidosModalVista/servicesModalVista separados; initialFilters solo tiene Filters-shape (sin vista).
   const [pedidosModalInitialFilters, setPedidosModalInitialFilters] = useState<Partial<{ asignacion: 'todos' | 'con_movil' | 'sin_movil'; entrega: 'todos' | 'entregados' | 'no_entregados'; tipoServicio: string[] }> | undefined>(undefined);
-  const [servicesModalInitialFilters, setServicesModalInitialFilters] = useState<Partial<{ asignacion: 'todos' | 'con_movil' | 'sin_movil'; entrega: 'todos' | 'entregados' | 'no_entregados' }> | undefined>(undefined);
+  const [servicesModalInitialFilters, setServicesModalInitialFilters] = useState<Partial<{ asignacion: 'todos' | 'con_movil' | 'sin_movil'; entrega: 'todos' | 'entregados' | 'no_entregados'; atraso: ('muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora')[] }> | undefined>(undefined);
   const [pedidosModalVista, setPedidosModalVista] = useState<'pendientes' | 'finalizados'>('pendientes');
   // Tipo inicial del modal de pedidos al abrirlo desde la capa zona (feature 2026-05-29)
   const [pedidosModalTipo, setPedidosModalTipo] = useState<'pedidos' | 'services'>('pedidos');
@@ -3373,7 +3373,7 @@ function DashboardContent() {
           {/* Botón de Asignación de Zonas */}
           <button
             id="tour-fab-zonas"
-            onClick={() => { openZonaView(null); setIsActionsExpanded(false); }}
+            onClick={() => { setZonaViewInitialTipoServicio(undefined); setZonaViewInitialSubFiltro(undefined); openZonaView(null); setIsActionsExpanded(false); }}
             className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700"
             title="Asignación de Móviles a Zonas"
           >
@@ -3490,7 +3490,7 @@ function DashboardContent() {
         onClose={() => setIsTourOpen(false)}
         expandFab={() => setIsActionsExpanded(true)}
         collapseFab={() => setIsActionsExpanded(false)}
-        openZonas={() => { openZonaView(null); }}
+        openZonas={() => { setZonaViewInitialTipoServicio(undefined); setZonaViewInitialSubFiltro(undefined); openZonaView(null); }}
         closeZonas={() => setZonaViewModalOpen(false)}
         openRanking={() => setIsLeaderboardOpen(true)}
         closeRanking={() => setIsLeaderboardOpen(false)}
@@ -4070,10 +4070,22 @@ function DashboardContent() {
                 onZonaClick={
                   dataViewMode === 'pedidos-zona'
                     ? (zonaId: number) => {
-                        // Click en capa "Pedidos/Zona": abre la tabla extendida
-                        // filtrada por esta zona + por el valor del combo
-                        // (Pendientes / Sin asignar / Atrasados). openSource='zona_combo'
-                        // → al cerrar, el colapsable vuelve al estado previo.
+                      // Click en capa "Pedidos/Zona": ramifica por zonaLayerTipo.
+                      // openSource='zona_combo' → al cerrar, el colapsable vuelve al estado previo.
+                      if (zonaLayerTipo === 'services') {
+                        // Capa Services: abre ServicesTableModal con paridad de filtros.
+                        setServicesOpenSource('zona_combo');
+                        snapshotServicesState();
+                        setPreFilterZona(zonaId);
+                        setPreFilterMovil(undefined);
+                        setServicesModalInitialFilters({
+                          asignacion: pedidosZonaFilter === 'sin_asignar' ? 'sin_movil' : 'todos',
+                          atraso: pedidosZonaFilter === 'atrasados' ? ['muy_atrasado', 'atrasado'] : [],
+                        });
+                        setServicesModalVista('pendientes');
+                        setIsServicesTableOpen(true);
+                      } else {
+                        // Capa Pedidos (o cualquier otro): comportamiento actual intacto.
                         setPedidosOpenSource('zona_combo');
                         snapshotPedidosState();
                         setPreFilterZona(zonaId);
@@ -4086,8 +4098,25 @@ function DashboardContent() {
                         setPedidosInitialAtraso(pedidosZonaFilter === 'atrasados' ? ['muy_atrasado', 'atrasado'] : []);
                         setIsPedidosTableOpen(true);
                       }
+                    }
                     : dataViewMode === 'moviles-zonas'
-                      ? openZonaView
+                      ? (zonaId: number) => {
+                        // Click en capa "Móviles/Zona": pre-carga combos del modal
+                        // según el combo "Tipo Servicio" activo en el mapa.
+                        const svcFilter = movilesZonasServiceFilter;
+                        if (svcFilter === 'SERVICE') {
+                          setZonaViewInitialTipoServicio('SERVICE');
+                          setZonaViewInitialSubFiltro(undefined);
+                        } else if (svcFilter === 'URGENTE') {
+                          setZonaViewInitialTipoServicio('PEDIDOS');
+                          setZonaViewInitialSubFiltro('URGENTE');
+                        } else {
+                          // NOCTURNO u otro valor → PEDIDOS + NOCTURNO
+                          setZonaViewInitialTipoServicio('PEDIDOS');
+                          setZonaViewInitialSubFiltro('NOCTURNO');
+                        }
+                        openZonaView(zonaId);
+                      }
                       : dataViewMode === 'saturacion'
                         ? setSaturacionModalZonaId
                         : undefined
