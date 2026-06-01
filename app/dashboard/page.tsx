@@ -3735,6 +3735,7 @@ function DashboardContent() {
         initialServiceFilter={movilesZonasServiceFilter}
         scopedZonaIds={scopedZonaIds}
         scopedEmpresas={scopedEmpresas}
+        moviles={moviles}
       />
 
       <MovilesSinReportarModal
