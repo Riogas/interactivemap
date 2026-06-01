@@ -481,10 +481,22 @@ function StatsContent() {
         if (zonasData.success && mzData.success) {
           const allZonas: { zona_id: number }[] = (zonasData.data || []).filter((z: any) => z.geojson);
 
-          // Filtrar moviles-zonas por tipo URGENTE
-          const movilesZonas = (mzData.data || []).filter(
-            (mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === 'URGENTE'
-          );
+          // Mapa movil_id (string) → estadoNro, construido desde movilesRaw ya cargados.
+          // Mismo criterio estricto que DashboardIndicators: solo {0,1,2} = activo puro.
+          // Estado desconocido (no está en el map) → excluir (conservador).
+          const movilEstadosMap = new Map<string, number | null>();
+          for (const m of movilesRaw) {
+            movilEstadosMap.set(String(m.nro), m.estadoNro ?? null);
+          }
+
+          // Filtrar moviles-zonas por tipo URGENTE y por estado activo estricto
+          const movilesZonas = (mzData.data || []).filter((mz: any) => {
+            if ((mz.tipo_de_servicio || '').toUpperCase() !== 'URGENTE') return false;
+            const key = String(mz.movil_id);
+            if (!movilEstadosMap.has(key)) return false; // estado desconocido → excluir
+            const estado = movilEstadosMap.get(key);
+            return estado === 0 || estado === 1 || estado === 2; // estricto: excluye BAJA MOMENTÁNEA=4
+          });
 
           // Conteos por zona
           const zonaCounts = new Map<number, { prioridad: number; transito: number }>();
@@ -509,7 +521,7 @@ function StatsContent() {
       }
     };
     loadZoneData();
-  }, [refreshTick, selectedEmpresa, isPrivilegedScope, user?.allowedEmpresas, empresas]);
+  }, [refreshTick, selectedEmpresa, isPrivilegedScope, user?.allowedEmpresas, empresas, movilesRaw]);
 
   // ─── Opciones de empresa (para el filtro) ──────────────────────────────────
   // Opciones del combo Empresa:
