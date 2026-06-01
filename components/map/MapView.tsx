@@ -798,10 +798,17 @@ function CulledPedidosLayer({
         <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
           <div className="text-xs">
             <div className="font-bold">Pedido #{pedido.id}</div>
-            {pedido.cliente_tel && <div>{pedido.cliente_tel}</div>}
-            <div className="text-gray-600">{pedido.servicio_nombre || pedido.producto_nom}</div>
-            {isSinAsignar && (
+            {pedido.servicio_nombre && (
+              <div className="font-semibold uppercase">{pedido.servicio_nombre}</div>
+            )}
+            {pedido.producto_nom && (
+              <div className="text-gray-600">{pedido.producto_nom}</div>
+            )}
+            {pedido.cliente_tel && <div>Tel: {pedido.cliente_tel}</div>}
+            {isSinAsignar ? (
               <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Sin asignar</div>
+            ) : (
+              <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Movil: {pedido.movil}</div>
             )}
             {pedidosVista === 'finalizados' ? (
               <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
@@ -874,10 +881,17 @@ function CulledServicesLayer({
         <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
           <div className="text-xs">
             <div className="font-bold">Service #{service.id}</div>
-            {service.cliente_tel && <div>{service.cliente_tel}</div>}
-            <div className="text-gray-600">{service.servicio_nombre || service.defecto}</div>
-            {isSinAsignar && (
+            {service.servicio_nombre && (
+              <div className="font-semibold uppercase">{service.servicio_nombre}</div>
+            )}
+            {service.defecto && (
+              <div className="text-gray-600">{service.defecto}</div>
+            )}
+            {service.cliente_tel && <div>Tel: {service.cliente_tel}</div>}
+            {isSinAsignar ? (
               <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Sin asignar</div>
+            ) : (
+              <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Movil: {service.movil}</div>
             )}
             {servicesVista === 'finalizados' ? (
               <div style={{ color: '#2563eb', fontWeight: 'bold' }}>Finalizado</div>
