@@ -747,11 +747,27 @@ function CulledMovilesLayer({
   );
 }
 
+// Helper: devuelve los colores efectivos para un icono, forzando azul cuando el item
+// está sin asignar (en lugar del gris por default de getDelayInfo cuando no hay fecha).
+function effectiveDelayInfo(fchHora: string | null, isSinAsignar: boolean) {
+  if (isSinAsignar) {
+    return {
+      label: 'sin-asignar',
+      color: '#2563EB',
+      lightColor: '#60A5FA',
+      shadowColor: 'rgba(37, 99, 235, 0.3)',
+      badgeText: '',
+    };
+  }
+  const delayMinutes = computeDelayMinutes(fchHora);
+  return getDelayInfo(delayMinutes);
+}
+
 interface CulledPedidosLayerProps {
   pedidosFiltrados: PedidoSupabase[];
   popupPedidoId: number | undefined;
   pedidosVista: 'pendientes' | 'finalizados';
-  getPedidoIcon: (fchHoraMaxEntComp: string | null) => L.DivIcon;
+  getPedidoIcon: (fchHoraMaxEntComp: string | null, isSinAsignar?: boolean) => L.DivIcon;
   getFinalizadoPedidoIcon: (entregado: boolean) => L.DivIcon;
   onPedidoClick: ((pedidoId: number | undefined) => void) | undefined;
   pedidosCluster: boolean;
@@ -790,7 +806,7 @@ function CulledPedidosLayer({
       <OptimizedMarker
         key={`pedido-tabla-${pedido.id}`}
         position={[pedido.latitud!, pedido.longitud!]}
-        icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon(esEntregado) : getPedidoIcon(iconFchHora)}
+        icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon(esEntregado) : getPedidoIcon(iconFchHora, isSinAsignar)}
         eventHandlers={{
           click: () => { onPedidoClick && onPedidoClick(pedido.id); }
         }}
@@ -835,7 +851,7 @@ interface CulledServicesLayerProps {
   servicesFiltrados: ServiceSupabase[];
   popupServiceId: number | undefined;
   servicesVista: 'pendientes' | 'finalizados';
-  getServiceIcon: (fchHoraMaxEntComp: string | null) => L.DivIcon;
+  getServiceIcon: (fchHoraMaxEntComp: string | null, isSinAsignar?: boolean) => L.DivIcon;
   getFinalizadoServiceIcon: () => L.DivIcon;
   onServiceClick: ((serviceId: number | undefined) => void) | undefined;
   pedidosCluster: boolean;
@@ -873,7 +889,7 @@ function CulledServicesLayer({
       <OptimizedMarker
         key={`service-tabla-${service.id}`}
         position={[service.latitud!, service.longitud!]}
-        icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(iconFchHora)}
+        icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(iconFchHora, isSinAsignar)}
         eventHandlers={{
           click: () => { onServiceClick && onServiceClick(service.id); }
         }}
@@ -2093,9 +2109,8 @@ const MapView = memo(function MapView({
   }, []);
 
   // ?? OPTIMIZACIÓN: Iconos para pedidos desde tabla - por atraso/demora
-  const createPedidoIconByDelay = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
+  const createPedidoIconByDelay = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
     // Cache key basado en el rango de color (no en minutos exactos para reusar iconos)
     const cacheKey = `pedido-delay-${info.label}`;
     
@@ -2160,9 +2175,8 @@ const MapView = memo(function MapView({
   }, []);
 
   // ? Iconos para services desde tabla - por atraso/demora (llavecita)
-  const createServiceIconByDelay = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
+  const createServiceIconByDelay = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
     const cacheKey = `service-delay-${info.label}`;
     
     return getCachedIcon(cacheKey, () => {
@@ -2196,9 +2210,8 @@ const MapView = memo(function MapView({
   }, []);
 
   // ?? Iconos COMPACTOS para pedidos (forma configurable con color de demora)
-  const createPedidoIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
+  const createPedidoIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
     const cacheKey = `pedido-delay-compact-${info.label}-${pedidoShape}-${pedidoHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
@@ -2209,9 +2222,8 @@ const MapView = memo(function MapView({
   }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
   // ?? Iconos MINI para pedidos (forma configurable mínima)
-  const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
+  const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
     const cacheKey = `pedido-delay-mini-${info.label}-${pedidoShape}-${pedidoHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
@@ -2222,9 +2234,8 @@ const MapView = memo(function MapView({
   }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
   // ?? Iconos COMPACTOS para services (forma configurable)
-  const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
+  const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
     const cacheKey = `service-delay-compact-${info.label}-${serviceShape}-${serviceHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
@@ -2235,9 +2246,8 @@ const MapView = memo(function MapView({
   }, [serviceShape, serviceHalo, getShapeHtml]);
 
   // ?? Iconos MINI para services (forma configurable mínima)
-  const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
+  const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
     const cacheKey = `service-delay-mini-${info.label}-${serviceShape}-${serviceHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
@@ -2248,16 +2258,16 @@ const MapView = memo(function MapView({
   }, [serviceShape, serviceHalo, getShapeHtml]);
 
   // ?? Funciones selectoras de icono por estilo de pedido
-  const getPedidoIcon = useCallback((fchHoraMaxEntComp: string | null) => {
-    if (pedidoMarkerStyle === 'mini') return createPedidoIconByDelayMini(fchHoraMaxEntComp);
-    if (pedidoMarkerStyle === 'compact') return createPedidoIconByDelayCompact(fchHoraMaxEntComp);
-    return createPedidoIconByDelay(fchHoraMaxEntComp);
+  const getPedidoIcon = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    if (pedidoMarkerStyle === 'mini') return createPedidoIconByDelayMini(fchHoraMaxEntComp, isSinAsignar);
+    if (pedidoMarkerStyle === 'compact') return createPedidoIconByDelayCompact(fchHoraMaxEntComp, isSinAsignar);
+    return createPedidoIconByDelay(fchHoraMaxEntComp, isSinAsignar);
   }, [pedidoMarkerStyle, createPedidoIconByDelay, createPedidoIconByDelayCompact, createPedidoIconByDelayMini]);
 
-  const getServiceIcon = useCallback((fchHoraMaxEntComp: string | null) => {
-    if (serviceMarkerStyle === 'mini') return createServiceIconByDelayMini(fchHoraMaxEntComp);
-    if (serviceMarkerStyle === 'compact') return createServiceIconByDelayCompact(fchHoraMaxEntComp);
-    return createServiceIconByDelay(fchHoraMaxEntComp);
+  const getServiceIcon = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    if (serviceMarkerStyle === 'mini') return createServiceIconByDelayMini(fchHoraMaxEntComp, isSinAsignar);
+    if (serviceMarkerStyle === 'compact') return createServiceIconByDelayCompact(fchHoraMaxEntComp, isSinAsignar);
+    return createServiceIconByDelay(fchHoraMaxEntComp, isSinAsignar);
   }, [serviceMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
 
   // ? Iconos para PEDIDOS FINALIZADOS - verde (entregado) o rojo (no entregado)
