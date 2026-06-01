@@ -8,6 +8,7 @@ import { authStorage } from '@/lib/auth-storage';
 import { supabase } from '@/lib/supabase';
 import { todayMontevideo } from '@/lib/date-utils';
 import { isValidIpPattern } from '@/lib/ip-whitelist';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 
 // ==============================================================================
 // TIPOS
@@ -68,17 +69,20 @@ function getAuthHeaders(): Record<string, string> {
   const token = authStorage.getItem('trackmovil_token') ?? '';
   let isRoot = 'N';
   let username = '';
+  let trackFuncs = '';
   try {
     const raw = authStorage.getItem('trackmovil_user');
     if (raw) {
-      const u = JSON.parse(raw) as { isRoot?: string; username?: string };
+      const u = JSON.parse(raw) as { isRoot?: string; username?: string; roles?: Array<{ funcionalidades?: Array<{ nombre: string }> }> };
       isRoot = u.isRoot ?? 'N';
       username = u.username ?? '';
+      trackFuncs = (u.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',');
     }
   } catch { /* silencioso */ }
   return {
     Authorization: 'Bearer ' + token,
     'x-track-isroot': isRoot,
+    'x-track-funcs': trackFuncs,
     'x-track-user': username,
     'Content-Type': 'application/json',
   };
@@ -208,6 +212,7 @@ function IpWhitelistEditor({ patterns, onPatternsChange, inputValue, onInputChan
 
 export default function LoginBlocksPage() {
   const { user } = useAuth();
+  const canAccess = hasFuncionalidad(user?.roles, 'Query Inicios de sesion');
   const router = useRouter();
 
   // ─── Estado: config global ──────────────────────────────────────────────────
@@ -268,16 +273,16 @@ export default function LoginBlocksPage() {
   const debounceRef = useRef<number | null>(null);
   const pollingRef = useRef<number | null>(null);
 
-  // ─── Gate de root ───────────────────────────────────────────────────────────
+  // ─── Gate de funcionalidad ───────────────────────────────────────────────────
   useEffect(() => {
     if (!user) {
       router.push('/login');
       return;
     }
-    if (user.isRoot !== 'S') {
+    if (!canAccess) {
       router.push('/dashboard');
     }
-  }, [user, router]);
+  }, [user, router, canAccess]);
 
   // ─── Fetch: config global ──────────────────────────────────────────────────
   const fetchConfig = useCallback(async () => {
@@ -438,17 +443,17 @@ export default function LoginBlocksPage() {
 
   // ─── Fetch inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (user?.isRoot !== 'S') return;
+    if (!canAccess) return;
     fetchConfig();
     fetchBlocks();
     fetchAttempts();
-  }, [user, fetchConfig, fetchBlocks, fetchAttempts]);
+  }, [user, canAccess, fetchConfig, fetchBlocks, fetchAttempts]);
 
   // ─── Re-fetch intentos al cambiar filtros ──────────────────────────────────
   useEffect(() => {
-    if (user?.isRoot !== 'S') return;
+    if (!canAccess) return;
     fetchAttempts();
-  }, [usernameFilter, ipFilter, estadoFilter, dateFrom, dateTo, fetchAttempts, user]);
+  }, [usernameFilter, ipFilter, estadoFilter, dateFrom, dateTo, fetchAttempts, canAccess, user]);
 
   // ─── Reset a pagina 1 cuando cambian filtros que afectan resultados ────────
   useEffect(() => {
@@ -457,13 +462,13 @@ export default function LoginBlocksPage() {
 
   // ─── Re-fetch bloqueos al cambiar filtro show-all ─────────────────────────
   useEffect(() => {
-    if (user?.isRoot !== 'S') return;
+    if (!canAccess) return;
     fetchBlocks();
-  }, [blocksShowAll, fetchBlocks, user]);
+  }, [blocksShowAll, fetchBlocks, canAccess, user]);
 
   // ─── Realtime: suscripcion a login_blocks + login_attempts ────────────────
   useEffect(() => {
-    if (user?.isRoot !== 'S') return;
+    if (!canAccess) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let channel: any;
@@ -747,7 +752,7 @@ export default function LoginBlocksPage() {
   });
 
   // ─── Render: loading o no autorizado ──────────────────────────────────────
-  if (!user || user.isRoot !== 'S') {
+  if (!user || !canAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-gray-500">Verificando acceso...</div>

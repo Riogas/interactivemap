@@ -6,6 +6,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { authStorage } from '@/lib/auth-storage';
 import * as XLSX from 'xlsx';
 import { UserPreferences } from '@/components/ui/PreferencesModal';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
+import { isRoot } from '@/lib/auth-scope';
 
 interface PreferenciasGlobalesModalProps {
   isOpen: boolean;
@@ -66,17 +68,21 @@ export default function PreferenciasGlobalesModal({
       .catch(() => { /* silencioso */ });
   }, [isOpen, auditEnabled]);
 
-  // Cargar info del manual actual al abrir (solo para root)
+  // Cargar info del manual actual al abrir (solo para usuarios con funcionalidad 'Subir manuales de usuario')
+  const canSubirManual = isRoot(user) || hasFuncionalidad(user?.roles, 'Subir manuales de usuario');
+  const canRebuildMoviles = isRoot(user) || hasFuncionalidad(user?.roles, 'Reconstruir read model moviles_dia');
   useEffect(() => {
     if (!isOpen) return;
-    if (user?.isRoot !== 'S') return;
+    if (!canSubirManual) return;
     fetch('/api/manual/current')
       .then((r) => r.json())
       .then((d: { url: string; updated_at: string | null; updated_by: string | null }) => {
         setManualInfo(d);
       })
       .catch(() => { /* silencioso */ });
-  }, [isOpen, user?.isRoot]);
+  }, [isOpen, canSubirManual]);
+
+  const trackFuncs = (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',');
 
   const handleAuditToggle = async () => {
     if (auditToggling || auditEnabled === null) return;
@@ -101,6 +107,7 @@ export default function PreferenciasGlobalesModal({
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + token,
           'x-track-isroot': isRootHeader,
+          'x-track-funcs': trackFuncs,
         },
         body: JSON.stringify({ enabled: newVal }),
       });
@@ -291,6 +298,7 @@ export default function PreferenciasGlobalesModal({
         headers: {
           Authorization: 'Bearer ' + token,
           'x-track-isroot': isRootHeader,
+          'x-track-funcs': trackFuncs,
           'x-track-user': username,
         },
         body: fd,
@@ -345,6 +353,7 @@ export default function PreferenciasGlobalesModal({
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + token,
           'x-track-isroot': isRootHeader,
+          'x-track-funcs': trackFuncs,
         },
         body: JSON.stringify({ desde: rebuildDesde, hasta: rebuildHasta, escenario: escenarioId }),
       });
@@ -753,9 +762,9 @@ export default function PreferenciasGlobalesModal({
                 </div>
               )}
 
-              {/* ===== Manual de usuario (solo root) ===== */}
-              {/* ===== Reconstruir lista de móviles (solo root) ===== */}
-              {user?.isRoot === 'S' && (
+              {/* ===== Manual de usuario ===== */}
+              {/* ===== Reconstruir lista de móviles ===== */}
+              {canRebuildMoviles && (
                 <>
                   <hr className="border-gray-200" />
                   <div className="space-y-4">
@@ -820,7 +829,7 @@ export default function PreferenciasGlobalesModal({
                 </>
               )}
 
-              {user?.isRoot === 'S' && (
+              {canSubirManual && (
                 <>
                   <hr className="border-gray-200" />
                   <div className="space-y-4">

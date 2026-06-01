@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 import { authStorage } from '@/lib/auth-storage';
 import type { Notificacion, NotificacionUserState, NotificacionWithStats } from '@/types/supabase';
 
@@ -21,17 +22,20 @@ function getAuthHeaders(): Record<string, string> {
   const token = authStorage.getItem('trackmovil_token') ?? '';
   let isRoot = 'N';
   let username = '';
+  let trackFuncs = '';
   try {
     const raw = authStorage.getItem('trackmovil_user');
     if (raw) {
-      const u = JSON.parse(raw) as { isRoot?: string; username?: string };
+      const u = JSON.parse(raw) as { isRoot?: string; username?: string; roles?: Array<{ funcionalidades?: Array<{ nombre: string }> }> };
       isRoot = u.isRoot ?? 'N';
       username = u.username ?? '';
+      trackFuncs = (u.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',');
     }
   } catch { /* silencioso */ }
   return {
     Authorization: 'Bearer ' + token,
     'x-track-isroot': isRoot,
+    'x-track-funcs': trackFuncs,
     'x-track-user': username,
     'Content-Type': 'application/json',
   };
@@ -527,6 +531,7 @@ function LecturasModal({ notifId, notifTitulo, onClose }: LecturasModalProps) {
 export default function NotificacionesAdminPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const canAccess = hasFuncionalidad(user?.roles, 'Administrar notificaciones');
 
   const [notificaciones, setNotificaciones] = useState<NotificacionWithStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -535,16 +540,16 @@ export default function NotificacionesAdminPage() {
   const [showLecturasModal, setShowLecturasModal] = useState(false);
   const [lecturasNotif, setLecturasNotif] = useState<{ id: number; titulo: string } | null>(null);
 
-  // ─── Gate de root ───────────────────────────────────────────────────────────
+  // ─── Gate de funcionalidad ───────────────────────────────────────────────────
   useEffect(() => {
     if (!user) {
       router.push('/login');
       return;
     }
-    if (user.isRoot !== 'S') {
+    if (!canAccess) {
       router.push('/dashboard');
     }
-  }, [user, router]);
+  }, [user, router, canAccess]);
 
   // ─── Fetch notificaciones ──────────────────────────────────────────────────
   const fetchNotificaciones = useCallback(async () => {
@@ -563,9 +568,9 @@ export default function NotificacionesAdminPage() {
   }, []);
 
   useEffect(() => {
-    if (user?.isRoot !== 'S') return;
+    if (!canAccess) return;
     fetchNotificaciones();
-  }, [user, fetchNotificaciones]);
+  }, [user, canAccess, fetchNotificaciones]);
 
   // ─── Eliminar notificacion ─────────────────────────────────────────────────
   const handleDelete = async (notif: NotificacionWithStats) => {
@@ -609,7 +614,7 @@ export default function NotificacionesAdminPage() {
   };
 
   // ─── Render: loading o no autorizado ──────────────────────────────────────
-  if (!user || user.isRoot !== 'S') {
+  if (!user || !canAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-gray-500">Verificando acceso...</div>

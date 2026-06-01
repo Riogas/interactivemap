@@ -7,7 +7,7 @@ import { MovilData, PedidoServicio, PedidoSupabase, ServiceSupabase, CustomMarke
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { isPedidoEntregado } from '@/utils/estadoPedido';
 import { filterPuntosInteresByScope } from '@/lib/puntos-interes-scope';
-import { isRoot, isDespacho, getScopedEmpresas, isPrivilegedForZonaScope } from '@/lib/auth-scope';
+import { getScopedEmpresas, canSeeAllEmpresas } from '@/lib/auth-scope';
 import { authStorage } from '@/lib/auth-storage';
 import { MarkerShape } from '@/components/ui/PreferencesModal';
 import { ZonaPattern, getPatternDefs, getPatternFillUrl } from '@/lib/zona-patterns';
@@ -140,7 +140,7 @@ interface MapViewProps {
   allMovilEstados?: Map<string, number>; // Mapa completo movil_nro ? estadoNro (todos los moviles)
   allHiddenMovilIds?: Set<string>; // IDs de móviles ocultos-pero-operativos (capa móviles-zonas los excluye)
   /** Usuario autenticado  usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
-  user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>; allowedEmpresas?: number[] | null } | null;
+  user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string; funcionalidades?: Array<{ funcionalidadId: number; nombre: string }> }>; allowedEmpresas?: number[] | null } | null;
   /** Callback invocado en moveend/zoomend para capturar el estado del mapa (view-state). */
   onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
   /** IDs de empresas fleteras seleccionadas  se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
@@ -1250,7 +1250,7 @@ const MapView = memo(function MapView({
         // Determinar scope para enviar al server (server-side filter primario).
         // Los 4 roles privilegiados (root/despacho/dashboard/supervisor) ven todos los POIs:
         // se envia scope_role='root' que el server interpreta como 'sin filtro de empresa'.
-        const privileged = isPrivilegedForZonaScope(user);
+        const privileged = canSeeAllEmpresas(user);
         const scopeRole: 'root' | 'distribuidor' = privileged ? 'root' : 'distribuidor';
         const scopeEmpresas = privileged
           ? []

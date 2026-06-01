@@ -5,11 +5,27 @@
 import { describe, it, expect } from 'vitest';
 import {
   isRoot,
-  isDespacho,
+  canSeeAllEmpresas,
   shouldScopeByEmpresa,
   getScopedEmpresas,
   parseZonasJsonb,
 } from '../lib/auth-scope';
+
+// Helper: construye un rol con la funcionalidad 'Ver todas las empresas'
+const rolConVerTodasEmpresas = (rolId: string, rolNombre: string) => ({
+  RolId: rolId,
+  RolNombre: rolNombre,
+  RolTipo: '',
+  funcionalidades: [{ funcionalidadId: 1, nombre: 'Ver todas las empresas' }],
+});
+
+// Helper: rol sin funcionalidades relevantes
+const rolSinPrivilegios = (rolId: string, rolNombre: string) => ({
+  RolId: rolId,
+  RolNombre: rolNombre,
+  RolTipo: '',
+  funcionalidades: [],
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // isRoot
@@ -72,40 +88,45 @@ describe('isRoot', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// isDespacho
+// canSeeAllEmpresas (reemplaza isDespacho + isPrivilegedForZonaScope)
 // ─────────────────────────────────────────────────────────────────────────────
-describe('isDespacho', () => {
-  it('retorna true cuando roles incluye RolId "49"', () => {
-    expect(isDespacho({
-      roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+describe('canSeeAllEmpresas', () => {
+  it('retorna true para root (legacy isRoot=S)', () => {
+    expect(canSeeAllEmpresas({ isRoot: 'S' })).toBe(true);
+  });
+
+  it('retorna true para root (nuevo rol RolNombre=Root)', () => {
+    expect(canSeeAllEmpresas({
+      isRoot: 'N',
+      roles: [{ RolId: '99', RolNombre: 'Root', RolTipo: '', funcionalidades: [] }],
     })).toBe(true);
   });
 
-  it('retorna true cuando RolId viene como número 49 (cast a string)', () => {
-    expect(isDespacho({
-      roles: [{ RolId: 49 as unknown as string, RolNombre: 'Despacho', RolTipo: '' }],
+  it('retorna true cuando el rol tiene funcionalidad "Ver todas las empresas"', () => {
+    expect(canSeeAllEmpresas({
+      roles: [rolConVerTodasEmpresas('49', 'Despacho')],
     })).toBe(true);
   });
 
-  it('retorna false con RolId distinto (71)', () => {
-    expect(isDespacho({
-      roles: [{ RolId: '71', RolNombre: 'Otro', RolTipo: '' }],
+  it('retorna false cuando el rol NO tiene la funcionalidad', () => {
+    expect(canSeeAllEmpresas({
+      roles: [rolSinPrivilegios('71', 'Distribuidor')],
     })).toBe(false);
   });
 
   it('retorna false con roles vacíos', () => {
-    expect(isDespacho({ roles: [] })).toBe(false);
+    expect(canSeeAllEmpresas({ roles: [] })).toBe(false);
   });
 
   it('retorna false sin roles', () => {
-    expect(isDespacho({})).toBe(false);
+    expect(canSeeAllEmpresas({})).toBe(false);
   });
 
-  it('retorna true cuando despacho está entre varios roles', () => {
-    expect(isDespacho({
+  it('retorna true cuando uno de varios roles tiene la funcionalidad', () => {
+    expect(canSeeAllEmpresas({
       roles: [
-        { RolId: '71', RolNombre: 'Otro', RolTipo: '' },
-        { RolId: '49', RolNombre: 'Despacho', RolTipo: '' },
+        rolSinPrivilegios('71', 'Distribuidor'),
+        rolConVerTodasEmpresas('49', 'Despacho'),
       ],
     })).toBe(true);
   });
@@ -126,15 +147,15 @@ describe('shouldScopeByEmpresa', () => {
     })).toBe(false);
   });
 
-  it('retorna false para despacho', () => {
+  it('retorna false para despacho que tiene funcionalidad "Ver todas las empresas"', () => {
     expect(shouldScopeByEmpresa({
-      roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+      roles: [rolConVerTodasEmpresas('49', 'Despacho')],
     })).toBe(false);
   });
 
-  it('retorna true para usuario común no-root, no-despacho', () => {
+  it('retorna true para usuario común sin la funcionalidad', () => {
     expect(shouldScopeByEmpresa({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolSinPrivilegios('71', 'Distribuidor')],
       allowedEmpresas: [5],
     })).toBe(true);
   });
@@ -155,36 +176,36 @@ describe('getScopedEmpresas', () => {
     })).toBeNull();
   });
 
-  it('retorna null para despacho aunque tenga allowedEmpresas (despacho wins)', () => {
+  it('retorna null para despacho con "Ver todas las empresas" aunque tenga allowedEmpresas', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+      roles: [rolConVerTodasEmpresas('49', 'Despacho')],
       allowedEmpresas: [5],
     })).toBeNull();
   });
 
-  it('retorna [5,7] para no-despacho con allowedEmpresas=[5,7]', () => {
+  it('retorna [5,7] para distribuidor sin privilegios con allowedEmpresas=[5,7]', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolSinPrivilegios('71', 'Distribuidor')],
       allowedEmpresas: [5, 7],
     })).toEqual([5, 7]);
   });
 
-  it('retorna [] (fail-closed) para no-despacho con allowedEmpresas=null', () => {
+  it('retorna [] (fail-closed) para distribuidor con allowedEmpresas=null', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolSinPrivilegios('71', 'Distribuidor')],
       allowedEmpresas: null,
     })).toEqual([]);
   });
 
-  it('retorna [] (fail-closed) para no-despacho con allowedEmpresas ausente', () => {
+  it('retorna [] (fail-closed) para distribuidor con allowedEmpresas ausente', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolSinPrivilegios('71', 'Distribuidor')],
     })).toEqual([]);
   });
 
-  it('retorna [] para no-despacho con allowedEmpresas=[]', () => {
+  it('retorna [] para distribuidor con allowedEmpresas=[]', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolSinPrivilegios('71', 'Distribuidor')],
       allowedEmpresas: [],
     })).toEqual([]);
   });

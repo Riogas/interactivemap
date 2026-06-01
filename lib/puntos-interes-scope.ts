@@ -16,7 +16,7 @@
  */
 
 import {
-  isPrivilegedForZonaScope,
+  canSeeAllEmpresas,
   getScopedEmpresas,
 } from './auth-scope';
 
@@ -36,7 +36,7 @@ export function isPuntoInteresInScope(
   user: ScopedUser | null | undefined
 ): boolean {
   if (!user) return false;
-  if (isPrivilegedForZonaScope(user)) return true;
+  if (canSeeAllEmpresas(user)) return true;
 
   const tipo = String(pi.tipo || '').toLowerCase();
   if (tipo === 'publico' || tipo === 'osm') return true;

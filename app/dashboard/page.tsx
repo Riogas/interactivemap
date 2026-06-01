@@ -25,7 +25,7 @@ import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
-import { getScopedEmpresas, shouldScopeByEmpresa, isPrivilegedForZonaScope, isRoot } from '@/lib/auth-scope';
+import { getScopedEmpresas, shouldScopeByEmpresa, canSeeAllEmpresas, isRoot } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConPedidosMatching, getMovilesConOperacionEnFecha } from '@/lib/moviles/visibility';
 import TrackingModal from '@/components/ui/TrackingModal';
@@ -1100,7 +1100,7 @@ function DashboardContent() {
 
       const url = `/api/moviles-dia?${params.toString()}`;
       const response = await fetch(url, {
-        headers: { 'x-track-isroot': user?.isRoot ?? 'N' },
+        headers: { 'x-track-isroot': user?.isRoot ?? 'N', 'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
       });
       const result = await response.json();
 
@@ -1160,7 +1160,7 @@ function DashboardContent() {
       const url = `/api/pedidos?${params.toString()}`;
 
       const response = await fetch(url, {
-        headers: { "x-track-isroot": user?.isRoot ?? "N" },
+        headers: { "x-track-isroot": user?.isRoot ?? "N", "x-track-funcs": (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
       });
       
       const result = await response.json();
@@ -1204,7 +1204,7 @@ function DashboardContent() {
 
       const url = `/api/services?${params.toString()}`;
       const response = await fetch(url, {
-        headers: { "x-track-isroot": user?.isRoot ?? "N" },
+        headers: { "x-track-isroot": user?.isRoot ?? "N", "x-track-funcs": (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
       });
       const result = await response.json();
 
@@ -2418,8 +2418,7 @@ function DashboardContent() {
   // Usuarios que deben ver pedidos sin asignar y móviles fuera del panel
   // incluso cuando el filtro de empresa es parcial.
   const isPrivilegedUser = useMemo(
-    () => isRoot(user) ||
-      (user?.roles?.some(r => [48, 49, 50].includes(Number(r.RolId))) ?? false),
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Ver pedidos sin asignar (global)'),
     [user],
   );
 
@@ -2480,7 +2479,7 @@ function DashboardContent() {
   // y estadísticas. Coexisten porque su semántica es sutilmente distinta y el
   // refactor a una sola variable está fuera del alcance de este cambio.
   const isScopeRestricted = useMemo(
-    () => !isPrivilegedForZonaScope(user) && (user?.allowedEmpresas?.length ?? 0) > 0,
+    () => !canSeeAllEmpresas(user) && (user?.allowedEmpresas?.length ?? 0) > 0,
     [user],
   );
 
@@ -3570,7 +3569,7 @@ function DashboardContent() {
         minDate={
           // HistoricoMaxCoords: restriccion de fecha para ver recorridos.
           // Solo aplica a usuarios no-root con roles que tienen atributos de escenario.
-          user?.isRoot !== 'S' && user?.roles
+          !isRoot(user) && user?.roles
             ? (() => {
                 const dias = getMaxRoleAttribute(
                   user.roles.map(r => ({ rolId: Number(r.RolId), rolNombre: r.RolNombre, atributos: r.atributos })),
@@ -3986,7 +3985,7 @@ function DashboardContent() {
                   isRestrictedUser={userHasEmpresaRestriction}
                   privilegedUser={isPrivilegedUser}
                   canVerSinAsignarUnitario={canVerSinAsignarUnitario}
-                  isRootUser={isRootUser}
+                  canSeeDriftIndicator={isRoot(user) || hasFuncionalidad(user?.roles, 'Ver indicador de drift realtime')}
                   lastSync={lastSync}
                   onResync={fetchPositions}
                   pollingSeconds={

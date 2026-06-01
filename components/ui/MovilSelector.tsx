@@ -220,8 +220,8 @@ interface MovilSelectorProps {
    *  "Ped s/asignar unitarios" (o es root). Habilita la visibilidad de
    *  pedidos/services sin movil en el colapsable. */
   canVerSinAsignarUnitario?: boolean;
-  /** Instrumentacion de drift: true si user?.isRoot === 'S'. Gating estricto — comparacion literal. */
-  isRootUser?: boolean;
+  /** Instrumentacion de drift: true si el usuario tiene la funcionalidad 'Ver indicador de drift realtime'. */
+  canSeeDriftIndicator?: boolean;
   /** Estado del ultimo sync de posiciones (null si nunca sincronizo). Solo visible si isRootUser. */
   lastSync?: LastSyncState | null;
   /** Callback para el boton Resync ahora (llama fetchPositions directamente). */
@@ -297,7 +297,7 @@ export default function MovilSelector({
   isRestrictedUser = false,
   privilegedUser = false,
   canVerSinAsignarUnitario = false,
-  isRootUser = false,
+  canSeeDriftIndicator = false,
   lastSync = null,
   onResync,
   serverNow = new Date(),
@@ -1329,7 +1329,7 @@ export default function MovilSelector({
                     </>
                   )}
                   {/* Indicador de drift de realtime — solo para usuarios root; oculto en fecha anterior (USE_NEW + !isToday: realtime está pausado) */}
-                  {category.key === 'moviles' && isRootUser && (isToday || !USE_MOVILES_DIA_SELECTOR) && (
+                  {category.key === 'moviles' && canSeeDriftIndicator && (isToday || !USE_MOVILES_DIA_SELECTOR) && (
                     <RealtimeDriftIndicator
                       lastSync={lastSync}
                       pollingSeconds={pollingSeconds}

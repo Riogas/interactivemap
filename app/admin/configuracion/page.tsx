@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { isRoot } from '@/lib/auth-scope';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 import { useRouter } from 'next/navigation';
 
 interface EscenarioSettingRow {
@@ -76,6 +77,7 @@ function strToAlpha(s: string): number | null {
 export default function ConfiguracionPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const canAccess = isRoot(user) || hasFuncionalidad(user?.roles, 'Conf. Globales x Escenario');
   const [rows, setRows] = useState<EscenarioSettingRow[]>([]);
   const [rowStates, setRowStates] = useState<Map<number, RowState>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -83,12 +85,12 @@ export default function ConfiguracionPage() {
   const [recalcStatus, setRecalcStatus] = useState<Map<number, string>>(new Map());
   const loadingRef = useRef(false);
 
-  // Gate: redirigir si no es root
+  // Gate: redirigir si no tiene funcionalidad
   useEffect(() => {
-    if (user !== null && user?.isRoot !== 'S') {
+    if (user !== null && !canAccess) {
       router.replace('/dashboard');
     }
-  }, [user, router]);
+  }, [user, router, canAccess]);
 
   const load = useCallback(async () => {
     if (loadingRef.current) return;
@@ -99,6 +101,7 @@ export default function ConfiguracionPage() {
       const res = await fetch('/api/admin/escenario-settings', {
         headers: {
           'x-track-isroot': user?.isRoot ?? '',
+          'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(','),
           'x-track-user': user?.username ?? '',
         },
       });
@@ -136,10 +139,10 @@ export default function ConfiguracionPage() {
   }, [user]);
 
   useEffect(() => {
-    if (isRoot(user)) {
+    if (canAccess) {
       load();
     }
-  }, [load, user]);
+  }, [load, user, canAccess]);
 
   function handleChange(escenarioId: number, value: string) {
     setRowStates(prev => {
@@ -188,6 +191,7 @@ export default function ConfiguracionPage() {
         headers: {
           'Content-Type': 'application/json',
           'x-track-isroot': user?.isRoot ?? '',
+          'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(','),
           'x-track-user': user?.username ?? '',
         },
         body: JSON.stringify({ escenarioId, pedidosSaMinutosAntes }),
@@ -242,6 +246,7 @@ export default function ConfiguracionPage() {
         headers: {
           'Content-Type': 'application/json',
           'x-track-isroot': user?.isRoot ?? '',
+          'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(','),
           'x-track-user': user?.username ?? '',
         },
         body: JSON.stringify({ escenarioId, horaIniNocturno, horaFinNocturno }),
@@ -310,6 +315,7 @@ export default function ConfiguracionPage() {
         headers: {
           'Content-Type': 'application/json',
           'x-track-isroot': user?.isRoot ?? '',
+          'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(','),
           'x-track-user': user?.username ?? '',
         },
         body: JSON.stringify({ escenarioId, pesoTransitoAlpha }),
@@ -391,6 +397,7 @@ export default function ConfiguracionPage() {
         headers: {
           'Content-Type': 'application/json',
           'x-track-isroot': user?.isRoot ?? '',
+          'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(','),
           'x-track-user': user?.username ?? '',
         },
         body: JSON.stringify({ escenarioId, aplica_serv_nocturno: newValue }),
@@ -437,7 +444,7 @@ export default function ConfiguracionPage() {
     );
   }
 
-  if (user.isRoot !== 'S') {
+  if (!canAccess) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <p className="text-red-500">Acceso denegado.</p>

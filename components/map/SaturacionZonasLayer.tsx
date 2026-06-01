@@ -5,7 +5,8 @@ import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
-import { isPrivilegedForCapEntrega } from '@/lib/auth-scope';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
+import { isRoot } from '@/lib/auth-scope';
 import { getCapEntregaColor } from '@/lib/cap-entrega-color';
 import { getRefColor } from '@/lib/visual-refs-catalog';
 import type { SaturacionZonaStats } from '@/lib/cap-entrega-color';
@@ -24,7 +25,7 @@ export interface SaturacionZonaData {
 /** Subconjunto del shape de usuario que esta capa necesita para el gate de rol. */
 interface ScopedUser {
   isRoot?: string;
-  roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>;
+  roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string; funcionalidades?: Array<{ funcionalidadId: number; nombre: string }> }>;
   allowedEmpresas?: number[] | null;
 }
 
@@ -216,7 +217,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   visualRefs,
 }: SaturacionZonasLayerProps) {
   // Derivar privilegio UNA vez por render de la capa (no por zona).
-  const isPrivileged = isPrivilegedForCapEntrega(user ?? null);
+  const isPrivileged = isRoot(user ?? null) || hasFuncionalidad(user?.roles, 'Cap. Entrega - ver sobrecupos');
 
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];

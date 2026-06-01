@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { isPrivilegedForZonaScope, isRoot } from '@/lib/auth-scope';
+import { canSeeAllEmpresas, isRoot } from '@/lib/auth-scope';
 import { useSearchParams } from 'next/navigation';
 import { computeDelayMinutes } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
@@ -314,7 +314,7 @@ function StatsContent() {
   // Gate: puede ver sin-asignar — controlado únicamente por la funcionalidad 'Ped s/asignar acumulados'.
   // Root siempre puede. El rol del usuario ya no condiciona esta visibilidad.
   const canSeeUnassigned = isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados');
-  const isPrivilegedScope = isPrivilegedForZonaScope(user);
+  const isPrivilegedScope = canSeeAllEmpresas(user);
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
   const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
@@ -364,6 +364,7 @@ function StatsContent() {
         const isRootUser = isRoot(user);
         const authHeaders: Record<string, string> = {
           'x-track-isroot': user?.isRoot ?? 'N',
+          'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(','),
         };
         const pedidosParams = new URLSearchParams({ fecha: date });
         const servicesParams = new URLSearchParams({ fecha: date });
