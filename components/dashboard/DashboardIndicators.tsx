@@ -205,20 +205,35 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escenarioIds, zonasRefreshSeconds, scopedEmpresasKey, scopedZonasKey]);
 
+  // Mapa de estados efectivo para zonasSinMoviles.
+  // Si allMovilEstados ya tiene data (path legacy), usarlo.
+  // Bajo USE_NEW: construir desde moviles[] que ya tienen estadoNro poblado.
+  // La key es String(movil.id) = String(moviles.nro) — coincide con moviles_zonas.movil_id (TEXT = nro::text).
+  const efectivoEstadosMap = useMemo(() => {
+    if (allMovilEstados && allMovilEstados.size > 0) return allMovilEstados;
+    const m = new Map<string, number>();
+    for (const movil of moviles) {
+      if (movil.estadoNro !== undefined && movil.estadoNro !== null) {
+        m.set(String(movil.id), movil.estadoNro);
+      }
+    }
+    return m;
+  }, [allMovilEstados, moviles]);
+
   // Zonas sin móviles: Match MovilesZonasLayer — filtrar por tipo de servicio activo + excluir no-activos y ocultos
   const zonasSinMoviles = useMemo(() => {
     if (zonasAllData.length === 0) return 0;
     const svcUpper = (zonasSinMovilServiceFilter || 'URGENTE').toUpperCase();
     let filtered = movilesZonasRecords.filter((mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === svcUpper);
     // Excluir móviles no-activos y los ocultos-pero-operativos.
-    // Si allMovilEstados no está cargado aún (size=0) → no filtra (evita falsos "sin móvil" durante carga).
+    // Si efectivoEstadosMap no está cargado aún (size=0) → no filtra (evita falsos "sin móvil" durante carga).
     // Si el estado del móvil es undefined → se trata como activo (optimista).
     // isMovilActiveForUI incluye BAJA MOMENTÁNEA (estado 4) como activo.
-    if (allMovilEstados && allMovilEstados.size > 0) {
+    if (efectivoEstadosMap.size > 0) {
       filtered = filtered.filter((mz: any) => {
         const key = String(mz.movil_id);
         if (allHiddenMovilIds && allHiddenMovilIds.has(key)) return false;
-        const estado = allMovilEstados.get(key);
+        const estado = efectivoEstadosMap.get(key);
         return estado === undefined || isMovilActiveForUI(estado);
       });
     }
@@ -249,7 +264,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       const counts = zonaCounts.get(z.zona_id);
       return !counts || (counts.prioridad === 0 && counts.transito === 0);
     }).length;
-  }, [zonasAllData, movilesZonasRecords, allMovilEstados, allHiddenMovilIds, zonasSinMovilServiceFilter, demorasRecords]);
+  }, [zonasAllData, movilesZonasRecords, efectivoEstadosMap, allHiddenMovilIds, zonasSinMovilServiceFilter, demorasRecords]);
 
   // Zonas no activas: Match ZonasActivasLayer — iterar zonas visibles y buscar en demoras
   const zonasNoActivas = useMemo(() => {
