@@ -482,20 +482,21 @@ function StatsContent() {
           const allZonas: { zona_id: number }[] = (zonasData.data || []).filter((z: any) => z.geojson);
 
           // Mapa movil_id (string) → estadoNro, construido desde movilesRaw ya cargados.
-          // Mismo criterio estricto que DashboardIndicators: solo {0,1,2} = activo puro.
-          // Estado desconocido (no está en el map) → excluir (conservador).
+          // Criterio inclusivo: undefined = activo (optimista), isMovilActiveForUI incluye BAJA MOMENTÁNEA (4).
+          // Si movilesRaw está vacío → no se construye el map y no se filtra (evita falsos "sin móvil" durante carga).
           const movilEstadosMap = new Map<string, number | null>();
           for (const m of movilesRaw) {
             movilEstadosMap.set(String(m.nro), m.estadoNro ?? null);
           }
 
-          // Filtrar moviles-zonas por tipo URGENTE y por estado activo estricto
+          // Filtrar moviles-zonas por tipo URGENTE y por estado activo (inclusivo)
           const movilesZonas = (mzData.data || []).filter((mz: any) => {
             if ((mz.tipo_de_servicio || '').toUpperCase() !== 'URGENTE') return false;
+            if (movilEstadosMap.size === 0) return true; // estados aún no cargados → asumir activo
             const key = String(mz.movil_id);
-            if (!movilEstadosMap.has(key)) return false; // estado desconocido → excluir
+            if (!movilEstadosMap.has(key)) return true; // estado desconocido → asumir activo
             const estado = movilEstadosMap.get(key);
-            return estado === 0 || estado === 1 || estado === 2; // estricto: excluye BAJA MOMENTÁNEA=4
+            return estado === null || estado === undefined || isMovilActiveForUI(estado);
           });
 
           // Conteos por zona

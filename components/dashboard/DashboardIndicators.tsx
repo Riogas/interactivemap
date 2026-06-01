@@ -210,18 +210,18 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     if (zonasAllData.length === 0) return 0;
     const svcUpper = (zonasSinMovilServiceFilter || 'URGENTE').toUpperCase();
     let filtered = movilesZonasRecords.filter((mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === svcUpper);
-    // Excluir móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos.
-    // IMPORTANTE: Si no sabemos el estado (no está en el map), excluimos por defecto
-    // (conservador — no contamos como activo a un móvil de estado desconocido).
-    // El guard size>0 se eliminó: si el map está vacío todos los móviles quedan
-    // excluidos → la zona cuenta como "sin móvil", que es lo correcto durante carga.
-    filtered = filtered.filter((mz: any) => {
-      const key = String(mz.movil_id);
-      if (allHiddenMovilIds && allHiddenMovilIds.has(key)) return false;
-      const estado = allMovilEstados?.get(key);
-      if (estado === undefined) return false; // conservador: estado desconocido = no contar
-      return estado === 0 || estado === 1 || estado === 2; // estricto: solo activos puros (excluye BAJA MOMENTÁNEA=4)
-    });
+    // Excluir móviles no-activos y los ocultos-pero-operativos.
+    // Si allMovilEstados no está cargado aún (size=0) → no filtra (evita falsos "sin móvil" durante carga).
+    // Si el estado del móvil es undefined → se trata como activo (optimista).
+    // isMovilActiveForUI incluye BAJA MOMENTÁNEA (estado 4) como activo.
+    if (allMovilEstados && allMovilEstados.size > 0) {
+      filtered = filtered.filter((mz: any) => {
+        const key = String(mz.movil_id);
+        if (allHiddenMovilIds && allHiddenMovilIds.has(key)) return false;
+        const estado = allMovilEstados.get(key);
+        return estado === undefined || isMovilActiveForUI(estado);
+      });
+    }
     // Computar conteos por zona {prioridad, transito}
     const zonaCounts = new Map<number, { prioridad: number; transito: number }>();
     for (const mz of filtered) {
