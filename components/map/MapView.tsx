@@ -801,14 +801,14 @@ function CulledPedidosLayer({
             {pedido.cliente_tel && <div>{pedido.cliente_tel}</div>}
             <div className="text-gray-600">{pedido.servicio_nombre || pedido.producto_nom}</div>
             {isSinAsignar && (
-              <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
+              <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Sin asignar</div>
             )}
             {pedidosVista === 'finalizados' ? (
               <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
                 {esEntregado ? 'Entregado' : 'No Entregado'}
               </div>
             ) : (
-              <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
+              <div style={{ color: isSinAsignar ? '#2563EB' : delayInfo.color, fontWeight: 'bold' }}>
                 {delayInfo.label}: {delayInfo.badgeText}
               </div>
             )}
@@ -877,12 +877,12 @@ function CulledServicesLayer({
             {service.cliente_tel && <div>{service.cliente_tel}</div>}
             <div className="text-gray-600">{service.servicio_nombre || service.defecto}</div>
             {isSinAsignar && (
-              <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
+              <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Sin asignar</div>
             )}
             {servicesVista === 'finalizados' ? (
               <div style={{ color: '#2563eb', fontWeight: 'bold' }}>Finalizado</div>
             ) : (
-              <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
+              <div style={{ color: isSinAsignar ? '#2563EB' : delayInfo.color, fontWeight: 'bold' }}>
                 {delayInfo.label}: {delayInfo.badgeText}
               </div>
             )}

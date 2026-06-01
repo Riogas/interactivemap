@@ -2060,7 +2060,7 @@ export default function MovilSelector({
                                           ? 'bg-green-50 border-green-200 hover:bg-green-100'
                                           : 'bg-red-50 border-red-200 hover:bg-red-100'
                                         : isSinAsignar
-                                          ? 'bg-gray-100 border-gray-300 hover:bg-gray-200'
+                                          ? 'bg-blue-50 border-blue-300 hover:bg-blue-100'
                                           : delayInfo?.bgClass
                                     )}
                                   >
@@ -2072,7 +2072,7 @@ export default function MovilSelector({
                                         </span>
                                       )}
                                       {isSinAsignar ? (
-                                        <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Sin asignar</span>
+                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Sin asignar</span>
                                       ) : (
                                         <span className="text-gray-700">{pedido.movil}</span>
                                       )}
@@ -2094,9 +2094,9 @@ export default function MovilSelector({
                                         <span
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
-                                            isSinAsignar ? 'text-gray-500' : delayInfo?.textColor
+                                            isSinAsignar ? 'text-blue-600' : delayInfo?.textColor
                                           )}
-                                          style={{ backgroundColor: isSinAsignar ? '#9CA3AF22' : `${delayInfo?.color}22` }}
+                                          style={{ backgroundColor: isSinAsignar ? '#2563EB22' : `${delayInfo?.color}22` }}
                                           title={isSinAsignar ? 'Sin asignar' : delayInfo?.label}
                                         >
                                           {delayInfo?.badgeText}
@@ -2167,7 +2167,7 @@ export default function MovilSelector({
                                       isFinalizados
                                         ? 'bg-green-50 border-green-200 hover:bg-green-100'
                                         : isSinAsignar
-                                          ? 'bg-gray-100 border-gray-300 hover:bg-gray-200'
+                                          ? 'bg-blue-50 border-blue-300 hover:bg-blue-100'
                                           : delayInfo?.bgClass
                                     )}
                                   >
@@ -2179,7 +2179,7 @@ export default function MovilSelector({
                                         </span>
                                       )}
                                       {isSinAsignar ? (
-                                        <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Sin asignar</span>
+                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Sin asignar</span>
                                       ) : (
                                         <span className="text-gray-700">{service.movil}</span>
                                       )}
@@ -2198,9 +2198,9 @@ export default function MovilSelector({
                                         <span
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
-                                            isSinAsignar ? 'text-gray-500' : delayInfo?.textColor
+                                            isSinAsignar ? 'text-blue-600' : delayInfo?.textColor
                                           )}
-                                          style={{ backgroundColor: isSinAsignar ? '#9CA3AF22' : `${delayInfo?.color}22` }}
+                                          style={{ backgroundColor: isSinAsignar ? '#2563EB22' : `${delayInfo?.color}22` }}
                                           title={isSinAsignar ? 'Sin asignar' : delayInfo?.label}
                                         >
                                           {delayInfo?.badgeText}
