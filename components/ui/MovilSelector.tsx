@@ -236,6 +236,11 @@ interface MovilSelectorProps {
    *  Si scope.isRestricted y scope.scopedZonaIds, los sin-asignar del colapsable
    *  se filtran igual que en el mapa. */
   scope?: ScopeFilter;
+  /** Gate funcional: true si el usuario tiene la funcionalidad 'Mantenimiento P.Interes'.
+   *  Muestra el botón de edición centralizada de iconos de categorías POI. */
+  canMantenimientoPoi?: boolean;
+  /** Callback para abrir el modal centralizado de iconos de categorías POI. */
+  onOpenPoiIconsModal?: () => void;
 }
 
 // Definir las categorías del árbol
@@ -304,6 +309,8 @@ export default function MovilSelector({
   minutosAntesSa = null,
   pollingSeconds = 60,
   scope,
+  canMantenimientoPoi = false,
+  onOpenPoiIconsModal,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -1464,6 +1471,22 @@ export default function MovilSelector({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       )}
+                    </span>
+                  )}
+
+                  {/* Botón de edición centralizada de iconos de categorías POI */}
+                  {category.key === 'pois' && canMantenimientoPoi && onSetPoiCategoryIcon && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onOpenPoiIconsModal?.(); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenPoiIconsModal?.(); } }}
+                      className="p-1 rounded-full hover:bg-indigo-100 transition-colors group"
+                      title="Editar iconos por categoría"
+                    >
+                      <svg className="w-4 h-4 text-gray-400 group-hover:text-indigo-600 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                      </svg>
                     </span>
                   )}
 

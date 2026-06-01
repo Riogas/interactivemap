@@ -40,6 +40,7 @@ import FleterasZonasModal from '@/components/ui/FleterasZonasModal';
 import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
+import PoiCategoryIconsModal from '@/components/ui/PoiCategoryIconsModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
 import NovedadesModal from '@/components/ui/NovedadesModal';
 import HistoricalBanner from '@/components/ui/HistoricalBanner';
@@ -2472,6 +2473,38 @@ function DashboardContent() {
     [user],
   );
 
+  // Gating del modal de edición centralizada de iconos de categorías POI.
+  const canMantenimientoPoi = useMemo(
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Mantenimiento P.Interes'),
+    [user],
+  );
+
+  // Estado para el modal de iconos de categorías POI
+  const [isPoiIconsOpen, setIsPoiIconsOpen] = useState(false);
+
+  // Agrupamiento de POIs por categoría (misma lógica que en MovilSelector.tsx)
+  // para alimentar el PoiCategoryIconsModal desde page.tsx.
+  const poiByCategoryForModal = useMemo(() => {
+    const groups: Record<string, { label: string; icono: string; items: CustomMarker[] }> = {};
+    const uncategorized: CustomMarker[] = [];
+    for (const poi of puntosInteres) {
+      const cat = poi.categoria?.trim()
+        || poi.observacion?.match(/^\[([^\]]+)\]/)?.[1]
+        || null;
+      if (cat) {
+        if (!groups[cat]) groups[cat] = { label: cat, icono: poi.icono, items: [] };
+        groups[cat].items.push(poi);
+      } else {
+        uncategorized.push(poi);
+      }
+    }
+    const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+    if (uncategorized.length > 0) {
+      sorted.push(['_sin_categoria', { label: 'Mis Puntos', icono: '📌', items: uncategorized }]);
+    }
+    return sorted;
+  }, [puntosInteres]);
+
   // `userHasEmpresaRestriction` mira solo allowedEmpresas ? se usa para filtrar
   // pedidosCompletos/servicesCompletos por móvil (lógica legacy preservada).
   // `isScopeRestricted` además exige que el user no sea privilegiado (root/despacho/dashboard/supervisor) ? es la
@@ -3720,6 +3753,17 @@ function DashboardContent() {
         scopedEmpresas={scopedEmpresas}
       />
 
+      {/* Modal de edición centralizada de iconos de categorías POI (gated por Mantenimiento P.Interes) */}
+      {canMantenimientoPoi && (
+        <PoiCategoryIconsModal
+          isOpen={isPoiIconsOpen}
+          onClose={() => setIsPoiIconsOpen(false)}
+          poiByCategory={poiByCategoryForModal}
+          poiCategoryIcons={(preferences.poiCategoryIcons as Record<string, string>) || {}}
+          onSetPoiCategoryIcon={setPoiCategoryIcon}
+        />
+      )}
+
       {/* Modal de Saturación: click en zona del mapa (PR2: consume snapshot) */}
       {/* No abrir si zona inactiva (demoras.activa===false) — sin métricas relevantes */}
       {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && demorasData.get(saturacionModalZonaId)?.activa !== false && (() => {
@@ -3999,6 +4043,8 @@ function DashboardContent() {
                   minutosAntesSa={minutosAntesSa}
                   scope={scope}
                   isToday={isToday}
+                  canMantenimientoPoi={canMantenimientoPoi}
+                  onOpenPoiIconsModal={() => setIsPoiIconsOpen(true)}
                 />
               </div>
             </motion.div>
