@@ -281,16 +281,16 @@ function PedidosGuide() {
             </div>
           </div>
 
-          {/* Sin móvil asignado - Gris */}
-          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 border border-gray-200">
+          {/* Sin móvil asignado - Azul */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-blue-50 border border-blue-200">
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #6B7280 0%, #D1D5DB 100%)', border: '2px solid white' }}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', border: '2px solid white' }}>
                 <span className="text-base">📦</span>
               </div>
             </div>
             <div>
-              <p className="font-semibold text-gray-800 text-sm">Gris — Sin Móvil Asignado</p>
-              <p className="text-xs text-gray-600">El pedido no tiene un móvil asignado para la entrega.</p>
+              <p className="font-semibold text-blue-800 text-sm">Azul — Sin Móvil Asignado</p>
+              <p className="text-xs text-blue-700">El pedido no tiene un móvil asignado para la entrega.</p>
             </div>
           </div>
         </div>
@@ -426,16 +426,16 @@ function ServicesGuide() {
             </div>
           </div>
 
-          {/* Sin hora - Gris */}
-          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 border border-gray-200">
+          {/* Sin móvil asignado - Azul */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-blue-50 border border-blue-200">
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #6B7280 0%, #D1D5DB 100%)', border: '2px solid white' }}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', border: '2px solid white' }}>
                 <span className="text-base">🔧</span>
               </div>
             </div>
             <div>
-              <p className="font-semibold text-gray-800 text-sm">Gris — Sin Hora Asignada</p>
-              <p className="text-xs text-gray-600">El service no tiene hora máxima de entrega definida.</p>
+              <p className="font-semibold text-blue-800 text-sm">Azul — Sin Móvil Asignado</p>
+              <p className="text-xs text-blue-700">El service no tiene un móvil asignado para la entrega.</p>
             </div>
           </div>
         </div>
