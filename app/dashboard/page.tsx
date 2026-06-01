@@ -1116,8 +1116,20 @@ function DashboardContent() {
           return (result.data as import('@/types').MovilData[]).map((fresh) => {
             const existing = prevById.get(fresh.id);
             if (!existing) return fresh;
-            // Preserve client-only fields that the API never returns.
-            return { ...fresh, history: existing.history };
+            // Preservar currentPosition si la del state local es más reciente que la
+            // del snapshot de moviles_dia (defensa contra last_gps_* stale del read model).
+            const freshGpsTs = fresh.currentPosition?.fechaInsLog
+              ? new Date(fresh.currentPosition.fechaInsLog).getTime()
+              : 0;
+            const existingGpsTs = existing.currentPosition?.fechaInsLog
+              ? new Date(existing.currentPosition.fechaInsLog).getTime()
+              : 0;
+            const useExistingPosition = existingGpsTs > freshGpsTs;
+            return {
+              ...fresh,
+              history: existing.history,
+              currentPosition: useExistingPosition ? existing.currentPosition : fresh.currentPosition,
+            };
           });
         });
         setIsInitialLoad(false);
