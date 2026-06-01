@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * API: POST /api/admin/usuarios-empresa/toggle
  *
- * Gate: usuario con rol "Distribuidor" O isRoot.
+ * Gate: funcionalidad 'Gestion de Usuarios' (via x-track-funcs).
  *
  * Proxía al endpoint del SecuritySuite:
  *   POST ${SECURITY_SUITE_URL}/api/db/usuarios/{userId}/permite-login
@@ -24,38 +25,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
 
-function requireGestionUsuariosOrRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot === 'S') return true;
-
-  // Gate por funcionalidad "Gestion de Usuarios" (funcionalidadId 15).
-  const funcsHeader = request.headers.get('x-track-funcionalidades');
-  if (funcsHeader) {
-    try {
-      const funcs: string[] = JSON.parse(funcsHeader);
-      const hasGestion = funcs.some(
-        (f) => String(f).trim() === 'Gestion de Usuarios',
-      );
-      if (hasGestion) return true;
-    } catch {
-      // header malformado — denegamos acceso
-    }
-  }
-
-  return NextResponse.json(
-    {
-      success: false,
-      error: 'Acceso denegado',
-      code: 'REQUIRES_GESTION_USUARIOS',
-    },
-    { status: 403 },
-  );
-}
-
 type Accion = 'grant' | 'revoke' | 'toggle';
 
 export async function POST(request: NextRequest) {
-  const gate = requireGestionUsuariosOrRoot(request);
+  const gate = requireFuncionalidad(request, 'Gestion de Usuarios');
   if (gate !== true) return gate;
 
   let body: {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { logAudit } from '@/lib/audit-log';
 import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * POST /api/admin/recalcular-cap-entrega-all
@@ -11,7 +12,7 @@ import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
  *
  * Util para el refresh inicial tras aplicar la migration de peso_transito_alpha.
  *
- * Gate: x-track-isroot: 'S'
+ * Gate: funcionalidad 'Recalcular Cap. Entrega global'
  *
  * Body (opcional):
  *   { "escenarioId": 1 }  — si se omite, procesa todos los escenarios
@@ -20,19 +21,8 @@ import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
  *   { success: true, total: N, processed: N, errors: [...] }
  */
 
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
-
 export async function POST(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Recalcular Cap. Entrega global');
   if (gate !== true) return gate;
 
   let escenarioIdFilter: number | undefined = undefined;

@@ -1,21 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import type { Notificacion, NotificacionUserState } from '@/types/supabase';
-
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 // GET /api/admin/notificaciones — lista todas las notificaciones con stats de lecturas
 export async function GET(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Administrar notificaciones');
   if (gate !== true) return gate;
 
   try {
@@ -64,7 +54,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/notificaciones — crear nueva notificacion
 export async function POST(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Administrar notificaciones');
   if (gate !== true) return gate;
 
   try {

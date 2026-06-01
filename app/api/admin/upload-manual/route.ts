@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * POST /api/admin/upload-manual
@@ -7,7 +8,7 @@ import { getServerSupabaseClient } from '@/lib/supabase';
  * Sube un PDF al bucket 'manuals' de Supabase Storage (path fijo: manual/actual.pdf)
  * y actualiza app_config.manual_url con la publicUrl del archivo subido.
  *
- * Gate: header x-track-isroot: 'S'
+ * Gate: funcionalidad 'Subir manuales de usuario'
  *
  * Body: multipart/form-data con campo 'file' (.pdf, max 20MB)
  *
@@ -18,21 +19,9 @@ const MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 const STORAGE_BUCKET = 'manuals';
 const STORAGE_PATH = 'manual/actual.pdf';
 
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
-
 export async function POST(request: NextRequest) {
-  // Gate: solo root
-  const authCheck = requireRoot(request);
-  if (authCheck !== true) return authCheck;
+  const gate = requireFuncionalidad(request, 'Subir manuales de usuario');
+  if (gate !== true) return gate;
 
   // Parsear FormData
   let formData: FormData;

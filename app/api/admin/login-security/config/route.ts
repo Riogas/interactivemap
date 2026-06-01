@@ -1,29 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLoginSecurityConfig, setLoginSecurityConfig } from '@/lib/login-security-config';
 import { isValidIpPattern } from '@/lib/ip-whitelist';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * GET  /api/admin/login-security/config — Leer config global de limites de bloqueo
  * PUT  /api/admin/login-security/config — Actualizar config global
  *
- * Gate: header x-track-isroot: 'S' (mismo patron que todos los endpoints admin)
+ * Gate: funcionalidad 'Query Inicios de sesion'
  */
-
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
 
 // ─── GET ────────────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Query Inicios de sesion');
   if (gate !== true) return gate;
 
   try {
@@ -49,7 +39,7 @@ export async function GET(request: NextRequest) {
 // ─── PUT ─────────────────────────────────────────────────────────────────────
 
 export async function PUT(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Query Inicios de sesion');
   if (gate !== true) return gate;
 
   let body: unknown;

@@ -2,28 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { logAudit } from '@/lib/audit-log';
 import { recomputeMovilAndCapEntrega } from '@/lib/zonas-cap-entrega';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * GET  /api/admin/escenario-settings
  * POST — no aplica
  * PUT  /api/admin/escenario-settings
  *
- * Gate: header x-track-isroot: 'S'  (mismo patron que audit/config)
+ * Gate: funcionalidad 'Conf. Globales x Escenario'
  */
 
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 const DEFAULT_PESO_TRANSITO_ALPHA = 0.3;
-
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
 
 // ─── GET ────────────────────────────────────────────────────────────────────
 
@@ -46,7 +36,7 @@ type SettingsRow = {
  * Si un escenario no tiene row en escenario_settings, los campos usan sus defaults.
  */
 export async function GET(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Conf. Globales x Escenario');
   if (gate !== true) return gate;
 
   const supabase = getServerSupabaseClient();
@@ -120,7 +110,7 @@ type PutBody = {
 };
 
 export async function PUT(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Conf. Globales x Escenario');
   if (gate !== true) return gate;
 
   let body: PutBody;

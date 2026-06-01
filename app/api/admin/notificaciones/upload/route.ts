@@ -1,27 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 const BUCKET_NAME = 'notificaciones-media';
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;  // 5 MB
 const MAX_VIDEO_BYTES = 30 * 1024 * 1024; // 30 MB
-
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
 
 // POST /api/admin/notificaciones/upload
 // Sube una imagen o video al bucket de Supabase Storage.
 // Acepta multipart/form-data con un campo 'file'.
 // Devuelve: { success, url, type }
 export async function POST(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Administrar notificaciones');
   if (gate !== true) return gate;
 
   try {

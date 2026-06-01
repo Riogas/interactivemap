@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * GET /api/admin/login-security/usuario-detalle?username=X
  *
  * Proxy al endpoint del SecuritySuite que devuelve datos del usuario por username.
- * Gate: header x-track-isroot: 'S'
+ * Gate: funcionalidad 'Query Inicios de sesion'
  *
  * Spec del upstream (SecuritySuite):
  *   GET /api/db/usuarios/por-username?username=jperez
@@ -28,19 +29,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
 
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
-
 export async function GET(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Query Inicios de sesion');
   if (gate !== true) return gate;
 
   const url = new URL(request.url);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * POST /api/moviles-dia/rebuild
@@ -7,7 +8,7 @@ import { supabase } from '@/lib/supabase';
  * Dispara fn_moviles_dia_rebuild para reconstruir el read model
  * moviles_dia en el rango [desde, hasta] para un escenario dado.
  *
- * Gate: x-track-isroot: 'S'
+ * Gate: funcionalidad 'Reconstruir read model moviles_dia'
  *
  * Body:
  *   { "desde": "YYYY-MM-DD", "hasta": "YYYY-MM-DD", "escenario"?: number }
@@ -15,17 +16,6 @@ import { supabase } from '@/lib/supabase';
  * Response:
  *   { ok: true } | { error: string }
  */
-
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -47,7 +37,7 @@ function parseDate(value: unknown, fieldName: string): Date | NextResponse {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Reconstruir read model moviles_dia');
   if (gate !== true) return gate;
 
   let body: Record<string, unknown>;

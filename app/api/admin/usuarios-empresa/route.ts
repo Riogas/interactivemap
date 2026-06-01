@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * API proxy: GET /api/admin/usuarios-empresa
  *
- * Gate: usuario con rol "Distribuidor" (x-track-roles incluye 'Distribuidor') O isRoot (x-track-isroot === 'S').
+ * Gate: funcionalidad 'Gestion de Usuarios' (via x-track-funcs).
  *
  * Proxía al endpoint upstream del SecuritySuite:
  *   GET ${SECURITY_SUITE_URL}/api/db/usuarios/por-empresa-fletera?empresas=<lista>
@@ -19,38 +20,8 @@ import { getServerSupabaseClient } from '@/lib/supabase';
 
 const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
 
-function requireGestionUsuariosOrRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot === 'S') return true;
-
-  // Gate por funcionalidad: el cliente serializa los nombres de funcionalidades
-  // de todos los roles del usuario en x-track-funcionalidades (JSON array).
-  // Acceso permitido si tiene "Gestion de Usuarios" (funcionalidadId 15 en SecuritySuite).
-  const funcsHeader = request.headers.get('x-track-funcionalidades');
-  if (funcsHeader) {
-    try {
-      const funcs: string[] = JSON.parse(funcsHeader);
-      const hasGestion = funcs.some(
-        (f) => String(f).trim() === 'Gestion de Usuarios',
-      );
-      if (hasGestion) return true;
-    } catch {
-      // header malformado — denegamos acceso
-    }
-  }
-
-  return NextResponse.json(
-    {
-      success: false,
-      error: 'Acceso denegado',
-      code: 'REQUIRES_GESTION_USUARIOS',
-    },
-    { status: 403 },
-  );
-}
-
 export async function GET(request: NextRequest) {
-  const gate = requireGestionUsuariosOrRoot(request);
+  const gate = requireFuncionalidad(request, 'Gestion de Usuarios');
   if (gate !== true) return gate;
 
   const url = new URL(request.url);
