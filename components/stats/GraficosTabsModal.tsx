@@ -86,15 +86,20 @@ function BucketStackedBar({
                   return (
                     <div
                       key={bucket}
-                      className="h-full flex items-center justify-center overflow-hidden"
+                      className="h-full flex items-center justify-center overflow-hidden px-0.5"
                       style={{ width: `${pct}%`, backgroundColor: colors[bucket] ?? '#6B7280' }}
-                      title={`${bucket}: ${count}`}
+                      title={`${bucket}: ${count} (${pct}%)`}
                     >
-                      {pct >= 15 && (
-                        <span className="text-[9px] font-black text-white leading-none [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]">
-                          {pct}%
+                      {pct >= 18 ? (
+                        <div className="text-center text-white font-black leading-[10px] whitespace-nowrap [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]">
+                          <div className="text-[10px] font-stats-mono tabular-nums">{count}</div>
+                          <div className="text-[8px] opacity-85">{pct}%</div>
+                        </div>
+                      ) : pct >= 10 ? (
+                        <span className="text-[9px] font-black text-white leading-none font-stats-mono tabular-nums [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]">
+                          {count}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   );
                 })}
