@@ -4,7 +4,16 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { canSeeAllEmpresas, isRoot } from '@/lib/auth-scope';
 import { useSearchParams } from 'next/navigation';
-import { computeDelayMinutes } from '@/utils/pedidoDelay';
+import {
+  computeDelayMinutes,
+  bucketAtrasoPendiente,
+  bucketAtrasoFinalizado,
+  BUCKETS_PENDIENTE_ORDEN,
+  BUCKETS_FINALIZADO_ORDEN,
+} from '@/utils/pedidoDelay';
+import type { BucketRow } from '@/components/stats/GraficosTabsModal';
+import { GraficosTabsModal } from '@/components/stats/GraficosTabsModal';
+import { BarChart, type StackRow } from '@/components/stats/Charts';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -72,117 +81,6 @@ function formatTimeAgo(date: Date | null): string {
   return `${Math.floor(diff / 3600)}h`;
 }
 
-function BarChart({ data, colorClass = 'bg-stats-info' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  const summary = data.length === 0
-    ? 'Sin datos'
-    : `${data.length} categorias, total ${total}. ${data
-        .map((d) => `${d.label}: ${d.value}`)
-        .slice(0, 5)
-        .join('; ')}${data.length > 5 ? '; …' : ''}.`;
-  return (
-    <div
-      className="space-y-2"
-      role="img"
-      aria-label={summary}
-    >
-      {data.map((item, i) => {
-        const pctOfTotal = total > 0 ? Math.round((item.value / total) * 100) : 0;
-        return (
-          <div
-            key={item.label}
-            className="group stats-row-enter rounded -mx-1 px-1 py-0.5 transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/5"
-            style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
-            title={`${item.label}: ${item.value} (${pctOfTotal}%)`}
-          >
-            <div className="flex justify-between items-baseline gap-2 text-xs mb-0.5 text-stats-muted-fg dark:text-gray-400">
-              <span className="truncate max-w-[55%]">{item.label}</span>
-              <span className="font-semibold tabular-nums font-stats-mono text-stats-foreground dark:text-white flex items-baseline gap-1">
-                <span className="text-right min-w-[3ch]">{item.value}</span>
-                <span className="text-stats-muted-fg/70 dark:text-gray-500 font-normal text-right min-w-[3.5ch]">· {pctOfTotal}%</span>
-              </span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
-              <div
-                className={`h-full ${colorClass} rounded-full transition-all duration-700 group-hover:brightness-110`}
-                style={{ width: `${Math.max(item.pct, item.value > 0 ? 6 : 0)}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Stacked bar (Entregados / No Entregados / Pendientes) ──────────────────
-interface StackRow { label: string; entregados: number; noEntregados: number; pendientes: number; }
-function StackedBarChart({ data, expanded = false }: { data: StackRow[]; expanded?: boolean }) {
-  const maxTotal = Math.max(...data.map(r => r.entregados + r.noEntregados + r.pendientes), 1);
-  const barH = expanded ? 'h-7' : 'h-5';
-  const spacing = expanded ? 'space-y-5' : 'space-y-2.5';
-  return (
-    <div
-      className={spacing}
-      role="img"
-      aria-label={`Distribucion entregados/no entregados/pendientes en ${data.length} filas, total ${data.reduce((s, r) => s + r.entregados + r.noEntregados + r.pendientes, 0)}.`}
-    >
-      {/* Leyenda */}
-      <div className="flex gap-3 text-[10px] mb-1 text-stats-muted-fg dark:text-gray-400">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-success inline-block" />Entregados</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-warning inline-block" />No entregados</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-stats-info inline-block" />Pendientes</span>
-      </div>
-      {data.map((row, i) => {
-        const total = row.entregados + row.noEntregados + row.pendientes;
-        const barWidth = Math.round((total / maxTotal) * 100);
-        const pEnt = total > 0 ? Math.round((row.entregados / total) * 100) : 0;
-        const pNoEnt = total > 0 ? Math.round((row.noEntregados / total) * 100) : 0;
-        const pPend = total > 0 ? 100 - pEnt - pNoEnt : 0;
-        return (
-          <div
-            key={row.label}
-            className="group stats-row-enter rounded -mx-1 px-1 py-0.5 transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/5"
-            style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
-            title={`${row.label}: total ${total} · entregados ${row.entregados} (${pEnt}%) · no entregados ${row.noEntregados} (${pNoEnt}%) · pendientes ${row.pendientes} (${pPend}%)`}
-          >
-            <div className={`flex justify-between items-baseline gap-2 ${expanded ? 'text-sm' : 'text-xs'} mb-0.5 text-stats-foreground/80 dark:text-gray-300`}>
-              <span className="truncate max-w-[70%] font-medium">{row.label}</span>
-              <span className="font-bold tabular-nums font-stats-mono text-right min-w-[3ch] text-stats-foreground dark:text-white">{total}</span>
-            </div>
-            <div className={`${barH} rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10`}>
-              <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${Math.max(barWidth, total > 0 ? 6 : 0)}%` }}>
-                {row.entregados > 0 && (
-                  <div className="h-full bg-stats-success flex items-center justify-center overflow-hidden" style={{ width: `${pEnt}%` }}>
-                    {(expanded || pEnt >= 15) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-white leading-none [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]`}>{pEnt}%</span>}
-                  </div>
-                )}
-                {row.noEntregados > 0 && (
-                  <div className="h-full bg-stats-warning flex items-center justify-center overflow-hidden" style={{ width: `${pNoEnt}%` }}>
-                    {(expanded || pNoEnt >= 15) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-white leading-none [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]`}>{pNoEnt}%</span>}
-                  </div>
-                )}
-                {row.pendientes > 0 && (
-                  <div className="h-full bg-stats-info flex items-center justify-center overflow-hidden" style={{ width: `${pPend}%` }}>
-                    {(expanded || pPend >= 15) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-white leading-none [text-shadow:_0_1px_1px_rgba(0,0,0,0.35)]`}>{pPend}%</span>}
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* Siempre visible en modo expandido: etiquetas de % debajo de la barra */}
-            {expanded && total > 0 && (
-              <div className="flex gap-4 mt-1.5">
-                {pEnt > 0 && <span className="text-[10px] text-stats-success font-semibold">{pEnt}% ent.</span>}
-                {pNoEnt > 0 && <span className="text-[10px] text-stats-warning font-semibold">{pNoEnt}% no ent.</span>}
-                {pPend > 0 && <span className="text-[10px] text-stats-info font-semibold">{pPend}% pend.</span>}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function getEmpresaNombre(p: { movil?: unknown; empresa_fletera_id?: unknown }, movilEmpresa: Map<number, string>, empresas: Map<number, string>): string {
   const movilNro = p.movil != null ? Number(p.movil) : null;
@@ -866,6 +764,147 @@ function StatsContent() {
       });
   }, [filteredPedidos]);
 
+  // ─── Pendientes por atraso × móvil ────────────────────────────────────────
+  const pendientesPorMovil = useMemo<BucketRow[]>(() => {
+    const map = new Map<number, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (isPedidoEntregado(p)) continue;
+      if (Number(p.estado_nro) !== 1) continue;
+      const movilNum = p.movil ? Number(p.movil) : 0;
+      if (!movilNum) continue;
+      const mins = computeDelayMinutes(p.fch_hora_max_ent_comp ?? null);
+      const bucket = bucketAtrasoPendiente(mins);
+      if (!map.has(movilNum)) {
+        map.set(movilNum, {
+          label: `Móvil ${movilNum}`,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_PENDIENTE_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(movilNum)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos]);
+
+  // ─── Finalizados por atraso × móvil ───────────────────────────────────────
+  const finalizadosPorMovil = useMemo<BucketRow[]>(() => {
+    const map = new Map<number, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (!isPedidoEntregado(p)) continue;
+      const movilNum = p.movil ? Number(p.movil) : 0;
+      if (!movilNum) continue;
+      const mins = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+      const bucket = bucketAtrasoFinalizado(mins);
+      if (!map.has(movilNum)) {
+        map.set(movilNum, {
+          label: `Móvil ${movilNum}`,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_FINALIZADO_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(movilNum)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos]);
+
+  // ─── Pendientes por atraso × zona ─────────────────────────────────────────
+  const pendientesPorZona = useMemo<BucketRow[]>(() => {
+    const map = new Map<string, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (isPedidoEntregado(p)) continue;
+      if (Number(p.estado_nro) !== 1) continue;
+      if (!p.zona_nro) continue;
+      const key = `Zona ${p.zona_nro}`;
+      const mins = computeDelayMinutes(p.fch_hora_max_ent_comp ?? null);
+      const bucket = bucketAtrasoPendiente(mins);
+      if (!map.has(key)) {
+        map.set(key, {
+          label: key,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_PENDIENTE_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(key)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos]);
+
+  // ─── Finalizados por atraso × zona ────────────────────────────────────────
+  const finalizadosPorZona = useMemo<BucketRow[]>(() => {
+    const map = new Map<string, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (!isPedidoEntregado(p)) continue;
+      if (!p.zona_nro) continue;
+      const key = `Zona ${p.zona_nro}`;
+      const mins = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+      const bucket = bucketAtrasoFinalizado(mins);
+      if (!map.has(key)) {
+        map.set(key, {
+          label: key,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_FINALIZADO_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(key)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos]);
+
+  // ─── Pendientes por atraso × empresa ──────────────────────────────────────
+  const pendientesPorEmpresa = useMemo<BucketRow[]>(() => {
+    const map = new Map<string, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (isPedidoEntregado(p)) continue;
+      if (Number(p.estado_nro) !== 1) continue;
+      const key = getEmpresaNombre(p, movilEmpresa, empresas);
+      if (key === 'Sin empresa') continue;
+      const mins = computeDelayMinutes(p.fch_hora_max_ent_comp ?? null);
+      const bucket = bucketAtrasoPendiente(mins);
+      if (!map.has(key)) {
+        map.set(key, {
+          label: key,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_PENDIENTE_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(key)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos, movilEmpresa, empresas]);
+
+  // ─── Finalizados por atraso × empresa ─────────────────────────────────────
+  const finalizadosPorEmpresa = useMemo<BucketRow[]>(() => {
+    const map = new Map<string, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (!isPedidoEntregado(p)) continue;
+      const key = getEmpresaNombre(p, movilEmpresa, empresas);
+      if (key === 'Sin empresa') continue;
+      const mins = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+      const bucket = bucketAtrasoFinalizado(mins);
+      if (!map.has(key)) {
+        map.set(key, {
+          label: key,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_FINALIZADO_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(key)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos, movilEmpresa, empresas]);
+
   // ─── Móviles stats (respeta filtro de empresa) ─────────────────────────────
   const movilesStats = useMemo(() => {
     // Solo móviles con GPS vigente (INNER JOIN gps_latest_positions)
@@ -1434,21 +1473,15 @@ function StatsContent() {
               >
                 Mostrar gráficos por móvil
               </button>
-              {modalMoviles && (
-                <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setModalMoviles(false); }}>
-                  <div className="w-full max-w-5xl stats-modal-content">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
-                        <span className="text-stats-muted-fg dark:text-gray-400">{CARD_ICONS.truck}</span>Top móviles por entregas
-                      </h3>
-                      <button onClick={() => setModalMoviles(false)} className="p-2 rounded-xl group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info" aria-label="Cerrar">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                      </button>
-                    </div>
-                    <div className="text-sm"><StackedBarChart data={movilesTop} expanded /></div>
-                  </div>
-                </div>
-              )}
+              <GraficosTabsModal
+                isOpen={modalMoviles}
+                onClose={() => setModalMoviles(false)}
+                title="Top móviles por entregas"
+                icon={CARD_ICONS.truck}
+                stackedData={movilesTop}
+                pendientesData={pendientesPorMovil}
+                finalizadosData={finalizadosPorMovil}
+              />
             </div>
 
             {/* Pedidos por zona — fila 2, botón lazy */}
@@ -1466,21 +1499,15 @@ function StatsContent() {
               >
                 Mostrar gráficos por zona
               </button>
-              {modalZona && (
-                <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setModalZona(false); }}>
-                  <div className="w-full max-w-5xl stats-modal-content">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
-                        <span className="text-stats-muted-fg dark:text-gray-400">{CARD_ICONS.pin}</span>Pedidos por zona
-                      </h3>
-                      <button onClick={() => setModalZona(false)} className="p-2 rounded-xl group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info" aria-label="Cerrar">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                      </button>
-                    </div>
-                    <div className="text-sm"><StackedBarChart data={pedidosPorZona} expanded /></div>
-                  </div>
-                </div>
-              )}
+              <GraficosTabsModal
+                isOpen={modalZona}
+                onClose={() => setModalZona(false)}
+                title="Pedidos por zona"
+                icon={CARD_ICONS.pin}
+                stackedData={pedidosPorZona}
+                pendientesData={pendientesPorZona}
+                finalizadosData={finalizadosPorZona}
+              />
             </div>
 
             {/* Pedidos por empresa — fila 2, botón lazy */}
@@ -1498,21 +1525,15 @@ function StatsContent() {
               >
                 Mostrar gráficos por empresa
               </button>
-              {modalEmpresa && (
-                <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setModalEmpresa(false); }}>
-                  <div className="w-full max-w-5xl stats-modal-content">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
-                        <span className="text-stats-muted-fg dark:text-gray-400">{CARD_ICONS.building}</span>Pedidos por empresa
-                      </h3>
-                      <button onClick={() => setModalEmpresa(false)} className="p-2 rounded-xl group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info" aria-label="Cerrar">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                      </button>
-                    </div>
-                    <div className="text-sm"><StackedBarChart data={pedidosPorEmpresa} expanded /></div>
-                  </div>
-                </div>
-              )}
+              <GraficosTabsModal
+                isOpen={modalEmpresa}
+                onClose={() => setModalEmpresa(false)}
+                title="Pedidos por empresa"
+                icon={CARD_ICONS.building}
+                stackedData={pedidosPorEmpresa}
+                pendientesData={pendientesPorEmpresa}
+                finalizadosData={finalizadosPorEmpresa}
+              />
             </div>
 
           </div>
