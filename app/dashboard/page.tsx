@@ -1558,8 +1558,16 @@ function DashboardContent() {
     if (moviles.length === 0) return;
 
     setSelectedMoviles(prev => {
-      // Visibles = activos + inactivos del día; excluye móviles sin operación hoy.
-      const visibles = moviles.filter(m => m.activo === true || m.inactivoDelDia === true);
+      // Visibles = activos + inactivos del día, filtrado por las empresas seleccionadas
+      // (alineado con Fix #8a — sin esto §4.1 y Fix #8a entran en loop oscilatorio).
+      const visibles = moviles
+        .filter(m => m.activo === true || m.inactivoDelDia === true)
+        .filter(m => {
+          // Si todavía no se cargaron las empresas, no aplicar filtro (carga inicial).
+          if (selectedEmpresas.length === 0) return true;
+          // Solo móviles cuya empresa está actualmente seleccionada.
+          return m.empresaFleteraId != null && selectedEmpresas.includes(m.empresaFleteraId);
+        });
       if (prev.length === 0) {
         if (userExplicitlyCleared.current) return prev;
         const visibleIds = visibles.map(m => m.id);
@@ -1575,7 +1583,7 @@ function DashboardContent() {
       return [...prev, ...newIds];
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moviles, moviles.length, isInitialLoad]);
+  }, [moviles, moviles.length, isInitialLoad, selectedEmpresas]);
 
   // Fix #8a: cuando USE_NEW y el usuario cambia el filtro de empresa, purgar de
   // selectedMoviles los IDs que ya no pertenecen a las empresas seleccionadas.
