@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { authStorage } from '@/lib/auth-storage';
 import * as XLSX from 'xlsx';
-import { UserPreferences } from '@/components/ui/PreferencesModal';
+import { UserPreferences, DEFAULT_PREFERENCES } from '@/components/ui/PreferencesModal';
 import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 import { isRoot } from '@/lib/auth-scope';
 
@@ -47,12 +47,23 @@ export default function PreferenciasGlobalesModal({
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildResult, setRebuildResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
+  // Normalize numeric slider fields so undefined/null from the server never reaches the sliders.
+  const normalizePrefs = (p: UserPreferences): UserPreferences => ({
+    ...p,
+    realtimePollingReconcileSeconds: p.realtimePollingReconcileSeconds ?? DEFAULT_PREFERENCES.realtimePollingReconcileSeconds,
+    realtimeSilenceTimeoutSeconds:   p.realtimeSilenceTimeoutSeconds   ?? DEFAULT_PREFERENCES.realtimeSilenceTimeoutSeconds,
+    realtimeHeartbeatSeconds:        p.realtimeHeartbeatSeconds        ?? DEFAULT_PREFERENCES.realtimeHeartbeatSeconds,
+    realtimeEventsPerSecond:         p.realtimeEventsPerSecond         ?? DEFAULT_PREFERENCES.realtimeEventsPerSecond,
+    demorasPollingSeconds:           p.demorasPollingSeconds           ?? DEFAULT_PREFERENCES.demorasPollingSeconds,
+    movilesZonasPollingSeconds:      p.movilesZonasPollingSeconds      ?? DEFAULT_PREFERENCES.movilesZonasPollingSeconds,
+  });
+
   // Local copy of preferences for realtime sliders (committed on save)
-  const [localPrefs, setLocalPrefs] = useState<UserPreferences>(preferences);
+  const [localPrefs, setLocalPrefs] = useState<UserPreferences>(() => normalizePrefs(preferences));
 
   // Sync local prefs when parent preferences change (e.g., loaded from DB)
   useEffect(() => {
-    setLocalPrefs(preferences);
+    setLocalPrefs(normalizePrefs(preferences));
   }, [preferences]);
 
   // Cargar estado inicial del toggle de auditoría al abrir
@@ -450,12 +461,12 @@ export default function PreferenciasGlobalesModal({
                       min="0"
                       max="600"
                       step="5"
-                      value={localPrefs.realtimePollingReconcileSeconds}
+                      value={localPrefs.realtimePollingReconcileSeconds ?? DEFAULT_PREFERENCES.realtimePollingReconcileSeconds}
                       onChange={(e) => setLocalPrefs({ ...localPrefs, realtimePollingReconcileSeconds: parseInt(e.target.value) })}
                       className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
                     />
                     <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
-                      {localPrefs.realtimePollingReconcileSeconds === 0 ? 'off' : `${localPrefs.realtimePollingReconcileSeconds}s`}
+                      {(localPrefs.realtimePollingReconcileSeconds ?? DEFAULT_PREFERENCES.realtimePollingReconcileSeconds) === 0 ? 'off' : `${localPrefs.realtimePollingReconcileSeconds ?? DEFAULT_PREFERENCES.realtimePollingReconcileSeconds}s`}
                     </span>
                   </div>
                 </div>
@@ -472,12 +483,12 @@ export default function PreferenciasGlobalesModal({
                       min="0"
                       max="300"
                       step="5"
-                      value={localPrefs.realtimeSilenceTimeoutSeconds}
+                      value={localPrefs.realtimeSilenceTimeoutSeconds ?? DEFAULT_PREFERENCES.realtimeSilenceTimeoutSeconds}
                       onChange={(e) => setLocalPrefs({ ...localPrefs, realtimeSilenceTimeoutSeconds: parseInt(e.target.value) })}
                       className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
                     />
                     <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
-                      {localPrefs.realtimeSilenceTimeoutSeconds === 0 ? 'off' : `${localPrefs.realtimeSilenceTimeoutSeconds}s`}
+                      {(localPrefs.realtimeSilenceTimeoutSeconds ?? DEFAULT_PREFERENCES.realtimeSilenceTimeoutSeconds) === 0 ? 'off' : `${localPrefs.realtimeSilenceTimeoutSeconds ?? DEFAULT_PREFERENCES.realtimeSilenceTimeoutSeconds}s`}
                     </span>
                   </div>
                 </div>
@@ -513,12 +524,12 @@ export default function PreferenciasGlobalesModal({
                       min="5"
                       max="60"
                       step="1"
-                      value={localPrefs.realtimeHeartbeatSeconds}
+                      value={localPrefs.realtimeHeartbeatSeconds ?? DEFAULT_PREFERENCES.realtimeHeartbeatSeconds}
                       onChange={(e) => setLocalPrefs({ ...localPrefs, realtimeHeartbeatSeconds: parseInt(e.target.value) })}
                       className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
                     />
                     <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
-                      {localPrefs.realtimeHeartbeatSeconds}s
+                      {localPrefs.realtimeHeartbeatSeconds ?? DEFAULT_PREFERENCES.realtimeHeartbeatSeconds}s
                     </span>
                   </div>
                 </div>
@@ -537,12 +548,12 @@ export default function PreferenciasGlobalesModal({
                       min="5"
                       max="100"
                       step="5"
-                      value={localPrefs.realtimeEventsPerSecond}
+                      value={localPrefs.realtimeEventsPerSecond ?? DEFAULT_PREFERENCES.realtimeEventsPerSecond}
                       onChange={(e) => setLocalPrefs({ ...localPrefs, realtimeEventsPerSecond: parseInt(e.target.value) })}
                       className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
                     />
                     <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
-                      {localPrefs.realtimeEventsPerSecond}/s
+                      {localPrefs.realtimeEventsPerSecond ?? DEFAULT_PREFERENCES.realtimeEventsPerSecond}/s
                     </span>
                   </div>
                 </div>
@@ -575,12 +586,12 @@ export default function PreferenciasGlobalesModal({
                       min="10"
                       max="120"
                       step="5"
-                      value={localPrefs.demorasPollingSeconds}
+                      value={localPrefs.demorasPollingSeconds ?? DEFAULT_PREFERENCES.demorasPollingSeconds}
                       onChange={(e) => setLocalPrefs({ ...localPrefs, demorasPollingSeconds: parseInt(e.target.value) })}
                       className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-red-500"
                     />
                     <span className="min-w-[60px] px-2 py-1 bg-red-100 text-red-700 font-bold rounded-lg text-center text-xs">
-                      {localPrefs.demorasPollingSeconds}s
+                      {localPrefs.demorasPollingSeconds ?? DEFAULT_PREFERENCES.demorasPollingSeconds}s
                     </span>
                   </div>
                 </div>
@@ -597,12 +608,12 @@ export default function PreferenciasGlobalesModal({
                       min="10"
                       max="120"
                       step="5"
-                      value={localPrefs.movilesZonasPollingSeconds}
+                      value={localPrefs.movilesZonasPollingSeconds ?? DEFAULT_PREFERENCES.movilesZonasPollingSeconds}
                       onChange={(e) => setLocalPrefs({ ...localPrefs, movilesZonasPollingSeconds: parseInt(e.target.value) })}
                       className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
                     <span className="min-w-[60px] px-2 py-1 bg-blue-100 text-blue-700 font-bold rounded-lg text-center text-xs">
-                      {localPrefs.movilesZonasPollingSeconds}s
+                      {localPrefs.movilesZonasPollingSeconds ?? DEFAULT_PREFERENCES.movilesZonasPollingSeconds}s
                     </span>
                   </div>
                 </div>
