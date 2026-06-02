@@ -17,7 +17,7 @@ import { BarChart, type StackRow } from '@/components/stats/Charts';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { todayMontevideo } from '@/lib/date-utils';
+import { todayMontevideo, pendienteDateRangeCompact } from '@/lib/date-utils';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
@@ -266,6 +266,10 @@ function StatsContent() {
         };
         const pedidosParams = new URLSearchParams({ fecha: date });
         const servicesParams = new URLSearchParams({ fecha: date });
+        if (escenarioId != null) {
+          pedidosParams.set('escenario', String(escenarioId));
+          servicesParams.set('escenario', String(escenarioId));
+        }
         if (!isRootUser && user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
           const empresasStr = user.allowedEmpresas.join(',');
           pedidosParams.set('empresas_fleteras', empresasStr);
@@ -309,7 +313,7 @@ function StatsContent() {
       }
     };
     load();
-  }, [date, refreshTick, user]);
+  }, [date, refreshTick, user, escenarioId]);
 
   // ─── Auto-refresh ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -442,7 +446,27 @@ function StatsContent() {
   // ─── Pedidos filtrados por empresa y producto ─────────────────────────────
   // Distribuidores: cuando selectedEmpresa='Todas' solo ven sus allowedEmpresas.
   const filteredPedidos = useMemo(() => {
-    let result = pedidos;
+    // Filtro asimétrico de arrastre: alineado con pedidosCompletos en dashboard/page.tsx.
+    // Cuando es hoy: acepta fch_para=hoy (cualquier estado), fch_para=ayer solo si
+    // estado_nro===1 (pendiente arrastrado), o fch_hora_para que cae en hoy.
+    // Para días pasados: solo fch_para === fechaCompact.
+    // pendienteDateRangeCompact devuelve [hoy, ayer] si date===hoy, [date] si es pasado.
+    const dateRange = pendienteDateRangeCompact(date);
+    const fechaCompact = dateRange[0];   // siempre la fecha principal
+    const ayerCompact = dateRange[1];    // definido solo cuando date === hoy
+    const hasArrastre = dateRange.length === 2;
+    let result = pedidos.filter(p => {
+      const fchParaStr = p.fch_para != null ? String(p.fch_para).replace(/-/g, '') : null;
+      const fchHoraParaInDate = p.fch_hora_para
+        ? String(p.fch_hora_para).startsWith(date)
+        : false;
+      if (fchParaStr === fechaCompact) return true;
+      if (fchHoraParaInDate) return true;
+      if (hasArrastre && fchParaStr === ayerCompact && Number(p.estado_nro) === 1) return true;
+      // Si no tiene ninguno de los dos campos, incluir (consistente con dashboard)
+      if (!p.fch_para && !p.fch_hora_para) return true;
+      return false;
+    });
     if (selectedEmpresa !== 'Todas') {
       // Filtro por empresa seleccionada explícitamente
       result = result.filter(p => getEmpresaNombre(p, movilEmpresa, empresas) === selectedEmpresa);
@@ -465,7 +489,7 @@ function StatsContent() {
     if (!canSeeUnassigned)
       result = result.filter(p => !(Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0)));
     return result;
-  }, [pedidos, selectedEmpresa, selectedProducto, movilEmpresa, empresas, isPrivilegedScope, canSeeUnassigned, user?.allowedEmpresas]);
+  }, [pedidos, date, selectedEmpresa, selectedProducto, movilEmpresa, empresas, isPrivilegedScope, canSeeUnassigned, user?.allowedEmpresas]);
 
   // ─── Services filtrados por empresa ────────────────────────────────────────
   // Misma lógica de scope que filteredPedidos pero sin filtro de producto.
