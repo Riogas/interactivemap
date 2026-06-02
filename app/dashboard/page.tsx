@@ -1999,24 +1999,32 @@ function DashboardContent() {
             movilId: p.movil,
           }));          // Actualizar móviles agrupando pedidos por móvil
           setMoviles(prevMoviles => {
-            return prevMoviles.map(movil => {
+            let changed = false;
+            const next = prevMoviles.map(movil => {
               const pedidosDelMovil = todosPedidos.filter((p: any) => p.movilId === movil.id);
               const pedidosEstado1 = pedidosDelMovil.filter((p: any) => p.estado === 1);
-              
+
               if (pedidosDelMovil.length > 0) {
+                changed = true;
                 return {
                   ...movil,
                   pendientes: pedidosDelMovil,
                   pedidosPendientes: pedidosEstado1.length,
                 };
               }
-              
-              return {
-                ...movil,
-                pendientes: [],
-                pedidosPendientes: 0,
-              };
+
+              if ((movil.pendientes?.length ?? 0) !== 0 || (movil.pedidosPendientes ?? 0) !== 0) {
+                changed = true;
+                return {
+                  ...movil,
+                  pendientes: [],
+                  pedidosPendientes: 0,
+                };
+              }
+
+              return movil;
             });
+            return changed ? next : prevMoviles;
           });
         } else {
           console.log(`?? No hay pedidos pendientes para el día ${fecha}`);
@@ -2039,7 +2047,8 @@ function DashboardContent() {
       
       // Actualizar móviles con sus pedidos pendientes
       setMoviles(prevMoviles => {
-        return prevMoviles.map(movil => {
+        let changed = false;
+        const next = prevMoviles.map(movil => {
           const movilPedidos = results.find(r => r.movilId === movil.id);
           if (movilPedidos) {
             // Convertir pedidos a formato PedidoServicio para compatibilidad
@@ -2063,7 +2072,8 @@ function DashboardContent() {
 
             const pendientesEstado1 = pendientes.filter((p: any) => p.estado === 1);
             console.log(`? Móvil ${movil.id}: ${pendientesEstado1.length} pedidos pendientes (estado=1)`);
-            
+
+            changed = true;
             return {
               ...movil,
               pendientes,
@@ -2072,6 +2082,7 @@ function DashboardContent() {
           }
           return movil;
         });
+        return changed ? next : prevMoviles;
       });
     } catch (err) {
       console.error(`? Error cargando pedidos pendientes:`, err);
