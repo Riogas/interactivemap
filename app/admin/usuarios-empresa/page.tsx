@@ -66,8 +66,15 @@ function getAuthHeaders(roles?: string[], funcionalidades?: string[]): Record<st
   if (roles && roles.length > 0) {
     headers['x-track-roles'] = JSON.stringify(roles);
   }
+  // El gate del server lee x-track-funcs como CSV (lib/api-auth-gates.ts).
+  // El header viejo x-track-funcionalidades (JSON) ya no se procesa; mantenerlo
+  // hacía que requireFuncionalidad('Gestion de Usuarios') siempre devolviera 403
+  // aunque el cliente tuviera la funcionalidad asignada.
   if (funcionalidades && funcionalidades.length > 0) {
-    headers['x-track-funcionalidades'] = JSON.stringify(funcionalidades);
+    headers['x-track-funcs'] = funcionalidades
+      .map((f) => String(f).trim())
+      .filter(Boolean)
+      .join(',');
   }
 
   return headers;
