@@ -135,9 +135,9 @@ export async function GET(request: NextRequest) {
     // NOTA: fch_para se almacena como YYYYMMDD (sin guiones) en la BD
     //
     // Arrastre (feature 2026-05-29): cuando fecha === hoy (Montevideo), el rango de fch_para
-    // se amplía a [hoy, ayer] para incluir pendientes del dia anterior.
-    // Los finalizados de ayer que lleguen en el dataset son descartados por el cliente
-    // (pedidosCompletos: arrastre solo si estado_nro === 1).
+    // se amplía a [hoy] (cualquier estado) + [ayer SOLO si estado_nro=1].
+    // ASIMETRÍA INTENCIONAL: finalizados de ayer NO se traen — el cliente los descartaría
+    // igual y solo desperdiciaba ancho de banda y memoria.
     if (fecha) {
       const fechaInicio = `${fecha}T00:00:00`;
       const fechaFin = `${fecha}T23:59:59`;
@@ -148,10 +148,12 @@ export async function GET(request: NextRequest) {
         const fechaSinGuiones = rangoCompact[0];
         query = query.or(`and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${fechaSinGuiones}`);
       } else {
-        // Hoy: ampliar fch_para a [hoy, ayer]. fch_hora_para sigue filtrando solo hoy.
+        // Hoy: fch_para = hoy (cualquier estado) OR fch_para = ayer (solo estado_nro=1)
+        //      OR fch_hora_para en rango de hoy (cualquier estado).
+        // El nested and() garantiza que SQL solo traiga lo que el cliente realmente usa.
         const [hoyCompact, ayerCompact] = rangoCompact;
         query = query.or(
-          `and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${hoyCompact},fch_para.eq.${ayerCompact}`
+          `and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${hoyCompact},and(fch_para.eq.${ayerCompact},estado_nro.eq.1)`
         );
       }
     }
