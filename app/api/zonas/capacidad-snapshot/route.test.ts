@@ -54,7 +54,10 @@ function makeRequest(params: {
   if (params.isRoot) headers['x-track-isroot'] = 'S';
   if (params.empresasIds?.length) headers['x-track-empresas-ids'] = params.empresasIds.join(',');
   if (params.funcionalidades) {
-    headers['x-track-funcionalidades'] = JSON.stringify(params.funcionalidades);
+    headers['x-track-funcs'] = params.funcionalidades
+      .map((f) => f.trim())
+      .filter(Boolean)
+      .join(',');
   }
 
   return new NextRequest(url, { method: 'GET', headers });

@@ -300,6 +300,32 @@ function DashboardContent() {
   );
   const { scopedZonaIds } = useScopedZonaIds(user, selectedEscenarioIds, selectedEmpresas);
 
+  // Estado para fecha seleccionada (por defecto hoy)
+  // Persiste en sessionStorage para sobrevivir a F5. Se borra al cerrar la pestana
+  // (sessionStorage) y en el flujo de logout (AuthContext lo limpia explicitamente).
+  // Movido antes de useMapDataView para que isToday esté disponible como prop.
+  const [selectedDate, setSelectedDateRaw] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('trackmovil:selectedDate');
+      if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored) && stored <= todayMontevideo()) {
+        return stored;
+      }
+      // Valor invalido o futuro: limpiar y usar hoy
+      if (stored) sessionStorage.removeItem('trackmovil:selectedDate');
+    }
+    return todayMontevideo();
+  });
+
+  // Wrapper estable que persiste en sessionStorage cada vez que cambia la fecha
+  const setSelectedDate = useCallback((date: string) => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('trackmovil:selectedDate', date);
+    }
+    setSelectedDateRaw(date);
+  }, []);
+
+  const isToday = selectedDate === todayMontevideo();
+
   // ?? Map data view state + effects (extracted to useMapDataView hook)
   const {
     showZonas, setShowZonas,
@@ -317,6 +343,7 @@ function DashboardContent() {
     scopedEmpresas,
     serverNow,
     aplicaNocturno,
+    isToday,
   });
 
   // Determina si hay que ocultar pedidos/services "sin asignar" (sin móvil).
@@ -614,29 +641,6 @@ function DashboardContent() {
   
   // Tipos de servicio dinámicos desde servicio_nombre de pedidos y services (calculado abajo con useMemo)
   
-  // Estado para fecha seleccionada (por defecto hoy)
-  // Persiste en sessionStorage para sobrevivir a F5. Se borra al cerrar la pestana
-  // (sessionStorage) y en el flujo de logout (AuthContext lo limpia explicitamente).
-  const [selectedDate, setSelectedDateRaw] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = sessionStorage.getItem('trackmovil:selectedDate');
-      if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored) && stored <= todayMontevideo()) {
-        return stored;
-      }
-      // Valor invalido o futuro: limpiar y usar hoy
-      if (stored) sessionStorage.removeItem('trackmovil:selectedDate');
-    }
-    return todayMontevideo();
-  });
-
-  // Wrapper estable que persiste en sessionStorage cada vez que cambia la fecha
-  const setSelectedDate = useCallback((date: string) => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('trackmovil:selectedDate', date);
-    }
-    setSelectedDateRaw(date);
-  }, []);
-
   // Refs para callbacks de fetch ? permiten pasarlos a hooks antes de que estén definidos
   const fetchPedidosRef = useRef<(() => void) | null>(null);
   const fetchServicesRef = useRef<(() => void) | null>(null);
@@ -679,11 +683,6 @@ function DashboardContent() {
   
   const [isLoadingEmpresas, setIsLoadingEmpresas] = useState(true);
   
-  // True solo si selectedDate es la fecha de hoy. Usado para deshabilitar
-  // capas/botones que solo tienen sentido en modo live (demoras, saturación,
-  // distribución, móviles/zonas, pedidos/zona, estadísticas por zona).
-  const isToday = selectedDate === todayMontevideo();
-
   // Hook realtime para moviles_dia. Se invoca SIEMPRE (regla de hooks); el hook
   // mismo hace early-return cuando !isToday || !escenarioId, sin abrir canal.
   const { updates: movilesDiaUpdates } = useMovilesDiaRealtime(escenarioId, selectedDate, isToday);
@@ -758,8 +757,22 @@ function DashboardContent() {
           }
           
           setEmpresas(empresasData);
-          // Por defecto, seleccionar todas las empresas (filtradas o no)
-          setSelectedEmpresas(empresasData.map((e: EmpresaFleteraSupabase) => e.empresa_fletera_id));
+          // Por defecto, seleccionar todas las empresas (filtradas o no).
+          // Guard de identidad: si los IDs son los mismos que antes, no crear nueva
+          // referencia. Sin esto, cada call a loadEmpresas re-genera el array y
+          // dispara el effect de recarga (que hace setSelectedMoviles([])), reseteando
+          // los filtros del usuario al reconectar tras inactividad larga.
+          const newEmpresasIds = empresasData.map((e: EmpresaFleteraSupabase) => e.empresa_fletera_id);
+          setSelectedEmpresas(prev => {
+            if (prev.length !== newEmpresasIds.length) return newEmpresasIds;
+            // Comparar ordenados para no fallar si el orden del response cambia
+            const prevSorted = [...prev].sort((a, b) => a - b);
+            const newSorted = [...newEmpresasIds].sort((a, b) => a - b);
+            for (let i = 0; i < prevSorted.length; i++) {
+              if (prevSorted[i] !== newSorted[i]) return newEmpresasIds;
+            }
+            return prev; // sin cambios reales — preservar referencia
+          });
           console.log(`? Loaded ${empresasData.length} empresas fleteras`);
         }
       } catch (err) {
@@ -1606,8 +1619,34 @@ function DashboardContent() {
     });
   }, [selectedEmpresas, empresas.length, moviles]); // moviles cambia al recargar tras cambio de empresa
 
+  // Refs para la red de seguridad del effect de recarga (B.2).
+  // Permiten detectar si selectedEmpresas o selectedDate cambiaron de CONTENIDO
+  // real, no solo de referencia, evitando resets de filtros innecesarios.
+  const prevEmpresasIdsRef = useRef<number[]>([]);
+  const prevDateRef = useRef<string>(selectedDate);
+
   // Recargar móviles cuando cambia la selección de empresas o la fecha (forzar recarga completa)
   useEffect(() => {
+    // Red de seguridad (B.2): comparar contenido real, no referencia.
+    // El primer render SIEMPRE entra porque prevEmpresasIdsRef arranca [].
+    const prevEmpresas = prevEmpresasIdsRef.current;
+    const empresasChanged = (() => {
+      if (prevEmpresas.length !== selectedEmpresas.length) return true;
+      const a = [...prevEmpresas].sort((x, y) => x - y);
+      const b = [...selectedEmpresas].sort((x, y) => x - y);
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true;
+      return false;
+    })();
+    const dateChanged = prevDateRef.current !== selectedDate;
+    prevEmpresasIdsRef.current = selectedEmpresas;
+    prevDateRef.current = selectedDate;
+    // Si ni las empresas ni la fecha cambiaron de contenido real (solo de referencia),
+    // no resetear filtros. El primer render del effect SIEMPRE entra porque
+    // prevEmpresas arranca [].
+    if (!empresasChanged && !dateChanged && prevEmpresas.length > 0) {
+      return;
+    }
+
     if (!isLoadingEmpresas) {
       console.log('?? Empresas o fecha cambiaron - Forzando recarga completa');
       setIsInitialLoad(true); // Forzar recarga completa cuando cambian las empresas o la fecha

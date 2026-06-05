@@ -104,8 +104,12 @@ async function fetchSnapshot(params: UseZonaCapacidadSnapshotParams): Promise<Zo
   sp.set('tipoServicio', params.tipoServicio);
   if (params.zonas && params.zonas.length > 0) sp.set('zonas', params.zonas.join(','));
 
+  const funcs = params.funcionalidades
+    .map((f) => String(f).trim())
+    .filter(Boolean)
+    .join(',');
   const headers: Record<string, string> = {
-    'x-track-funcionalidades': JSON.stringify(params.funcionalidades),
+    'x-track-funcs': funcs,
   };
   if (params.isRoot) {
     headers['x-track-isroot'] = 'S';

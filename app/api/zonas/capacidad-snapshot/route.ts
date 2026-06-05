@@ -13,7 +13,7 @@
  * Auth-scope via headers (enviados por el cliente desde AuthContext):
  *   - x-track-isroot          : 'S' → sin restricción de empresa (ve todo)
  *   - x-track-empresas-ids    : CSV de emp_fletera_id (scope de empresa fletera)
- *   - x-track-funcionalidades : JSON array de nombres de funcionalidades del caller
+ *   - x-track-funcs           : CSV de nombres de funcionalidades del caller
  *
  * Feature gate:
  *   - "Ped s/asignar x zona": si el caller tiene esta funcionalidad,
@@ -156,17 +156,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   // 7. Feature flag "Ped s/asignar x zona"
   let hasFeature = false;
-  const funcsHeader = request.headers.get('x-track-funcionalidades');
-  if (funcsHeader) {
-    try {
-      const funcs: string[] = JSON.parse(funcsHeader);
-      hasFeature = Array.isArray(funcs) && funcs.some(
-        (f) => String(f).trim() === 'Ped s/asignar x zona',
-      );
-    } catch {
-      // header malformado → sin feature (seguro)
-    }
-  }
+  const funcsHeader = request.headers.get('x-track-funcs') ?? '';
+  const funcs = new Set(
+    funcsHeader
+      .split(',')
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0),
+  );
+  hasFeature = funcs.has('Ped s/asignar x zona');
 
   clog(`escenario=${escenario} tipoServicio=${tipoServicio} isRoot=${isRoot} hasFeature=${hasFeature}`);
 

@@ -25,6 +25,13 @@ interface MapDataViewOptions {
    * true = cambia automaticamente segun horario (default conservativo).
    */
   aplicaNocturno: boolean;
+  /**
+   * true si la fecha seleccionada es hoy.
+   * En fechas históricas se omite el tick de visibilitychange (no tiene sentido
+   * recargar datos de ayer/anteayer al volver a la pestaña).
+   * Default true (conservativo).
+   */
+  isToday?: boolean;
 }
 
 /**
@@ -43,6 +50,7 @@ export function useMapDataView({
   scopedEmpresas = null,
   serverNow,
   aplicaNocturno,
+  isToday = true,
 }: MapDataViewOptions) {
   const [showZonas, setShowZonas] = useState(false);
   const [zonasData, setZonasData] = useState<any[]>([]);
@@ -409,6 +417,7 @@ export function useMapDataView({
     // si la data no cambio mientras estaba en segundo plano, no se hace fetch pesado.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        if (!isToday) return; // fecha histórica — no tiene sentido recargar al volver al tab
         console.log('Tab visible — tick inmediato y reinicio de polling');
         loadDataView();
         if (intervalId) clearInterval(intervalId);
