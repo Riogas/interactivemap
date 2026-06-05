@@ -349,6 +349,9 @@ export function useMapDataView({
     // Si la query falla → fallback al fetch pesado directamente (no romper el polling).
     // Se comparten ambas marcas en una sola query por tick.
     const loadDataView = async (forceAll = false) => {
+      // Skip cuando el tab está oculto — evita fetches innecesarios. El handler de
+      // visibilitychange existente ya re-dispara al volver visible.
+      if (typeof document !== 'undefined' && document.hidden) return;
       console.log(`Tick polling "${dataViewMode}" para escenarios [${uniqueEscenarios.join(', ')}]...`);
 
       const escId = uniqueEscenarios[0] ?? null;

@@ -22,6 +22,7 @@ import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado, filterPedidosVisibles } from '@/utils/estadoPedido';
 import { useFilterHelpers } from '@/hooks/dashboard/useFilterHelpers';
+import { useRealtimePauseOnHidden } from '@/hooks/dashboard/useRealtimePauseOnHidden';
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
@@ -650,6 +651,13 @@ function DashboardContent() {
   const fetchPedidosRef = useRef<(() => void) | null>(null);
   const fetchServicesRef = useRef<(() => void) | null>(null);
 
+  // Pausa de Realtime por tab oculto durante más de N minutos (feature admin).
+  // Se define antes de los hooks de Realtime para que puedan usar el valor como prop.
+  const realtimePausedByIdle = useRealtimePauseOnHidden({
+    enabled: preferences.realtimePauseOnHiddenEnabled === true,
+    graceMinutes: preferences.realtimePauseOnHiddenMinutes ?? 15,
+  });
+
   // ?? NUEVO: Hook para escuchar cambios en pedidos en tiempo real
   const {
     pedidos: pedidosRealtime,
@@ -661,7 +669,7 @@ function DashboardContent() {
     undefined,
     undefined,
     useCallback(() => { fetchPedidosRef.current?.(); }, []),
-    selectedDate === todayMontevideo() // enabled: false en modo histórico
+    selectedDate === todayMontevideo() && !realtimePausedByIdle // enabled: false en modo histórico o idle
   );
 
   // ?? Hook para escuchar cambios en services en tiempo real
@@ -675,7 +683,7 @@ function DashboardContent() {
     undefined,
     undefined,
     useCallback(() => { fetchServicesRef.current?.(); }, []),
-    selectedDate === todayMontevideo() // enabled: false en modo histórico
+    selectedDate === todayMontevideo() && !realtimePausedByIdle // enabled: false en modo histórico o idle
   );
   
   // Estado para pedidos cargados inicialmente
@@ -690,7 +698,7 @@ function DashboardContent() {
   
   // Hook realtime para moviles_dia. Se invoca SIEMPRE (regla de hooks); el hook
   // mismo hace early-return cuando !isToday || !escenarioId, sin abrir canal.
-  const { updates: movilesDiaUpdates } = useMovilesDiaRealtime(escenarioId, selectedDate, isToday);
+  const { updates: movilesDiaUpdates } = useMovilesDiaRealtime(escenarioId, selectedDate, isToday && !realtimePausedByIdle);
 
   // Modo histórico: true cuando el usuario está viendo una fecha anterior a hoy.
   // En modo histórico: Realtime se pausa, solo se muestran pedidos/services finalizados,
@@ -698,11 +706,12 @@ function DashboardContent() {
   // un banner ámbar persistente indicando la fecha histórica y que Realtime está pausado.
   const isViewingHistorical = !isToday;
 
-  // Sincronizar Realtime GPS/Móviles con el modo histórico.
-  // false = fecha histórica → pausa channels. true = hoy → reanuda channels.
+  // Sincronizar Realtime GPS/Móviles con el modo histórico y la pausa por idle.
+  // false = fecha histórica o tab idle por demasiado tiempo → pausa channels.
+  // true = hoy y tab activo → reanuda channels.
   useEffect(() => {
-    setRealtimeEnabled(!isViewingHistorical);
-  }, [isViewingHistorical, setRealtimeEnabled]);
+    setRealtimeEnabled(!isViewingHistorical && !realtimePausedByIdle);
+  }, [isViewingHistorical, realtimePausedByIdle, setRealtimeEnabled]);
 
   // Fix 4: Resetear capa a 'distribucion' si la fecha activa no es hoy y
   // el modo actual es solo válido en tiempo real.

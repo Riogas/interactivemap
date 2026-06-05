@@ -56,6 +56,8 @@ export default function PreferenciasGlobalesModal({
     realtimeEventsPerSecond:         p.realtimeEventsPerSecond         ?? DEFAULT_PREFERENCES.realtimeEventsPerSecond,
     demorasPollingSeconds:           p.demorasPollingSeconds           ?? DEFAULT_PREFERENCES.demorasPollingSeconds,
     movilesZonasPollingSeconds:      p.movilesZonasPollingSeconds      ?? DEFAULT_PREFERENCES.movilesZonasPollingSeconds,
+    realtimePauseOnHiddenEnabled:    p.realtimePauseOnHiddenEnabled    ?? DEFAULT_PREFERENCES.realtimePauseOnHiddenEnabled,
+    realtimePauseOnHiddenMinutes:    p.realtimePauseOnHiddenMinutes    ?? DEFAULT_PREFERENCES.realtimePauseOnHiddenMinutes,
   });
 
   // Local copy of preferences for realtime sliders (committed on save)
@@ -396,6 +398,8 @@ export default function PreferenciasGlobalesModal({
       realtimeEventsPerSecond:         localPrefs.realtimeEventsPerSecond,
       demorasPollingSeconds:           localPrefs.demorasPollingSeconds,
       movilesZonasPollingSeconds:      localPrefs.movilesZonasPollingSeconds,
+      realtimePauseOnHiddenEnabled:    localPrefs.realtimePauseOnHiddenEnabled,
+      realtimePauseOnHiddenMinutes:    localPrefs.realtimePauseOnHiddenMinutes,
     });
     onClose();
   };
@@ -567,6 +571,45 @@ export default function PreferenciasGlobalesModal({
                     />
                     <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
                       {localPrefs.realtimeEventsPerSecond ?? DEFAULT_PREFERENCES.realtimeEventsPerSecond}/s
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pausar Realtime con tab oculto */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex-1 pr-3">
+                    <div className="text-sm font-semibold text-gray-700">Pausar Realtime con tab oculto</div>
+                    <div className="text-xs text-gray-500">
+                      Si el tab se queda oculto por más del tiempo configurado, desconectar los canales Realtime para liberar recursos. Al volver visible se reconecta + refetch automático. NO afecta cuando la pestaña vuelve antes del tiempo.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalPrefs({ ...localPrefs, realtimePauseOnHiddenEnabled: !localPrefs.realtimePauseOnHiddenEnabled })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${localPrefs.realtimePauseOnHiddenEnabled ? 'bg-purple-500' : 'bg-gray-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${localPrefs.realtimePauseOnHiddenEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                {/* Minutos antes de pausar — solo visible/activo cuando toggle ON */}
+                <div className={`space-y-2 ${!localPrefs.realtimePauseOnHiddenEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                  <label className="text-sm font-semibold text-gray-700">Minutos antes de pausar</label>
+                  <p className="text-xs text-gray-500">
+                    Tiempo de gracia. Default 15 min. Valores bajos = más ahorro pero más resync al alternar tabs. Valores altos = menos resync pero más recursos consumidos en background.
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min="5"
+                      max="60"
+                      step="1"
+                      value={localPrefs.realtimePauseOnHiddenMinutes ?? DEFAULT_PREFERENCES.realtimePauseOnHiddenMinutes}
+                      onChange={(e) => setLocalPrefs({ ...localPrefs, realtimePauseOnHiddenMinutes: parseInt(e.target.value) })}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                    />
+                    <span className="min-w-[70px] px-2 py-1 bg-purple-50 text-purple-700 font-bold rounded-lg text-center text-xs">
+                      {localPrefs.realtimePauseOnHiddenMinutes ?? DEFAULT_PREFERENCES.realtimePauseOnHiddenMinutes} min
                     </span>
                   </div>
                 </div>

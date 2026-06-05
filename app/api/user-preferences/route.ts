@@ -40,6 +40,7 @@ function preferencesToDb(prefs: Record<string, any>) {
     'showCapEntregaLabels', 'showPedidosZonaLabels',
     'realtimePollingReconcileSeconds', 'realtimeSilenceTimeoutSeconds',
     'realtimeRefetchOnVisible', 'realtimeHeartbeatSeconds', 'realtimeEventsPerSecond',
+    'realtimePauseOnHiddenEnabled', 'realtimePauseOnHiddenMinutes',
     'poiCategoryIcons',
   ];
   for (const key of extraKeys) {

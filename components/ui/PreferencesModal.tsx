@@ -60,6 +60,10 @@ export interface UserPreferences {
   realtimeRefetchOnVisible: boolean;       // Al volver la pestaña a visible, hacer refetch completo de pedidos/services.
   realtimeHeartbeatSeconds: number;        // Heartbeat del cliente Supabase. ⚠ requiere recarga para aplicar.
   realtimeEventsPerSecond: number;         // Tope de eventos por segundo que el cliente acepta del WS. ⚠ requiere recarga para aplicar.
+  /** Si true, desconecta Realtime cuando el tab esté oculto más de N minutos. Solo configurable desde Preferencias Globales (admin). */
+  realtimePauseOnHiddenEnabled?: boolean;
+  /** Minutos de gracia antes de desconectar Realtime al ocultarse. Range 5-60. */
+  realtimePauseOnHiddenMinutes?: number;
   // ===== Halo de markers y patrones de zonas =====
   movilHalo: boolean;    // Resaltar móviles con halo blanco
   pedidoHalo: boolean;   // Resaltar pedidos con halo blanco
@@ -113,6 +117,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   realtimeRefetchOnVisible: true,
   realtimeHeartbeatSeconds: 15,
   realtimeEventsPerSecond: 10,
+  realtimePauseOnHiddenEnabled: false,
+  realtimePauseOnHiddenMinutes: 15,
   // Halo y patron -- default OFF / liso (no cambia UX existente)
   movilHalo: false,
   pedidoHalo: false,
