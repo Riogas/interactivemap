@@ -3,6 +3,59 @@ import { EmpresaFleteraSupabase } from '@/types';
 import { determineServicePeriod } from '@/lib/horario-servicio';
 import { supabase } from '@/lib/supabase';
 
+// ─── Circuit breaker para escenario_settings ────────────────────────────────
+// Cuando NEXT_PUBLIC_SUPABASE_PROXY_URL está mal configurado en el servidor de
+// dev (apunta a prod), cada tick del smart polling falla por CORS y spamea la
+// consola. Después de 3 fallos consecutivos, abrimos el circuito por 5 min:
+// se salta la query y se va directo al fetch pesado (que sí funciona porque
+// es via Next.js API routes server-side). Tras la ventana de cooldown se
+// reintenta una vez (half-open) y si vuelve a fallar, se reabre.
+// Vive a nivel de módulo para sobrevivir re-mounts del hook.
+const BREAKER_THRESHOLD = 3;
+const BREAKER_COOLDOWN_MS = 5 * 60 * 1000;
+const escenarioSettingsBreaker = {
+  consecutiveFailures: 0,
+  openedAt: null as number | null,
+  loggedOnce: false,
+};
+function isBreakerOpen(): boolean {
+  if (escenarioSettingsBreaker.openedAt === null) return false;
+  const elapsed = Date.now() - escenarioSettingsBreaker.openedAt;
+  if (elapsed >= BREAKER_COOLDOWN_MS) {
+    // Half-open: permitir un retry. openedAt se mantiene; se resetea solo en success.
+    return false;
+  }
+  return true;
+}
+function recordBreakerFailure(reason: unknown): void {
+  escenarioSettingsBreaker.consecutiveFailures += 1;
+  if (
+    escenarioSettingsBreaker.consecutiveFailures >= BREAKER_THRESHOLD &&
+    escenarioSettingsBreaker.openedAt === null
+  ) {
+    escenarioSettingsBreaker.openedAt = Date.now();
+    if (!escenarioSettingsBreaker.loggedOnce) {
+      console.warn(
+        `[smart-polling] escenario_settings inaccesible tras ${BREAKER_THRESHOLD} intentos. ` +
+        `Probablemente NEXT_PUBLIC_SUPABASE_PROXY_URL apunta al host equivocado en .env.local del servidor. ` +
+        `Activando circuit breaker: fallback a fetch pesado por ${BREAKER_COOLDOWN_MS / 60000} min.`,
+        reason,
+      );
+      escenarioSettingsBreaker.loggedOnce = true;
+    }
+  }
+}
+function recordBreakerSuccess(): void {
+  if (escenarioSettingsBreaker.openedAt !== null || escenarioSettingsBreaker.consecutiveFailures > 0) {
+    if (escenarioSettingsBreaker.openedAt !== null) {
+      console.info('[smart-polling] escenario_settings disponible nuevamente — circuit closed.');
+    }
+    escenarioSettingsBreaker.consecutiveFailures = 0;
+    escenarioSettingsBreaker.openedAt = null;
+    escenarioSettingsBreaker.loggedOnce = false;
+  }
+}
+
 interface MapDataViewOptions {
   dataViewMode: string;
   selectedEmpresas: number[];
@@ -312,33 +365,39 @@ export function useMapDataView({
       let queryFailed = false;
 
       if (escId !== null && !forceAll) {
-        try {
-          // Las columnas demoras_last_api_update y moviles_zonas_last_api_update
-          // se agregaron en Phase 1 pero los tipos generados aun no las incluyen.
-          // Casteamos a unknown para saltear la validacion de la DB typedef.
-          const { data: settingsData, error: settingsError } = await (supabase
-            .from('escenario_settings')
-            .select('demoras_last_api_update, moviles_zonas_last_api_update')
-            .eq('escenario_id', escId)
-            .single() as unknown as Promise<{
-              data: { demoras_last_api_update: string | null; moviles_zonas_last_api_update: string | null } | null;
-              error: unknown;
-            }>);
-
-          if (settingsError || !settingsData) {
-            console.warn('Smart polling: no se pudo leer escenario_settings — fallback a fetch pesado', settingsError);
-            queryFailed = true;
-          } else {
-            serverDemoras = settingsData.demoras_last_api_update
-              ? new Date(settingsData.demoras_last_api_update)
-              : null;
-            serverMovilesZonas = settingsData.moviles_zonas_last_api_update
-              ? new Date(settingsData.moviles_zonas_last_api_update)
-              : null;
-          }
-        } catch (err) {
-          console.warn('Smart polling: excepcion al leer escenario_settings — fallback a fetch pesado', err);
+        if (isBreakerOpen()) {
+          // Circuit abierto — saltar query directamente a fetch pesado, sin loguear.
           queryFailed = true;
+        } else {
+          try {
+            // Las columnas demoras_last_api_update y moviles_zonas_last_api_update
+            // se agregaron en Phase 1 pero los tipos generados aun no las incluyen.
+            // Casteamos a unknown para saltear la validacion de la DB typedef.
+            const { data: settingsData, error: settingsError } = await (supabase
+              .from('escenario_settings')
+              .select('demoras_last_api_update, moviles_zonas_last_api_update')
+              .eq('escenario_id', escId)
+              .single() as unknown as Promise<{
+                data: { demoras_last_api_update: string | null; moviles_zonas_last_api_update: string | null } | null;
+                error: unknown;
+              }>);
+
+            if (settingsError || !settingsData) {
+              recordBreakerFailure(settingsError);
+              queryFailed = true;
+            } else {
+              recordBreakerSuccess();
+              serverDemoras = settingsData.demoras_last_api_update
+                ? new Date(settingsData.demoras_last_api_update)
+                : null;
+              serverMovilesZonas = settingsData.moviles_zonas_last_api_update
+                ? new Date(settingsData.moviles_zonas_last_api_update)
+                : null;
+            }
+          } catch (err) {
+            recordBreakerFailure(err);
+            queryFailed = true;
+          }
         }
       }
 
