@@ -149,6 +149,26 @@ export function useMapDataView({
     }
   }, [serverNow, aplicaNocturno]);
 
+  // Reset del filtro a URGENTE/NOCTURNO (segun hora real) al SALIR de la capa
+  // moviles-zonas. El combo solo es visible en esa capa, pero su valor afecta
+  // el indicador "Zonas sin Movil" del navbar. Si el usuario habia elegido
+  // SERVICE manualmente y cambia de capa, queremos que el indicador vuelva al
+  // periodo operativo del momento para evitar confusion (sino seguiria mostrando
+  // zonas sin movil de SERVICE en una capa donde no esta el combo visible).
+  // El return temprano en moviles-zonas preserva la seleccion del usuario
+  // mientras esta en esa capa.
+  useEffect(() => {
+    if (dataViewMode === 'moviles-zonas') return;
+    const operativePeriod = determineServicePeriod(serverNow, aplicaNocturno);
+    if (movilesZonasServiceFilter !== operativePeriod) {
+      lastKnownPeriodRef.current = operativePeriod;
+      setMovilesZonasServiceFilter(operativePeriod);
+    }
+    // serverNow se lee al momento; los cambios de hora a lo largo del tiempo
+    // los maneja el effect anterior (deteccion de transicion horaria).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataViewMode, aplicaNocturno]);
+
   // Escenarios unicos derivados de las empresas seleccionadas
   const uniqueEscenarios = useMemo(() => {
     return [...new Set(
