@@ -3595,6 +3595,7 @@ function DashboardContent() {
       <FloatingToolbar
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
+        preferences={preferences}
         onPreferencesChange={(newPrefs) => {
           updatePreferences(newPrefs);
         }}

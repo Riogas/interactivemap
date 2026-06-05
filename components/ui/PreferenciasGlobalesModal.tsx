@@ -383,7 +383,20 @@ export default function PreferenciasGlobalesModal({
   };
 
   const handleSaveRealtime = () => {
-    onPreferencesChange(localPrefs);
+    // Defensa: solo enviamos los 7 fields que este modal controla, mergeados con
+    // el snapshot actual de preferences. Sin esto, si por algún motivo `preferences`
+    // llegó incompleto, los fields locales (icono móvil/pedido, tamaños, cluster)
+    // se sobreescribían con undefined al guardar → quedaban en default tras leer.
+    onPreferencesChange({
+      ...preferences,
+      realtimePollingReconcileSeconds: localPrefs.realtimePollingReconcileSeconds,
+      realtimeSilenceTimeoutSeconds:   localPrefs.realtimeSilenceTimeoutSeconds,
+      realtimeRefetchOnVisible:        localPrefs.realtimeRefetchOnVisible,
+      realtimeHeartbeatSeconds:        localPrefs.realtimeHeartbeatSeconds,
+      realtimeEventsPerSecond:         localPrefs.realtimeEventsPerSecond,
+      demorasPollingSeconds:           localPrefs.demorasPollingSeconds,
+      movilesZonasPollingSeconds:      localPrefs.movilesZonasPollingSeconds,
+    });
     onClose();
   };
 

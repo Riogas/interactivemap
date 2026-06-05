@@ -13,12 +13,20 @@ import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 interface FloatingToolbarProps {
   selectedDate: string;
   onDateChange: (date: string) => void;
+  /**
+   * Preferences del usuario en su estado actual.
+   * CRÍTICO: sin esto, el PreferenciasGlobalesModal arrancaba con `{}` la primera
+   * vez (currentPreferences=null), y al guardar reseteaba todas las prefs locales
+   * (icono móvil/pedido, tamaños, cluster) a sus defaults.
+   */
+  preferences?: UserPreferences;
   onPreferencesChange?: (preferences: UserPreferences) => void;
 }
 
 export default function FloatingToolbar({
   selectedDate,
   onDateChange,
+  preferences,
   onPreferencesChange,
 }: FloatingToolbarProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -420,10 +428,17 @@ export default function FloatingToolbar({
       />
 
       {/* Modal de Preferencias Globales (admin) */}
+      {/*
+        Prioridad para el prop preferences:
+        1. currentPreferences — si el usuario guardó algo en esta sesión (más fresco).
+        2. preferences del padre — fuente de verdad del hook useUserPreferences.
+        3. {} — degenerate fallback (solo aplica si el padre no lo pasó, que no debería).
+        Sin (2), el modal arrancaba con {} la primera vez y reseteaba prefs locales.
+      */}
       <PreferenciasGlobalesModal
         isOpen={isPreferenciasGlobalesOpen}
         onClose={() => setIsPreferenciasGlobalesOpen(false)}
-        preferences={currentPreferences ?? {} as UserPreferences}
+        preferences={currentPreferences ?? preferences ?? {} as UserPreferences}
         onPreferencesChange={handlePreferencesSave}
       />
     </>
