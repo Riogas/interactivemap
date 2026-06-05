@@ -78,6 +78,11 @@ function DashboardContent() {
   // Hook de autenticación (para obtener empresas permitidas y escenario)
   const { user, escenarioId, hasPermiso } = useAuth();
   const { serverNow } = useServerTime();
+  // perf: ref que se actualiza sincrónicamente con serverNow pero sin participar
+  // en el dep array de los useMemos pesados (pedidosZonaData / servicesZonaData).
+  // Los useMemos leen serverNowRef.current → no re-ejecutan cada 5s por el tick.
+  const serverNowRef = useRef(serverNow);
+  serverNowRef.current = serverNow;
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
   const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
   // Si el escenario cubre servicio nocturno. Default true (conservativo mientras cargan los settings).
@@ -2813,7 +2818,8 @@ function DashboardContent() {
       // sin asignar = estado 1 sin movil asignado
       if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
       // SA fuera de ventana temporal: excluir de todo computo (no solo visibilidad).
-      if (pedidosZonaFilter === 'sin_asignar' && serverNow && !isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)) return;
+      // perf: usa serverNowRef.current en lugar de serverNow para no re-ejecutar cada 5s.
+      if (pedidosZonaFilter === 'sin_asignar' && serverNowRef.current && !isWithinSaWindow(p.fch_hora_para ?? null, serverNowRef.current, minutosAntesSa)) return;
       // atrasados = estado 1 con atraso confirmado (muy atrasado + atrasado)
       if (pedidosZonaFilter === 'atrasados') {
         if (estado !== 1) return;
@@ -2827,7 +2833,7 @@ function DashboardContent() {
       map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, serverNow, minutosAntesSa, canVerSinAsigPorZona]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, minutosAntesSa, canVerSinAsigPorZona]);
 
   // Conteo de services por zona — analogo a pedidosZonaData pero usando servicesCompletos.
   // Misma logica de los 3 estados (pendientes/sin_asignar/atrasados) con los mismos gates.
@@ -2841,7 +2847,8 @@ function DashboardContent() {
       if (!tieneMovil && !canVerSinAsigPorZona) return;
       if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
       if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
-      if (pedidosZonaFilter === 'sin_asignar' && serverNow && !isWithinSaWindow(s.fch_hora_para ?? null, serverNow, minutosAntesSa)) return;
+      // perf: usa serverNowRef.current en lugar de serverNow para no re-ejecutar cada 5s.
+      if (pedidosZonaFilter === 'sin_asignar' && serverNowRef.current && !isWithinSaWindow(s.fch_hora_para ?? null, serverNowRef.current, minutosAntesSa)) return;
       if (pedidosZonaFilter === 'atrasados') {
         if (estado !== 1) return;
         const diff = computeDelayMinutes(s.fch_hora_max_ent_comp ?? null);
@@ -2853,7 +2860,7 @@ function DashboardContent() {
       map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [servicesCompletos, pedidosZonaFilter, scopedZonaIds, serverNow, minutosAntesSa, canVerSinAsigPorZona]);
+  }, [servicesCompletos, pedidosZonaFilter, scopedZonaIds, minutosAntesSa, canVerSinAsigPorZona]);
 
   // Seleccionar la fuente correcta segun zonaLayerTipo
   const zonaCountData = zonaLayerTipo === 'services' ? servicesZonaData : pedidosZonaData;
@@ -3119,8 +3126,9 @@ function DashboardContent() {
     setSelectedMovil2(movilId);
   }, [moviles, fetchMovilHistory]);
 
-  // Ref para rastrear el último key de pedidos y evitar loops infinitos
-  const prevPedidosKeyRef = useRef<string>('');
+  // Ref para rastrear el último snapshot de pedidos y evitar loops infinitos.
+  // perf: cambiado de string (JSON.stringify O(n·chars)) a Map para comparación O(n).
+  const prevPedidosKeyRef = useRef<Map<number, number>>(new Map());
   
   useEffect(() => {
     // ?? Pausar actualizaciones si la tab no está visible (ahorro de CPU)
@@ -3144,14 +3152,16 @@ function DashboardContent() {
       }
     });
     
-    // Serializar para comparación estable (sort por key numérico)
-    const pedidosKey = JSON.stringify(Array.from(pedidosPorMovil.entries()).sort((a, b) => a[0] - b[0]));
-    
-    // Si el key no cambió desde la última vez, no hacer nada (prevenir loop)
-    if (pedidosKey === prevPedidosKeyRef.current) {
-      return;
+    // perf: comparación O(n) en lugar de JSON.stringify. Bail-out si nada cambió.
+    const prevMap = prevPedidosKeyRef.current;
+    let same = prevMap.size === pedidosPorMovil.size;
+    if (same) {
+      for (const [k, v] of pedidosPorMovil) {
+        if (prevMap.get(k) !== v) { same = false; break; }
+      }
     }
-    prevPedidosKeyRef.current = pedidosKey;
+    if (same) return;
+    prevPedidosKeyRef.current = new Map(pedidosPorMovil);
     
     dbg('?? Actualizando lote de móviles en tiempo real');
     dbg('?? Pedidos activos por móvil:', Object.fromEntries(pedidosPorMovil));
@@ -3459,6 +3469,76 @@ function DashboardContent() {
   const onZonasSinMovilClick = useCallback(() => setIsZonasSinMovilOpen(true), []);
   const onMovilesSinReportarClick = useCallback(() => setIsMovilesSinReportarOpen(true), []);
   const onZonasNoActivasClick = useCallback(() => setIsZonasNoActivasOpen(true), []);
+
+  // perf: callbacks memoizados para <MapView> — evitan que arePropsEqual falle
+  // por nueva referencia de función en cada render del dashboard.
+  const handleToggleDemoraLabels = useCallback(
+    (next: boolean) => updatePreference('showDemoraLabels', next),
+    [updatePreference],
+  );
+  const handleToggleCapEntregaLabels = useCallback(
+    (next: boolean) => updatePreference('showCapEntregaLabels', next),
+    [updatePreference],
+  );
+  const handleTogglePedidosZonaLabels = useCallback(
+    (next: boolean) => updatePreference('showPedidosZonaLabels', next),
+    [updatePreference],
+  );
+  const handleZonaClickPedidosZona = useCallback((zonaId: number) => {
+    if (zonaLayerTipo === 'services') {
+      setServicesOpenSource('zona_combo');
+      snapshotServicesState();
+      setPreFilterZona(zonaId);
+      setPreFilterMovil(undefined);
+      setServicesModalInitialFilters({
+        asignacion: pedidosZonaFilter === 'sin_asignar' ? 'sin_movil' : 'todos',
+        atraso: pedidosZonaFilter === 'atrasados' ? ['muy_atrasado', 'atrasado'] : [],
+      });
+      setServicesModalVista('pendientes');
+      setIsServicesTableOpen(true);
+    } else {
+      setPedidosOpenSource('zona_combo');
+      snapshotPedidosState();
+      setPreFilterZona(zonaId);
+      setPreFilterMovil(undefined);
+      setPedidosModalInitialFilters({
+        asignacion: pedidosZonaFilter === 'sin_asignar' ? 'sin_movil' : 'todos',
+        tipoServicio: [],
+      });
+      setPedidosModalVista('pendientes');
+      setPedidosInitialAtraso(pedidosZonaFilter === 'atrasados' ? ['muy_atrasado', 'atrasado'] : []);
+      setIsPedidosTableOpen(true);
+    }
+  }, [
+    zonaLayerTipo, pedidosZonaFilter,
+    snapshotServicesState, snapshotPedidosState,
+    setPreFilterZona, setPreFilterMovil,
+    setServicesModalInitialFilters, setServicesModalVista, setIsServicesTableOpen,
+    setPedidosOpenSource, setServicesOpenSource,
+    setPedidosModalInitialFilters, setPedidosModalVista, setPedidosInitialAtraso, setIsPedidosTableOpen,
+  ]);
+  const handleZonaClickMovilesZonas = useCallback((zonaId: number) => {
+    const svcFilter = movilesZonasServiceFilter;
+    if (svcFilter === 'SERVICE') {
+      setZonaViewInitialTipoServicio('SERVICE');
+      setZonaViewInitialSubFiltro(undefined);
+    } else if (svcFilter === 'URGENTE') {
+      setZonaViewInitialTipoServicio('PEDIDOS');
+      setZonaViewInitialSubFiltro('URGENTE');
+    } else {
+      setZonaViewInitialTipoServicio('PEDIDOS');
+      setZonaViewInitialSubFiltro('NOCTURNO');
+    }
+    openZonaView(zonaId);
+  }, [movilesZonasServiceFilter, openZonaView]);
+  const onZonaClick =
+    dataViewMode === 'pedidos-zona'
+      ? handleZonaClickPedidosZona
+      : dataViewMode === 'moviles-zonas'
+        ? handleZonaClickMovilesZonas
+        : dataViewMode === 'saturacion'
+          ? setSaturacionModalZonaId
+          : undefined;
 
   return (
     <MotionConfig reducedMotion={preferences.lightMode ? 'always' : 'user'}>
@@ -4225,11 +4305,11 @@ function DashboardContent() {
                 allZonas={allZonasData}
                 saturacionData={saturacionData}
                 showDemoraLabels={preferences.showDemoraLabels ?? false}
-                onToggleDemoraLabels={(next) => updatePreference('showDemoraLabels', next)}
+                onToggleDemoraLabels={handleToggleDemoraLabels}
                 showCapEntregaLabels={preferences.showCapEntregaLabels ?? false}
-                onToggleCapEntregaLabels={(next) => updatePreference('showCapEntregaLabels', next)}
+                onToggleCapEntregaLabels={handleToggleCapEntregaLabels}
                 showPedidosZonaLabels={preferences.showPedidosZonaLabels ?? false}
-                onTogglePedidosZonaLabels={(next) => updatePreference('showPedidosZonaLabels', next)}
+                onTogglePedidosZonaLabels={handleTogglePedidosZonaLabels}
                 zonaOpacity={preferences.zonaOpacity ?? 50}
                 reloadMarkersTrigger={reloadMarkersTrigger}
                 poisHidden={poisHidden}
@@ -4240,60 +4320,7 @@ function DashboardContent() {
                 poiCategoryIcons={preferences.poiCategoryIcons}
                 pedidosVista={pedidosFilters.vista}
                 servicesVista={servicesFilters.vista}
-                onZonaClick={
-                  dataViewMode === 'pedidos-zona'
-                    ? (zonaId: number) => {
-                      // Click en capa "Pedidos/Zona": ramifica por zonaLayerTipo.
-                      // openSource='zona_combo' → al cerrar, el colapsable vuelve al estado previo.
-                      if (zonaLayerTipo === 'services') {
-                        // Capa Services: abre ServicesTableModal con paridad de filtros.
-                        setServicesOpenSource('zona_combo');
-                        snapshotServicesState();
-                        setPreFilterZona(zonaId);
-                        setPreFilterMovil(undefined);
-                        setServicesModalInitialFilters({
-                          asignacion: pedidosZonaFilter === 'sin_asignar' ? 'sin_movil' : 'todos',
-                          atraso: pedidosZonaFilter === 'atrasados' ? ['muy_atrasado', 'atrasado'] : [],
-                        });
-                        setServicesModalVista('pendientes');
-                        setIsServicesTableOpen(true);
-                      } else {
-                        // Capa Pedidos (o cualquier otro): comportamiento actual intacto.
-                        setPedidosOpenSource('zona_combo');
-                        snapshotPedidosState();
-                        setPreFilterZona(zonaId);
-                        setPreFilterMovil(undefined);
-                        setPedidosModalInitialFilters({
-                          asignacion: pedidosZonaFilter === 'sin_asignar' ? 'sin_movil' : 'todos',
-                          tipoServicio: [],
-                        });
-                        setPedidosModalVista('pendientes');
-                        setPedidosInitialAtraso(pedidosZonaFilter === 'atrasados' ? ['muy_atrasado', 'atrasado'] : []);
-                        setIsPedidosTableOpen(true);
-                      }
-                    }
-                    : dataViewMode === 'moviles-zonas'
-                      ? (zonaId: number) => {
-                        // Click en capa "Móviles/Zona": pre-carga combos del modal
-                        // según el combo "Tipo Servicio" activo en el mapa.
-                        const svcFilter = movilesZonasServiceFilter;
-                        if (svcFilter === 'SERVICE') {
-                          setZonaViewInitialTipoServicio('SERVICE');
-                          setZonaViewInitialSubFiltro(undefined);
-                        } else if (svcFilter === 'URGENTE') {
-                          setZonaViewInitialTipoServicio('PEDIDOS');
-                          setZonaViewInitialSubFiltro('URGENTE');
-                        } else {
-                          // NOCTURNO u otro valor → PEDIDOS + NOCTURNO
-                          setZonaViewInitialTipoServicio('PEDIDOS');
-                          setZonaViewInitialSubFiltro('NOCTURNO');
-                        }
-                        openZonaView(zonaId);
-                      }
-                      : dataViewMode === 'saturacion'
-                        ? setSaturacionModalZonaId
-                        : undefined
-                }
+                onZonaClick={onZonaClick}
                 serverNow={serverNow}
                 minutosAntesSa={minutosAntesSa}
                 user={user}

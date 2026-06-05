@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import type {
   GPSTrackingSupabase,
@@ -751,8 +751,13 @@ export function usePedidosRealtime(
     };
   }, [escenarioId, movilIds?.join(','), enabled]); // Recrear si cambian los móviles o enabled
 
+  // perf: memoizar el array para que la referencia no cambie si el Map no cambió.
+  // Sin esto, cada render del hook (por any state) crea un nuevo array → downstream
+  // useMemos que dependen de pedidosCompletos se invalidan innecesariamente.
+  const pedidosArray = useMemo(() => Array.from(pedidos.values()), [pedidos]);
+
   return {
-    pedidos: Array.from(pedidos.values()),
+    pedidos: pedidosArray,
     isConnected,
     error,
     lastEventAt,
@@ -953,8 +958,11 @@ export function useServicesRealtime(
     };
   }, [escenarioId, movilIds?.join(','), enabled]);
 
+  // perf: memoizar el array para que la referencia no cambie si el Map no cambió.
+  const servicesArray = useMemo(() => Array.from(services.values()), [services]);
+
   return {
-    services: Array.from(services.values()),
+    services: servicesArray,
     isConnected,
     error,
     lastEventAt,

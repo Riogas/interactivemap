@@ -422,7 +422,7 @@ function MapUpdater({
       if (focusedMovil && moviles.length > 0) {
         const movil = moviles.find(m => m.id === focusedMovil);
         if (movil?.currentPosition) {
-          console.log('?? Centrando mapa en móvil enfocado:', movil.id);
+          if (process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1') console.log('Centrando mapa en móvil enfocado:', movil.id);
           map.setView([movil.currentPosition.coordX, movil.currentPosition.coordY], 15, {
             animate: true,
           });
@@ -440,7 +440,7 @@ function MapUpdater({
       if (selectedMovil && moviles.length > 0) {
         const movil = moviles.find(m => m.id === selectedMovil);
         if (movil?.currentPosition) {
-          console.log('?? Centrando mapa en móvil para animación:', movil.id);
+          if (process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1') console.log('Centrando mapa en móvil para animación:', movil.id);
           map.setView([movil.currentPosition.coordX, movil.currentPosition.coordY], 15, {
             animate: true,
           });
@@ -692,7 +692,9 @@ interface CulledMovilesLayerProps {
   onPedidoServicioClose: () => void;
 }
 
-function CulledMovilesLayer({
+// perf: React.memo evita re-render cuando las props no cambian por referencia.
+// Los callbacks (createCustomIcon, etc.) vienen memoizados desde MapView.
+const CulledMovilesLayer = React.memo(function CulledMovilesLayer({
   moviles,
   popupMovilId,
   focusedMovilId,
@@ -745,7 +747,7 @@ function CulledMovilesLayer({
       })}
     </>
   );
-}
+});
 
 // Helper: devuelve los colores efectivos para un icono, forzando azul cuando el item
 // está sin asignar (en lugar del gris por default de getDelayInfo cuando no hay fecha).
@@ -773,7 +775,7 @@ interface CulledPedidosLayerProps {
   pedidosCluster: boolean;
 }
 
-function CulledPedidosLayer({
+const CulledPedidosLayer = React.memo(function CulledPedidosLayer({
   pedidosFiltrados,
   popupPedidoId,
   pedidosVista,
@@ -845,7 +847,7 @@ function CulledPedidosLayer({
   return pedidosCluster
     ? <MarkerClusterGroup>{markers}</MarkerClusterGroup>
     : <>{markers}</>;
-}
+});
 
 interface CulledServicesLayerProps {
   servicesFiltrados: ServiceSupabase[];
@@ -857,7 +859,7 @@ interface CulledServicesLayerProps {
   pedidosCluster: boolean;
 }
 
-function CulledServicesLayer({
+const CulledServicesLayer = React.memo(function CulledServicesLayer({
   servicesFiltrados,
   popupServiceId,
   servicesVista,
@@ -926,7 +928,7 @@ function CulledServicesLayer({
   return pedidosCluster
     ? <MarkerClusterGroup>{markers}</MarkerClusterGroup>
     : <>{markers}</>;
-}
+});
 
 interface CulledPoisLayerProps {
   customMarkers: CustomMarker[];
@@ -939,7 +941,7 @@ interface CulledPoisLayerProps {
   poiCategoryIcons?: Record<string, string>;
 }
 
-function CulledPoisLayer({
+const CulledPoisLayer = React.memo(function CulledPoisLayer({
   customMarkers,
   focusedPuntoId,
   poisHidden,
@@ -986,13 +988,15 @@ function CulledPoisLayer({
         const iconHtml = isPtoVenta
           ? `<img src="/images/iconoptoventa.png" style="width:${poiPx}px;height:${poiPx}px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" />`
           : `<div style="font-size:${poiFontSize}px;text-align:center;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">${displayIcon}</div>`;
-        const customIcon = L.divIcon({
+        // perf: cache de icons por key (size + tipo + icon) para no re-crear L.divIcon en cada render.
+        const cacheKey = `poi-${poiPx}-${isPtoVenta ? 'pv' : 'std'}-${displayIcon}`;
+        const customIcon = getCachedIcon(cacheKey, () => L.divIcon({
           html: iconHtml,
           className: 'custom-marker-icon',
           iconSize: [poiPx, poiPx],
           iconAnchor: [poiPx / 2, poiPx],
           popupAnchor: [0, -poiPx],
-        });
+        }));
 
         return (
           <OptimizedMarker
@@ -1053,10 +1057,10 @@ function CulledPoisLayer({
       })}
     </>
   );
-}
+});
 
-const MapView = memo(function MapView({ 
-  moviles, 
+const MapView = memo(function MapView({
+  moviles,
   focusedMovil, 
   selectedMovil, 
   secondaryAnimMovil,
