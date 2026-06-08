@@ -26,6 +26,17 @@ interface TrackingModalProps {
   escenarioId?: number;
   /** 'S' si el usuario es root — se usa para el header x-track-isroot en la rama moviles_dia. */
   isRoot?: string;
+  /**
+   * Cuando true, el modal usa la prop `moviles` como fuente de verdad directa
+   * (sin fetch interno de actividad). Aplica cuando NEXT_PUBLIC_USE_MOVILES_DIA=true
+   * y la fecha seleccionada es hoy: el dashboard ya filtra moviles_dia (activos +
+   * inactivos del día) antes de pasarlos, por lo que re-fetchear es redundante y
+   * puede excluir móviles con pedidos/services pero sin GPS.
+   *
+   * Para fechas históricas (date != hoy), este flag debe ser false para que el
+   * modal siga usando /api/moviles-dia con la fecha correcta.
+   */
+  movilesDiaMode?: boolean;
 }
 
 export default function TrackingModal({
@@ -40,6 +51,7 @@ export default function TrackingModal({
   minDate,
   escenarioId,
   isRoot,
+  movilesDiaMode = false,
 }: TrackingModalProps) {
   const [movilId, setMovilId] = useState<number | ''>(preSelectedMovil || '');
   const [date, setDate] = useState(selectedDate);
@@ -75,6 +87,25 @@ export default function TrackingModal({
   // R2: Fetch de móviles con actividad cada vez que cambia la fecha (o cuando abre el modal)
   useEffect(() => {
     if (!isOpen) return;
+
+    // movilesDiaMode + hoy: el prop `moviles` ya contiene el universo correcto
+    // (activos + inactivos del día) porque el dashboard lo construye desde moviles_dia.
+    // Usar los IDs del prop directamente evita el fetch redundante y garantiza
+    // paridad exacta con el colapsable (misma fuente de verdad).
+    // Para fechas históricas (isToday=false), este branch NO se activa — el modal
+    // sigue usando /api/moviles-dia con la fecha correcta para reconstruir la lista.
+    if (movilesDiaMode && isToday) {
+      const ids = new Set<number>(moviles.map((m) => m.id));
+      setActivityMovilIds(ids);
+      setActivityLoading(false);
+      setActivityError(false);
+      // Cancelar cualquier fetch previo si había quedado pendiente
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      return;
+    }
 
     // Cancelar fetch anterior si existe
     if (abortControllerRef.current) {
@@ -155,7 +186,7 @@ export default function TrackingModal({
     return () => {
       controller.abort();
     };
-  }, [isOpen, date, selectedEmpresas, escenarioId, isRoot]);
+  }, [isOpen, date, selectedEmpresas, escenarioId, isRoot, movilesDiaMode, isToday, moviles]);
 
   // R2 + R3: Filtrar por actividad + ocultos + búsqueda, ordenar por nro (m.id)
   const filteredMoviles = useMemo(() => {
