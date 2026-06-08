@@ -134,9 +134,15 @@ export default function TrackingModal({
         .then((res) => res.json())
         .then((result: { data?: Array<{ id: number; activo?: boolean; inactivoDelDia?: boolean }> }) => {
           if (Array.isArray(result.data)) {
-            // Universo: activos del día + inactivos del día (igual que el colapsable)
+            // Universo para histórico: TODOS los móviles devueltos por moviles_dia
+            // (en fechas pasadas el rebuild pone activo=false, inactivo_del_dia=true en todas).
+            // Para hoy: activos del día + inactivos del día (igual que el colapsable).
+            // Nota: isToday aquí refleja la fecha seleccionada en el modal (puede diferir
+            // de la fecha del dashboard si el usuario cambió la fecha dentro del modal).
             const ids = new Set<number>(
-              result.data.filter((m) => m.activo === true || m.inactivoDelDia === true).map((m) => m.id)
+              isToday
+                ? result.data.filter((m) => m.activo === true || m.inactivoDelDia === true).map((m) => m.id)
+                : result.data.map((m) => m.id) // fecha histórica: incluir todos sin filtrar por flags
             );
             setActivityMovilIds(ids);
           } else {
@@ -190,7 +196,11 @@ export default function TrackingModal({
 
   // R2 + R3: Filtrar por actividad + ocultos + búsqueda, ordenar por nro (m.id)
   const filteredMoviles = useMemo(() => {
-    const base = hiddenMovilIds && hiddenMovilIds.size > 0
+    // hiddenMovilIds (ocultos-pero-operativos) aplica solo cuando se ve HOY.
+    // En fechas históricas NO aplicar: un móvil inactivo que ese día tuvo pedidos
+    // debe ser seleccionable para ver su recorrido, independientemente de su estado actual.
+    // En modo hoy: conservar el filtro para no mostrar móviles ocultos-operativos en la lista.
+    const base = isToday && hiddenMovilIds && hiddenMovilIds.size > 0
       ? moviles.filter(m => !hiddenMovilIds.has(m.id))
       : moviles;
 
@@ -219,7 +229,7 @@ export default function TrackingModal({
 
     // R3: Ordenar por número de móvil ascendente
     return withSearch.slice().sort((a, b) => a.id - b.id);
-  }, [moviles, search, hiddenMovilIds, activityMovilIds]);
+  }, [moviles, search, hiddenMovilIds, activityMovilIds, isToday]);
 
   // Móvil seleccionado actualmente
   const selectedMovilData = useMemo(() => {
