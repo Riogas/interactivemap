@@ -2751,7 +2751,10 @@ function DashboardContent() {
     if (selectedEmpresas.length === 0 && empresas.length > 0) return [];
     return moviles
       .filter(m => {
-        if (isMovilActiveForUI(m.estadoNro)) return false; // Solo inactivos
+        // FIX historico (colapsable): en modo historico todos los moviles devueltos por
+        // /api/moviles-actividad-dia trabajaron ese dia -- son inactivos del dia
+        // independientemente de su estado_nro actual. En modo HOY, preservar guard.
+        if (!isViewingHistorical && isMovilActiveForUI(m.estadoNro)) return false; // Solo inactivos (HOY)
         // FIX historico: en modo historico el universo de moviles ya viene del
         // endpoint /api/moviles-actividad-dia (pedidos U services U GPS del dia).
         // No necesitamos el check de movilesConOperacion (que no incluye GPS).

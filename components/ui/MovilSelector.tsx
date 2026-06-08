@@ -498,6 +498,14 @@ export default function MovilSelector({
   const filteredMoviles = useMemo(() => {
     let result = [...moviles];
 
+    // FIX historico: en modo historico (!isToday) todos los moviles del prop
+    // ya estan en inactivosDelDia (via page.tsx). La lista principal (filteredMoviles)
+    // debe estar vacia para evitar duplicados — todos se muestran en la sub-seccion.
+    if (!isToday) {
+      const inactivosIds = new Set((inactivosDelDia ?? []).map(m => m.id));
+      return result.filter(m => !inactivosIds.has(m.id)).sort((a, b) => a.id - b.id);
+    }
+
     // Filtrar por búsqueda
     if (movilesSearch.trim()) {
       const searchLower = movilesSearch.toLowerCase();
@@ -522,8 +530,12 @@ export default function MovilSelector({
       });
     }
 
-    // 🆕 Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3=NO ACTIVO)
-    {
+    // FIX historico (colapsable): en modo historico (!isToday) NO aplicar el filtro
+    // de actividad — todos los moviles devueltos ya trabajaron ese dia y deben
+    // aparecer en la seccion inactivosDelDia, no en la lista principal activos.
+    // En modo HOY, el filtro de actividad se aplica normalmente.
+    if (isToday) {
+      // Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3=NO ACTIVO)
       result = result.filter(movil => {
         const estadoNro = movil.estadoNro;
         const esActivo = isMovilActiveForUI(estadoNro);
@@ -533,8 +545,10 @@ export default function MovilSelector({
       });
     }
 
-    // Excluir móviles "ocultos pero operativos" del colapsable de móviles
-    if (hiddenMovilIds && hiddenMovilIds.size > 0) {
+    // hiddenMovilIds (ocultos-pero-operativos) aplica solo en HOY.
+    // En historico, un movil inactivo que ese dia tuvo pedidos debe
+    // aparecer — misma razon que el fix de TrackingModal (commit 6f5180c).
+    if (isToday && hiddenMovilIds && hiddenMovilIds.size > 0) {
       result = result.filter(movil => !hiddenMovilIds.has(movil.id));
     }
 
@@ -574,16 +588,18 @@ export default function MovilSelector({
 
     // Ordenar por número de móvil (ascendente)
     return result.sort((a, b) => a.id - b.id);
-  }, [moviles, movilesSearch, movilesFilters, hiddenMovilIds]);
+  }, [moviles, movilesSearch, movilesFilters, hiddenMovilIds, isToday, inactivosDelDia]);
 
   // allSelected (alcance "colapsable"): se usa para el botón "Seleccionar/
   // Deseleccionar todos" del panel y refleja si todos los visibles del filtro
   // local (search + filtros del colapsable) están marcados.
   // §4.1 (USE_NEW): el set visible es activosNuevo + inactivosNuevo (ya filtrados
   // por search + chips). El camino viejo queda exactamente igual (filteredMoviles).
+  // FIX historico: en modo !isToday (historico), el camino viejo usa inactivosDelDia
+  // como universo visible (filteredMoviles esta vacio en ese modo).
   const allVisibles = USE_MOVILES_DIA_SELECTOR
     ? [...activosNuevo, ...inactivosNuevo]
-    : filteredMoviles;
+    : (!isToday ? (inactivosDelDia ?? []) : filteredMoviles);
   const allSelected = allVisibles.length > 0 && allVisibles.every(m => selectedMoviles.includes(m.id));
 
   // allEmpresasSelected: true cuando el usuario tiene seleccionadas todas las
@@ -948,7 +964,7 @@ export default function MovilSelector({
   // Categorías disponibles
   const categories: Category[] = [
     ...(showEmpresaSelector ? [{ key: 'empresas' as CategoryKey, title: 'Empresa Fletera', icon: '🏢', count: selectedEmpresas.length }] : []),
-    { key: 'moviles', title: movilesCategoryTitle, icon: '🚗', count: USE_MOVILES_DIA_SELECTOR ? moviles.length : filteredMoviles.length },
+    { key: 'moviles', title: movilesCategoryTitle, icon: '🚗', count: USE_MOVILES_DIA_SELECTOR ? moviles.length : allVisibles.length },
     { key: 'pedidos', title: 'Pedidos', icon: '📦', count: filteredPedidos.length },
     { key: 'services', title: 'Services', icon: '🔧', count: filteredServices.length },
     { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: puntosInteres.length },
