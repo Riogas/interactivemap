@@ -3004,11 +3004,29 @@ function DashboardContent() {
            (!m.currentPosition || isInUruguay(m.currentPosition.coordX, m.currentPosition.coordY))
     );
     if (process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true') {
-      if (!isToday) return [];                      // fecha anterior: sin marcadores
-      return result.filter(m => m.activo === true); // inactivos no en mapa
+      // Los moviles seleccionados para animacion (playback) siempre pasan,
+      // aunque sean inactivos o la fecha sea historica. Se reconocen porque
+      // handleTrackingConfirm les setea history antes de llamar setSelectedMovil.
+      const animIds = new Set(
+        [selectedMovil, selectedMovil2].filter((id) => id != null)
+      );
+      const animMoviles = animIds.size > 0
+        ? movilesFilteredMarked.filter(m => animIds.has(m.id) && m.history !== undefined)
+        : [];
+      if (!isToday) {
+        // Fecha historica: sin marcadores normales, pero si los de animacion.
+        return animMoviles;
+      }
+      // Hoy: activos normales + inactivos seleccionados para animacion.
+      const activeMoviles = result.filter(m => m.activo === true);
+      if (animIds.size === 0) return activeMoviles;
+      // Fusionar: animMoviles que no esten ya en activeMoviles.
+      const activeIds = new Set(activeMoviles.map(m => m.id));
+      const extraAnim = animMoviles.filter(m => !activeIds.has(m.id));
+      return [...activeMoviles, ...extraAnim];
     }
     return result;
-  }, [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters, isToday]);
+  }, [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters, isToday]);
 
   // ?? Fix 1 perf-round-2: pedidosForMap memoizado  evita invalidar React.memo del MapView en cada render
   const pedidosForMap = useMemo((): PedidoSupabase[] => {

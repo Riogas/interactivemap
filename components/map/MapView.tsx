@@ -2733,18 +2733,26 @@ const MapView = memo(function MapView({
                   ? (isPrimary ? '#2563eb' : '#ea580c')
                   : movil.color;
 
-                // Si no tiene posición actual, no renderizar nada
-                if (!movil.currentPosition) return null;
-                
-                // Filtrar historial por rango de tiempo
+                // Filtrar historial por rango de tiempo (antes del guard de posicion).
+                // Moviles inactivos pueden no tener currentPosition pero si history del dia.
                 const filteredHistory = movil.history ? filterHistoryByTime(movil.history) : [];
-                
-                // Si no hay historial, solo mostrar el marcador actual
+
+                // Posicion efectiva: currentPosition si existe; si no, el punto mas reciente
+                // del historial (filteredHistory[0] = mas reciente porque la API devuelve DESC).
+                // Si no hay ni posicion ni historial, no hay nada que mostrar.
+                const effectivePosition = movil.currentPosition
+                  ?? (filteredHistory.length > 0
+                    ? { coordX: filteredHistory[0].coordX, coordY: filteredHistory[0].coordY, auxIn2: filteredHistory[0].fechaInsLog }
+                    : null);
+
+                if (!effectivePosition) return null; // Sin posicion y sin historial: nada que renderizar
+
+                // Si no hay historial, solo mostrar el marcador en la posicion efectiva
                 if (filteredHistory.length === 0) {
                   return (
                     <OptimizedMarker
                       key={movil.id}
-                      position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
+                      position={[effectivePosition.coordX, effectivePosition.coordY]}
                       icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)}
                     >
                       <Popup>
@@ -2752,11 +2760,13 @@ const MapView = memo(function MapView({
                           <h3 className="font-bold text-lg" style={{ color: getMovilColor(movil) }}>
                             {movil.name}
                           </h3>
+                          {movil.currentPosition && (
                           <p className="text-sm text-gray-600">
                             <strong>Estado:</strong> {movil.currentPosition.auxIn2}
                           </p>
+                          )}
                           <p className="text-sm text-yellow-600 font-semibold mt-2">
-                            ?? Sin historial para esta fecha
+                            Sin recorrido para esta fecha
                           </p>
                         </div>
                       </Popup>
