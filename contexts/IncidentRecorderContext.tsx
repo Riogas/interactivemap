@@ -7,6 +7,14 @@
  * los modales de confirmación / uploading y los toasts.
  * El botón visual vive en el navbar (components/IncidentRecorderButton.tsx)
  * y consume este contexto vía useIncidentRecorder().
+ *
+ * UPLOAD: el video se sube en 3 pasos para evitar el límite de nginx:
+ *   1. POST /api/incidents/upload-url → signed URL de Supabase Storage
+ *   2. PUT <signedUrl> con el blob directamente (bypasa nginx del track)
+ *   3. POST /api/incidents con solo metadata (JSON, no multipart) → DB insert
+ *
+ * Este diseño elimina el 413 de nginx para videos grandes ya que el blob
+ * nunca pasa por la ruta /api/ que nginx proxea al servidor Next.js.
  */
 
 import {
@@ -113,6 +121,46 @@ async function parseIncidentResponse(res: Response): Promise<{ success: boolean;
 }
 
 /**
+ * Sube un Blob a una signed URL de Supabase Storage via XMLHttpRequest.
+ * Usa XHR en lugar de fetch para poder reportar progreso real (onprogress).
+ *
+ * @returns Promise que resuelve al porcentaje final (100) o rechaza con error.
+ */
+function uploadBlobWithProgress(
+  signedUrl: string,
+  blob: Blob,
+  mimeType: string,
+  onProgress: (pct: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', signedUrl);
+    xhr.setRequestHeader('Content-Type', mimeType);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100);
+        resolve();
+      } else {
+        reject(new Error(`Upload falló con status ${xhr.status}: ${xhr.responseText.slice(0, 200)}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Error de red durante el upload del video.'));
+    xhr.ontimeout = () => reject(new Error('Timeout durante el upload del video.'));
+
+    // Sin timeout explícito — videos grandes pueden tardar minutos
+    xhr.send(blob);
+  });
+}
+
+/**
  * Detecta Firefox por user-agent. Es la unica heuristica confiable cliente:
  * Firefox es el unico navegador mayor que pone "Firefox/" en su UA (Chrome
  * pone "Chrome/" pero no "Firefox/"; Safari/Edge tampoco).
@@ -160,6 +208,12 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
   const [pendingDurationS, setPendingDurationS] = useState(0);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [browserBlocked, setBrowserBlocked] = useState(false);
+  // Progreso del upload: 0-100 durante el estado 'uploading'.
+  // Se muestra en el modal de "Subiendo incidencia…" como progress bar real.
+  const [uploadProgress, setUploadProgress] = useState(0);
+  // Fase del upload para el label del modal: 'url' | 'video' | 'meta'
+  const [uploadPhase, setUploadPhase] = useState<'url' | 'video' | 'meta'>('url');
+
   // Pre-fill email del usuario al pasar a confirming, asi el reporter no tiene
   // que tipear su email cada vez (lo puede cambiar/borrar).
   useEffect(() => {
@@ -442,6 +496,20 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
     doStop();
   }, [doStop]);
 
+  /**
+   * confirmUpload — sube el incidente en 3 pasos sin pasar el blob por nginx:
+   *
+   * Paso 1: POST /api/incidents/upload-url
+   *   → genera signed URL en Supabase Storage + path único del archivo
+   *
+   * Paso 2: PUT <signedUrl> con el Blob directamente
+   *   → el blob va directo a Supabase Storage, bypassando nginx del track
+   *   → progreso real via XHR.upload.onprogress
+   *
+   * Paso 3: POST /api/incidents con JSON de metadata
+   *   → body liviano (sin blob), nginx no tiene problema
+   *   → inserta la fila en la tabla incidents
+   */
   const confirmUpload = async () => {
     if (!pendingBlob) return;
     if (!descriptionValid) {
@@ -453,41 +521,108 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
     if (!celularValid) {
       return;
     }
-    setState('uploading');
-    try {
-      const form = new FormData();
-      form.append('video', pendingBlob, 'incident.webm');
-      form.append('description', descriptionTrim);
-      form.append('duration_s', String(pendingDurationS));
-      if (contactEmail.trim()) form.append('contact_email', contactEmail.trim());
-      form.append('contact_celular', celularTrim);
-      if (user?.nombre) form.append('reporter_nombre', user.nombre);
 
-      const res = await fetch('/api/incidents', {
+    setState('uploading');
+    setUploadProgress(0);
+    setUploadPhase('url');
+
+    try {
+      const mimeType = pendingBlob.type || 'video/webm';
+
+      // ── Paso 1: Obtener signed upload URL ──────────────────────────────────
+      const urlRes = await fetch('/api/incidents/upload-url', {
         method: 'POST',
-        body: form,
         headers: {
+          'Content-Type': 'application/json',
           'x-track-user': user?.username ?? '',
           'x-track-userid': user?.id ?? '',
         },
+        body: JSON.stringify({ mime: mimeType }),
       });
 
-      // Bug Chrome: res.json() lanza SyntaxError si nginx devuelve HTML (502/504/413).
-      // parseIncidentResponse() lee como texto y parsea defensivamente.
-      const data = await parseIncidentResponse(res);
-
-      if (!data.success) {
-        setToast({ type: 'err', msg: data.error ?? 'Error subiendo el video.' });
+      // Parsear el body del upload-url como texto para manejar HTML de nginx gracefully.
+      // A diferencia de parseIncidentResponse (que pierde campos extras), aquí
+      // necesitamos signedUrl y path → parseamos manualmente preservando todo.
+      const urlText = await urlRes.text();
+      if (!urlRes.ok) {
+        console.error('[IncidentRecorder] upload-url error:', urlRes.status, urlText.slice(0, 300));
+        const errMsg =
+          urlRes.status === 502 || urlRes.status === 504
+            ? 'El servidor tardó demasiado. Reintentá en unos segundos.'
+            : urlRes.status >= 500
+            ? 'Error del servidor. Reintentá en unos segundos.'
+            : (() => { try { return (JSON.parse(urlText) as { error?: string }).error ?? 'Error preparando el upload.'; } catch { return 'Error preparando el upload.'; } })();
+        setToast({ type: 'err', msg: errMsg });
         setState('confirming');
         return;
       }
-      setToast({ type: 'ok', msg: `Incidencia #${data.id} reportada. Gracias!` });
+      let urlJson: { success: boolean; signedUrl?: string; path?: string; error?: string };
+      try {
+        urlJson = JSON.parse(urlText) as typeof urlJson;
+      } catch {
+        setToast({ type: 'err', msg: 'Respuesta inesperada del servidor. Reintentá.' });
+        setState('confirming');
+        return;
+      }
+
+      if (!urlJson.success || !urlJson.signedUrl || !urlJson.path) {
+        setToast({ type: 'err', msg: urlJson.error ?? 'Error preparando el upload.' });
+        setState('confirming');
+        return;
+      }
+
+      const { signedUrl, path: videoPath } = urlJson;
+
+      // ── Paso 2: Subir el blob directamente a Supabase Storage ──────────────
+      setUploadPhase('video');
+      setUploadProgress(0);
+
+      await uploadBlobWithProgress(
+        signedUrl,
+        pendingBlob,
+        mimeType,
+        (pct) => setUploadProgress(pct),
+      );
+
+      // ── Paso 3: Registrar metadata en la DB ────────────────────────────────
+      setUploadPhase('meta');
+      setUploadProgress(100);
+
+      const metaRes = await fetch('/api/incidents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-track-user': user?.username ?? '',
+          'x-track-userid': user?.id ?? '',
+        },
+        body: JSON.stringify({
+          video_path: videoPath,
+          description: descriptionTrim,
+          duration_s: pendingDurationS,
+          mime_type: mimeType,
+          size_bytes: pendingBlob.size,
+          contact_email: contactEmail.trim() || undefined,
+          contact_celular: celularTrim,
+          reporter_nombre: user?.nombre ?? undefined,
+        }),
+      });
+
+      const metaData = await parseIncidentResponse(metaRes);
+
+      if (!metaData.success) {
+        setToast({ type: 'err', msg: metaData.error ?? 'Error guardando la incidencia.' });
+        setState('confirming');
+        return;
+      }
+
+      setToast({ type: 'ok', msg: `Incidencia #${metaData.id} reportada. Gracias!` });
       setDescription('');
       setContactEmail('');
       setContactCelular('');
       setSubmitAttempted(false);
       setPendingBlob(null);
       setPendingDurationS(0);
+      setUploadProgress(0);
       setState('idle');
     } catch (e) {
       setToast({ type: 'err', msg: (e as Error).message });
@@ -502,8 +637,16 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
     setSubmitAttempted(false);
     setPendingBlob(null);
     setPendingDurationS(0);
+    setUploadProgress(0);
     setState('idle');
   };
+
+  // Label de fase para el modal de uploading
+  const uploadPhaseLabel =
+    uploadPhase === 'url' ? 'Preparando upload…'
+    : uploadPhase === 'meta' ? 'Guardando datos…'
+    : uploadProgress < 100 ? `Subiendo video… ${uploadProgress}%`
+    : 'Finalizando…';
 
   return (
     <RecorderContext.Provider value={{ state, seconds, start, stop, available }}>
@@ -670,14 +813,25 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
 
       {state === 'uploading' && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex items-center gap-4">
-            <svg className="animate-spin w-6 h-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-            </svg>
-            <div>
-              <div className="text-sm font-semibold text-slate-800">Subiendo incidencia…</div>
-              <div className="text-xs text-slate-500">No cierres la pestaña</div>
+          <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 min-w-[280px]">
+            <div className="flex items-center gap-4 mb-4">
+              <svg className="animate-spin w-6 h-6 text-blue-600 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+              <div>
+                <div className="text-sm font-semibold text-slate-800">{uploadPhaseLabel}</div>
+                <div className="text-xs text-slate-500">No cierres la pestaña</div>
+              </div>
             </div>
+            {/* Progress bar — solo visible durante la fase de video */}
+            {uploadPhase === 'video' && (
+              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}

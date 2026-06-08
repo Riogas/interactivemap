@@ -1,27 +1,34 @@
 /**
  * POST /api/incidents
  *
- * Recibe un video de grabación de pantalla desde el IncidentRecorder y lo
- * sube al bucket "incident-videos" de Supabase Storage. Crea una fila en
- * la tabla incidents con la metadata (user, duration, size, description).
+ * Recibe metadata del incidente y crea la fila en la tabla incidents.
+ * El video ya fue subido directamente a Supabase Storage desde el cliente
+ * usando la signed upload URL de /api/incidents/upload-url — este endpoint
+ * NO recibe el blob, solo JSON con metadata.
  *
- * Multipart form:
- *   - video: File (webm/mp4)
- *   - description: string (opcional)
- *   - duration_s: number (opcional)
+ * Body JSON:
+ *   - video_path: string (path en el bucket, devuelto por /upload-url)
+ *   - description: string (mínimo 10 chars)
+ *   - duration_s?: number
+ *   - mime_type?: string
+ *   - size_bytes?: number
+ *   - contact_email?: string
+ *   - contact_celular: string (obligatorio)
+ *   - reporter_nombre?: string
  *
  * Notificación: si INCIDENT_WEBHOOK_URL está definido, se hace un POST
- * fire-and-forget al webhook (ej: n8n) con el payload de la incidencia.
- * El webhook falla silenciosamente — no bloquea la respuesta al cliente.
+ * fire-and-forget al webhook (ej: n8n). El webhook falla silenciosamente.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300; // 5 min para uploads grandes
+export const dynamic = 'force-dynamic';
+export const maxDuration = 30; // Solo metadata, no upload — 30s más que suficiente
 
 const BUCKET = 'incident-videos';
-const MAX_SIZE_MB = 500;
+// Límite de size_bytes que el cliente declara (guard contra datos manipulados)
+const MAX_DECLARED_SIZE_MB = 500;
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
@@ -83,40 +90,37 @@ function notifyWebhook(payload: {
 
 export async function POST(request: NextRequest) {
   try {
-    const form = await request.formData();
-    const video = form.get('video');
+    const body = await request.json() as {
+      video_path?: string;
+      description?: string;
+      duration_s?: number;
+      mime_type?: string;
+      size_bytes?: number;
+      contact_email?: string;
+      contact_celular?: string;
+      reporter_nombre?: string;
+    };
 
-    if (!(video instanceof Blob)) {
+    // Validar video_path
+    const video_path = typeof body.video_path === 'string' ? body.video_path.trim() : '';
+    if (!video_path) {
       return NextResponse.json(
-        { success: false, error: 'Se esperaba un archivo en el campo "video"' },
+        { success: false, error: 'video_path es requerido' },
         { status: 400 },
       );
     }
 
-    if (video.size > MAX_SIZE_MB * 1024 * 1024) {
-      return NextResponse.json(
-        { success: false, error: `Archivo mayor a ${MAX_SIZE_MB}MB` },
-        { status: 413 },
-      );
-    }
-
-    const description = (form.get('description') as string | null)?.slice(0, 2000) ?? null;
-    // Descripcion es obligatoria y minimo 10 caracteres (server-side guard, la
-    // UI ya valida pero el endpoint puede ser invocado directamente).
-    if (!description || description.trim().length < 10) {
+    // Validar description
+    const description = typeof body.description === 'string' ? body.description.slice(0, 2000).trim() : '';
+    if (!description || description.length < 10) {
       return NextResponse.json(
         { success: false, error: 'La descripcion es obligatoria y debe tener al menos 10 caracteres.' },
         { status: 400 },
       );
     }
-    const durationStr = form.get('duration_s') as string | null;
-    const duration_s = durationStr ? Math.max(0, Number(durationStr)) || null : null;
-    const mimeType = video.type || 'video/webm';
-    // Contacto: email opcional, celular obligatorio.
-    const contact_email = (form.get('contact_email') as string | null)?.slice(0, 200) || null;
-    const contact_celular_raw = (form.get('contact_celular') as string | null)?.trim() ?? '';
-    // Server-side guard: el celular es obligatorio — protege contra clientes
-    // que bypaseen el form (Postman, devtools, etc.).
+
+    // Validar celular
+    const contact_celular_raw = typeof body.contact_celular === 'string' ? body.contact_celular.trim() : '';
     if (!contact_celular_raw) {
       return NextResponse.json(
         { success: false, error: 'Celular requerido', code: 'CELULAR_REQUIRED' },
@@ -124,7 +128,20 @@ export async function POST(request: NextRequest) {
       );
     }
     const contact_celular = contact_celular_raw.slice(0, 50);
-    const reporter_nombre = (form.get('reporter_nombre') as string | null)?.slice(0, 200) || null;
+
+    // Guard de size declarado (no podemos verificar el real, el cliente declara)
+    const size_bytes = typeof body.size_bytes === 'number' ? body.size_bytes : null;
+    if (size_bytes !== null && size_bytes > MAX_DECLARED_SIZE_MB * 1024 * 1024) {
+      return NextResponse.json(
+        { success: false, error: `Tamaño declarado mayor a ${MAX_DECLARED_SIZE_MB}MB` },
+        { status: 413 },
+      );
+    }
+
+    const duration_s = typeof body.duration_s === 'number' ? Math.max(0, body.duration_s) : null;
+    const mimeType = typeof body.mime_type === 'string' ? body.mime_type : 'video/webm';
+    const contact_email = typeof body.contact_email === 'string' ? body.contact_email.slice(0, 200) || null : null;
+    const reporter_nombre = typeof body.reporter_nombre === 'string' ? body.reporter_nombre.slice(0, 200) || null : null;
 
     const { userId, username } = extractUser(request);
     const ip =
@@ -134,31 +151,25 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') ?? 'unknown';
 
     const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-    const safeUser = (username ?? 'anon').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 32);
-    const videoPath = `${y}/${m}/${d}/${safeUser}-${now.getTime()}.${ext}`;
 
-    // Upload al bucket
+    // Verificar que el archivo realmente existe en Storage antes de insertar
+    // (previene inserts con paths inventados)
     const supabase = getServerSupabaseClient();
-    const buffer = Buffer.from(await video.arrayBuffer());
-    const { error: uploadError } = await supabase.storage
+    const { data: fileData, error: listError } = await supabase.storage
       .from(BUCKET)
-      .upload(videoPath, buffer, {
-        contentType: mimeType,
-        upsert: false,
+      .list(video_path.split('/').slice(0, -1).join('/'), {
+        search: video_path.split('/').pop(),
       });
 
-    if (uploadError) {
+    if (listError || !fileData || fileData.length === 0) {
+      console.warn('[incidents] video_path no encontrado en storage:', video_path, listError?.message);
       return NextResponse.json(
-        { success: false, error: `Error subiendo video: ${uploadError.message}` },
-        { status: 500 },
+        { success: false, error: 'El video no fue encontrado en el almacenamiento. Intentá subir de nuevo.' },
+        { status: 400 },
       );
     }
 
-    // Insert en incidents (cast porque la tabla no está en types/supabase.ts generado)
+    // Insert en incidents
     const row = {
       user_id: userId,
       username,
@@ -166,9 +177,9 @@ export async function POST(request: NextRequest) {
       description,
       contact_email,
       contact_celular,
-      video_path: videoPath,
+      video_path,
       duration_s,
-      size_bytes: video.size,
+      size_bytes,
       mime_type: mimeType,
       ip,
       user_agent: userAgent,
@@ -187,8 +198,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertResult.error) {
-      // Rollback del upload
-      await supabase.storage.from(BUCKET).remove([videoPath]);
+      // Rollback del upload — el video ya está en storage, lo borramos
+      await supabase.storage.from(BUCKET).remove([video_path]);
       return NextResponse.json(
         { success: false, error: `Error guardando metadata: ${insertResult.error.message}` },
         { status: 500 },
@@ -210,7 +221,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       id: insertedId,
-      video_path: videoPath,
+      video_path,
     });
   } catch (error) {
     return NextResponse.json(
