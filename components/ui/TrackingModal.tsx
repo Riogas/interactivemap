@@ -246,8 +246,9 @@ export default function TrackingModal({
     //    pre-calculada por el padre, misma logica que el colapsable). Sin merge adicional.
     // 2. Fallback legacy (a601708): moviles prop + inactivosDelDia si hay.
     // 3. Default: moviles prop tal cual (historico o modo viejo).
-    const movilesBase = movilesDiaMode && isToday && universoMoviles
-      ? universoMoviles
+    const usingCanonicalUniverse = !!(movilesDiaMode && isToday && universoMoviles);
+    const movilesBase = usingCanonicalUniverse
+      ? universoMoviles!
       : movilesDiaMode && isToday && inactivosDelDia && inactivosDelDia.length > 0
         ? (() => {
             const inactivosIds = new Set(inactivosDelDia.map(m => m.id));
@@ -259,8 +260,13 @@ export default function TrackingModal({
     // hiddenMovilIds (ocultos-pero-operativos) aplica solo cuando se ve HOY.
     // En fechas históricas NO aplicar: un móvil inactivo que ese día tuvo pedidos
     // debe ser seleccionable para ver su recorrido, independientemente de su estado actual.
-    // En modo hoy: conservar el filtro para no mostrar móviles ocultos-operativos en la lista.
-    const base = isToday && hiddenMovilIds && hiddenMovilIds.size > 0
+    // PARIDAD con el colapsable: cuando se usa universoMoviles (fuente de verdad
+    // pre-calculada = activos + inactivos del día, idéntica a activosNuevo+inactivosNuevo
+    // del MovilSelector), NO aplicar hiddenMovilIds. Los inactivos del día son por
+    // definición "ocultos-pero-operativos" (estado no-activo + tienen pedidos/services),
+    // por lo que hiddenMovilIds los contiene; aplicarlo descartaría justo esos móviles
+    // (p.ej. 100 → 93) rompiendo la paridad. El colapsable tampoco los filtra.
+    const base = !usingCanonicalUniverse && isToday && hiddenMovilIds && hiddenMovilIds.size > 0
       ? movilesBase.filter(m => !hiddenMovilIds.has(m.id))
       : movilesBase;
 
