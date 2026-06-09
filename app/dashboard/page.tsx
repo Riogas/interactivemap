@@ -3797,6 +3797,7 @@ function DashboardContent() {
         escenarioId={escenarioId ?? undefined}
         isRoot={user?.isRoot}
         movilesDiaMode={USE_NEW && isToday}
+        inactivosDelDia={USE_NEW && isToday ? inactivosDelDia : undefined}
       />
 
       {/* Modal de Vista Extendida de Pedidos */}
