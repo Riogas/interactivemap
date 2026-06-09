@@ -489,10 +489,15 @@ export default function MovilSelector({
 
   const inactivosNuevo = useMemo(() => {
     if (!USE_MOVILES_DIA_SELECTOR) return [];
-    // Fix #3: solo móviles que tuvieron operación hoy y ya no están activos.
-    const base = moviles.filter(m => m.inactivoDelDia === true);
+    // Fix histórico (USE_NEW): en fecha anterior a hoy, TODOS los móviles
+    // devueltos por moviles_dia son válidos por definición — la tabla es la
+    // fuente de verdad. No filtrar por inactivoDelDia (flag de realtime).
+    // Fix #3 (solo para HOY): solo móviles con inactivoDelDia===true.
+    const base = isToday
+      ? moviles.filter(m => m.inactivoDelDia === true)
+      : moviles; // histórico: incluir todos sin condición
     return applyMovilesSearchAndChips(base).sort((a, b) => a.id - b.id);
-  }, [USE_MOVILES_DIA_SELECTOR, moviles, applyMovilesSearchAndChips]);
+  }, [USE_MOVILES_DIA_SELECTOR, isToday, moviles, applyMovilesSearchAndChips]);
 
   // Filtrar y ordenar móviles
   const filteredMoviles = useMemo(() => {
