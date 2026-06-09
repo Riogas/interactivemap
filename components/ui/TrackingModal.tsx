@@ -90,18 +90,19 @@ export default function TrackingModal({
 
     // movilesDiaMode + hoy: el prop `moviles` ya contiene el universo correcto
     // (activos + inactivos del día) porque el dashboard lo construye desde moviles_dia.
-    // Criterio de inclusión (en orden de prioridad):
-    //   1. activo===true        → móvil activo ahora mismo (badge verde)
-    //   2. inactivoDelDia===true → ya terminó pero recompute lo marcó como inactivo del día (badge gris)
-    //   3. currentPosition != null → tenía GPS hoy pero aún no fue marcado por recompute
-    //      (delta entre realtime que lo marcó inactivo y el cron que actualiza inactivo_del_dia).
-    //      Estos son los ~13 móviles que el colapsable contaba en su badge pero el modal no mostraba.
+    // Criterio de inclusión — PARIDAD con el colapsable (activosNuevo + inactivosNuevo):
+    //   1. activo===true        → móvil activo ahora mismo (badge verde en colapsable)
+    //   2. inactivoDelDia===true → ya terminó, recompute lo marcó (badge gris en colapsable)
+    // NOTA: NO incluir por currentPosition!=null — eso amplía a toda la flota con GPS
+    // (potencialmente 215 vs 96 del colapsable). Commit 3d156a9 introdujo ese criterio
+    // creyendo resolver un delta de ~13 móviles, pero rompió la paridad al incluir
+    // móviles fuera del scope de empresa que igual tienen currentPosition cargada.
     // Para fechas históricas (isToday=false), este branch NO se activa — el modal
     // sigue usando /api/moviles-dia con la fecha correcta para reconstruir la lista.
     if (movilesDiaMode && isToday) {
       const ids = new Set<number>(
         moviles
-          .filter((m) => m.activo === true || m.inactivoDelDia === true || m.currentPosition != null)
+          .filter((m) => m.activo === true || m.inactivoDelDia === true)
           .map((m) => m.id)
       );
       setActivityMovilIds(ids);
@@ -144,13 +145,14 @@ export default function TrackingModal({
           if (Array.isArray(result.data)) {
             // Universo para histórico: TODOS los móviles devueltos por moviles_dia
             // (en fechas pasadas el rebuild pone activo=false, inactivo_del_dia=true en todas).
-            // Para hoy: activos + inactivos del día + los que tienen GPS aunque recompute no los haya marcado.
+            // Para hoy: activos + inactivos del día — misma paridad que el colapsable.
+            // NOTA: NO incluir por currentPosition!=null (ver comentario del branch movilesDiaMode).
             // Nota: isToday aquí refleja la fecha seleccionada en el modal (puede diferir
             // de la fecha del dashboard si el usuario cambió la fecha dentro del modal).
             const ids = new Set<number>(
               isToday
                 ? result.data
-                    .filter((m) => m.activo === true || m.inactivoDelDia === true || m.currentPosition != null)
+                    .filter((m) => m.activo === true || m.inactivoDelDia === true)
                     .map((m) => m.id)
                 : result.data.map((m) => m.id) // fecha histórica: incluir todos sin filtrar por flags
             );
