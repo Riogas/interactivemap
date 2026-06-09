@@ -548,13 +548,18 @@ export function useEmpresasFleteras(
  * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
  * @param enabled - Si false, no se crea ningún channel y se limpian los existentes.
  *   Usado en modo histórico para pausar Realtime sin desmontar el hook.
+ * @param empresaIds - Array de IDs de empresa_fletera para filtrado server-side (opcional).
+ *   Si se provee (supervisor): el canal Realtime filtra por empresa_fletera_id en lugar
+ *   de escenario, reduciendo el tráfico WS al scope del usuario.
+ *   Si es null/undefined (root): filtra por escenario (comportamiento original).
  */
 export function usePedidosRealtime(
   escenarioId: number = 1,
   movilIds?: number[],
   onUpdate?: (pedido: PedidoSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
   onReconnect?: () => void,
-  enabled: boolean = true
+  enabled: boolean = true,
+  empresaIds?: number[]
 ) {
   const [pedidos, setPedidos] = useState<Map<number, PedidoSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -640,6 +645,18 @@ export function usePedidosRealtime(
         channel = null;
       }
 
+      // perf-round-4: si empresaIds está definido (usuario con scope de empresa),
+      // filtrar por empresa_fletera_id en lugar de escenario. Esto reduce el tráfico
+      // del WS para supervisores/distribuidores al scope de sus empresas, eliminando
+      // la carga progresiva (1, 4, 6... pedidos) causada por eventos de todo el escenario.
+      // Root/despacho (sin empresaIds) mantiene el filtro original por escenario.
+      const realtimeFilter = empresaIds && empresaIds.length > 0
+        ? (empresaIds.length === 1
+            ? `empresa_fletera_id=eq.${empresaIds[0]}`
+            : `empresa_fletera_id=in.(${empresaIds.join(',')})`)
+        : `escenario=eq.${escenarioId}`;
+      console.log(`🔄 Pedidos Realtime filter: ${realtimeFilter}`);
+
       const channelName = `pedidos-realtime-${escenarioId}-${Date.now()}`;
 
       channel = supabase
@@ -655,12 +672,14 @@ export function usePedidosRealtime(
             event: 'INSERT',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const newPedido = payload.new as PedidoSupabase;
 
+            // Segunda defensa client-side: empresa (solo cuando empresaIds definido)
+            if (empresaIds && empresaIds.length > 0 && newPedido.empresa_fletera_id != null && !empresaIds.includes(Number(newPedido.empresa_fletera_id))) return;
             if (!movilIds || movilIds.length === 0 || (newPedido.movil && movilIds.includes(newPedido.movil))) {
               enqueuePatch('upsert', newPedido);
               if (onUpdate) onUpdate(newPedido, 'INSERT');
@@ -673,12 +692,14 @@ export function usePedidosRealtime(
             event: 'UPDATE',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const updatedPedido = payload.new as PedidoSupabase;
 
+            // Segunda defensa client-side: empresa
+            if (empresaIds && empresaIds.length > 0 && updatedPedido.empresa_fletera_id != null && !empresaIds.includes(Number(updatedPedido.empresa_fletera_id))) return;
             if (!movilIds || movilIds.length === 0 || (updatedPedido.movil && movilIds.includes(updatedPedido.movil))) {
               enqueuePatch('upsert', updatedPedido);
               if (onUpdate) onUpdate(updatedPedido, 'UPDATE');
@@ -691,7 +712,7 @@ export function usePedidosRealtime(
             event: 'DELETE',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
@@ -749,7 +770,7 @@ export function usePedidosRealtime(
       }
       pendingPatchesRef.current = [];
     };
-  }, [escenarioId, movilIds?.join(','), enabled]); // Recrear si cambian los móviles o enabled
+  }, [escenarioId, movilIds?.join(','), enabled, empresaIds?.join(',')]); // Recrear si cambian móviles, enabled o empresas
 
   // perf: memoizar el array para que la referencia no cambie si el Map no cambió.
   // Sin esto, cada render del hook (por any state) crea un nuevo array → downstream
@@ -771,13 +792,17 @@ export function usePedidosRealtime(
  * se coalescen en PEDIDOS_DEBOUNCE_MS antes de actualizar el state.
  *
  * @param enabled - Si false, no se crea ningún channel. Usado en modo histórico.
+ * @param empresaIds - Array de IDs de empresa_fletera para filtrado server-side (opcional).
+ *   Si se provee: el canal Realtime filtra por empresa_fletera_id para reducir tráfico WS.
+ *   Si es null/undefined (root): filtra por escenario (comportamiento original).
  */
 export function useServicesRealtime(
   escenarioId: number = 1,
   movilIds?: number[],
   onUpdate?: (service: ServiceSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
   onReconnect?: () => void,
-  enabled: boolean = true
+  enabled: boolean = true,
+  empresaIds?: number[]
 ) {
   const [services, setServices] = useState<Map<number, ServiceSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -853,6 +878,14 @@ export function useServicesRealtime(
         supabase.removeChannel(channel);
         channel = null;
       }
+      // perf-round-4: filtro por empresa_fletera_id si el usuario tiene scope (análogo a Pedidos).
+      const realtimeFilter = empresaIds && empresaIds.length > 0
+        ? (empresaIds.length === 1
+            ? `empresa_fletera_id=eq.${empresaIds[0]}`
+            : `empresa_fletera_id=in.(${empresaIds.join(',')})`)
+        : `escenario=eq.${escenarioId}`;
+      console.log(`🔄 Services Realtime filter: ${realtimeFilter}`);
+
       const channelName = `services-realtime-${escenarioId}-${Date.now()}`;
 
       channel = supabase
@@ -868,11 +901,13 @@ export function useServicesRealtime(
             event: 'INSERT',
             schema: 'public',
             table: 'services',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const newService = payload.new as ServiceSupabase;
+            // Segunda defensa client-side: empresa
+            if (empresaIds && empresaIds.length > 0 && newService.empresa_fletera_id != null && !empresaIds.includes(Number(newService.empresa_fletera_id))) return;
             if (!movilIds || movilIds.length === 0 || (newService.movil && movilIds.includes(newService.movil))) {
               enqueuePatch('upsert', newService);
               if (onUpdate) onUpdate(newService, 'INSERT');
@@ -885,11 +920,13 @@ export function useServicesRealtime(
             event: 'UPDATE',
             schema: 'public',
             table: 'services',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const updatedService = payload.new as ServiceSupabase;
+            // Segunda defensa client-side: empresa
+            if (empresaIds && empresaIds.length > 0 && updatedService.empresa_fletera_id != null && !empresaIds.includes(Number(updatedService.empresa_fletera_id))) return;
             if (!movilIds || movilIds.length === 0 || (updatedService.movil && movilIds.includes(updatedService.movil))) {
               enqueuePatch('upsert', updatedService);
               if (onUpdate) onUpdate(updatedService, 'UPDATE');
@@ -902,7 +939,7 @@ export function useServicesRealtime(
             event: 'DELETE',
             schema: 'public',
             table: 'services',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
@@ -956,7 +993,7 @@ export function useServicesRealtime(
       }
       pendingPatchesRef.current = [];
     };
-  }, [escenarioId, movilIds?.join(','), enabled]);
+  }, [escenarioId, movilIds?.join(','), enabled, empresaIds?.join(',')]);
 
   // perf: memoizar el array para que la referencia no cambie si el Map no cambió.
   const servicesArray = useMemo(() => Array.from(services.values()), [services]);
