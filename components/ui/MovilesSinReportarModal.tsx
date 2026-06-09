@@ -33,7 +33,7 @@ export default function MovilesSinReportarModal({ isOpen, onClose, moviles, hidd
   const formatFecha = (fechaStr?: string) => {
     if (!fechaStr) return '—';
     const d = new Date(fechaStr);
-    return d.toLocaleString('es-PY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString('es-UY', { timeZone: 'America/Montevideo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
   if (!isOpen) return null;

@@ -11,6 +11,12 @@
  *
  * Reutiliza la misma lógica que `startOfDayMontevideoIso` en
  * `lib/import-helpers/gps-autocreate.ts`.
+ *
+ * REGLA CANONICAL DE TZ:
+ *   Storage:     UTC (Postgres guarda timestamptz siempre en UTC — no cambiar)
+ *   Display:     America/Montevideo (usar siempre timeZone: 'America/Montevideo')
+ *   Comparación SQL: AT TIME ZONE 'America/Montevideo'
+ *   Comparación JS:  timeZone: 'America/Montevideo' en Intl o toLocale*
  */
 
 const MONTEVIDEO_TZ = 'America/Montevideo';
@@ -115,4 +121,109 @@ export function pendienteDateRange(fecha: string, now: Date = new Date()): strin
  */
 export function pendienteDateRangeCompact(fecha: string, now: Date = new Date()): string[] {
   return pendienteDateRange(fecha, now).map(f => f.replace(/-/g, ''));
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Formatters de display — siempre con timeZone: 'America/Montevideo'
+//
+// IMPORTANTE: No usar date-fns `format()` para timestamps GPS/moviles
+// porque date-fns usa la TZ del proceso JS (UTC en Node SSR).
+// Usar estas funciones en su lugar.
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Formatea un timestamp a hora MVD en formato HH:mm:ss.
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "HH:mm:ss" en hora Montevideo.
+ *
+ * @example
+ * // GPS a las 23:59 UY (= 02:59 UTC del día siguiente)
+ * formatTimeMVD('2026-06-09T02:59:53Z') // → '23:59:53'
+ */
+export function formatTimeMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
+/**
+ * Formatea un timestamp a hora MVD en formato HH:mm (sin segundos).
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "HH:mm" en hora Montevideo.
+ */
+export function formatTimeShortMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
+/**
+ * Formatea un timestamp a fecha MVD en formato dd/MM/yyyy.
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "dd/MM/yyyy" en hora Montevideo.
+ */
+export function formatDateMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d);
+}
+
+/**
+ * Formatea un timestamp a fecha+hora MVD en formato dd/MM/yyyy HH:mm.
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "dd/MM/yyyy HH:mm" en hora Montevideo.
+ */
+export function formatDateTimeMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
+/**
+ * Formatea un timestamp a fecha+hora+segundos MVD en formato dd/MM/yyyy HH:mm:ss.
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "dd/MM/yyyy HH:mm:ss" en hora Montevideo.
+ */
+export function formatDateTimeSecsMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d);
 }

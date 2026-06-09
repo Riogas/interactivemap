@@ -1,0 +1,82 @@
+-- ============================================================
+-- Migration: configurar timezone de display a America/Montevideo
+-- Fecha:  2026-06-09
+-- Autor:  pipeline /feature (run 20260609-120000-tz1)
+-- Aplicar manualmente en Supabase SQL Editor
+--
+-- PROPÓSITO:
+--   Por defecto, toda sesión de Postgres en Supabase muestra los
+--   campos timestamptz en UTC (ej: `2026-06-09 02:59:53+00`).
+--   Esto es correcto a nivel storage, pero confuso en Supabase
+--   Studio y en queries ad-hoc: el GPS fue a las 23:59 MVD del
+--   08/06, pero el display dice 02:59 UTC del 09/06.
+--
+--   Este ALTER DATABASE hace que TODA sesión nueva del servidor
+--   Postgres muestre por defecto los timestamps en MVD, sin
+--   cambiar absolutamente nada en el storage (que sigue siendo
+--   UTC internamente, por diseño de timestamptz).
+--
+-- EFECTO:
+--   ANTES: SELECT last_gps_datetime FROM moviles_dia WHERE ...
+--   → 2026-06-09 02:59:53+00
+--
+--   DESPUÉS: (misma query)
+--   → 2026-06-08 23:59:53-03
+--
+--   El valor físico es el mismo instante. Solo cambia el display.
+--
+-- IMPORTANTE:
+--   - Las sesiones activas al momento de aplicar este cambio NO
+--     se ven afectadas. Reconectar para ver el nuevo timezone.
+--   - Las funciones del servidor (triggers, RPC) no se ven
+--     afectadas en su lógica: already usan AT TIME ZONE explícito.
+--   - Este cambio es idempotente: se puede aplicar N veces.
+--
+-- NO CAMBIA:
+--   - El tipo de las columnas (siguen siendo timestamptz).
+--   - El storage interno (Postgres sigue guardando UTC).
+--   - El comportamiento de `now()` (sigue siendo UTC internamente).
+--   - Los triggers (ya usan (now() AT TIME ZONE 'America/Montevideo')::date).
+--
+-- REGLA CANONICAL DE TZ (para todo el proyecto):
+--   Storage:          UTC  (timestamptz, Postgres guarda siempre UTC)
+--   Display DB:       America/Montevideo  (este ALTER)
+--   Display UI:       timeZone: 'America/Montevideo'  (Intl.DateTimeFormat)
+--   Comparación SQL:  AT TIME ZONE 'America/Montevideo'  (no current_date UTC)
+--   Comparación JS:   timeZone: 'America/Montevideo'  (no resta de 3h manual)
+--
+-- DEPENDENCIAS: ninguna (es un SET a nivel DB, independiente de schema).
+-- ============================================================
+
+ALTER DATABASE postgres SET timezone TO 'America/Montevideo';
+
+
+-- ============================================================
+-- VERIFICACIONES post-apply (ejecutar en sesión NUEVA):
+-- ============================================================
+
+-- VER1: confirmar el timezone activo de la sesión nueva
+-- SHOW timezone;
+-- Esperado: America/Montevideo
+
+-- VER2: confirmar que un timestamp UTC ahora se ve en MVD
+-- SELECT '2026-06-09T02:59:53+00:00'::timestamptz AS utc_stored,
+--        '2026-06-09T02:59:53+00:00'::timestamptz AT TIME ZONE 'America/Montevideo' AS mvd_explicit;
+-- Esperado: 2026-06-08 23:59:53-03 (display) | 2026-06-08 23:59:53 (AT TIME ZONE sin offset)
+
+-- VER3: ver última GPS de un móvil (debe mostrar hora MVD)
+-- SELECT movil_id, fecha, last_gps_datetime, updated_at
+-- FROM moviles_dia
+-- WHERE fecha = (now() AT TIME ZONE 'America/Montevideo')::date
+--   AND last_gps_datetime IS NOT NULL
+-- ORDER BY updated_at DESC
+-- LIMIT 5;
+-- Esperado: last_gps_datetime en formato -03:00
+
+-- VER4: confirmar que storage no cambió (el UTC sigue igual)
+-- SELECT last_gps_datetime,
+--        last_gps_datetime AT TIME ZONE 'UTC' AS en_utc
+-- FROM moviles_dia
+-- WHERE last_gps_datetime IS NOT NULL
+-- LIMIT 3;
+-- El valor en_utc debe seguir siendo el mismo que antes del ALTER.

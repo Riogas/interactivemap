@@ -2,8 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { MovilData } from '@/types';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { formatTimeMVD, formatTimeShortMVD, formatDateTimeSecsMVD } from '@/lib/date-utils';
 
 interface InfoPanelProps {
   moviles: MovilData[];
@@ -31,7 +30,7 @@ export default function InfoPanel({ moviles, selectedMovil, lastUpdate }: InfoPa
       </div>
 
       <p className="text-xs text-gray-500 mb-4">
-        Última actualización: {format(lastUpdate, "HH:mm:ss", { locale: es })}
+        Última actualización: {new Intl.DateTimeFormat('es-UY', { timeZone: 'America/Montevideo', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(lastUpdate)}
       </p>
 
       <div className="space-y-4 max-h-96 overflow-y-auto">
@@ -72,9 +71,7 @@ export default function InfoPanel({ moviles, selectedMovil, lastUpdate }: InfoPa
                 <div className="flex justify-between text-xs text-gray-500 pt-2 border-t">
                   <span>Última posición:</span>
                   <span>
-                    {format(new Date(movil.currentPosition.fechaInsLog), "dd/MM/yyyy HH:mm:ss", {
-                      locale: es,
-                    })}
+                    {formatDateTimeSecsMVD(movil.currentPosition.fechaInsLog)}
                   </span>
                 </div>
                 
@@ -97,17 +94,13 @@ export default function InfoPanel({ moviles, selectedMovil, lastUpdate }: InfoPa
                       <div className="flex justify-between">
                         <span className="text-gray-600">Hora inicio:</span>
                         <span className="font-semibold">
-                          {format(new Date(movil.history[movil.history.length - 1].fechaInsLog), "HH:mm", {
-                            locale: es,
-                          })}
+                          {formatTimeShortMVD(movil.history[movil.history.length - 1].fechaInsLog)}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Hora actual:</span>
                         <span className="font-semibold">
-                          {format(new Date(movil.history[0].fechaInsLog), "HH:mm", {
-                            locale: es,
-                          })}
+                          {formatTimeShortMVD(movil.history[0].fechaInsLog)}
                         </span>
                       </div>
                     </div>

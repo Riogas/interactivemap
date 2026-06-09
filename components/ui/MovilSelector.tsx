@@ -1722,7 +1722,8 @@ export default function MovilSelector({
                                       {isToday && movil.currentPosition && (
                                         <div className="flex flex-col items-end">
                                           <span className={clsx("text-[11px]", isSelected ? "opacity-90" : "text-gray-600")}>
-                                            {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
+                                            {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-UY', {
+                                              timeZone: 'America/Montevideo',
                                               hour: '2-digit',
                                               minute: '2-digit',
                                             })}
@@ -1813,7 +1814,8 @@ export default function MovilSelector({
                                           {isToday && movil.currentPosition?.fechaInsLog && (
                                             <div className="flex flex-col items-end">
                                               <span className={clsx("text-[11px]", isSelected ? "opacity-90" : "text-gray-600")}>
-                                                {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
+                                                {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-UY', {
+                                                  timeZone: 'America/Montevideo',
                                                   hour: '2-digit',
                                                   minute: '2-digit',
                                                 })}
@@ -1961,7 +1963,8 @@ export default function MovilSelector({
                                           {movil.currentPosition && (
                                             <div className="flex flex-col items-end">
                                               <span className={clsx("text-[11px]", isInactive ? "text-red-100 font-semibold" : isSelected ? "opacity-90" : "text-gray-600")}>
-                                                {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
+                                                {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-UY', {
+                                                  timeZone: 'America/Montevideo',
                                                   hour: '2-digit',
                                                   minute: '2-digit',
                                                 })}
