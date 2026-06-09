@@ -805,6 +805,23 @@ function DashboardContent() {
     loadEmpresas();
   }, [user?.allowedEmpresas]);
 
+  // Seed inmediato de selectedEmpresas para usuarios no-root.
+  // user.allowedEmpresas ya viene del login (JWT) ANTES de que resuelva
+  // /api/empresas. Sin esto, fetchMovilesDia/fetchPositions quedan gateados por
+  // `userHasRestriction && selectedEmpresas.length === 0` y los móviles no cargan
+  // hasta la 2da fase (cuando llega la lista de empresas), produciendo la carga
+  // "de a poquito" que root NO sufre (root no tiene gate). Sembrar acá iguala el
+  // comportamiento: los móviles cargan en paralelo con pedidos/services en la 1ra
+  // pasada. Solo siembra cuando selectedEmpresas sigue vacío; el ajuste fino
+  // (intersección con empresas realmente existentes) lo hace loadEmpresas después,
+  // y el filtro manual del usuario lo maneja la UI. Para root (allowedEmpresas
+  // null/vacío) es no-op: sigue cargando todo de una sin gate.
+  useEffect(() => {
+    const allowed = user?.allowedEmpresas;
+    if (!allowed || allowed.length === 0) return; // root o sin restricción: no-op
+    setSelectedEmpresas(prev => (prev.length === 0 ? allowed : prev));
+  }, [user?.allowedEmpresas]);
+
   // Reset del cache outOfScopeMovilIds cuando cambia allowedEmpresas (cambio de
   // usuario, refresh de permisos, etc). El cache solo tiene sentido para el set
   // actual de empresas permitidas.
