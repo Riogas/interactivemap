@@ -3070,9 +3070,21 @@ function DashboardContent() {
       const animIds = new Set(
         [selectedMovil, selectedMovil2].filter((id) => id != null)
       );
-      const animMoviles = animIds.size > 0
-        ? movilesFilteredMarked.filter(m => animIds.has(m.id) && m.history !== undefined)
-        : [];
+      // IMPORTANTE: sourcear los moviles de animacion del array CRUDO `moviles`,
+      // NO de movilesFilteredMarked. movilesFiltered devuelve [] cuando
+      // selectedEmpresas parpadea a vacio momentaneamente (re-seed/refetch/
+      // restauracion de filtros), lo que vaciaba movilesForMap y DESMONTABA
+      // el RouteAnimationControl ("Ver recorrido" aparece y desaparece en <1s).
+      // El usuario hizo clic explicito en Ver Recorrido => el movil con history
+      // debe pasar al mapa siempre, desacoplado del filtro volatil de empresas.
+      // Se preserva la version "marked" (color/contadores) cuando esta disponible.
+      let animMoviles: typeof movilesFilteredMarked = [];
+      if (animIds.size > 0) {
+        const markedById = new Map(movilesFilteredMarked.map(m => [m.id, m]));
+        animMoviles = moviles
+          .filter(m => animIds.has(m.id) && m.history !== undefined)
+          .map(m => markedById.get(m.id) ?? m);
+      }
       if (!isToday) {
         // Fecha historica: sin marcadores normales, pero si los de animacion.
         return animMoviles;
@@ -3086,7 +3098,7 @@ function DashboardContent() {
       return [...activeMoviles, ...extraAnim];
     }
     return result;
-  }, [movilesHidden, movilesFilteredMarked, selectedMoviles, selectedMovil, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters, isToday]);
+  }, [movilesHidden, moviles, movilesFilteredMarked, selectedMoviles, selectedMovil, selectedMovil2, hiddenMovilIds, applyActivityFilter, applyAdvancedFilters, isToday]);
 
   // ?? Fix 1 perf-round-2: pedidosForMap memoizado  evita invalidar React.memo del MapView en cada render
   const pedidosForMap = useMemo((): PedidoSupabase[] => {
