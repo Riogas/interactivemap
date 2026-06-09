@@ -374,6 +374,21 @@ function DashboardContent() {
   );
   // Variable derivada para el gating de UI de drift ? comparacion literal con 'S' (no === true)
   const isRootUser = isRoot(user);
+
+  // Header x-track-isroot efectivo para los fetches scoped (moviles-dia, pedidos, services,
+  // moviles-extended). Los endpoints SOLO tratan 'S' como acceso total; para cualquier otro
+  // valor exigen el param de empresas y si no llega hacen fail-closed -> { data: [] }.
+  //
+  // Problema que arregla: usuarios con acceso total NO-root (rol Despacho o "Ver todas las
+  // empresas") tienen user.isRoot === 'N' pero allowedEmpresas == null (señal canónica de
+  // acceso sin restricción que setea AuthContext). Con el header crudo 'N' y sin empresas,
+  // el bulk fetch devolvía [] y los móviles goteaban uno a uno por el realtime GPS
+  // (10 -> 12 -> 20 ...). Root ('S') en cambio recibía todo de una.
+  //
+  // Fix: enviar 'S' cuando el usuario tiene acceso total efectivo (root o allowedEmpresas null).
+  // Se exige user presente para fail-closed mientras la identidad no esté cargada.
+  const hasFullEmpresaAccess = !!user && (isRootUser || user.allowedEmpresas == null);
+  const isRootHeader: 'S' | 'N' = hasFullEmpresaAccess ? 'S' : 'N';
   
   // ? Móviles filtrados por empresas fleteras seleccionadas
   // Semántica:
@@ -837,7 +852,7 @@ function DashboardContent() {
       console.log('?? Fetching extended data for moviles...');
       // perf-round-4: pasar empresas del usuario para que el endpoint filtre server-side.
       // Sin esto, moviles-extended descuenta pedidos de TODO el escenario para todos los moviles.
-      const extHeaders: HeadersInit = { 'x-track-isroot': user?.isRoot ?? 'N' };
+      const extHeaders: HeadersInit = { 'x-track-isroot': isRootHeader };
       if (user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
         extHeaders['x-track-empresas'] = user.allowedEmpresas.join(',');
       }
@@ -1157,7 +1172,7 @@ function DashboardContent() {
 
       const url = `/api/moviles-dia?${params.toString()}`;
       const response = await fetch(url, {
-        headers: { 'x-track-isroot': user?.isRoot ?? 'N', 'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
+        headers: { 'x-track-isroot': isRootHeader, 'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
       });
       const result = await response.json();
 
@@ -1229,7 +1244,7 @@ function DashboardContent() {
       const url = `/api/pedidos?${params.toString()}`;
 
       const response = await fetch(url, {
-        headers: { "x-track-isroot": user?.isRoot ?? "N", "x-track-funcs": (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
+        headers: { "x-track-isroot": isRootHeader, "x-track-funcs": (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
       });
       
       const result = await response.json();
@@ -1273,7 +1288,7 @@ function DashboardContent() {
 
       const url = `/api/services?${params.toString()}`;
       const response = await fetch(url, {
-        headers: { "x-track-isroot": user?.isRoot ?? "N", "x-track-funcs": (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
+        headers: { "x-track-isroot": isRootHeader, "x-track-funcs": (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(',') },
       });
       const result = await response.json();
 
