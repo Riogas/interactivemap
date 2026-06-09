@@ -90,12 +90,20 @@ export default function TrackingModal({
 
     // movilesDiaMode + hoy: el prop `moviles` ya contiene el universo correcto
     // (activos + inactivos del día) porque el dashboard lo construye desde moviles_dia.
-    // Usar los IDs del prop directamente evita el fetch redundante y garantiza
-    // paridad exacta con el colapsable (misma fuente de verdad).
+    // Filtrar igual que el colapsable (MovilSelector): solo activo===true OR inactivoDelDia===true.
+    // Esto garantiza paridad exacta con la lista del colapsable — el modal no muestra
+    // móviles extra que el colapsable no muestra (evita mostrar todos los 215 sin filtro).
     // Para fechas históricas (isToday=false), este branch NO se activa — el modal
     // sigue usando /api/moviles-dia con la fecha correcta para reconstruir la lista.
     if (movilesDiaMode && isToday) {
-      const ids = new Set<number>(moviles.map((m) => m.id));
+      // Mismo criterio que activosNuevo + inactivosNuevo en MovilSelector (USE_NEW path):
+      // activo===true → aparece con badge verde; inactivoDelDia===true → badge gris.
+      // Resto de móviles del prop (scope correcto, pero sin actividad hoy) no aparecen.
+      const ids = new Set<number>(
+        moviles
+          .filter((m) => m.activo === true || m.inactivoDelDia === true)
+          .map((m) => m.id)
+      );
       setActivityMovilIds(ids);
       setActivityLoading(false);
       setActivityError(false);
