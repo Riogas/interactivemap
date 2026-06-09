@@ -260,8 +260,14 @@ function StatsContent() {
         //   Si x-track-isroot != S y empresas_fleteras ausente devuelve [].
         // Patron identico al de app/dashboard/page.tsx (fetchPedidos/fetchServices).
         const isRootUser = isRoot(user);
+        // Header x-track-isroot efectivo: 'S' para acceso total no-root (rol Despacho o
+        // "Ver todas las empresas", señalados por allowedEmpresas == null). Sin esto, esos
+        // usuarios mandaban 'N' sin empresas y el server hacía fail-closed -> []. Mismo
+        // criterio que app/dashboard/page.tsx (isRootHeader).
+        const hasFullEmpresaAccess = !!user && (isRootUser || user.allowedEmpresas == null);
+        const isRootHeader: 'S' | 'N' = hasFullEmpresaAccess ? 'S' : 'N';
         const authHeaders: Record<string, string> = {
-          'x-track-isroot': user?.isRoot ?? 'N',
+          'x-track-isroot': isRootHeader,
           'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(','),
         };
         const pedidosParams = new URLSearchParams({ fecha: date });
