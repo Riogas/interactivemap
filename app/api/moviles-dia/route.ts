@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
 import { mapMovilDiaRowToMovilData } from '@/lib/moviles/moviles-dia-mapper';
 import type { MovilDiaRow } from '@/lib/moviles/moviles-dia-mapper';
+import { todayMontevideo } from '@/lib/date-utils';
 
 /**
  * GET /api/moviles-dia
@@ -17,6 +18,16 @@ import type { MovilDiaRow } from '@/lib/moviles/moviles-dia-mapper';
  * - Si x-track-isroot === 'S': sin filtro de empresa (root ve todo).
  * - Si NO es root y empresas llega con IDs: filtrar por esos IDs.
  * - Si NO es root y empresas está vacío/ausente: fail-closed -> devuelve { data: [] }.
+ *
+ * Filtro de ruido para fechas históricas (fecha < hoy):
+ * - En fechas pasadas, solo devuelve filas donde activo=true OR inactivo_del_dia=true.
+ *   Esto excluye filas "zombie" donde ambos son false — móviles que llegaron a
+ *   moviles_dia por un UPDATE del sync AS400 o un GPS sin operativa, pero que
+ *   no tuvieron pedidos ni services ese día.
+ * - En HOY, devuelve todas las filas sin filtro adicional (la UI maneja activo/inactivoDelDia).
+ * - Este filtro es la capa defensiva. El fix real es la migration SQL
+ *   2026-06-09-fix-moviles-dia-ruido.sql que restringe los triggers y elimina el ruido
+ *   retroactivamente. Una vez aplicada, este filtro pasa a ser un no-op.
  */
 export async function GET(request: NextRequest) {
   // AUTENTICACION REQUERIDA
@@ -70,9 +81,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: [] });
     }
 
+    // Determinar si la fecha pedida es histórica (< hoy Montevideo).
+    // HOY: sin filtro extra (activo/inactivoDelDia se maneja client-side como siempre).
+    // HISTÓRICO: filtro defensivo de ruido — excluir filas zombie (activo=false Y inactivo_del_dia=false).
+    const hoy = todayMontevideo();
+    const isHistorical = fecha < hoy;
+
     console.log('GET /api/moviles-dia - Parametros:', {
       escenario,
       fecha,
+      isHistorical,
       empresasParam,
       callerIsRoot,
       scopeEmpresaIds,
@@ -93,6 +111,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Filtro de ruido para fechas históricas:
+    // Excluir filas "zombie" donde activo=false Y inactivo_del_dia=false.
+    // Estas filas son ruido del trigger trg_moviles_to_dia (sync AS400 masivo)
+    // o del trigger trg_gps_to_dia (GPS sin operativa).
+    //
+    // Filas legítimas en histórico tienen:
+    //   - activo=true: el móvil estaba operativo ese día y recompute_counts no lo marcó inactivo
+    //   - inactivo_del_dia=true: el móvil trabajó y se marcó inactivo al finalizar
+    //
+    // La condición OR(activo=true, inactivo_del_dia=true) equivale a excluir solo
+    // los zombies (ambos false), que es el criterio correcto.
+    if (isHistorical) {
+      query = query.or('inactivo_del_dia.eq.true,activo.eq.true');
+    }
+
     const { data, error } = await query;
 
     if (error) {
@@ -109,7 +142,7 @@ export async function GET(request: NextRequest) {
 
     const mapped = (data ?? []).map((row) => mapMovilDiaRowToMovilData(row as MovilDiaRow));
 
-    console.log(`GET /api/moviles-dia - ${mapped.length} moviles obtenidos`);
+    console.log(`GET /api/moviles-dia - ${mapped.length} moviles obtenidos (isHistorical=${isHistorical})`);
 
     return NextResponse.json({ data: mapped });
   } catch (error: any) {
