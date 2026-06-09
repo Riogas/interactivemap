@@ -44,6 +44,16 @@ interface TrackingModalProps {
    * movilesDiaMode && isToday para garantizar paridad con el colapsable (96 vs 91).
    */
   inactivosDelDia?: MovilData[];
+  /**
+   * Universo pre-calculado de moviles para HOY (activos + inactivos del dia),
+   * construido en el padre con la misma logica que el colapsable:
+   *   movilesFiltered.filter(activo===true) ++ movilesFiltered.filter(inactivoDelDia===true)
+   * Cuando esta prop esta presente y movilesDiaMode=true e isToday=true, el modal
+   * usa SOLO este universo sin aplicar filtros propios. Garantiza paridad estructural
+   * con el colapsable y elimina el riesgo de drift futuro.
+   * Para historico (isToday=false) se ignora y el modal usa su path original.
+   */
+  universoMoviles?: MovilData[];
 }
 
 export default function TrackingModal({
@@ -60,6 +70,7 @@ export default function TrackingModal({
   isRoot,
   movilesDiaMode = false,
   inactivosDelDia,
+  universoMoviles,
 }: TrackingModalProps) {
   const [movilId, setMovilId] = useState<number | ''>(preSelectedMovil || '');
   const [date, setDate] = useState(selectedDate);
@@ -108,15 +119,24 @@ export default function TrackingModal({
     // Para fechas históricas (isToday=false), este branch NO se activa — el modal
     // sigue usando /api/moviles-dia con la fecha correcta para reconstruir la lista.
     if (movilesDiaMode && isToday) {
-      const ids = new Set<number>(
-        moviles
-          .filter((m) => m.activo === true || m.inactivoDelDia === true)
-          .map((m) => m.id)
-      );
-      // Unir inactivosDelDia (los 5 que el filtro de empresa excluye de moviles prop).
-      // Garantiza paridad con el colapsable que los recibe por prop separada.
-      if (inactivosDelDia && inactivosDelDia.length > 0) {
-        inactivosDelDia.forEach((m) => ids.add(m.id));
+      // universoMoviles: prop pre-calculada por el padre con la misma logica que el
+      // colapsable (activos + inactivos del dia de movilesFiltered). Cuando esta
+      // presente, se usa como fuente de verdad directa sin filtros adicionales.
+      // Esto garantiza paridad estructural con el colapsable eliminando riesgo de drift.
+      // Fallback (inactivosDelDia legacy): si universoMoviles no viene, se construye
+      // el set desde moviles prop + inactivosDelDia (comportamiento de a601708).
+      let ids: Set<number>;
+      if (universoMoviles) {
+        ids = new Set<number>(universoMoviles.map((m) => m.id));
+      } else {
+        ids = new Set<number>(
+          moviles
+            .filter((m) => m.activo === true || m.inactivoDelDia === true)
+            .map((m) => m.id)
+        );
+        if (inactivosDelDia && inactivosDelDia.length > 0) {
+          inactivosDelDia.forEach((m) => ids.add(m.id));
+        }
       }
       setActivityMovilIds(ids);
       setActivityLoading(false);
@@ -217,21 +237,24 @@ export default function TrackingModal({
     return () => {
       controller.abort();
     };
-  }, [isOpen, date, selectedEmpresas, escenarioId, isRoot, movilesDiaMode, isToday, moviles, inactivosDelDia]);
+  }, [isOpen, date, selectedEmpresas, escenarioId, isRoot, movilesDiaMode, isToday, moviles, inactivosDelDia, universoMoviles]);
 
   // R2 + R3: Filtrar por actividad + ocultos + búsqueda, ordenar por nro (m.id)
   const filteredMoviles = useMemo(() => {
-    // Universo base: moviles prop + inactivosDelDia (excluidos del filtro de empresa).
-    // En movilesDiaMode+isToday, los inactivos del día se pasan por separado porque
-    // movilesFiltered los excluye (no tienen empresaFleteraId en selectedEmpresas).
-    // Para fechas históricas o modo NO movilesDia, inactivosDelDia es undefined → sin cambio.
-    const movilesBase = movilesDiaMode && isToday && inactivosDelDia && inactivosDelDia.length > 0
-      ? (() => {
-          const inactivosIds = new Set(inactivosDelDia.map(m => m.id));
-          const deduplicated = moviles.filter(m => !inactivosIds.has(m.id));
-          return [...deduplicated, ...inactivosDelDia];
-        })()
-      : moviles;
+    // Universo base para la lista visual:
+    // 1. universoMoviles presente + movilesDiaMode + isToday: usar directamente (fuente de verdad
+    //    pre-calculada por el padre, misma logica que el colapsable). Sin merge adicional.
+    // 2. Fallback legacy (a601708): moviles prop + inactivosDelDia si hay.
+    // 3. Default: moviles prop tal cual (historico o modo viejo).
+    const movilesBase = movilesDiaMode && isToday && universoMoviles
+      ? universoMoviles
+      : movilesDiaMode && isToday && inactivosDelDia && inactivosDelDia.length > 0
+        ? (() => {
+            const inactivosIds = new Set(inactivosDelDia.map(m => m.id));
+            const deduplicated = moviles.filter(m => !inactivosIds.has(m.id));
+            return [...deduplicated, ...inactivosDelDia];
+          })()
+        : moviles;
 
     // hiddenMovilIds (ocultos-pero-operativos) aplica solo cuando se ve HOY.
     // En fechas históricas NO aplicar: un móvil inactivo que ese día tuvo pedidos
@@ -266,13 +289,14 @@ export default function TrackingModal({
 
     // R3: Ordenar por número de móvil ascendente
     return withSearch.slice().sort((a, b) => a.id - b.id);
-  }, [moviles, search, hiddenMovilIds, activityMovilIds, isToday, inactivosDelDia, movilesDiaMode]);
+  }, [moviles, search, hiddenMovilIds, activityMovilIds, isToday, inactivosDelDia, movilesDiaMode, universoMoviles]);
 
-  // Móvil seleccionado actualmente — buscar también en inactivosDelDia para los 5 excluidos de movilesFiltered
+  // Movil seleccionado actualmente — buscar en universoMoviles (fuente de verdad) o fallback a moviles+inactivosDelDia
   const selectedMovilData = useMemo(() => {
     if (!movilId) return null;
-    return moviles.find(m => m.id === movilId) || (inactivosDelDia ?? []).find(m => m.id === movilId) || null;
-  }, [moviles, movilId, inactivosDelDia]);
+    const universo = universoMoviles ?? moviles;
+    return universo.find(m => m.id === movilId) || (inactivosDelDia ?? []).find(m => m.id === movilId) || null;
+  }, [moviles, movilId, inactivosDelDia, universoMoviles]);
 
   const handleConfirm = () => {
     if (!movilId) return;

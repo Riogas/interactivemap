@@ -669,7 +669,11 @@ function DashboardContent() {
     undefined,
     undefined,
     useCallback(() => { fetchPedidosRef.current?.(); }, []),
-    selectedDate === todayMontevideo() && !realtimePausedByIdle // enabled: false en modo histórico o idle
+    selectedDate === todayMontevideo() && !realtimePausedByIdle, // enabled: false en modo histórico o idle
+    // perf-round-4: pasar empresas del usuario para filtrar el WS server-side.
+    // Supervisor recibe solo eventos de sus empresas → sin carga progresiva.
+    // Root (allowedEmpresas === null) → undefined → el hook usa filtro por escenario.
+    user?.allowedEmpresas ?? undefined
   );
 
   // ?? Hook para escuchar cambios en services en tiempo real
@@ -683,7 +687,9 @@ function DashboardContent() {
     undefined,
     undefined,
     useCallback(() => { fetchServicesRef.current?.(); }, []),
-    selectedDate === todayMontevideo() && !realtimePausedByIdle // enabled: false en modo histórico o idle
+    selectedDate === todayMontevideo() && !realtimePausedByIdle, // enabled: false en modo histórico o idle
+    // perf-round-4: filtro server-side por empresa (mismo patrón que pedidos).
+    user?.allowedEmpresas ?? undefined
   );
   
   // Estado para pedidos cargados inicialmente
@@ -812,7 +818,13 @@ function DashboardContent() {
   const enrichMovilesWithExtendedData = useCallback(async (moviles: MovilData[]): Promise<MovilData[]> => {
     try {
       console.log('?? Fetching extended data for moviles...');
-      const response = await fetch('/api/moviles-extended');
+      // perf-round-4: pasar empresas del usuario para que el endpoint filtre server-side.
+      // Sin esto, moviles-extended descuenta pedidos de TODO el escenario para todos los moviles.
+      const extHeaders: HeadersInit = { 'x-track-isroot': user?.isRoot ?? 'N' };
+      if (user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
+        extHeaders['x-track-empresas'] = user.allowedEmpresas.join(',');
+      }
+      const response = await fetch('/api/moviles-extended', { headers: extHeaders });
       const result = await response.json();
 
       if (result.success) {
@@ -2771,6 +2783,22 @@ function DashboardContent() {
   // Mantener el ref de IDs de inactivos del día sincronizado (para el auto-select effect).
   inactivosDelDiaIdsRef.current = new Set(inactivosDelDia.map(m => m.id));
 
+  // Universo canonico para TrackingModal HOY -- misma logica que el colapsable:
+  // activos (activo===true) + inactivos (inactivoDelDia===true), ambos de
+  // movilesFiltered (empresa-filtrado). Garantiza paridad estructural con el
+  // colapsable (activosNuevo + inactivosNuevo de MovilSelector) sin depender de
+  // merge complejo dentro del modal.
+  // Para historico o USE_NEW=false: se pasa movilesFiltered completo y el modal
+  // usa su path original (fetch /api/moviles-dia).
+  const universoMovilesModal = useMemo(() => {
+    if (USE_NEW && isToday) {
+      const activos = movilesFiltered.filter(m => m.activo === true);
+      const inactivos = movilesFiltered.filter(m => m.inactivoDelDia === true);
+      return [...activos, ...inactivos];
+    }
+    return movilesFiltered;
+  }, [movilesFiltered, isToday]);
+
   // allMovilesSelected (espejo del MovilSelector): true sólo cuando estamos en
   // modo "Todos" ? todas las empresas seleccionadas Y todos los móviles
   // VISIBLES bajo el filtro de actividad (excluyendo ocultos) están en
@@ -3797,7 +3825,7 @@ function DashboardContent() {
         escenarioId={escenarioId ?? undefined}
         isRoot={user?.isRoot}
         movilesDiaMode={USE_NEW && isToday}
-        inactivosDelDia={USE_NEW && isToday ? inactivosDelDia : undefined}
+        universoMoviles={universoMovilesModal}
       />
 
       {/* Modal de Vista Extendida de Pedidos */}
