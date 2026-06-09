@@ -90,18 +90,18 @@ export default function TrackingModal({
 
     // movilesDiaMode + hoy: el prop `moviles` ya contiene el universo correcto
     // (activos + inactivos del día) porque el dashboard lo construye desde moviles_dia.
-    // Filtrar igual que el colapsable (MovilSelector): solo activo===true OR inactivoDelDia===true.
-    // Esto garantiza paridad exacta con la lista del colapsable — el modal no muestra
-    // móviles extra que el colapsable no muestra (evita mostrar todos los 215 sin filtro).
+    // Criterio de inclusión (en orden de prioridad):
+    //   1. activo===true        → móvil activo ahora mismo (badge verde)
+    //   2. inactivoDelDia===true → ya terminó pero recompute lo marcó como inactivo del día (badge gris)
+    //   3. currentPosition != null → tenía GPS hoy pero aún no fue marcado por recompute
+    //      (delta entre realtime que lo marcó inactivo y el cron que actualiza inactivo_del_dia).
+    //      Estos son los ~13 móviles que el colapsable contaba en su badge pero el modal no mostraba.
     // Para fechas históricas (isToday=false), este branch NO se activa — el modal
     // sigue usando /api/moviles-dia con la fecha correcta para reconstruir la lista.
     if (movilesDiaMode && isToday) {
-      // Mismo criterio que activosNuevo + inactivosNuevo en MovilSelector (USE_NEW path):
-      // activo===true → aparece con badge verde; inactivoDelDia===true → badge gris.
-      // Resto de móviles del prop (scope correcto, pero sin actividad hoy) no aparecen.
       const ids = new Set<number>(
         moviles
-          .filter((m) => m.activo === true || m.inactivoDelDia === true)
+          .filter((m) => m.activo === true || m.inactivoDelDia === true || m.currentPosition != null)
           .map((m) => m.id)
       );
       setActivityMovilIds(ids);
@@ -140,16 +140,18 @@ export default function TrackingModal({
         headers: { 'x-track-isroot': isRoot ?? 'N' },
       })
         .then((res) => res.json())
-        .then((result: { data?: Array<{ id: number; activo?: boolean; inactivoDelDia?: boolean }> }) => {
+        .then((result: { data?: Array<{ id: number; activo?: boolean; inactivoDelDia?: boolean; currentPosition?: { coordX: number; coordY: number } | null }> }) => {
           if (Array.isArray(result.data)) {
             // Universo para histórico: TODOS los móviles devueltos por moviles_dia
             // (en fechas pasadas el rebuild pone activo=false, inactivo_del_dia=true en todas).
-            // Para hoy: activos del día + inactivos del día (igual que el colapsable).
+            // Para hoy: activos + inactivos del día + los que tienen GPS aunque recompute no los haya marcado.
             // Nota: isToday aquí refleja la fecha seleccionada en el modal (puede diferir
             // de la fecha del dashboard si el usuario cambió la fecha dentro del modal).
             const ids = new Set<number>(
               isToday
-                ? result.data.filter((m) => m.activo === true || m.inactivoDelDia === true).map((m) => m.id)
+                ? result.data
+                    .filter((m) => m.activo === true || m.inactivoDelDia === true || m.currentPosition != null)
+                    .map((m) => m.id)
                 : result.data.map((m) => m.id) // fecha histórica: incluir todos sin filtrar por flags
             );
             setActivityMovilIds(ids);
@@ -345,7 +347,7 @@ export default function TrackingModal({
                       ) : (
                         filteredMoviles.map((m) => {
                           // R4: Estilo del círculo y texto del estado según fecha.
-                          // HOY: verde si activo===true; gris si inactivoDelDia===true.
+                          // HOY: verde si activo===true; gris si inactivoDelDia===true o GPS sin recompute.
                           // FECHA ANTERIOR: todos gris (rebuild marca activo=false, inactivo_del_dia=true).
                           const isActiveToday = isToday && m.activo === true;
                           const circleClass = movilId === m.id
@@ -356,7 +358,7 @@ export default function TrackingModal({
 
                           const statusText = isActiveToday
                             ? '🟢 Activo'
-                            : '⚪ Inactivo';
+                            : '⚪ Inactivo del día';
 
                           return (
                             <button
