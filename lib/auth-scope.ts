@@ -34,14 +34,43 @@ export function isRoot(user: ScopedUser | null | undefined): boolean {
 }
 
 /**
+ * IDs de roles privilegiados con acceso total a empresas/zonas (además de Root):
+ *   48 = Dashboard, 49 = Despacho, 50 = Supervisor.
+ * Convención heredada de los sets ['48','49','50'] que se repetían en el código.
+ */
+const PRIVILEGED_ROLE_IDS = new Set(['48', '49', '50']);
+
+/**
+ * True si el usuario tiene alguno de los roles privilegiados (Despacho, Dashboard,
+ * Supervisor) — detectados por RolId (48/49/50) o por nombre. Estos roles se tratan
+ * igual que Root para el scope de empresas/zonas: acceso total sin restricción.
+ */
+export function hasPrivilegedRole(user: ScopedUser | null | undefined): boolean {
+  return (
+    user?.roles?.some((r) => {
+      if (PRIVILEGED_ROLE_IDS.has(String(r.RolId ?? '').trim())) return true;
+      const nombre = String(r.RolNombre ?? '').trim().toLowerCase();
+      return (
+        nombre.includes('despacho') ||
+        nombre.includes('dashboard') ||
+        nombre.includes('supervisor')
+      );
+    }) ?? false
+  );
+}
+
+
+/**
  * True si el usuario puede ver todas las empresas/zonas sin restricción de scope.
  * Reemplaza isDespacho() + isPrivilegedForZonaScope() + isPrivilegedForCapEntrega()
  * + isPrivilegedForUnassignedVisibility() — todos basados en la misma lógica.
  *
- * Condición: root ó tiene funcionalidad 'Ver todas las empresas'.
+ * Condición: root, rol privilegiado (Despacho/Dashboard/Supervisor) ó funcionalidad
+ * 'Ver todas las empresas'.
  */
 export function canSeeAllEmpresas(user: ScopedUser | null | undefined): boolean {
   if (isRoot(user)) return true;
+  if (hasPrivilegedRole(user)) return true;
   return hasFuncionalidad(user?.roles, 'Ver todas las empresas');
 }
 

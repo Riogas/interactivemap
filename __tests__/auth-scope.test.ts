@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isRoot,
   canSeeAllEmpresas,
+  hasPrivilegedRole,
   shouldScopeByEmpresa,
   getScopedEmpresas,
   parseZonasJsonb,
@@ -129,6 +130,57 @@ describe('canSeeAllEmpresas', () => {
         rolConVerTodasEmpresas('49', 'Despacho'),
       ],
     })).toBe(true);
+  });
+
+  // ── Roles privilegiados por RolId/nombre (sin funcionalidad) ──────────────
+  // Despacho (49), Dashboard (48) y Supervisor (50) se tratan igual que Root,
+  // aunque NO tengan la funcionalidad 'Ver todas las empresas'.
+  it('retorna true para Supervisor (RolId 50) sin la funcionalidad', () => {
+    expect(canSeeAllEmpresas({
+      roles: [rolSinPrivilegios('50', 'Supervisor')],
+    })).toBe(true);
+  });
+
+  it('retorna true para Dashboard (RolId 48) sin la funcionalidad', () => {
+    expect(canSeeAllEmpresas({
+      roles: [rolSinPrivilegios('48', 'Dashboard')],
+    })).toBe(true);
+  });
+
+  it('retorna true para Despacho (RolId 49) sin la funcionalidad', () => {
+    expect(canSeeAllEmpresas({
+      roles: [rolSinPrivilegios('49', 'Despacho')],
+    })).toBe(true);
+  });
+
+  it('retorna true detectando por nombre aunque el RolId no sea 48/49/50', () => {
+    expect(canSeeAllEmpresas({
+      roles: [rolSinPrivilegios('123', 'Supervisor Zona')],
+    })).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// hasPrivilegedRole
+// ─────────────────────────────────────────────────────────────────────────────
+describe('hasPrivilegedRole', () => {
+  it('retorna true para RolId 48/49/50', () => {
+    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('48', 'Dashboard')] })).toBe(true);
+    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('49', 'Despacho')] })).toBe(true);
+    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('50', 'Supervisor')] })).toBe(true);
+  });
+
+  it('retorna true detectando por nombre (despacho/dashboard/supervisor)', () => {
+    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('200', 'Supervisor General')] })).toBe(true);
+  });
+
+  it('retorna false para roles no privilegiados', () => {
+    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('71', 'Distribuidor')] })).toBe(false);
+  });
+
+  it('retorna false sin roles', () => {
+    expect(hasPrivilegedRole({})).toBe(false);
+    expect(hasPrivilegedRole(null)).toBe(false);
   });
 });
 

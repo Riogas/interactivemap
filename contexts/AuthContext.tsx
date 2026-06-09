@@ -301,25 +301,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let allowedEmpresas: number[] | null = null;
         let allowedEscenarios: number[] | null = null;
 
-        // Rol Despacho: trato igual a root (acceso completo, sin restricción de
-        // escenarios ni empresas). El rol viene de SecuritySuite via el flag
-        // isDespacho del LDAP/AS400, materializado en response.roles cuando se
-        // ejecuta el upsert correspondiente en PG.
+        // Roles privilegiados: trato igual a root (acceso completo, sin restricción de
+        // escenarios ni empresas). Son Despacho (49), Dashboard (48) y Supervisor (50).
+        // El rol viene de SecuritySuite via response.roles cuando se ejecuta el upsert
+        // correspondiente en PG.
         //
-        // Detección robusta: chequea rolId === 49 (DESPACHO_ROL_ID por convención)
-        // OR que el nombre contenga 'despacho' (matchea 'Despacho', 'DESPACHO',
-        // 'Despacho Móvil', etc.). lib/auth-scope.ts usa el mismo criterio.
-        const tieneRolDespacho = (response.roles || []).some((r) => {
-          if (Number(r.rolId) === 49) return true;
+        // Detección robusta: chequea rolId ∈ {48,49,50} OR que el nombre contenga
+        // 'despacho' / 'dashboard' / 'supervisor'. lib/auth-scope.ts (hasPrivilegedRole)
+        // usa el mismo criterio para mantener la misma categoría en todo el scope.
+        const tieneRolPrivilegiado = (response.roles || []).some((r) => {
+          const id = Number(r.rolId);
+          if (id === 48 || id === 49 || id === 50) return true;
           const nombre = String(r.rolNombre || '').trim().toLowerCase();
-          return nombre.includes('despacho');
+          return (
+            nombre.includes('despacho') ||
+            nombre.includes('dashboard') ||
+            nombre.includes('supervisor')
+          );
         });
 
-        if (isRoot || tieneRolDespacho) {
+        if (isRoot || tieneRolPrivilegiado) {
           console.log(
             isRoot
               ? '👑 Usuario root - acceso a todas las empresas y escenarios'
-              : '🚪 Rol Despacho - acceso completo (mismo trato que root)',
+              : '🚪 Rol privilegiado (Despacho/Dashboard/Supervisor) - acceso completo (mismo trato que root)',
           );
           authStorage.removeItem('trackmovil_allowed_empresas');
           authStorage.removeItem('trackmovil_allowed_escenarios');
