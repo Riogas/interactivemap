@@ -817,7 +817,7 @@ export default function LoginBlocksPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
           onClick={(e) => { if (e.target === e.currentTarget) setSettingsModalOpen(false); }}
         >
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 overflow-hidden">
             {/* Modal header */}
             <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -847,7 +847,7 @@ export default function LoginBlocksPage() {
                   Cargando configuracion...
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
                   <div className="bg-gray-50 rounded-lg p-4 space-y-1">
                     <label className="block text-sm font-medium text-gray-700">
                       Intentos fallidos antes de bloquear usuario
@@ -908,14 +908,16 @@ export default function LoginBlocksPage() {
                     />
                   </div>
                   {/* Editor de whitelist de IPs */}
-                  <IpWhitelistEditor
-                    patterns={configIpWhitelist}
-                    onPatternsChange={setConfigIpWhitelist}
-                    inputValue={configIpWhitelistInput}
-                    onInputChange={setConfigIpWhitelistInput}
-                  />
+                  <div className="sm:col-span-2">
+                    <IpWhitelistEditor
+                      patterns={configIpWhitelist}
+                      onPatternsChange={setConfigIpWhitelist}
+                      inputValue={configIpWhitelistInput}
+                      onInputChange={setConfigIpWhitelistInput}
+                    />
+                  </div>
                   {/* Parte E.3: mensaje de bloqueo */}
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-1">
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-1 sm:col-span-2">
                     <label className="block text-sm font-medium text-gray-700">
                       Mensaje de bloqueo
                     </label>
