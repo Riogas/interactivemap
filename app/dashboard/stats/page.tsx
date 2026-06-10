@@ -11,8 +11,8 @@ import {
   BUCKETS_PENDIENTE_ORDEN,
   BUCKETS_FINALIZADO_ORDEN,
 } from '@/utils/pedidoDelay';
-import type { BucketRow } from '@/components/stats/GraficosTabsModal';
-import { GraficosTabsModal } from '@/components/stats/GraficosTabsModal';
+import type { BucketRow } from '@/components/stats/GraficosInlineSection';
+import { GraficosInlineSection } from '@/components/stats/GraficosInlineSection';
 import { BarChart, type StackRow } from '@/components/stats/Charts';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
@@ -238,9 +238,9 @@ function StatsContent() {
   // en localStorage scoped a esta pantalla — toggle solo afecta /dashboard/stats.
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   // Modal states para las 3 tarjetas de porcentaje por entidad
-  const [modalEmpresa, setModalEmpresa] = useState(false);
-  const [modalMoviles, setModalMoviles] = useState(false);
-  const [modalZona, setModalZona] = useState(false);
+  const [showEmpresa, setShowEmpresa] = useState(false);
+  const [showMoviles, setShowMoviles] = useState(false);
+  const [showZona, setShowZona] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const saved = window.localStorage.getItem('stats-theme');
@@ -1498,21 +1498,21 @@ function StatsContent() {
                 {movilesTop.length} móviles con actividad. El gráfico se carga al solicitarlo.
               </p>
               <button
-                onClick={() => setModalMoviles(true)}
+                onClick={() => setShowMoviles((v) => !v)}
+                aria-expanded={showMoviles}
                 className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
               >
-                Mostrar gráficos por móvil
+                {showMoviles ? 'Ocultar gráficos por móvil' : 'Mostrar gráficos por móvil'}
               </button>
-              <GraficosTabsModal
-                isOpen={modalMoviles}
-                onClose={() => setModalMoviles(false)}
-                title="Top móviles por entregas"
-                icon={CARD_ICONS.truck}
+            </div>
+            {showMoviles && (
+              <GraficosInlineSection
+                className="col-span-full"
                 stackedData={movilesTop}
                 pendientesData={pendientesPorMovil}
                 finalizadosData={finalizadosPorMovil}
               />
-            </div>
+            )}
 
             {/* Pedidos por zona — fila 2, botón lazy */}
             <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
@@ -1524,21 +1524,21 @@ function StatsContent() {
                 {pedidosPorZona.length} zonas con actividad. El gráfico se carga al solicitarlo.
               </p>
               <button
-                onClick={() => setModalZona(true)}
+                onClick={() => setShowZona((v) => !v)}
+                aria-expanded={showZona}
                 className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
               >
-                Mostrar gráficos por zona
+                {showZona ? 'Ocultar gráficos por zona' : 'Mostrar gráficos por zona'}
               </button>
-              <GraficosTabsModal
-                isOpen={modalZona}
-                onClose={() => setModalZona(false)}
-                title="Pedidos por zona"
-                icon={CARD_ICONS.pin}
+            </div>
+            {showZona && (
+              <GraficosInlineSection
+                className="col-span-full"
                 stackedData={pedidosPorZona}
                 pendientesData={pendientesPorZona}
                 finalizadosData={finalizadosPorZona}
               />
-            </div>
+            )}
 
             {/* Pedidos por empresa — fila 2, botón lazy */}
             <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
@@ -1550,21 +1550,21 @@ function StatsContent() {
                 {pedidosPorEmpresa.length} empresas con actividad. El gráfico se carga al solicitarlo.
               </p>
               <button
-                onClick={() => setModalEmpresa(true)}
+                onClick={() => setShowEmpresa((v) => !v)}
+                aria-expanded={showEmpresa}
                 className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
               >
-                Mostrar gráficos por empresa
+                {showEmpresa ? 'Ocultar gráficos por empresa' : 'Mostrar gráficos por empresa'}
               </button>
-              <GraficosTabsModal
-                isOpen={modalEmpresa}
-                onClose={() => setModalEmpresa(false)}
-                title="Pedidos por empresa"
-                icon={CARD_ICONS.building}
+            </div>
+            {showEmpresa && (
+              <GraficosInlineSection
+                className="col-span-full"
                 stackedData={pedidosPorEmpresa}
                 pendientesData={pendientesPorEmpresa}
                 finalizadosData={finalizadosPorEmpresa}
               />
-            </div>
+            )}
 
           </div>
 

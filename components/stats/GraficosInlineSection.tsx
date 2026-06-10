@@ -18,14 +18,11 @@ export interface BucketRow {
   buckets: Record<string, number>;
 }
 
-interface GraficosTabsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  icon: React.ReactNode;
+interface GraficosInlineSectionProps {
   stackedData: StackRow[];
   pendientesData: BucketRow[];
   finalizadosData: BucketRow[];
+  className?: string;
 }
 
 // ─── BucketStackedBar ─────────────────────────────────────────────────────────
@@ -138,110 +135,65 @@ function BucketLegend({
   );
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// ─── Card individual ──────────────────────────────────────────────────────────
 
-export function GraficosTabsModal({
-  isOpen,
-  onClose,
-  title,
-  icon,
+function GraphCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
+      <h4 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 mb-4 pb-2 border-b border-stats-border dark:border-white/10">
+        {title}
+      </h4>
+      <div className="text-sm">{children}</div>
+    </div>
+  );
+}
+
+// ─── Sección inline con los 3 gráficos ────────────────────────────────────────
+
+export function GraficosInlineSection({
   stackedData,
   pendientesData,
   finalizadosData,
-}: GraficosTabsModalProps) {
-  if (!isOpen) return null;
-
+  className = '',
+}: GraficosInlineSectionProps) {
   const pendienteBuckets = BUCKETS_PENDIENTE_ORDEN as readonly BucketPendiente[];
   const finalizadoBuckets = BUCKETS_FINALIZADO_ORDEN as readonly BucketFinalizado[];
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stats-section-enter ${className}`}
     >
-      <div className="w-full max-w-7xl stats-modal-content">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
-            <span className="text-stats-muted-fg dark:text-gray-400">{icon}</span>
-            {title}
-          </h3>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl transition-all duration-200 group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
-            title="Cerrar"
-            aria-label="Cerrar"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
-        </div>
+      <GraphCard title="Volumen">
+        <StackedBarChart data={stackedData} expanded />
+      </GraphCard>
 
-        {/* Secciones — 3 columnas simultáneas (apiladas en pantallas chicas) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-5 mt-2">
-          {/* Volumen */}
-          <section className="min-w-0">
-            <h4 className="text-sm font-semibold text-stats-info border-b-2 border-stats-info/30 pb-2 mb-4">
-              Volumen
-            </h4>
-            <StackedBarChart data={stackedData} expanded />
-          </section>
+      <GraphCard title="Pendientes por atraso">
+        <BucketStackedBar
+          rows={pendientesData}
+          buckets={pendienteBuckets}
+          colors={COLORS_BUCKETS_PENDIENTE}
+          maxRows={20}
+        />
+        {pendientesData.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
+            <BucketLegend buckets={pendienteBuckets} colors={COLORS_BUCKETS_PENDIENTE} />
+          </div>
+        )}
+      </GraphCard>
 
-          {/* Pendientes por atraso */}
-          <section className="min-w-0">
-            <h4 className="text-sm font-semibold text-stats-info border-b-2 border-stats-info/30 pb-2 mb-4">
-              Pendientes por atraso
-            </h4>
-            <BucketStackedBar
-              rows={pendientesData}
-              buckets={pendienteBuckets}
-              colors={COLORS_BUCKETS_PENDIENTE}
-              maxRows={20}
-            />
-            {pendientesData.length > 0 && (
-              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
-                <BucketLegend
-                  buckets={pendienteBuckets}
-                  colors={COLORS_BUCKETS_PENDIENTE}
-                />
-              </div>
-            )}
-          </section>
-
-          {/* Finalizados por atraso */}
-          <section className="min-w-0">
-            <h4 className="text-sm font-semibold text-stats-info border-b-2 border-stats-info/30 pb-2 mb-4">
-              Finalizados por atraso
-            </h4>
-            <BucketStackedBar
-              rows={finalizadosData}
-              buckets={finalizadoBuckets}
-              colors={COLORS_BUCKETS_FINALIZADO}
-              maxRows={20}
-            />
-            {finalizadosData.length > 0 && (
-              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
-                <BucketLegend
-                  buckets={finalizadoBuckets}
-                  colors={COLORS_BUCKETS_FINALIZADO}
-                />
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
+      <GraphCard title="Finalizados por atraso">
+        <BucketStackedBar
+          rows={finalizadosData}
+          buckets={finalizadoBuckets}
+          colors={COLORS_BUCKETS_FINALIZADO}
+          maxRows={20}
+        />
+        {finalizadosData.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
+            <BucketLegend buckets={finalizadoBuckets} colors={COLORS_BUCKETS_FINALIZADO} />
+          </div>
+        )}
+      </GraphCard>
     </div>
   );
 }
