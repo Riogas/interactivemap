@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { StackedBarChart, type StackRow } from './Charts';
 import {
   BUCKETS_PENDIENTE_ORDEN,
@@ -28,8 +27,6 @@ interface GraficosTabsModalProps {
   pendientesData: BucketRow[];
   finalizadosData: BucketRow[];
 }
-
-type TabKey = 'volumen' | 'pendientes' | 'finalizados';
 
 // ─── BucketStackedBar ─────────────────────────────────────────────────────────
 
@@ -152,15 +149,7 @@ export function GraficosTabsModal({
   pendientesData,
   finalizadosData,
 }: GraficosTabsModalProps) {
-  const [activeTab, setActiveTab] = useState<TabKey>('volumen');
-
   if (!isOpen) return null;
-
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: 'volumen', label: 'Volumen' },
-    { key: 'pendientes', label: 'Pendientes por atraso' },
-    { key: 'finalizados', label: 'Finalizados por atraso' },
-  ];
 
   const pendienteBuckets = BUCKETS_PENDIENTE_ORDEN as readonly BucketPendiente[];
   const finalizadoBuckets = BUCKETS_FINALIZADO_ORDEN as readonly BucketFinalizado[];
@@ -172,7 +161,7 @@ export function GraficosTabsModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-5xl stats-modal-content">
+      <div className="w-full max-w-7xl stats-modal-content">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
@@ -200,66 +189,57 @@ export function GraficosTabsModal({
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-0 border-b border-stats-border dark:border-white/10 mb-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info ${
-                activeTab === tab.key
-                  ? 'border-stats-info text-stats-info'
-                  : 'border-transparent text-stats-muted-fg hover:text-stats-foreground dark:text-gray-400 dark:hover:text-white'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Contenido */}
-        <div className="text-sm min-h-[200px]">
-          {activeTab === 'volumen' && (
+        {/* Secciones — 3 columnas simultáneas (apiladas en pantallas chicas) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-5 mt-2">
+          {/* Volumen */}
+          <section className="min-w-0">
+            <h4 className="text-sm font-semibold text-stats-info border-b-2 border-stats-info/30 pb-2 mb-4">
+              Volumen
+            </h4>
             <StackedBarChart data={stackedData} expanded />
-          )}
+          </section>
 
-          {activeTab === 'pendientes' && (
-            <>
-              <BucketStackedBar
-                rows={pendientesData}
-                buckets={pendienteBuckets}
-                colors={COLORS_BUCKETS_PENDIENTE}
-                maxRows={20}
-              />
-              {pendientesData.length > 0 && (
-                <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
-                  <BucketLegend
-                    buckets={pendienteBuckets}
-                    colors={COLORS_BUCKETS_PENDIENTE}
-                  />
-                </div>
-              )}
-            </>
-          )}
+          {/* Pendientes por atraso */}
+          <section className="min-w-0">
+            <h4 className="text-sm font-semibold text-stats-info border-b-2 border-stats-info/30 pb-2 mb-4">
+              Pendientes por atraso
+            </h4>
+            <BucketStackedBar
+              rows={pendientesData}
+              buckets={pendienteBuckets}
+              colors={COLORS_BUCKETS_PENDIENTE}
+              maxRows={20}
+            />
+            {pendientesData.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
+                <BucketLegend
+                  buckets={pendienteBuckets}
+                  colors={COLORS_BUCKETS_PENDIENTE}
+                />
+              </div>
+            )}
+          </section>
 
-          {activeTab === 'finalizados' && (
-            <>
-              <BucketStackedBar
-                rows={finalizadosData}
-                buckets={finalizadoBuckets}
-                colors={COLORS_BUCKETS_FINALIZADO}
-                maxRows={20}
-              />
-              {finalizadosData.length > 0 && (
-                <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
-                  <BucketLegend
-                    buckets={finalizadoBuckets}
-                    colors={COLORS_BUCKETS_FINALIZADO}
-                  />
-                </div>
-              )}
-            </>
-          )}
+          {/* Finalizados por atraso */}
+          <section className="min-w-0">
+            <h4 className="text-sm font-semibold text-stats-info border-b-2 border-stats-info/30 pb-2 mb-4">
+              Finalizados por atraso
+            </h4>
+            <BucketStackedBar
+              rows={finalizadosData}
+              buckets={finalizadoBuckets}
+              colors={COLORS_BUCKETS_FINALIZADO}
+              maxRows={20}
+            />
+            {finalizadosData.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
+                <BucketLegend
+                  buckets={finalizadoBuckets}
+                  colors={COLORS_BUCKETS_FINALIZADO}
+                />
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>
