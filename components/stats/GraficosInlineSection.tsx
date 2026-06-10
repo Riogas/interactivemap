@@ -227,31 +227,31 @@ export function GraficosInlineSection({
         title="Pendientes por atraso"
         collapsedContent={
           <>
+            {pendientesData.length > 0 && (
+              <div className="mb-3">
+                <BucketLegend buckets={pendienteBuckets} colors={COLORS_BUCKETS_PENDIENTE} />
+              </div>
+            )}
             <BucketStackedBar
               rows={pendientesData}
               buckets={pendienteBuckets}
               colors={COLORS_BUCKETS_PENDIENTE}
               maxRows={COLLAPSED_ROWS}
             />
-            {pendientesData.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-stats-border dark:border-white/10">
-                <BucketLegend buckets={pendienteBuckets} colors={COLORS_BUCKETS_PENDIENTE} />
-              </div>
-            )}
           </>
         }
         expandedContent={
           <>
+            {pendientesData.length > 0 && (
+              <div className="mb-4">
+                <BucketLegend buckets={pendienteBuckets} colors={COLORS_BUCKETS_PENDIENTE} />
+              </div>
+            )}
             <BucketStackedBar
               rows={pendientesData}
               buckets={pendienteBuckets}
               colors={COLORS_BUCKETS_PENDIENTE}
             />
-            {pendientesData.length > 0 && (
-              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
-                <BucketLegend buckets={pendienteBuckets} colors={COLORS_BUCKETS_PENDIENTE} />
-              </div>
-            )}
           </>
         }
       />
@@ -260,31 +260,31 @@ export function GraficosInlineSection({
         title="Finalizados por atraso"
         collapsedContent={
           <>
+            {finalizadosData.length > 0 && (
+              <div className="mb-3">
+                <BucketLegend buckets={finalizadoBuckets} colors={COLORS_BUCKETS_FINALIZADO} />
+              </div>
+            )}
             <BucketStackedBar
               rows={finalizadosData}
               buckets={finalizadoBuckets}
               colors={COLORS_BUCKETS_FINALIZADO}
               maxRows={COLLAPSED_ROWS}
             />
-            {finalizadosData.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-stats-border dark:border-white/10">
-                <BucketLegend buckets={finalizadoBuckets} colors={COLORS_BUCKETS_FINALIZADO} />
-              </div>
-            )}
           </>
         }
         expandedContent={
           <>
+            {finalizadosData.length > 0 && (
+              <div className="mb-4">
+                <BucketLegend buckets={finalizadoBuckets} colors={COLORS_BUCKETS_FINALIZADO} />
+              </div>
+            )}
             <BucketStackedBar
               rows={finalizadosData}
               buckets={finalizadoBuckets}
               colors={COLORS_BUCKETS_FINALIZADO}
             />
-            {finalizadosData.length > 0 && (
-              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
-                <BucketLegend buckets={finalizadoBuckets} colors={COLORS_BUCKETS_FINALIZADO} />
-              </div>
-            )}
           </>
         }
       />
