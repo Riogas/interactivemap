@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { StackedBarChart, type StackRow } from './Charts';
 import {
   BUCKETS_PENDIENTE_ORDEN,
@@ -25,21 +26,23 @@ interface GraficosInlineSectionProps {
   className?: string;
 }
 
+const COLLAPSED_ROWS = 7;
+
 // ─── BucketStackedBar ─────────────────────────────────────────────────────────
 
 function BucketStackedBar({
   rows,
   buckets,
   colors,
-  maxRows = 20,
+  maxRows,
 }: {
   rows: BucketRow[];
   buckets: readonly string[];
   colors: Record<string, string>;
   maxRows?: number;
 }) {
-  const visible = rows.slice(0, maxRows);
-  const extra = rows.length - maxRows;
+  const visible = maxRows ? rows.slice(0, maxRows) : rows;
+  const extra = rows.length - visible.length;
   const maxTotal = Math.max(...rows.map((r) => r.total), 1);
 
   if (rows.length === 0) {
@@ -104,7 +107,7 @@ function BucketStackedBar({
       })}
       {extra > 0 && (
         <p className="text-[11px] text-stats-muted-fg dark:text-gray-500 pl-1 pt-1">
-          + {extra} entidades más con menor volumen
+          + {extra} más
         </p>
       )}
     </div>
@@ -135,16 +138,67 @@ function BucketLegend({
   );
 }
 
-// ─── Card individual ──────────────────────────────────────────────────────────
+// ─── Card expandible (compacta + modal grande) ────────────────────────────────
 
-function GraphCard({ title, children }: { title: string; children: React.ReactNode }) {
+function GraphCard({
+  title,
+  collapsedContent,
+  expandedContent,
+}: {
+  title: string;
+  collapsedContent: React.ReactNode;
+  expandedContent: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
-      <h4 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 mb-4 pb-2 border-b border-stats-border dark:border-white/10">
-        {title}
-      </h4>
-      <div className="text-sm">{children}</div>
-    </div>
+    <>
+      {expanded && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto py-8 px-4 stats-modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setExpanded(false);
+          }}
+        >
+          <div className="w-full max-w-5xl stats-modal-content">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white">
+                {title}
+              </h3>
+              <button
+                onClick={() => setExpanded(false)}
+                className="p-2 rounded-xl transition-all duration-200 group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+                title="Cerrar"
+                aria-label="Cerrar tarjeta expandida"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            <div className="text-sm">{expandedContent}</div>
+          </div>
+        </div>
+      )}
+      <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 hover:-translate-y-px hover:shadow-md dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40 dark:hover:bg-white/[0.07]">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-sm font-semibold text-stats-foreground dark:text-gray-200">
+            {title}
+          </h4>
+          <button
+            onClick={() => setExpanded(true)}
+            className="p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+            title="Expandir"
+            aria-label="Expandir tarjeta"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+        <div className="text-sm">{collapsedContent}</div>
+      </div>
+    </>
   );
 }
 
@@ -163,37 +217,63 @@ export function GraficosInlineSection({
     <div
       className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stats-section-enter ${className}`}
     >
-      <GraphCard title="Volumen">
-        <StackedBarChart data={stackedData} expanded />
-      </GraphCard>
+      <GraphCard
+        title="Volumen"
+        collapsedContent={<StackedBarChart data={stackedData} expanded maxRows={COLLAPSED_ROWS} />}
+        expandedContent={<StackedBarChart data={stackedData} expanded />}
+      />
 
-      <GraphCard title="Pendientes por atraso">
-        <BucketStackedBar
-          rows={pendientesData}
-          buckets={pendienteBuckets}
-          colors={COLORS_BUCKETS_PENDIENTE}
-          maxRows={20}
-        />
-        {pendientesData.length > 0 && (
-          <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
-            <BucketLegend buckets={pendienteBuckets} colors={COLORS_BUCKETS_PENDIENTE} />
-          </div>
-        )}
-      </GraphCard>
+      <GraphCard
+        title="Pendientes por atraso"
+        collapsedContent={
+          <BucketStackedBar
+            rows={pendientesData}
+            buckets={pendienteBuckets}
+            colors={COLORS_BUCKETS_PENDIENTE}
+            maxRows={COLLAPSED_ROWS}
+          />
+        }
+        expandedContent={
+          <>
+            <BucketStackedBar
+              rows={pendientesData}
+              buckets={pendienteBuckets}
+              colors={COLORS_BUCKETS_PENDIENTE}
+            />
+            {pendientesData.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
+                <BucketLegend buckets={pendienteBuckets} colors={COLORS_BUCKETS_PENDIENTE} />
+              </div>
+            )}
+          </>
+        }
+      />
 
-      <GraphCard title="Finalizados por atraso">
-        <BucketStackedBar
-          rows={finalizadosData}
-          buckets={finalizadoBuckets}
-          colors={COLORS_BUCKETS_FINALIZADO}
-          maxRows={20}
-        />
-        {finalizadosData.length > 0 && (
-          <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
-            <BucketLegend buckets={finalizadoBuckets} colors={COLORS_BUCKETS_FINALIZADO} />
-          </div>
-        )}
-      </GraphCard>
+      <GraphCard
+        title="Finalizados por atraso"
+        collapsedContent={
+          <BucketStackedBar
+            rows={finalizadosData}
+            buckets={finalizadoBuckets}
+            colors={COLORS_BUCKETS_FINALIZADO}
+            maxRows={COLLAPSED_ROWS}
+          />
+        }
+        expandedContent={
+          <>
+            <BucketStackedBar
+              rows={finalizadosData}
+              buckets={finalizadoBuckets}
+              colors={COLORS_BUCKETS_FINALIZADO}
+            />
+            {finalizadosData.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
+                <BucketLegend buckets={finalizadoBuckets} colors={COLORS_BUCKETS_FINALIZADO} />
+              </div>
+            )}
+          </>
+        }
+      />
     </div>
   );
 }

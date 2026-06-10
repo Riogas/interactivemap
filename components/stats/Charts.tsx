@@ -61,14 +61,18 @@ export function BarChart({
 export function StackedBarChart({
   data,
   expanded = false,
+  maxRows,
 }: {
   data: StackRow[];
   expanded?: boolean;
+  maxRows?: number;
 }) {
   const maxTotal = Math.max(
     ...data.map((r) => r.entregados + r.noEntregados + r.pendientes),
     1,
   );
+  const visible = maxRows ? data.slice(0, maxRows) : data;
+  const extra = data.length - visible.length;
   const barH = expanded ? 'h-7' : 'h-5';
   const spacing = expanded ? 'space-y-5' : 'space-y-2.5';
   return (
@@ -92,7 +96,7 @@ export function StackedBarChart({
           Pendientes
         </span>
       </div>
-      {data.map((row, i) => {
+      {visible.map((row, i) => {
         const total = row.entregados + row.noEntregados + row.pendientes;
         const barWidth = Math.round((total / maxTotal) * 100);
         const pEnt = total > 0 ? Math.round((row.entregados / total) * 100) : 0;
@@ -178,6 +182,11 @@ export function StackedBarChart({
           </div>
         );
       })}
+      {extra > 0 && (
+        <p className="text-[11px] text-stats-muted-fg dark:text-gray-500 pl-1 pt-1">
+          + {extra} más
+        </p>
+      )}
     </div>
   );
 }

@@ -1505,14 +1505,6 @@ function StatsContent() {
                 {showMoviles ? 'Ocultar gráficos por móvil' : 'Mostrar gráficos por móvil'}
               </button>
             </div>
-            {showMoviles && (
-              <GraficosInlineSection
-                className="col-span-full"
-                stackedData={movilesTop}
-                pendientesData={pendientesPorMovil}
-                finalizadosData={finalizadosPorMovil}
-              />
-            )}
 
             {/* Pedidos por zona — fila 2, botón lazy */}
             <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
@@ -1531,14 +1523,6 @@ function StatsContent() {
                 {showZona ? 'Ocultar gráficos por zona' : 'Mostrar gráficos por zona'}
               </button>
             </div>
-            {showZona && (
-              <GraficosInlineSection
-                className="col-span-full"
-                stackedData={pedidosPorZona}
-                pendientesData={pendientesPorZona}
-                finalizadosData={finalizadosPorZona}
-              />
-            )}
 
             {/* Pedidos por empresa — fila 2, botón lazy */}
             <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
@@ -1557,13 +1541,46 @@ function StatsContent() {
                 {showEmpresa ? 'Ocultar gráficos por empresa' : 'Mostrar gráficos por empresa'}
               </button>
             </div>
+
+            {/* Reveals — siempre debajo de los 3 botones para mantenerlos apilados */}
+            {showMoviles && (
+              <div className="col-span-full">
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2 mb-3">
+                  <span className="text-stats-info">{CARD_ICONS.truck}</span>
+                  Top móviles por entregas
+                </h3>
+                <GraficosInlineSection
+                  stackedData={movilesTop}
+                  pendientesData={pendientesPorMovil}
+                  finalizadosData={finalizadosPorMovil}
+                />
+              </div>
+            )}
+            {showZona && (
+              <div className="col-span-full">
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2 mb-3">
+                  <span className="text-stats-info">{CARD_ICONS.pin}</span>
+                  Pedidos por zona
+                </h3>
+                <GraficosInlineSection
+                  stackedData={pedidosPorZona}
+                  pendientesData={pendientesPorZona}
+                  finalizadosData={finalizadosPorZona}
+                />
+              </div>
+            )}
             {showEmpresa && (
-              <GraficosInlineSection
-                className="col-span-full"
-                stackedData={pedidosPorEmpresa}
-                pendientesData={pendientesPorEmpresa}
-                finalizadosData={finalizadosPorEmpresa}
-              />
+              <div className="col-span-full">
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2 mb-3">
+                  <span className="text-stats-info">{CARD_ICONS.building}</span>
+                  Pedidos por empresa
+                </h3>
+                <GraficosInlineSection
+                  stackedData={pedidosPorEmpresa}
+                  pendientesData={pendientesPorEmpresa}
+                  finalizadosData={finalizadosPorEmpresa}
+                />
+              </div>
             )}
 
           </div>
