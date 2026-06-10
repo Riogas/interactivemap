@@ -43,6 +43,39 @@ export function todayMontevideo(now: Date = new Date()): string {
 }
 
 /**
+ * Normaliza un timestamp "naive" (sin designador de zona horaria) tratándolo
+ * como UTC, que es la convención de storage del sistema.
+ *
+ * Las APIs externas (ej. /tracking/getSessionData de .NET) devuelven fechas en
+ * UTC pero SIN el sufijo `Z` (ej. "2026-06-10T16:10:00"). `new Date()` parsea
+ * ese string como hora LOCAL del runtime, lo que produce un instante incorrecto
+ * en browsers fuera de UTC. Esta función agrega `Z` cuando falta el designador
+ * de zona, de modo que el string se interprete como UTC.
+ *
+ * Es idempotente: si el valor ya tiene `Z` o un offset (`+hh:mm` / `-hh:mm`),
+ * se devuelve sin cambios.
+ *
+ * @param value - string de fecha/hora ISO (posiblemente sin zona).
+ * @returns el mismo string con `Z` agregado si era naive, o el valor original.
+ *
+ * @example
+ * ensureUtcIso('2026-06-10T16:10:00')   // → '2026-06-10T16:10:00Z'
+ * ensureUtcIso('2026-06-10T16:10:00Z')  // → '2026-06-10T16:10:00Z' (sin cambios)
+ * ensureUtcIso('2026-06-10T16:10:00-03:00') // → sin cambios
+ */
+export function ensureUtcIso(value: string | null | undefined): string | null {
+  if (value == null || value === '') return null;
+  const trimmed = value.trim();
+  // Ya tiene designador de zona (Z, +hh:mm, -hh:mm, +hhmm) tras la parte de hora.
+  if (/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(trimmed)) return trimmed;
+  // Solo normalizamos strings con componente de hora ("...THH:mm...").
+  if (/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(trimmed)) {
+    return `${trimmed.replace(' ', 'T')}Z`;
+  }
+  return trimmed;
+}
+
+/**
  * Devuelve la fecha actual en formato `YYYY-MM-DD` para el timezone dado.
  * Versión genérica para uso futuro.
  *

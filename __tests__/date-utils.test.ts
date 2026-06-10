@@ -13,7 +13,40 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { todayMontevideo, todayInTimezone, daysAgoMontevideo, pendienteDateRange, pendienteDateRangeCompact } from '@/lib/date-utils';
+import { todayMontevideo, todayInTimezone, daysAgoMontevideo, pendienteDateRange, pendienteDateRangeCompact, ensureUtcIso, formatTimeShortMVD } from '@/lib/date-utils';
+
+describe('ensureUtcIso()', () => {
+  it('agrega Z a un timestamp naive (sin zona) — interpreta como UTC', () => {
+    expect(ensureUtcIso('2026-06-10T16:10:00')).toBe('2026-06-10T16:10:00Z');
+  });
+
+  it('es idempotente cuando ya tiene Z', () => {
+    expect(ensureUtcIso('2026-06-10T16:10:00Z')).toBe('2026-06-10T16:10:00Z');
+  });
+
+  it('respeta offset explícito (+/-hh:mm)', () => {
+    expect(ensureUtcIso('2026-06-10T16:10:00-03:00')).toBe('2026-06-10T16:10:00-03:00');
+    expect(ensureUtcIso('2026-06-10T16:10:00+00:00')).toBe('2026-06-10T16:10:00+00:00');
+  });
+
+  it('normaliza separador con espacio a "T"', () => {
+    expect(ensureUtcIso('2026-06-10 16:10:00')).toBe('2026-06-10T16:10:00Z');
+  });
+
+  it('devuelve null para valores vacíos o nulos', () => {
+    expect(ensureUtcIso(null)).toBeNull();
+    expect(ensureUtcIso(undefined)).toBeNull();
+    expect(ensureUtcIso('')).toBeNull();
+  });
+
+  it('bug inicio de sesión: 16:10 UTC naive → 13:10 hora Montevideo', () => {
+    // El API externo devuelve "16:10" en UTC sin sufijo Z. Sin normalizar,
+    // new Date() lo parsea como hora local del browser y muestra 16:10.
+    // Con ensureUtcIso se interpreta como UTC y formatTimeShortMVD da 13:10.
+    const normalized = ensureUtcIso('2026-06-10T16:10:00')!;
+    expect(formatTimeShortMVD(normalized)).toBe('13:10');
+  });
+});
 
 describe('todayMontevideo()', () => {
   it('AC3-1: 21:40 Montevideo (=00:40 UTC del día siguiente) → devuelve día local Montevideo', () => {
