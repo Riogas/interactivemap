@@ -226,12 +226,19 @@ export function GraficosInlineSection({
       <GraphCard
         title="Pendientes por atraso"
         collapsedContent={
-          <BucketStackedBar
-            rows={pendientesData}
-            buckets={pendienteBuckets}
-            colors={COLORS_BUCKETS_PENDIENTE}
-            maxRows={COLLAPSED_ROWS}
-          />
+          <>
+            <BucketStackedBar
+              rows={pendientesData}
+              buckets={pendienteBuckets}
+              colors={COLORS_BUCKETS_PENDIENTE}
+              maxRows={COLLAPSED_ROWS}
+            />
+            {pendientesData.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-stats-border dark:border-white/10">
+                <BucketLegend buckets={pendienteBuckets} colors={COLORS_BUCKETS_PENDIENTE} />
+              </div>
+            )}
+          </>
         }
         expandedContent={
           <>
@@ -252,12 +259,19 @@ export function GraficosInlineSection({
       <GraphCard
         title="Finalizados por atraso"
         collapsedContent={
-          <BucketStackedBar
-            rows={finalizadosData}
-            buckets={finalizadoBuckets}
-            colors={COLORS_BUCKETS_FINALIZADO}
-            maxRows={COLLAPSED_ROWS}
-          />
+          <>
+            <BucketStackedBar
+              rows={finalizadosData}
+              buckets={finalizadoBuckets}
+              colors={COLORS_BUCKETS_FINALIZADO}
+              maxRows={COLLAPSED_ROWS}
+            />
+            {finalizadosData.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-stats-border dark:border-white/10">
+                <BucketLegend buckets={finalizadoBuckets} colors={COLORS_BUCKETS_FINALIZADO} />
+              </div>
+            )}
+          </>
         }
         expandedContent={
           <>
