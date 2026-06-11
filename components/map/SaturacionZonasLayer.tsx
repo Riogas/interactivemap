@@ -5,8 +5,6 @@ import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
-import { hasFuncionalidad } from '@/lib/role-funcionalidades';
-import { isRoot } from '@/lib/auth-scope';
 import { getCapEntregaColor } from '@/lib/cap-entrega-color';
 import { getRefColor } from '@/lib/visual-refs-catalog';
 import type { SaturacionZonaStats } from '@/lib/cap-entrega-color';
@@ -205,7 +203,6 @@ function SaturacionFilterControl({ serviceFilter, onServiceFilterChange }: { ser
 const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   zonas,
   saturacionData,
-  user,
   serviceFilter = 'URGENTE',
   onServiceFilterChange,
   zonaOpacity = 50,
@@ -216,9 +213,6 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   zonaPattern = 'liso' as ZonaPattern,
   visualRefs,
 }: SaturacionZonasLayerProps) {
-  // Derivar privilegio UNA vez por render de la capa (no por zona).
-  const isPrivileged = isRoot(user ?? null) || hasFuncionalidad(user?.roles, 'Cap. Entrega - ver sobrecupos');
-
   const items = useMemo(() => {
     if (!zonas || zonas.length === 0) return [];
 
@@ -248,7 +242,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       const stats = saturacionData.get(zona.zona_id);
       const defaultStats: SaturacionZonaStats = { sinAsignar: 0, capacidadTotal: 0, capacidadDisponible: 0, movilesEnZona: 0, movilesCompartidos: 0, asignadosWeight: 0, totalWeight: 0 };
       const s = stats ?? defaultStats;
-      const { color, label, capEntrega } = getCapEntregaColor(s, isPrivileged, visualRefs);
+      const { color, label, capEntrega } = getCapEntregaColor(s, visualRefs);
       const fillOpacity = getCapEntregaOpacity(capEntrega);
 
       // Tooltip detallado
@@ -277,7 +271,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       fillOpacity: number;
       tooltipHTML: string;
     }>;
-  }, [zonas, saturacionData, isPrivileged, visualRefs]);
+  }, [zonas, saturacionData, visualRefs]);
 
   if (items.length === 0) return null;
 

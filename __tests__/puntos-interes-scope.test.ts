@@ -15,6 +15,7 @@ const root = { isRoot: 'S' };
 const despacho = {
   isRoot: 'N',
   roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+  verTodasEmpresas: true,
 };
 const distribuidorWith12 = {
   isRoot: 'N',

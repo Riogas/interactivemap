@@ -6,22 +6,13 @@ import { describe, it, expect } from 'vitest';
 import {
   isRoot,
   canSeeAllEmpresas,
-  hasPrivilegedRole,
   shouldScopeByEmpresa,
   getScopedEmpresas,
   parseZonasJsonb,
 } from '../lib/auth-scope';
 
-// Helper: construye un rol con la funcionalidad 'Ver todas las empresas'
-const rolConVerTodasEmpresas = (rolId: string, rolNombre: string) => ({
-  RolId: rolId,
-  RolNombre: rolNombre,
-  RolTipo: '',
-  funcionalidades: [{ funcionalidadId: 1, nombre: 'Ver todas las empresas' }],
-});
-
-// Helper: rol sin funcionalidades relevantes
-const rolSinPrivilegios = (rolId: string, rolNombre: string) => ({
+// Helper: usuario con el flag verTodasEmpresas (EmpFletera {"TODAS":"*"})
+const rolPlano = (rolId: string, rolNombre: string) => ({
   RolId: rolId,
   RolNombre: rolNombre,
   RolTipo: '',
@@ -89,7 +80,7 @@ describe('isRoot', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// canSeeAllEmpresas (reemplaza isDespacho + isPrivilegedForZonaScope)
+// canSeeAllEmpresas — data-driven vía verTodasEmpresas (EmpFletera {"TODAS":"*"})
 // ─────────────────────────────────────────────────────────────────────────────
 describe('canSeeAllEmpresas', () => {
   it('retorna true para root (legacy isRoot=S)', () => {
@@ -103,84 +94,32 @@ describe('canSeeAllEmpresas', () => {
     })).toBe(true);
   });
 
-  it('retorna true cuando el rol tiene funcionalidad "Ver todas las empresas"', () => {
+  it('retorna true cuando el usuario tiene verTodasEmpresas=true', () => {
     expect(canSeeAllEmpresas({
-      roles: [rolConVerTodasEmpresas('49', 'Despacho')],
+      roles: [rolPlano('49', 'Despacho')],
+      verTodasEmpresas: true,
     })).toBe(true);
   });
 
-  it('retorna false cuando el rol NO tiene la funcionalidad', () => {
+  it('retorna false cuando verTodasEmpresas es false/ausente', () => {
     expect(canSeeAllEmpresas({
-      roles: [rolSinPrivilegios('71', 'Distribuidor')],
+      roles: [rolPlano('71', 'Distribuidor')],
     })).toBe(false);
   });
 
-  it('retorna false con roles vacíos', () => {
+  it('retorna false con roles vacíos y sin flag', () => {
     expect(canSeeAllEmpresas({ roles: [] })).toBe(false);
   });
 
-  it('retorna false sin roles', () => {
+  it('retorna false sin roles ni flag', () => {
     expect(canSeeAllEmpresas({})).toBe(false);
   });
 
-  it('retorna true cuando uno de varios roles tiene la funcionalidad', () => {
-    expect(canSeeAllEmpresas({
-      roles: [
-        rolSinPrivilegios('71', 'Distribuidor'),
-        rolConVerTodasEmpresas('49', 'Despacho'),
-      ],
-    })).toBe(true);
-  });
-
-  // ── Roles privilegiados por RolId/nombre (sin funcionalidad) ──────────────
-  // Despacho (49), Dashboard (48) y Supervisor (50) se tratan igual que Root,
-  // aunque NO tengan la funcionalidad 'Ver todas las empresas'.
-  it('retorna true para Supervisor (RolId 50) sin la funcionalidad', () => {
-    expect(canSeeAllEmpresas({
-      roles: [rolSinPrivilegios('50', 'Supervisor')],
-    })).toBe(true);
-  });
-
-  it('retorna true para Dashboard (RolId 48) sin la funcionalidad', () => {
-    expect(canSeeAllEmpresas({
-      roles: [rolSinPrivilegios('48', 'Dashboard')],
-    })).toBe(true);
-  });
-
-  it('retorna true para Despacho (RolId 49) sin la funcionalidad', () => {
-    expect(canSeeAllEmpresas({
-      roles: [rolSinPrivilegios('49', 'Despacho')],
-    })).toBe(true);
-  });
-
-  it('retorna true detectando por nombre aunque el RolId no sea 48/49/50', () => {
-    expect(canSeeAllEmpresas({
-      roles: [rolSinPrivilegios('123', 'Supervisor Zona')],
-    })).toBe(true);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// hasPrivilegedRole
-// ─────────────────────────────────────────────────────────────────────────────
-describe('hasPrivilegedRole', () => {
-  it('retorna true para RolId 48/49/50', () => {
-    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('48', 'Dashboard')] })).toBe(true);
-    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('49', 'Despacho')] })).toBe(true);
-    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('50', 'Supervisor')] })).toBe(true);
-  });
-
-  it('retorna true detectando por nombre (despacho/dashboard/supervisor)', () => {
-    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('200', 'Supervisor General')] })).toBe(true);
-  });
-
-  it('retorna false para roles no privilegiados', () => {
-    expect(hasPrivilegedRole({ roles: [rolSinPrivilegios('71', 'Distribuidor')] })).toBe(false);
-  });
-
-  it('retorna false sin roles', () => {
-    expect(hasPrivilegedRole({})).toBe(false);
-    expect(hasPrivilegedRole(null)).toBe(false);
+  // Ya NO hay privilegio por RolId 48/49/50: sin verTodasEmpresas, no ven todo.
+  it('retorna false para Despacho/Dashboard/Supervisor sin verTodasEmpresas (sin hardcodeo de rol)', () => {
+    expect(canSeeAllEmpresas({ roles: [rolPlano('48', 'Dashboard')] })).toBe(false);
+    expect(canSeeAllEmpresas({ roles: [rolPlano('49', 'Despacho')] })).toBe(false);
+    expect(canSeeAllEmpresas({ roles: [rolPlano('50', 'Supervisor')] })).toBe(false);
   });
 });
 
@@ -199,15 +138,16 @@ describe('shouldScopeByEmpresa', () => {
     })).toBe(false);
   });
 
-  it('retorna false para despacho que tiene funcionalidad "Ver todas las empresas"', () => {
+  it('retorna false para usuario con verTodasEmpresas=true', () => {
     expect(shouldScopeByEmpresa({
-      roles: [rolConVerTodasEmpresas('49', 'Despacho')],
+      roles: [rolPlano('49', 'Despacho')],
+      verTodasEmpresas: true,
     })).toBe(false);
   });
 
-  it('retorna true para usuario común sin la funcionalidad', () => {
+  it('retorna true para usuario común sin el flag', () => {
     expect(shouldScopeByEmpresa({
-      roles: [rolSinPrivilegios('71', 'Distribuidor')],
+      roles: [rolPlano('71', 'Distribuidor')],
       allowedEmpresas: [5],
     })).toBe(true);
   });
@@ -228,44 +168,42 @@ describe('getScopedEmpresas', () => {
     })).toBeNull();
   });
 
-  it('retorna null para despacho con "Ver todas las empresas" aunque tenga allowedEmpresas', () => {
+  it('retorna null para usuario con verTodasEmpresas aunque tenga allowedEmpresas', () => {
     expect(getScopedEmpresas({
-      roles: [rolConVerTodasEmpresas('49', 'Despacho')],
+      roles: [rolPlano('49', 'Despacho')],
+      verTodasEmpresas: true,
       allowedEmpresas: [5],
     })).toBeNull();
   });
 
   it('retorna [5,7] para distribuidor sin privilegios con allowedEmpresas=[5,7]', () => {
     expect(getScopedEmpresas({
-      roles: [rolSinPrivilegios('71', 'Distribuidor')],
+      roles: [rolPlano('71', 'Distribuidor')],
       allowedEmpresas: [5, 7],
     })).toEqual([5, 7]);
   });
 
   it('retorna [] (fail-closed) para distribuidor con allowedEmpresas=null', () => {
     expect(getScopedEmpresas({
-      roles: [rolSinPrivilegios('71', 'Distribuidor')],
+      roles: [rolPlano('71', 'Distribuidor')],
       allowedEmpresas: null,
     })).toEqual([]);
   });
 
   it('retorna [] (fail-closed) para distribuidor con allowedEmpresas ausente', () => {
     expect(getScopedEmpresas({
-      roles: [rolSinPrivilegios('71', 'Distribuidor')],
+      roles: [rolPlano('71', 'Distribuidor')],
     })).toEqual([]);
   });
 
   it('retorna [] para distribuidor con allowedEmpresas=[]', () => {
     expect(getScopedEmpresas({
-      roles: [rolSinPrivilegios('71', 'Distribuidor')],
+      roles: [rolPlano('71', 'Distribuidor')],
       allowedEmpresas: [],
     })).toEqual([]);
   });
 
   it('retorna [] para usuario null (fail-closed)', () => {
-    // usuario null → fail-closed (ni root ni despacho identificables) — el dashboard
-    // envuelve esto con un guard de "user existe" antes de invocar para evitar flash
-    // de contenido vacío durante el load inicial.
     expect(getScopedEmpresas(null)).toEqual([]);
   });
 });

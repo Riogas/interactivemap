@@ -30,7 +30,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
 import { MOVIL_ESTADOS_INACTIVOS } from '@/lib/movil-estados';
+import { getEscenarioSettings } from '@/lib/escenario-settings';
 import type { ZonaCapSnapshot, PedidoSinAsignarMini, MovilDetalleZona } from '@/types/zona-capacidad';
+
+// Uruguay es UTC-3 fijo (sin horario de verano desde 2015).
+const UY_OFFSET_MIN = -180;
+
+/**
+ * Construye el límite superior de la ventana SA como string comparable contra
+ * `fch_hora_para`, que la DB almacena como hora local de Uruguay con sufijo
+ * "+00" incorrecto. Devolvemos windowEnd con la MISMA convención (hora de pared
+ * UY etiquetada como +00), de modo que la comparación timestamptz en Postgres
+ * sea consistente (el error de offset se cancela en ambos lados).
+ *
+ * @returns string 'YYYY-MM-DD HH:MM:SS+00' o null si no hay que filtrar.
+ */
+function buildSaWindowEnd(serverNow: Date, minutosAntes: number | null): string | null {
+  if (minutosAntes === null || minutosAntes === 0) return null;
+  // Hora de pared UY = UTC + (-3h); luego sumamos la ventana.
+  const uyEnd = new Date(serverNow.getTime() + (UY_OFFSET_MIN + minutosAntes) * 60_000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${uyEnd.getUTCFullYear()}-${pad(uyEnd.getUTCMonth() + 1)}-${pad(uyEnd.getUTCDate())} ` +
+    `${pad(uyEnd.getUTCHours())}:${pad(uyEnd.getUTCMinutes())}:${pad(uyEnd.getUTCSeconds())}+00`
+  );
+}
+
 
 const CAP_LOG = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
 const clog = (...args: unknown[]) => { if (CAP_LOG) console.log('[CAP-SNAPSHOT]', ...args); };
@@ -94,6 +119,7 @@ interface PedidoSinAsignarRow {
   zona_nro: number | null;
   cliente_nombre: string | null;
   fch_para: string | null;
+  fch_hora_para: string | null;
   cliente_direccion: string | null;
 }
 
@@ -154,7 +180,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, data: [], count: 0 });
   }
 
-  // 7. Feature flag "Ped s/asignar x zona"
+  // 7. Feature flag "Ped s/asignar x zona" (jerarquía: "unitarios" la incluye implícitamente)
   let hasFeature = false;
   const funcsHeader = request.headers.get('x-track-funcs') ?? '';
   const funcs = new Set(
@@ -163,7 +189,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .map((f) => f.trim())
       .filter((f) => f.length > 0),
   );
-  hasFeature = funcs.has('Ped s/asignar x zona');
+  hasFeature = funcs.has('Ped s/asignar x zona') || funcs.has('Ped s/asignar unitarios');
 
   clog(`escenario=${escenario} tipoServicio=${tipoServicio} isRoot=${isRoot} hasFeature=${hasFeature}`);
 
@@ -255,15 +281,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   // ─── Query 5: pedidos sin asignar (solo si hasFeature) ─────────────────────
+  //
+  // Ventana SA transversal (R4): los SA solo se cuentan si caen dentro de la
+  // ventana temporal del escenario (fch_hora_para <= ahora_servidor + minutosAntes).
+  // Filtro aplicado en SQL para eficiencia. Los SA sin fch_hora_para (null) se
+  // incluyen siempre (mismo criterio que isWithinSaWindow).
 
   let pedidosSinAsignarRows: PedidoSinAsignarRow[] = [];
   if (hasFeature && zonaIds.length > 0) {
-    const pedQuery = db.from('pedidos')
-      .select('id, zona_nro, cliente_nombre, fch_para, cliente_direccion')
+    const { pedidosSaMinutosAntes } = await getEscenarioSettings(escenario);
+    const saWindowEnd = buildSaWindowEnd(new Date(), pedidosSaMinutosAntes);
+
+    let pedQuery = db.from('pedidos')
+      .select('id, zona_nro, cliente_nombre, fch_para, fch_hora_para, cliente_direccion')
       .eq('escenario', escenario)
       .eq('estado_nro', 1)
       .in('zona_nro', zonaIds)
       .or('movil.is.null,movil.eq.0');
+
+    // Ventana SA: incluir SA dentro de la ventana O sin fecha registrada.
+    if (saWindowEnd !== null) {
+      pedQuery = pedQuery.or(`fch_hora_para.is.null,fch_hora_para.lte.${saWindowEnd}`);
+    }
 
     const pedResult = await (pedQuery as unknown as Promise<{ data: PedidoSinAsignarRow[] | null; error: { message: string } | null }>);
 

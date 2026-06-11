@@ -13,7 +13,7 @@ import { VirtualList } from './VirtualList';
 import MapGuideModal from './MapGuideModal';
 import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicator';
 import type { LastSyncState } from '@/lib/realtime-drift';
-import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { isVisibleByWindow } from '@/lib/sa-window-filter';
 import type { ScopeFilter } from '@/lib/scope-filter';
 
 
@@ -778,8 +778,7 @@ export default function MovilSelector({
     // Aplicar ventana temporal SA (solo para pendientes, no finalizados)
     if (pedidosFilters.vista !== "finalizados") {
       result = result.filter(p =>
-        (p.movil && Number(p.movil) !== 0) ||
-        isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)
+        isVisibleByWindow(p.fch_hora_para, serverNow, minutosAntesSa, !!(p.movil && Number(p.movil) !== 0))
       );
     }
 
@@ -931,8 +930,7 @@ export default function MovilSelector({
     // Aplicar ventana temporal SA (solo para pendientes, no finalizados)
     if (servicesFilters.vista !== "finalizados") {
       result = result.filter(s =>
-        (s.movil && Number(s.movil) !== 0) ||
-        isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)
+        isVisibleByWindow(s.fch_hora_para, serverNow, minutosAntesSa, !!(s.movil && Number(s.movil) !== 0))
       );
     }
 

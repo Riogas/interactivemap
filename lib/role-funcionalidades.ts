@@ -45,3 +45,38 @@ export function hasFuncionalidad(
     ),
   );
 }
+
+/**
+ * Jerarquía de las funcionalidades "Pedidos Sin Asignar" (SA).
+ *
+ *   unitarios (mayor)  ⊃  x zona (medio)  ⊃  acumulados (menor)
+ *
+ * Si un rol posee una funcionalidad de mayor jerarquía, a efectos del
+ * comportamiento del sistema posee implícitamente las de menor jerarquía:
+ *   - "Ped s/asignar unitarios"  ⇒ también x zona y acumulados
+ *   - "Ped s/asignar x zona"     ⇒ también acumulados
+ *
+ * Estos helpers son la única fuente de verdad para el gating SA. No deben
+ * usarse hardcodeos por rol (Despacho/Dashboard/Supervisor): solo funcionalidades.
+ */
+
+/** True si el usuario puede ver SA unitarios (filtro sin_movil + marcadores individuales). */
+export function hasSaUnitarios(
+  roles: RoleWithFuncionalidades[] | null | undefined,
+): boolean {
+  return hasFuncionalidad(roles, 'Ped s/asignar unitarios');
+}
+
+/** True si el usuario puede ver SA por zona (capa por zona + columna modal + resta en capacidad). Incluye unitarios. */
+export function hasSaPorZona(
+  roles: RoleWithFuncionalidades[] | null | undefined,
+): boolean {
+  return hasSaUnitarios(roles) || hasFuncionalidad(roles, 'Ped s/asignar x zona');
+}
+
+/** True si el usuario puede ver SA acumulados (chip del navbar + total en stats). Incluye x zona y unitarios. */
+export function hasSaAcumulados(
+  roles: RoleWithFuncionalidades[] | null | undefined,
+): boolean {
+  return hasSaPorZona(roles) || hasFuncionalidad(roles, 'Ped s/asignar acumulados');
+}

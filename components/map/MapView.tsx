@@ -33,7 +33,7 @@ import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter, MovilSub
 import ZonasActivasLayer from './ZonasActivasLayer';
 import SaturacionZonasLayer, { SaturacionZonaData, SaturacionZonaStats } from './SaturacionZonasLayer';
 import dynamic from 'next/dynamic';
-import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { isVisibleByWindow } from '@/lib/sa-window-filter';
 import './DataViewControl.css';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
@@ -140,7 +140,7 @@ interface MapViewProps {
   allMovilEstados?: Map<string, number>; // Mapa completo movil_nro ? estadoNro (todos los moviles)
   allHiddenMovilIds?: Set<string>; // IDs de móviles ocultos-pero-operativos (capa móviles-zonas los excluye)
   /** Usuario autenticado  usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
-  user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string; funcionalidades?: Array<{ funcionalidadId: number; nombre: string }> }>; allowedEmpresas?: number[] | null } | null;
+  user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string; funcionalidades?: Array<{ funcionalidadId: number; nombre: string }> }>; allowedEmpresas?: number[] | null; verTodasEmpresas?: boolean } | null;
   /** Callback invocado en moveend/zoomend para capturar el estado del mapa (view-state). */
   onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
   /** IDs de empresas fleteras seleccionadas  se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
@@ -3351,9 +3351,7 @@ const MapView = memo(function MapView({
         {/* Marcadores de Pedidos desde tabla  viewport-culled */}
         {(() => {
           const pedidosFiltrados = (pedidos ?? []).filter(p => p.latitud && p.longitud).filter(p =>
-            (!p.movil || Number(p.movil) === 0)
-              ? isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)
-              : true
+            isVisibleByWindow(p.fch_hora_para, serverNow, minutosAntesSa, !!(p.movil && Number(p.movil) !== 0))
           );
           if (!pedidosFiltrados.length) return null;
           return (
@@ -3372,9 +3370,7 @@ const MapView = memo(function MapView({
         {/* Marcadores de Services desde tabla  viewport-culled */}
         {(() => {
           const servicesFiltrados = (services ?? []).filter(s => s.latitud && s.longitud).filter(s =>
-            (!s.movil || Number(s.movil) === 0)
-              ? isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)
-              : true
+            isVisibleByWindow(s.fch_hora_para, serverNow, minutosAntesSa, !!(s.movil && Number(s.movil) !== 0))
           );
           if (!servicesFiltrados.length) return null;
           return (

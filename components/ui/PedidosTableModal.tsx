@@ -8,7 +8,7 @@ import { getEstadoDescripcion, isPedidoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
 import { matchesSearchPedido } from '@/utils/tableSearch';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
-import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { isVisibleByWindow } from '@/lib/sa-window-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -349,8 +349,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       result = pedidosFiltradosPorGate
         .filter(p => Number(p.estado_nro) === 1)
         .filter(p =>
-          (p.movil && Number(p.movil) !== 0) ||
-          isWithinSaWindow(p.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null)
+          isVisibleByWindow(p.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null, !!(p.movil && Number(p.movil) !== 0))
         );
 
       // Filtro de asignación (con móvil / sin móvil)

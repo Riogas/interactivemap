@@ -29,6 +29,7 @@ interface ScopedUser {
   isRoot?: string;
   roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>;
   allowedEmpresas?: number[] | null;
+  verTodasEmpresas?: boolean;
 }
 
 export function isPuntoInteresInScope(

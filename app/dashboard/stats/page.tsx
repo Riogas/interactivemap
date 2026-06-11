@@ -21,7 +21,7 @@ import { todayMontevideo, pendienteDateRangeCompact } from '@/lib/date-utils';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
-import { hasFuncionalidad } from '@/lib/role-funcionalidades';
+import { hasSaAcumulados } from '@/lib/role-funcionalidades';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
 interface Pedido {
@@ -211,7 +211,7 @@ function StatsContent() {
   const { user, escenarioId } = useAuth();
   // Gate: puede ver sin-asignar — controlado únicamente por la funcionalidad 'Ped s/asignar acumulados'.
   // Root siempre puede. El rol del usuario ya no condiciona esta visibilidad.
-  const canSeeUnassigned = isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados');
+  const canSeeUnassigned = isRoot(user) || hasSaAcumulados(user?.roles);
   const isPrivilegedScope = canSeeAllEmpresas(user);
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);

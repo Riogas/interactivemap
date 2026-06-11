@@ -122,6 +122,8 @@ function makeSupabaseMock(overrides: {
     for (const m of methods) {
       qb[m] = () => qb;
     }
+    // maybeSingle para queries tipo escenario_settings (devuelve sin row → defaults)
+    qb.maybeSingle = () => Promise.resolve({ data: null, error: null });
     // then para que sea awaitable
     qb.then = (resolve: (v: { data: unknown[]; error: null }) => void) =>
       Promise.resolve({ data, error: null }).then(resolve);
@@ -136,6 +138,7 @@ function makeSupabaseMock(overrides: {
         if (table === 'moviles_zonas') return makeQb(mzRows);
         if (table === 'moviles') return makeQb(movilCapRows);
         if (table === 'pedidos') return makeQb(pedidosRows);
+        if (table === 'escenario_settings') return makeQb([]);
         return makeQb([]);
       },
     }),

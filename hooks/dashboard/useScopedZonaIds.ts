@@ -5,6 +5,7 @@ interface ScopedUser {
   isRoot?: string;
   roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string; funcionalidades?: Array<{ funcionalidadId: number; nombre: string }> }>;
   allowedEmpresas?: number[] | null;
+  verTodasEmpresas?: boolean;
 }
 
 interface UseScopedZonaIdsResult {

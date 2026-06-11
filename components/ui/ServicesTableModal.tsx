@@ -7,7 +7,7 @@ import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDela
 import { isServiceEntregado } from '@/utils/estadoPedido';
 import { matchesSearchService } from '@/utils/tableSearch';
 import { isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
-import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { isVisibleByWindow } from '@/lib/sa-window-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -240,8 +240,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       result = servicesFiltradosPorGate
         .filter(s => Number(s.estado_nro) === 1)
         .filter(s =>
-          (s.movil && Number(s.movil) !== 0) ||
-          isWithinSaWindow(s.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null)
+          isVisibleByWindow(s.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null, !!(s.movil && Number(s.movil) !== 0))
         );
 
       // Filtro de asignación (con móvil / sin móvil)

@@ -33,35 +33,28 @@ export interface SaturacionZonaStats {
  *  - cap >= 4                    → verde fuerte (#22c55e)  — Holgura alta
  *  - 1 <= cap <= 3               → verde-amarillo (#84cc16) — Holgura baja
  *  - cap = 0                     → amarillo (#eab308)       — Capacidad exacta
- *  - -3 <= cap <= -1             → naranja (#f97316)        — Sobrecupo leve (solo con feature)
- *  - cap <= -4                   → rojo (#ef4444)           — Sobrecupo alto (solo con feature)
+ *  - -3 <= cap <= -1             → naranja (#f97316)        — Sobrecupo leve
+ *  - cap <= -4                   → rojo (#ef4444)           — Sobrecupo alto
  *
- * Para usuarios SIN la feature (isPrivileged=false):
- *  - capacidadDisponible se capea a 0 antes del calculo.
- *  - sinAsignar se ignora (siempre 0 en el stats para estos usuarios).
+ * Los valores negativos (sobrecupo) se muestran a TODOS los usuarios por igual:
+ * la capa de capacidad no tiene gating por rol ni por funcionalidad.
  *
  * @param stats        Estadisticas de la zona (construidas desde ZonaCapSnapshot en PR2).
- * @param isPrivileged true para root/despacho/dashboard/supervisor (ven negativos).
  * @param visualRefs   Overrides de colores del usuario.
  */
 export function getCapEntregaColor(
   stats: SaturacionZonaStats,
-  isPrivileged: boolean,
   visualRefs?: Record<string, string> | null,
 ): { color: string; label: string; capEntrega: number } {
-  const { capacidadDisponible: rawDisponible, movilesEnZona } = stats;
+  const { capacidadDisponible, movilesEnZona } = stats;
 
   // Sin datos (sentinel -1000): sin moviles y sin pendientes
   if (movilesEnZona === 0 && stats.sinAsignar === 0) {
     return { color: getRefColor('Ref#26', visualRefs), label: '—', capEntrega: -1000 };
   }
 
-  // Capacidad efectiva: usuarios sin feature ven capacidad capeada a 0
-  const capacidadDisponible = isPrivileged ? rawDisponible : Math.max(rawDisponible, 0);
-
-  // Valor entero para el label (igual que antes: capacidadDisponible - sinAsignar)
-  const sinAsignar = isPrivileged ? stats.sinAsignar : 0;
-  const capEntrega = capacidadDisponible - sinAsignar;
+  // Valor entero para el label: capacidadDisponible - sinAsignar (sin capping por rol).
+  const capEntrega = capacidadDisponible - stats.sinAsignar;
 
   // Sin moviles pero con pedidos pendientes → sin capacidad (cobertura 0)
   if (movilesEnZona === 0) {
@@ -78,7 +71,6 @@ export function getCapEntregaColor(
     return { color: '#eab308', label: '0', capEntrega };
   }
   if (capEntrega >= -3) {
-    // Naranja: solo visible con feature; sin feature capEntrega nunca llega aquí (capeado a 0)
     return { color: '#f97316', label: String(capEntrega), capEntrega };
   }
   // capEntrega <= -4

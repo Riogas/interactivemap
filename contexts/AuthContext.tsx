@@ -23,6 +23,8 @@ interface User {
   token: string;
   allowedEmpresas: number[] | null; // null = root/sin restricción, array = IDs permitidos
   allowedEscenarios: number[] | null; // null = root/sin restricción, array = IDs permitidos
+  /** True si EmpFletera = {"TODAS":"*"} → ve todas las empresas (reemplaza el hardcodeo de roles). */
+  verTodasEmpresas: boolean;
 }
 
 type PreferenciaEntry = { nombre: string; valor: number };
@@ -62,6 +64,35 @@ function parsePreferencia(
   } catch (e) {
     console.warn(`⚠️ Error parseando preferencia "${atributo}":`, e);
     return [];
+  }
+}
+
+/**
+ * Detecta si el usuario tiene acceso a TODAS las empresas vía el atributo
+ * `EmpFletera` con el valor especial {"TODAS":"*"} (o "*").
+ *
+ * Reemplaza el hardcodeo de roles privilegiados (48/49/50). Cualquier usuario
+ * con este valor en EmpFletera ve todas las empresas, sin importar su rol.
+ */
+function tieneVerTodasEmpresas(
+  prefs: Array<{ atributo: string; valor: string }> | undefined,
+): boolean {
+  if (!Array.isArray(prefs)) return false;
+  const p = prefs.find((x) => x.atributo === 'EmpFletera');
+  if (!p?.valor) return false;
+  try {
+    const parsed = JSON.parse(p.valor);
+    if (parsed === '*') return true;
+    if (parsed && typeof parsed === 'object') {
+      // Acepta { "TODAS": "*" } (clave canónica) o cualquier valor "*".
+      if (String((parsed as Record<string, unknown>).TODAS ?? '').trim() === '*') return true;
+      return Object.values(parsed as Record<string, unknown>).some(
+        (v) => String(v ?? '').trim() === '*',
+      );
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -301,30 +332,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let allowedEmpresas: number[] | null = null;
         let allowedEscenarios: number[] | null = null;
 
-        // Roles privilegiados: trato igual a root (acceso completo, sin restricción de
-        // escenarios ni empresas). Son Despacho (49), Dashboard (48) y Supervisor (50).
-        // El rol viene de SecuritySuite via response.roles cuando se ejecuta el upsert
-        // correspondiente en PG.
-        //
-        // Detección robusta: chequea rolId ∈ {48,49,50} OR que el nombre contenga
-        // 'despacho' / 'dashboard' / 'supervisor'. lib/auth-scope.ts (hasPrivilegedRole)
-        // usa el mismo criterio para mantener la misma categoría en todo el scope.
-        const tieneRolPrivilegiado = (response.roles || []).some((r) => {
-          const id = Number(r.rolId);
-          if (id === 48 || id === 49 || id === 50) return true;
-          const nombre = String(r.rolNombre || '').trim().toLowerCase();
-          return (
-            nombre.includes('despacho') ||
-            nombre.includes('dashboard') ||
-            nombre.includes('supervisor')
-          );
-        });
+        // Acceso total a empresas/escenarios: data-driven vía EmpFletera {"TODAS":"*"}.
+        // Reemplaza el hardcodeo de roles privilegiados (48/49/50). Un usuario con
+        // este atributo se trata igual que root para el scope (empresas + escenarios).
+        const verTodasEmpresas = tieneVerTodasEmpresas(response.preferencias);
 
-        if (isRoot || tieneRolPrivilegiado) {
+        if (isRoot || verTodasEmpresas) {
           console.log(
             isRoot
               ? '👑 Usuario root - acceso a todas las empresas y escenarios'
-              : '🚪 Rol privilegiado (Despacho/Dashboard/Supervisor) - acceso completo (mismo trato que root)',
+              : '🌐 EmpFletera TODAS:* - acceso completo a empresas y escenarios',
           );
           authStorage.removeItem('trackmovil_allowed_empresas');
           authStorage.removeItem('trackmovil_allowed_escenarios');
@@ -377,6 +394,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           token: response.token,
           allowedEmpresas,
           allowedEscenarios,
+          verTodasEmpresas,
         };
 
         // Guardar en localStorage el newUser completo (incluye loginTime para validar expiración en F5)

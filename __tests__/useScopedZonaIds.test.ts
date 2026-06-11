@@ -16,6 +16,7 @@ interface ScopedUser {
   isRoot?: string;
   roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>;
   allowedEmpresas?: number[] | null;
+  verTodasEmpresas?: boolean;
 }
 
 /**
@@ -84,11 +85,12 @@ describe('useScopedZonaIds — lógica resolutiva', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('despacho (RolId 49) → no llama fetch y retorna scopedZonaIds=null', async () => {
+  it('verTodasEmpresas (EmpFletera TODAS:*) → no llama fetch y retorna scopedZonaIds=null', async () => {
     const result = await resolveScopedZonaIds(
       {
         isRoot: 'N',
         roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+        verTodasEmpresas: true,
         allowedEmpresas: [5],
       },
       [1000],

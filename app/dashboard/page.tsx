@@ -49,7 +49,7 @@ import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
 import { getMaxRoleAttribute } from '@/lib/role-attributes';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
-import { hasFuncionalidad } from '@/lib/role-funcionalidades';
+import { hasFuncionalidad, hasSaAcumulados, hasSaPorZona, hasSaUnitarios } from '@/lib/role-funcionalidades';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import { reportDrift, LastSyncState } from '@/lib/realtime-drift';
 import type { ModalSnapshot } from '@/lib/view-state';
@@ -2551,15 +2551,16 @@ function DashboardContent() {
     [user],
   );
 
-  // Gates: 'Ped s/asignar acumulados' (Gate A) y 'Ped s/asignar x zona' (Gate B).
+  // Gates SA con jerarquía: unitarios ⊃ x zona ⊃ acumulados.
+  // Tener una funcionalidad de mayor jerarquía implica las de menor.
   // Root siempre pasa (defensivo, consistente con canSeeCapEntregaLayer).
   const canVerAcumulados = useMemo(
-    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados'),
+    () => isRoot(user) || hasSaAcumulados(user?.roles),
     [user],
   );
 
   const canVerSinAsigPorZona = useMemo(
-    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar x zona'),
+    () => isRoot(user) || hasSaPorZona(user?.roles),
     [user],
   );
 
@@ -2572,7 +2573,7 @@ function DashboardContent() {
   // Gate: 'Ped s/asignar unitarios' (Gate C  markers mapa, colapsable, tabla extendida).
   // Root siempre pasa. Independiente de los otros 2 gates.
   const canVerSinAsignarUnitario = useMemo(
-    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar unitarios'),
+    () => isRoot(user) || hasSaUnitarios(user?.roles),
     [user],
   );
 
