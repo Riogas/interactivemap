@@ -1521,6 +1521,44 @@ function DashboardContent() {
     return () => clearInterval(interval);
   }, [selectedDate, lastPedidoEventAt, lastServiceEventAt, fetchPedidos, fetchServices, fetchPositions, preferences.realtimeSilenceTimeoutSeconds, isRootUser, getLastMovilEventAt]);
 
+  // 🔄 Resincronización tras des-pausa por idle (realtimePauseOnHidden).
+  // Cuando el tab estuvo oculto > grace minutes, los canales Realtime se
+  // desconectaron y se PERDIERON los eventos ocurridos durante la pausa. Al
+  // volver visible se reconectan, pero la reconexión depende del onReconnect de
+  // cada canal individual (no determinístico) y el refetch-on-visible puede
+  // correr ANTES de que los canales reconecten (ventana ciega).
+  //
+  // Para garantizar estado EXACTO (igual que un F5), detectamos la transición
+  // paused true→false y forzamos un refetch COMPLETO (pedidos + services +
+  // posiciones/movilesDia) con un pequeño delay, de modo que corra DESPUÉS de
+  // que los canales hayan reabierto y sin dejar gap de eventos.
+  const prevPausedByIdleRef = useRef<boolean>(realtimePausedByIdle);
+  useEffect(() => {
+    const prev = prevPausedByIdleRef.current;
+    prevPausedByIdleRef.current = realtimePausedByIdle;
+    // Solo en la transición de PAUSADO → ACTIVO, y solo en modo "hoy".
+    if (!(prev === true && realtimePausedByIdle === false)) return;
+    if (selectedDate !== todayMontevideo()) return;
+
+    let cancelled = false;
+    // Delay para que los canales Realtime terminen el handshake de reconexión
+    // antes del refetch (evita ventana ciega: el WS ya captura lo nuevo, el
+    // refetch trae lo perdido durante la pausa).
+    const timer = setTimeout(async () => {
+      if (cancelled) return;
+      console.log('🔄 Des-pausa por idle → refetch completo de recuperación');
+      fetchPedidosRef.current?.();
+      fetchServicesRef.current?.();
+      const recoverFn = USE_NEW ? fetchMovilesDia : fetchPositions;
+      const result = await recoverFn();
+      if (!cancelled && result.success) {
+        setLastSync({ at: Date.now(), trigger: 'reconnect', added: result.added, removed: result.removed });
+      }
+    }, 1500);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [realtimePausedByIdle, selectedDate, fetchMovilesDia, fetchPositions]);
+
   // ?? Mejora #3 ? Refetch al volver la pestaña a visible (admin / root).
   // Cuando la tab estuvo en background mucho tiempo, el WS puede haberse cerrado sin aviso
   // o haber perdido eventos. Al volver, pedimos pedidos+services+posiciones de nuevo
