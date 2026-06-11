@@ -13,6 +13,7 @@ import { IncidentRecorderButton } from '@/components/IncidentRecorderButton';
 import DashboardIndicators from '@/components/dashboard/DashboardIndicators';
 import { useRealtime } from '@/components/providers/RealtimeProvider';
 import { useUserPreferences } from '@/components/ui/PreferencesModal';
+import { useGlobalRealtimeSettings } from '@/hooks/dashboard/useGlobalRealtimeSettings';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
@@ -92,8 +93,18 @@ function DashboardContent() {
   // Hook de Realtime para escuchar actualizaciones GPS y móviles nuevos
   const { latestPosition, latestMovil, isConnected, getLastEventAt: getLastMovilEventAt, setOnReconnect, setOnMovilEvent, setRealtimeEnabled } = useRealtime();
   
-  // Hook de preferencias de usuario
-  const { preferences, updatePreferences, updatePreference } = useUserPreferences();
+  // Hook de preferencias de usuario (personales: iconos, colores, formas, visibilidad)
+  const { preferences: userPreferences, updatePreferences, updatePreference } = useUserPreferences();
+
+  // Config GLOBAL de Realtime/Intervalos (compartida por todos los usuarios).
+  // Estos 9 campos ya no son per-usuario: se leen de /api/realtime-config y se
+  // overlayean sobre las preferencias para que TODOS los consumidores existentes
+  // (preferences.realtimeHeartbeatSeconds, etc.) reciban el valor global.
+  const { settings: globalRealtimeSettings } = useGlobalRealtimeSettings();
+  const preferences = useMemo(
+    () => ({ ...userPreferences, ...globalRealtimeSettings }),
+    [userPreferences, globalRealtimeSettings],
+  );
   
   // URL dinámica del manual — se carga desde /api/manual/current al montar
   const [manualUrl, setManualUrl] = useState<string>('/manual/InstructivoRiogasTracking.pdf');

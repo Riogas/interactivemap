@@ -8,22 +8,27 @@ import * as XLSX from 'xlsx';
 import { UserPreferences, DEFAULT_PREFERENCES } from '@/components/ui/PreferencesModal';
 import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 import { isRoot } from '@/lib/auth-scope';
+import { useGlobalRealtimeSettings } from '@/hooks/dashboard/useGlobalRealtimeSettings';
 
 interface PreferenciasGlobalesModalProps {
   isOpen: boolean;
   onClose: () => void;
   preferences: UserPreferences;
-  onPreferencesChange: (prefs: UserPreferences) => void;
 }
 
 export default function PreferenciasGlobalesModal({
   isOpen,
   onClose,
   preferences,
-  onPreferencesChange,
 }: PreferenciasGlobalesModalProps) {
   const { user, hasPermiso, escenarioId } = useAuth();
   const canUpdPtsVenta = hasPermiso('updptsventa');
+
+  // Config GLOBAL de Realtime/Intervalos (compartida por todos los usuarios).
+  // La sección "Realtime (avanzado)" + "Intervalos de Refresco" se lee/guarda
+  // contra este store global (no en las preferencias por-usuario), para que un
+  // cambio de un admin lo vean todos.
+  const { settings: globalRealtime, updateSettings: updateGlobalRealtime } = useGlobalRealtimeSettings();
 
   // ===== Estado para importar Puntos de Interés =====
   const poiFileInputRef = useRef<HTMLInputElement>(null);
@@ -60,13 +65,14 @@ export default function PreferenciasGlobalesModal({
     realtimePauseOnHiddenMinutes:    p.realtimePauseOnHiddenMinutes    ?? DEFAULT_PREFERENCES.realtimePauseOnHiddenMinutes,
   });
 
-  // Local copy of preferences for realtime sliders (committed on save)
-  const [localPrefs, setLocalPrefs] = useState<UserPreferences>(() => normalizePrefs(preferences));
+  // Local copy of preferences for realtime sliders (committed on save).
+  // Los 9 campos de Realtime/Intervalos se overlayean desde la config GLOBAL.
+  const [localPrefs, setLocalPrefs] = useState<UserPreferences>(() => ({ ...normalizePrefs(preferences), ...globalRealtime }));
 
-  // Sync local prefs when parent preferences change (e.g., loaded from DB)
+  // Sync local prefs cuando cambian las preferencias del padre o la config global.
   useEffect(() => {
-    setLocalPrefs(normalizePrefs(preferences));
-  }, [preferences]);
+    setLocalPrefs({ ...normalizePrefs(preferences), ...globalRealtime });
+  }, [preferences, globalRealtime]);
 
   // Cargar estado inicial del toggle de auditoría al abrir
   useEffect(() => {
@@ -384,13 +390,11 @@ export default function PreferenciasGlobalesModal({
     }
   };
 
-  const handleSaveRealtime = () => {
-    // Defensa: solo enviamos los 7 fields que este modal controla, mergeados con
-    // el snapshot actual de preferences. Sin esto, si por algún motivo `preferences`
-    // llegó incompleto, los fields locales (icono móvil/pedido, tamaños, cluster)
-    // se sobreescribían con undefined al guardar → quedaban en default tras leer.
-    onPreferencesChange({
-      ...preferences,
+  const handleSaveRealtime = async () => {
+    // Estos 9 campos son configuración GLOBAL ÚNICA del sistema: se guardan en
+    // /api/realtime-config (no en las preferencias por-usuario) para que el
+    // cambio lo vean todos los usuarios logueados.
+    await updateGlobalRealtime({
       realtimePollingReconcileSeconds: localPrefs.realtimePollingReconcileSeconds,
       realtimeSilenceTimeoutSeconds:   localPrefs.realtimeSilenceTimeoutSeconds,
       realtimeRefetchOnVisible:        localPrefs.realtimeRefetchOnVisible,
@@ -398,8 +402,8 @@ export default function PreferenciasGlobalesModal({
       realtimeEventsPerSecond:         localPrefs.realtimeEventsPerSecond,
       demorasPollingSeconds:           localPrefs.demorasPollingSeconds,
       movilesZonasPollingSeconds:      localPrefs.movilesZonasPollingSeconds,
-      realtimePauseOnHiddenEnabled:    localPrefs.realtimePauseOnHiddenEnabled,
-      realtimePauseOnHiddenMinutes:    localPrefs.realtimePauseOnHiddenMinutes,
+      realtimePauseOnHiddenEnabled:    localPrefs.realtimePauseOnHiddenEnabled ?? false,
+      realtimePauseOnHiddenMinutes:    localPrefs.realtimePauseOnHiddenMinutes ?? 15,
     });
     onClose();
   };

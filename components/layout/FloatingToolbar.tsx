@@ -439,7 +439,6 @@ export default function FloatingToolbar({
         isOpen={isPreferenciasGlobalesOpen}
         onClose={() => setIsPreferenciasGlobalesOpen(false)}
         preferences={currentPreferences ?? preferences ?? {} as UserPreferences}
-        onPreferencesChange={handlePreferencesSave}
       />
     </>
   );
