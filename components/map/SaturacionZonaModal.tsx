@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import type { ZonaCapSnapshot, MovilDetalleZona, PedidoSinAsignarMini } from '@/types/zona-capacidad';
+import { formatCapEntregaLabel } from '@/lib/cap-entrega-color';
 
 // ── inline icon components ────────────────────────────────────────────────
 const IconX = () => (
@@ -38,8 +39,12 @@ interface SaturacionZonaModalProps {
   zonas: ZonaInfo[];
   /** Snapshot completo para esta zona (del hook useZonaCapacidadSnapshot). */
   snapshot: ZonaCapSnapshot | undefined;
-  /** true si el usuario tiene la funcionalidad 'Ped s/asignar x zona'. */
+  /** true si el usuario tiene "Ped s/asignar x zona" (o unitarios): muestra el TOTAL de SA. */
   canVerSinAsigPorZona: boolean;
+  /** true si tiene "Ped s/asignar unitarios": muestra el DETALLE por pedido. */
+  canVerSinAsignarUnitario: boolean;
+  /** Peso de las zonas de tránsito en el prorrateo (escenario_settings.peso_transito_alpha). */
+  pesoTransitoAlpha: number;
   /** Capacidad mostrada (ya con cap 0/-9999 aplicado por la feature flag). */
   capacidadMostrada: number;
   onClose: () => void;
@@ -93,7 +98,7 @@ function MovilDetalleCard({ detalle }: { detalle: MovilDetalleZona }) {
           </div>
         </div>
         <span className="text-xs text-gray-500 flex-shrink-0">
-          Aporte: <b>{detalle.aporte_a_zona}</b>
+          Aporte: <b>{detalle.aporte_a_zona.toFixed(1)}</b>
         </span>
       </div>
     </div>
@@ -113,8 +118,8 @@ function PedidoSinAsignarCard({ pedido }: { pedido: PedidoSinAsignarMini }) {
             <span className="text-gray-500">{pedido.fecha}</span>
           )}
         </div>
-        {pedido.cliente && (
-          <div className="text-gray-600 truncate">{pedido.cliente}</div>
+        {pedido.tipo_servicio && (
+          <div className="text-gray-600 truncate font-medium uppercase">{pedido.tipo_servicio}</div>
         )}
         {pedido.direccion_corta && (
           <div className="text-gray-500 truncate">{pedido.direccion_corta}</div>
@@ -131,6 +136,8 @@ export default function SaturacionZonaModal({
   zonas,
   snapshot,
   canVerSinAsigPorZona,
+  canVerSinAsignarUnitario,
+  pesoTransitoAlpha,
   capacidadMostrada,
   onClose,
   scopedZonaIds = null,
@@ -173,7 +180,7 @@ export default function SaturacionZonaModal({
             <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
               <span>Cap. de Entrega:</span>
               <span className={`font-bold text-base ${colorClass}`}>
-                {capacidadMostrada}
+                {formatCapEntregaLabel(capacidadMostrada)}
               </span>
               <span className="text-gray-400">de</span>
               <span className="font-semibold">{capacidadTotal} total</span>
@@ -226,7 +233,7 @@ export default function SaturacionZonaModal({
                 <span className="ml-2 bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-full">
                   {movilesTransito}
                 </span>
-                <span className="ml-1 text-gray-400 text-[10px]">(peso 30%)</span>
+                <span className="ml-1 text-gray-400 text-[10px]">(peso {Math.round(pesoTransitoAlpha * 100)}%)</span>
               </h3>
               <span className="ml-auto text-gray-400 group-hover:text-gray-600 transition-colors flex-shrink-0">
                 {transitoExpanded ? <IconChevronDown /> : <IconChevronRight />}
@@ -263,13 +270,15 @@ export default function SaturacionZonaModal({
 
               {pedidosSinAsignar === 0 ? (
                 <p className="text-sm text-gray-400 italic pl-1">Sin pedidos pendientes en esta zona.</p>
-              ) : pedidosDetalle.length > 0 ? (
+              ) : canVerSinAsignarUnitario && pedidosDetalle.length > 0 ? (
+                // Detalle por pedido: SOLO con "Ped s/asignar unitarios".
                 <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
                   {pedidosDetalle.map(p => (
                     <PedidoSinAsignarCard key={p.id} pedido={p} />
                   ))}
                 </div>
               ) : (
+                // "Ped s/asignar x zona" (sin unitarios): solo el total (ya en el badge del título).
                 <p className="text-sm text-gray-500 italic pl-1">{pedidosSinAsignar} pedido{pedidosSinAsignar !== 1 ? 's' : ''} sin asignar.</p>
               )}
             </section>

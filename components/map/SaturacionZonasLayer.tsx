@@ -245,23 +245,11 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       const { color, label, capEntrega } = getCapEntregaColor(s, visualRefs);
       const fillOpacity = getCapEntregaOpacity(capEntrega);
 
-      // Tooltip detallado
-      const tooltipLines = [
-        `<b>Zona ${zona.zona_id}${zona.nombre ? ` — ${zona.nombre}` : ''}</b>`,
-        `Pedidos sin asignar: <b>${s.sinAsignar}</b>`,
-        `Moviles en zona: <b>${s.movilesEnZona}</b>${s.movilesCompartidos > 0 ? ` (${s.movilesCompartidos} compartidos)` : ''}`,
-        `Cap. total (prorat.): <b>${s.capacidadTotal.toFixed(1)}</b>`,
-        `Cap. libre (prorat.): <b>${s.capacidadDisponible.toFixed(1)}</b>`,
-        capEntrega === -999 ? 'Sin cobertura (0 moviles)'
-          : capEntrega === -1000 ? '— Sin datos'
-          : `Cap. Entrega: <b>${capEntrega}</b>`,
-        s.movilesCompartidos > 0 ? '<i style="color:#6b7280;font-size:10px">Capacidad con prorrateo por zonas compartidas</i>' : '',
-      ].filter(Boolean);
-
       // Mostrar label siempre excepto para sin datos
       const showLabel = capEntrega !== -1000;
 
-      return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity, tooltipHTML: tooltipLines.join('<br/>') };
+      // Hover eliminado (CapEntrega.docx): no se muestra tooltip al pasar el mouse.
+      return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity };
     }).filter(Boolean) as Array<{
       zona: SaturacionZonaData;
       positions: LatLngExpression[];
@@ -269,7 +257,6 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       color: string;
       label: string;
       fillOpacity: number;
-      tooltipHTML: string;
     }>;
   }, [zonas, saturacionData, visualRefs]);
 
@@ -281,7 +268,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       {onServiceFilterChange && (
         <SaturacionFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
       )}
-      {items.map(({ zona, positions, center, color, label, fillOpacity, tooltipHTML }) => {
+      {items.map(({ zona, positions, center, color, label, fillOpacity }) => {
         const isInactive = demoras?.get(zona.zona_id)?.activa === false;
         return (
         <React.Fragment key={zona.zona_id}>
@@ -318,7 +305,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
             icon={L.divIcon({
               className: 'demora-label',
               html: `
-                <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}" title="${tooltipHTML.replace(/<[^>]+>/g, '')}">
+                <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
                   ${showLabels && label ? `<span class="demora-label-time" style="font-size:9px">${label}</span>` : ''}
                 </div>

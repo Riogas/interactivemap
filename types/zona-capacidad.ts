@@ -16,11 +16,12 @@ export type TipoServicioSnapshot = 'URGENTE' | 'SERVICE' | 'NOCTURNO';
 /**
  * Pedido sin asignar en versión compacta para el detalle de zona.
  * Solo se incluye en el response cuando el caller tiene la funcionalidad
- * "Ped s/asignar x zona".
+ * "Ped s/asignar unitarios" (máximo nivel; muestra el detalle por pedido).
  */
 export interface PedidoSinAsignarMini {
   id: number;
-  cliente: string;
+  /** Tipo de servicio del pedido (reemplaza al nombre del cliente — CapEntrega.docx). */
+  tipo_servicio: string;
   fecha: string;
   direccion_corta: string;
 }
@@ -43,16 +44,17 @@ export interface MovilDetalleZona {
  * Snapshot consolidado de capacidad para una zona.
  *
  * Invariantes:
- * - `capacidad_total` puede ser negativo (sobrecupo real — sin cap).
- * - `pedidos_sin_asignar` es 0 cuando el caller NO tiene la funcionalidad.
- * - `pedidos_sin_asignar_detalle` está AUSENTE (no null) cuando el caller no tiene la funcionalidad.
+ * - `capacidad_total` puede ser negativo (sobrecupo real — sin cap) y decimal (prorrateo ponderado).
+ * - `pedidos_sin_asignar` es 0 cuando el caller NO tiene ninguna funcionalidad SA
+ *   ("Ped s/asignar x zona" ni "unitarios").
+ * - `pedidos_sin_asignar_detalle` solo está presente cuando el caller tiene "Ped s/asignar unitarios".
  * - El cap a 0 / -9999 es RESPONSABILIDAD DEL CLIENTE (PR2), no del endpoint.
  */
 export interface ZonaCapSnapshot {
   zona_id: number;
   capacidad_total: number;
   pedidos_sin_asignar: number;
-  /** Solo presente cuando caller tiene funcionalidad "Ped s/asignar x zona". */
+  /** Solo presente cuando caller tiene funcionalidad "Ped s/asignar unitarios". */
   pedidos_sin_asignar_detalle?: PedidoSinAsignarMini[];
   moviles_prioridad: number;
   moviles_transito: number;

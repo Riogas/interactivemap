@@ -17,24 +17,30 @@ export interface ZonasCapEntregaRow {
 }
 
 /**
- * Calcula la porcion del lote libre para cada zona usando MODELO B:
+ * Calcula la porcion del lote libre para cada zona usando PRORRATEO PONDERADO:
  *
- * - Zonas de PRIORIDAD: porcion = ceil(loteLibre / W_prio)
- *   donde W_prio = cantidad de zonas de prioridad del movil.
- *   Si W_prio = 0 (no hay zonas prioridad), las zonas de transito usan solo alpha.
+ *   aporte(zona) = (loteLibre / W_total) * peso_zona
  *
- * - Zonas de TRANSITO: porcion = ceil(loteLibre * alpha)
- *   Alpha actua como factor de descuento absoluto, independientemente de cuantas
- *   zonas de transito tenga el movil.
+ * donde:
+ *   - peso_zona = 1            si la zona es de PRIORIDAD (prioridad_o_transito === 1)
+ *   - peso_zona = alpha        si la zona es de TRANSITO
+ *   - W_total   = Σ pesos de TODAS las zonas que cubre el movil
+ *               = (#zonas_prioridad * 1) + (#zonas_transito * alpha)
  *
- * Semantica: la suma de aportes puede superar tamano_lote si el movil tiene
- * multiples zonas de transito (doble-cuenta intencional del modelo B).
+ * El resultado puede ser NO entero (decimales) — la columna lote_disponible
+ * es NUMERIC. No se aplica ceil (a diferencia del modelo anterior).
+ *
+ * Ejemplos (alpha = 0.5):
+ *   - 1 zona prioridad, lote 6   => W=1    => (6/1)*1   = 6
+ *   - 3 zonas prioridad, lote 6  => W=3    => (6/3)*1   = 2 c/u
+ *   - 1 zona transito, lote 6    => W=0.5  => (6/0.5)*0.5 = 6
+ *   - 2 zonas transito, lote 6   => W=1    => (6/1)*0.5 = 3 c/u
+ *   - 2 prio + 3 transito, lote 6 => W=3.5 => prio (6/3.5)*1=1.71 ; transito (6/3.5)*0.5=0.86
  *
  * Edge cases:
- *  - lote_libre <= 0  => todas las porciones son 0
- *  - zonas vacias     => array vacio
- *  - alpha = 0        => zonas de transito aportan 0
- *  - W_prio = 0 y solo transito => prioridad no participa; transito aplica alpha
+ *  - lote_libre <= 0     => todas las porciones son 0
+ *  - zonas vacias        => array vacio
+ *  - W_total = 0 (solo transito con alpha=0) => todas las porciones 0 (evita div/0)
  */
 function calcularPorciones(
   zonas: Array<{ zona_id: number; escenario_id: number; tipo_de_servicio: string; prioridad_o_transito: number }>,
@@ -46,19 +52,19 @@ function calcularPorciones(
   // lote_libre negativo o cero => todas las porciones son 0
   const loteEfectivo = Math.max(0, loteLibre);
 
-  // Contar zonas de prioridad para el divisor de prioridad
-  const W_prio = zonas.filter(z => z.prioridad_o_transito === 1).length;
+  // Peso por zona: prioridad = 1, transito = alpha.
+  const pesoDeZona = (z: { prioridad_o_transito: number }) => (z.prioridad_o_transito === 1 ? 1 : alpha);
+
+  // W_total = suma de pesos de todas las zonas que cubre el movil.
+  const W_total = zonas.reduce((acc, z) => acc + pesoDeZona(z), 0);
 
   return zonas.map(z => {
     let porcion: number;
-    if (loteEfectivo === 0) {
+    if (loteEfectivo === 0 || W_total <= 0) {
       porcion = 0;
-    } else if (z.prioridad_o_transito === 1) {
-      // Prioridad: distribuir lote equitativamente entre zonas de prioridad
-      porcion = Math.ceil(loteEfectivo / W_prio);
     } else {
-      // Transito: alpha como factor de descuento absoluto
-      porcion = Math.ceil(loteEfectivo * alpha);
+      // Redondeo a 4 decimales para evitar ruido de punto flotante.
+      porcion = Math.round(((loteEfectivo / W_total) * pesoDeZona(z)) * 10000) / 10000;
     }
     return {
       zona_id: z.zona_id,
@@ -70,10 +76,12 @@ function calcularPorciones(
 }
 
 /**
- * Sincroniza zonas_cap_entrega para el movil dado, usando MODELO B:
+ * Sincroniza zonas_cap_entrega para el movil dado, usando PRORRATEO PONDERADO:
  *
- * - Zonas de prioridad: ceil(lote_libre / cantidad_zonas_prioridad)
- * - Zonas de transito:  ceil(lote_libre * alpha)  [alpha como descuento absoluto]
+ *   aporte(zona) = (lote_libre / W_total) * peso_zona
+ *   peso_zona = 1 (prioridad) | alpha (transito);  W_total = Σ pesos de todas las zonas
+ *
+ * El aporte puede ser decimal (columna lote_disponible es NUMERIC).
  *
  * ESTRATEGIA (idempotente):
  *   1. Lee el estado actual del movil desde `moviles` (escenario_id, empresa_fletera_id,

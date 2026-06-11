@@ -42,6 +42,18 @@ export interface SaturacionZonaStats {
  * @param stats        Estadisticas de la zona (construidas desde ZonaCapSnapshot en PR2).
  * @param visualRefs   Overrides de colores del usuario.
  */
+/**
+ * Formatea el valor de Cap. Entrega para mostrar como etiqueta.
+ * Redondeo "away from zero" (CapEntrega.docx + decisión 2026-06-11):
+ *   - positivos: hacia arriba (Math.ceil)  → 3.2 ⇒ 4
+ *   - negativos: hacia abajo (Math.floor)  → -5.3 ⇒ -6 (sobrecupo = peor caso)
+ * El COLOR se calcula sobre el decimal real, no sobre este valor redondeado.
+ */
+export function formatCapEntregaLabel(capEntrega: number): string {
+  const rounded = capEntrega >= 0 ? Math.ceil(capEntrega) : Math.floor(capEntrega);
+  return String(rounded);
+}
+
 export function getCapEntregaColor(
   stats: SaturacionZonaStats,
   visualRefs?: Record<string, string> | null,
@@ -53,7 +65,7 @@ export function getCapEntregaColor(
     return { color: getRefColor('Ref#26', visualRefs), label: '—', capEntrega: -1000 };
   }
 
-  // Valor entero para el label: capacidadDisponible - sinAsignar (sin capping por rol).
+  // capEntrega puede ser decimal (prorrateo ponderado). Sin capping por rol.
   const capEntrega = capacidadDisponible - stats.sinAsignar;
 
   // Sin moviles pero con pedidos pendientes → sin capacidad (cobertura 0)
@@ -61,18 +73,27 @@ export function getCapEntregaColor(
     return { color: getRefColor('Ref#21', visualRefs), label: 'Sin Cap.', capEntrega: -999 };
   }
 
+  // Bandas por rango continuo (idénticas a las previas para valores enteros):
+  //   >= 4        verde         (holgura alta)
+  //   0 < x < 4   verde-amarillo (holgura baja)
+  //   == 0        amarillo      (capacidad exacta)
+  //   -4 < x < 0  naranja       (sobrecupo leve)
+  //   <= -4       rojo          (sobrecupo alto)
+  // El label se muestra redondeado (away-from-zero); el color usa el decimal real.
+  const label = formatCapEntregaLabel(capEntrega);
+
   if (capEntrega >= 4) {
-    return { color: '#22c55e', label: String(capEntrega), capEntrega };
+    return { color: '#22c55e', label, capEntrega };
   }
-  if (capEntrega >= 1) {
-    return { color: '#84cc16', label: String(capEntrega), capEntrega };
+  if (capEntrega > 0) {
+    return { color: '#84cc16', label, capEntrega };
   }
   if (capEntrega === 0) {
     return { color: '#eab308', label: '0', capEntrega };
   }
-  if (capEntrega >= -3) {
-    return { color: '#f97316', label: String(capEntrega), capEntrega };
+  if (capEntrega > -4) {
+    return { color: '#f97316', label, capEntrega };
   }
   // capEntrega <= -4
-  return { color: '#ef4444', label: String(capEntrega), capEntrega };
+  return { color: '#ef4444', label, capEntrega };
 }

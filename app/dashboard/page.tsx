@@ -87,6 +87,7 @@ function DashboardContent() {
   serverNowRef.current = serverNow;
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
   const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
+  const pesoTransitoAlpha = escenarioSettings?.pesoTransitoAlpha ?? 0.3;
   // Si el escenario cubre servicio nocturno. Default true (conservativo mientras cargan los settings).
   const aplicaNocturno = escenarioSettings?.aplicaServNocturno ?? true;
   
@@ -4055,6 +4056,8 @@ function DashboardContent() {
             zonas={(allZonasData.length > 0 ? allZonasData : zonasData).map((z: any) => ({ zona_id: z.zona_id, nombre: z.nombre ?? null }))}
             snapshot={snap}
             canVerSinAsigPorZona={canVerSinAsigPorZona}
+            canVerSinAsignarUnitario={canVerSinAsignarUnitario}
+            pesoTransitoAlpha={pesoTransitoAlpha}
             capacidadMostrada={capacidadMostrada}
             onClose={() => setSaturacionModalZonaId(null)}
             scopedZonaIds={scopedZonaIds}

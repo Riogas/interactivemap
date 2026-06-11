@@ -96,9 +96,9 @@ const MOVIL_CAP_ROWS = [
 ];
 
 const PEDIDOS_ROWS = [
-  { id: 1001, zona_nro: 10, cliente_nombre: 'Cliente A', fch_para: '2026-05-22', cliente_direccion: 'Av. 18 de Julio 1234' },
-  { id: 1002, zona_nro: 10, cliente_nombre: 'Cliente B', fch_para: '2026-05-22', cliente_direccion: 'Rambla Sur 500' },
-  { id: 1003, zona_nro: 11, cliente_nombre: 'Cliente C', fch_para: '2026-05-22', cliente_direccion: 'Rivera 890' },
+  { id: 1001, zona_nro: 10, servicio_nombre: 'GAS 13KG', fch_para: '2026-05-22', cliente_direccion: 'Av. 18 de Julio 1234' },
+  { id: 1002, zona_nro: 10, servicio_nombre: 'GAS 13KG', fch_para: '2026-05-22', cliente_direccion: 'Rambla Sur 500' },
+  { id: 1003, zona_nro: 11, servicio_nombre: 'GAS 45KG', fch_para: '2026-05-22', cliente_direccion: 'Rivera 890' },
 ];
 
 /** Fábrica de mock de supabase que encadena .from().select().eq().in()... */
@@ -205,9 +205,9 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(zona10.pedidos_sin_asignar_detalle).toBeUndefined();
   });
 
-  // ─── AC-5: Con feature → datos reales ────────────────────────────────────
+  // ─── Gating SA: x zona cuenta total pero NO trae detalle ──────────────────
 
-  it('con feature: pedidos_sin_asignar = count real y pedidos_sin_asignar_detalle presente', async () => {
+  it('con "Ped s/asignar x zona": pedidos_sin_asignar = count, SIN detalle (solo unitarios trae detalle)', async () => {
     const req = makeRequest({
       escenario: '1',
       tipoServicio: 'URGENTE',
@@ -219,15 +219,34 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     const body = await res.json();
     const zona10 = body.data.find((z: { zona_id: number }) => z.zona_id === 10);
     expect(zona10).toBeDefined();
-    expect(zona10.pedidos_sin_asignar).toBe(2); // 2 pedidos de zona 10
+    expect(zona10.pedidos_sin_asignar).toBe(2); // cuenta el total
+    expect(zona10.pedidos_sin_asignar_detalle).toBeUndefined(); // sin detalle
+  });
+
+  // ─── Gating SA: unitarios trae el detalle con tipo_servicio ───────────────
+
+  it('con "Ped s/asignar unitarios": detalle presente con tipo_servicio (no cliente)', async () => {
+    const req = makeRequest({
+      escenario: '1',
+      tipoServicio: 'URGENTE',
+      isRoot: true,
+      funcionalidades: ['Ped s/asignar unitarios'],
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const zona10 = body.data.find((z: { zona_id: number }) => z.zona_id === 10);
+    expect(zona10).toBeDefined();
+    expect(zona10.pedidos_sin_asignar).toBe(2);
     expect(Array.isArray(zona10.pedidos_sin_asignar_detalle)).toBe(true);
     expect(zona10.pedidos_sin_asignar_detalle).toHaveLength(2);
-    // Verificar estructura de PedidoSinAsignarMini
     const detalle = zona10.pedidos_sin_asignar_detalle[0];
     expect(detalle).toHaveProperty('id');
-    expect(detalle).toHaveProperty('cliente');
+    expect(detalle).toHaveProperty('tipo_servicio');
     expect(detalle).toHaveProperty('fecha');
     expect(detalle).toHaveProperty('direccion_corta');
+    expect(detalle).not.toHaveProperty('cliente');
+    expect(detalle.tipo_servicio).toBe('GAS 13KG');
   });
 
   // ─── AC-5: moviles_prioridad vs moviles_transito ──────────────────────────
@@ -331,7 +350,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
       escenario: '1',
       tipoServicio: 'URGENTE',
       isRoot: true,
-      funcionalidades: ['Ped s/asignar x zona'],
+      funcionalidades: ['Ped s/asignar unitarios'],
     });
     const res = await GET(req);
     expect(res.status).toBe(200);
@@ -347,7 +366,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
       expect(typeof zona.moviles_prioridad).toBe('number');
       expect(typeof zona.moviles_transito).toBe('number');
       expect(Array.isArray(zona.moviles_detalle)).toBe(true);
-      // Con feature: pedidos_sin_asignar_detalle presente
+      // Con "unitarios": pedidos_sin_asignar_detalle presente
       expect(Array.isArray(zona.pedidos_sin_asignar_detalle)).toBe(true);
     }
   });

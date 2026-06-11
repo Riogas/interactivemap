@@ -117,7 +117,7 @@ interface MovilCapRow {
 interface PedidoSinAsignarRow {
   id: number;
   zona_nro: number | null;
-  cliente_nombre: string | null;
+  servicio_nombre: string | null;
   fch_para: string | null;
   fch_hora_para: string | null;
   cliente_direccion: string | null;
@@ -180,8 +180,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, data: [], count: 0 });
   }
 
-  // 7. Feature flag "Ped s/asignar x zona" (jerarquía: "unitarios" la incluye implícitamente)
-  let hasFeature = false;
+  // 7. Feature flags SA (jerarquía: "unitarios" ⊃ "x zona")
+  //   - hasCount   = considera los SA en los cálculos (x zona O unitarios)
+  //   - hasDetalle = incluye el detalle por pedido en el modal (SOLO unitarios)
+  // Sin ninguna de las 2: pedidos_sin_asignar = 0 y no se incluye detalle.
   const funcsHeader = request.headers.get('x-track-funcs') ?? '';
   const funcs = new Set(
     funcsHeader
@@ -189,9 +191,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .map((f) => f.trim())
       .filter((f) => f.length > 0),
   );
-  hasFeature = funcs.has('Ped s/asignar x zona') || funcs.has('Ped s/asignar unitarios');
+  const hasUnitarios = funcs.has('Ped s/asignar unitarios');
+  const hasCount = hasUnitarios || funcs.has('Ped s/asignar x zona');
+  const hasDetalle = hasUnitarios;
 
-  clog(`escenario=${escenario} tipoServicio=${tipoServicio} isRoot=${isRoot} hasFeature=${hasFeature}`);
+  clog(`escenario=${escenario} tipoServicio=${tipoServicio} isRoot=${isRoot} hasCount=${hasCount} hasDetalle=${hasDetalle}`);
 
   const db = getServerSupabaseClient() as unknown as SupabaseCompat;
 
@@ -280,7 +284,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!mCapResult.error) movilCapRows = mCapResult.data ?? [];
   }
 
-  // ─── Query 5: pedidos sin asignar (solo si hasFeature) ─────────────────────
+  // ─── Query 5: pedidos sin asignar (solo si hasCount) ───────────────────────
   //
   // Ventana SA transversal (R4): los SA solo se cuentan si caen dentro de la
   // ventana temporal del escenario (fch_hora_para <= ahora_servidor + minutosAntes).
@@ -288,12 +292,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // incluyen siempre (mismo criterio que isWithinSaWindow).
 
   let pedidosSinAsignarRows: PedidoSinAsignarRow[] = [];
-  if (hasFeature && zonaIds.length > 0) {
+  if (hasCount && zonaIds.length > 0) {
     const { pedidosSaMinutosAntes } = await getEscenarioSettings(escenario);
     const saWindowEnd = buildSaWindowEnd(new Date(), pedidosSaMinutosAntes);
 
     let pedQuery = db.from('pedidos')
-      .select('id, zona_nro, cliente_nombre, fch_para, fch_hora_para, cliente_direccion')
+      .select('id, zona_nro, servicio_nombre, fch_para, fch_hora_para, cliente_direccion')
       .eq('escenario', escenario)
       .eq('estado_nro', 1)
       .in('zona_nro', zonaIds)
@@ -334,7 +338,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!pedidosIndex.has(p.zona_nro)) pedidosIndex.set(p.zona_nro, []);
     pedidosIndex.get(p.zona_nro)!.push({
       id: p.id,
-      cliente: p.cliente_nombre ?? '',
+      tipo_servicio: p.servicio_nombre ?? '',
       fecha: p.fch_para ?? '',
       direccion_corta: (p.cliente_direccion ?? '').slice(0, 60),
     });
@@ -406,13 +410,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const snapshot: ZonaCapSnapshot = {
       zona_id: zonaId,
       capacidad_total: agg.capacidad_total,
-      pedidos_sin_asignar: hasFeature ? (pedidosIndex.get(zonaId)?.length ?? 0) : 0,
+      pedidos_sin_asignar: hasCount ? (pedidosIndex.get(zonaId)?.length ?? 0) : 0,
       moviles_prioridad: movilesPrioridadDedup,
       moviles_transito: movilesTransitoDedup,
       moviles_detalle: movilesDetalle,
     };
 
-    if (hasFeature) {
+    // Detalle por pedido SOLO con "Ped s/asignar unitarios".
+    if (hasDetalle) {
       snapshot.pedidos_sin_asignar_detalle = pedidosIndex.get(zonaId) ?? [];
     }
 
