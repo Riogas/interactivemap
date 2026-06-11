@@ -337,6 +337,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // este atributo se trata igual que root para el scope (empresas + escenarios).
         const verTodasEmpresas = tieneVerTodasEmpresas(response.preferencias);
 
+        // 🚪 Gate de perfil completo: un usuario no-root DEBE tener el atributo
+        // EmpFletera cargado (sea TODAS:* o un listado de empresas). Si no tiene
+        // nada, su perfil está incompleto y no puede operar (todo el scope depende
+        // de EmpFletera). Root queda exento (bypassa el scope).
+        if (!isRoot && !verTodasEmpresas && empFleteras.length === 0) {
+          console.log('❌ Login bloqueado: usuario sin atributo EmpFletera (perfil incompleto)');
+          return {
+            success: false,
+            error: 'Perfil de usuario incompleto',
+          };
+        }
+
         if (isRoot || verTodasEmpresas) {
           console.log(
             isRoot
