@@ -1177,40 +1177,43 @@ const MapView = memo(function MapView({
     const half = size / 2;
     const border = size > 12 ? 1.5 : 1;
     const bg = lightColor ? `linear-gradient(135deg,${color} 0%,${lightColor} 100%)` : color;
-    // Borde/halo que SIGUE LA SILUETA del shape.
+    // Borde blanco + sombra que SIGUE LA SILUETA del shape.
     // - circle/square/pin (rectangulares): border CSS + box-shadow (respeta border-radius).
-    // - triangle/diamond/hexagon/star (clip-path o border-trick): no soportan `border`
-    //   siguiendo la silueta, así que el contorno blanco se simula con filter:drop-shadow
-    //   apilado en 8 direcciones (4 cardinales + 4 diagonales) para cubrir aristas/vertices
-    //   diagonales. Este borde blanco SIEMPRE está presente (igual que el border de las
-    //   formas rectangulares); el `halo` solo lo engrosa y agrega una sombra oscura mayor.
+    // - triangle/diamond/hexagon/star (clip-path): no admiten `border` siguiendo la
+    //   silueta. El contorno blanco con filter:drop-shadow quedaba demasiado fino y
+    //   tapado por la figura → casi invisible. Solución robusta: DOS capas apiladas —
+    //   una figura blanca de fondo (tamaño completo) y la figura de color encima,
+    //   inset por el grosor del borde, de modo que el blanco asome como borde uniforme.
     const haloCss = halo ? '0 0 0 2px white,0 0 0 3.5px rgba(0,0,0,0.5),' : '';
-    const ow = halo ? 1.2 : 0.8; // ancho del outline blanco (offset del drop-shadow)
-    const od = halo ? 0.9 : 0.6; // ancho del outline en diagonales
-    const darkShadow = halo ? 'drop-shadow(0 0 1.5px rgba(0,0,0,0.6))' : 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))';
-    const shapeOutline =
-      `drop-shadow(${ow}px 0 0 white) drop-shadow(-${ow}px 0 0 white) drop-shadow(0 ${ow}px 0 white) drop-shadow(0 -${ow}px 0 white) ` +
-      `drop-shadow(${od}px ${od}px 0 white) drop-shadow(-${od}px ${od}px 0 white) drop-shadow(${od}px -${od}px 0 white) drop-shadow(-${od}px -${od}px 0 white) ` +
-      `${darkShadow} `;
+
+    // Polígonos clip-path por forma (triangle incluido para usar la misma técnica de 2 capas).
+    const CLIP: Partial<Record<MarkerShape, string>> = {
+      triangle: 'polygon(50% 0%,100% 100%,0% 100%)',
+      diamond: 'polygon(50% 0%,100% 50%,50% 100%,0% 50%)',
+      hexagon: 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)',
+      star: 'polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)',
+    };
+    const clip = CLIP[shape];
+    if (clip) {
+      const bw = halo ? Math.max(2, Math.round(size * 0.16)) : Math.max(1.5, Math.round(size * 0.12));
+      const innerSize = size - bw * 2;
+      const darkShadow = halo
+        ? 'drop-shadow(0 0 2px rgba(0,0,0,0.55))'
+        : 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))';
+      // Outer: figura blanca (borde) + sombra oscura. Inner: figura de color, inset por bw.
+      return (
+        `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;cursor:pointer;filter:${darkShadow};">` +
+          `<div style="position:absolute;inset:0;background:#fff;clip-path:${clip};"></div>` +
+          `<div style="position:absolute;left:${bw}px;top:${bw}px;width:${innerSize}px;height:${innerSize}px;background:${bg};clip-path:${clip};"></div>` +
+        `</div>`
+      );
+    }
+
     switch (shape) {
       case 'circle':
         return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
       case 'square':
         return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:${Math.round(size * 0.15)}px;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
-      case 'triangle': {
-        const bw = Math.round(half);
-        const bh = Math.round(size * 0.9);
-        return `<div style="width:0;height:0;position:absolute;left:-${bw}px;top:-${half}px;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid ${color};filter:${shapeOutline}cursor:pointer;"></div>`;
-      }
-      case 'diamond': {
-        const inner = Math.round(size * 0.72);
-        const offset = Math.round(inner / 2);
-        return `<div style="width:${inner}px;height:${inner}px;position:absolute;left:-${offset}px;top:-${offset}px;background:${bg};transform:rotate(45deg);filter:${shapeOutline}cursor:pointer;"></div>`;
-      }
-      case 'hexagon':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:${shapeOutline}cursor:pointer;"></div>`;
-      case 'star':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:${shapeOutline}cursor:pointer;"></div>`;
       default:
         return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
     }
