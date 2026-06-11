@@ -38,6 +38,10 @@ export interface MovilDetalleZona {
   en_transito: boolean;
   capacidad_actual: number;
   aporte_a_zona: number;
+  /** Total de zonas de PRIORIDAD que cubre este móvil (no solo esta zona). */
+  zonas_prioridad: number;
+  /** Total de zonas de TRÁNSITO que cubre este móvil. */
+  zonas_transito: number;
 }
 
 /**

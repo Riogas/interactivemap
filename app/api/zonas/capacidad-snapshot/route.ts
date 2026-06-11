@@ -327,6 +327,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     mzIndex.set(key, mz.prioridad_o_transito !== 1);
   }
 
+  // Conteo de zonas (únicas) que cubre cada móvil, separadas en prioridad/tránsito.
+  // moviles_zonas puede tener varias filas por (movil,zona) si hay multiples tipo_servicio;
+  // se deduplica por zona_id usando sets.
+  const movilZonasPrio = new Map<string, Set<number>>();
+  const movilZonasTrans = new Map<string, Set<number>>();
+  for (const mz of mzResult.data ?? []) {
+    const id = String(mz.movil_id);
+    const target = mz.prioridad_o_transito === 1 ? movilZonasPrio : movilZonasTrans;
+    if (!target.has(id)) target.set(id, new Set());
+    target.get(id)!.add(mz.zona_id);
+  }
+  const zonasPrioDe = (movil: number) => movilZonasPrio.get(String(movil))?.size ?? 0;
+  const zonasTransDe = (movil: number) => movilZonasTrans.get(String(movil))?.size ?? 0;
+
   // moviles: nro → { capacidad, tamano_lote, estado_nro }
   const movilCapIndex = new Map<number, { capacidad: number; tamano_lote: number | null; estado_nro: number | null }>();
   for (const m of movilCapRows) movilCapIndex.set(m.nro, { capacidad: m.capacidad, tamano_lote: m.tamano_lote, estado_nro: m.estado_nro ?? null });
@@ -394,6 +408,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         en_transito: enTransito,
         capacidad_actual: capData?.capacidad ?? 0,
         aporte_a_zona: m.lote_disponible,
+        zonas_prioridad: zonasPrioDe(m.movil),
+        zonas_transito: zonasTransDe(m.movil),
       });
     }
     const movilesDetalle: MovilDetalleZona[] = Array.from(movilDedupMap.values());

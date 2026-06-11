@@ -80,7 +80,13 @@ function MovilDetalleCard({ detalle }: { detalle: MovilDetalleZona }) {
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-lg">🚛</span>
           <div className="min-w-0">
-            <div className="text-xs font-bold text-gray-900">Móvil #{detalle.movil_id}</div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-900">Móvil #{detalle.movil_id}</span>
+              {/* Desglose de zonas que cubre: P = prioridad, T = tránsito */}
+              <span className="text-[10px] font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">
+                {detalle.zonas_prioridad} P | {detalle.zonas_transito} T
+              </span>
+            </div>
             <div className="flex items-center gap-2 mt-0.5">
               <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden min-w-[50px]">
                 <div
