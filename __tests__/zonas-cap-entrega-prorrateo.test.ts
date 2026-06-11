@@ -229,4 +229,47 @@ describe('syncMovilZonasCapEntrega — prorrateo ponderado (peso prio=1, transit
     const u = sb.getUpserted();
     for (const r of u) expect(r.lote_disponible).toBe(2);
   });
+
+  it('prorrateo SEPARADO por tipo de servicio: misma zona en URGENTE y NOCTURNO no diluye el aporte', async () => {
+    // Caso real (móvil 558, zona 86): lote_libre=3, cubre zona 86 como PRIORIDAD
+    // en URGENTE y en NOCTURNO. Cada tipo se prorratea independiente:
+    //   URGENTE:  W=1 => (3/1)*1 = 3
+    //   NOCTURNO: W=1 => (3/1)*1 = 3
+    // (Antes, al sumar ambos tipos en W=2, daba 1.5 — incorrecto.)
+    const sb = makeSupabaseMockProrrateo({
+      movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 4, capacidad: 1 },
+      zonaRows: [
+        { zona_id: 86, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: PRIO },
+        { zona_id: 86, escenario_id: 1, tipo_de_servicio: 'NOCTURNO', prioridad_o_transito: PRIO },
+      ],
+      alpha: 0.3,
+    });
+    await syncMovilZonasCapEntrega(sb as any, 558);
+    const u = sb.getUpserted();
+    expect(u).toHaveLength(2);
+    for (const r of u) expect(r.lote_disponible).toBe(3);
+  });
+
+  it('prorrateo por tipo: zona prio + zona transito repartidas dentro de cada tipo', async () => {
+    // Móvil 559: lote_libre=2. URGENTE: zona86(prio)+zona91(trans). NOCTURNO: idem.
+    //   W_urgente = 1 + 0.3 = 1.3
+    //   zona86 URGENTE = (2/1.3)*1   = 1.5385
+    //   zona91 URGENTE = (2/1.3)*0.3 = 0.4615
+    const sb = makeSupabaseMockProrrateo({
+      movilRow: { escenario_id: 1, empresa_fletera_id: 5, tamano_lote: 4, capacidad: 2 },
+      zonaRows: [
+        { zona_id: 86, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: PRIO },
+        { zona_id: 91, escenario_id: 1, tipo_de_servicio: 'URGENTE', prioridad_o_transito: TRANS },
+        { zona_id: 86, escenario_id: 1, tipo_de_servicio: 'NOCTURNO', prioridad_o_transito: PRIO },
+        { zona_id: 91, escenario_id: 1, tipo_de_servicio: 'NOCTURNO', prioridad_o_transito: TRANS },
+      ],
+      alpha: 0.3,
+    });
+    await syncMovilZonasCapEntrega(sb as any, 559);
+    const u = sb.getUpserted();
+    const z86 = u.filter((r: any) => r.zona === 86);
+    const z91 = u.filter((r: any) => r.zona === 91);
+    for (const r of z86) expect(r.lote_disponible).toBeCloseTo(1.5385, 3);
+    for (const r of z91) expect(r.lote_disponible).toBeCloseTo(0.4615, 3);
+  });
 });

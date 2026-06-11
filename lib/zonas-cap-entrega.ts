@@ -17,20 +17,26 @@ export interface ZonasCapEntregaRow {
 }
 
 /**
- * Calcula la porcion del lote libre para cada zona usando PRORRATEO PONDERADO:
+ * Calcula la porcion del lote libre para cada zona usando PRORRATEO PONDERADO,
+ * SEPARADO POR TIPO DE SERVICIO.
  *
- *   aporte(zona) = (loteLibre / W_total) * peso_zona
+ *   aporte(zona, tipo) = (loteLibre / W_tipo) * peso_zona
  *
  * donde:
  *   - peso_zona = 1            si la zona es de PRIORIDAD (prioridad_o_transito === 1)
  *   - peso_zona = alpha        si la zona es de TRANSITO
- *   - W_total   = Σ pesos de TODAS las zonas que cubre el movil
- *               = (#zonas_prioridad * 1) + (#zonas_transito * alpha)
+ *   - W_tipo    = Σ pesos de las zonas del movil DENTRO de ese mismo tipo_de_servicio
+ *
+ * El lote del movil se prorratea de forma INDEPENDIENTE por cada tipo de servicio
+ * (URGENTE / SERVICE / NOCTURNO), porque la capa del mapa se filtra por tipo: al
+ * mirar URGENTE, un movil que cubre la zona 86 en URGENTE+NOCTURNO debe aportar a
+ * la zona 86 (URGENTE) repartiendo solo entre sus zonas de URGENTE. La "doble
+ * cuenta" es intencional ENTRE tipos de servicio, no dentro del mismo tipo.
  *
  * El resultado puede ser NO entero (decimales) — la columna lote_disponible
- * es NUMERIC. No se aplica ceil (a diferencia del modelo anterior).
+ * es NUMERIC. No se aplica ceil.
  *
- * Ejemplos (alpha = 0.5):
+ * Ejemplos (alpha = 0.5, un solo tipo de servicio):
  *   - 1 zona prioridad, lote 6   => W=1    => (6/1)*1   = 6
  *   - 3 zonas prioridad, lote 6  => W=3    => (6/3)*1   = 2 c/u
  *   - 1 zona transito, lote 6    => W=0.5  => (6/0.5)*0.5 = 6
@@ -40,7 +46,7 @@ export interface ZonasCapEntregaRow {
  * Edge cases:
  *  - lote_libre <= 0     => todas las porciones son 0
  *  - zonas vacias        => array vacio
- *  - W_total = 0 (solo transito con alpha=0) => todas las porciones 0 (evita div/0)
+ *  - W_tipo = 0 (solo transito con alpha=0 en ese tipo) => porciones 0 (evita div/0)
  */
 function calcularPorciones(
   zonas: Array<{ zona_id: number; escenario_id: number; tipo_de_servicio: string; prioridad_o_transito: number }>,
@@ -55,16 +61,20 @@ function calcularPorciones(
   // Peso por zona: prioridad = 1, transito = alpha.
   const pesoDeZona = (z: { prioridad_o_transito: number }) => (z.prioridad_o_transito === 1 ? 1 : alpha);
 
-  // W_total = suma de pesos de todas las zonas que cubre el movil.
-  const W_total = zonas.reduce((acc, z) => acc + pesoDeZona(z), 0);
+  // W por tipo de servicio: suma de pesos de las zonas de ESE tipo (prorrateo independiente por tipo).
+  const W_porTipo = new Map<string, number>();
+  for (const z of zonas) {
+    W_porTipo.set(z.tipo_de_servicio, (W_porTipo.get(z.tipo_de_servicio) ?? 0) + pesoDeZona(z));
+  }
 
   return zonas.map(z => {
+    const W = W_porTipo.get(z.tipo_de_servicio) ?? 0;
     let porcion: number;
-    if (loteEfectivo === 0 || W_total <= 0) {
+    if (loteEfectivo === 0 || W <= 0) {
       porcion = 0;
     } else {
       // Redondeo a 4 decimales para evitar ruido de punto flotante.
-      porcion = Math.round(((loteEfectivo / W_total) * pesoDeZona(z)) * 10000) / 10000;
+      porcion = Math.round(((loteEfectivo / W) * pesoDeZona(z)) * 10000) / 10000;
     }
     return {
       zona_id: z.zona_id,

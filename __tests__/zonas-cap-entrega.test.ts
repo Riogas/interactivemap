@@ -158,9 +158,10 @@ describe('syncMovilZonasCapEntrega', () => {
   it('Caso 4: móvil con 3 zonas → genera 3 filas con lote_disponible correcto', async () => {
     const tamano_lote = 4;
     const capacidad = 1;
-    // lote_libre = 3, 3 zonas todas prioridad_o_transito=1 (prioridad)
-    // Modelo B: W_prio = 3, porcion = ceil(3 / 3) = 1
-    const expectedLote = 1;
+    // lote_libre = 3. Las 3 zonas son de tipos de servicio DISTINTOS (URGENTE,
+    // NOCTURNO, SERVICE), todas prioridad. El prorrateo es independiente por tipo:
+    // cada tipo tiene W=1 (una sola zona) => (3/1)*1 = 3 en cada zona.
+    const expectedLote = 3;
 
     let upsertCalledWith: any[] = [];
 

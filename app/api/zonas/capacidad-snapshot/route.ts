@@ -33,27 +33,23 @@ import { MOVIL_ESTADOS_INACTIVOS } from '@/lib/movil-estados';
 import { getEscenarioSettings } from '@/lib/escenario-settings';
 import type { ZonaCapSnapshot, PedidoSinAsignarMini, MovilDetalleZona } from '@/types/zona-capacidad';
 
-// Uruguay es UTC-3 fijo (sin horario de verano desde 2015).
-const UY_OFFSET_MIN = -180;
-
 /**
- * Construye el límite superior de la ventana SA como string comparable contra
- * `fch_hora_para`, que la DB almacena como hora local de Uruguay con sufijo
- * "+00" incorrecto. Devolvemos windowEnd con la MISMA convención (hora de pared
- * UY etiquetada como +00), de modo que la comparación timestamptz en Postgres
- * sea consistente (el error de offset se cancela en ambos lados).
+ * Construye el límite superior de la ventana SA como ISO-8601 UTC comparable
+ * contra `fch_hora_para`.
  *
- * @returns string 'YYYY-MM-DD HH:MM:SS+00' o null si no hay que filtrar.
+ * Los pedidos almacenan fch_hora_para como timestamptz con offset CORRECTO
+ * (ej. "-03:00"), por lo que la comparación se hace por INSTANTE REAL: un SA es
+ * visible si su instante de inicio <= ahora + minutosAntes. Postgres normaliza
+ * ambos lados a UTC automáticamente.
+ *
+ * (Antes esta función asumía la convención legacy "hora de pared UY etiquetada
+ * +00" y restaba 3h; eso introducía un error de 3h con los datos actuales.)
+ *
+ * @returns string ISO-8601 UTC, o null si no hay que filtrar.
  */
 function buildSaWindowEnd(serverNow: Date, minutosAntes: number | null): string | null {
   if (minutosAntes === null || minutosAntes === 0) return null;
-  // Hora de pared UY = UTC + (-3h); luego sumamos la ventana.
-  const uyEnd = new Date(serverNow.getTime() + (UY_OFFSET_MIN + minutosAntes) * 60_000);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${uyEnd.getUTCFullYear()}-${pad(uyEnd.getUTCMonth() + 1)}-${pad(uyEnd.getUTCDate())} ` +
-    `${pad(uyEnd.getUTCHours())}:${pad(uyEnd.getUTCMinutes())}:${pad(uyEnd.getUTCSeconds())}+00`
-  );
+  return new Date(serverNow.getTime() + minutosAntes * 60_000).toISOString();
 }
 
 
@@ -257,10 +253,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const movilIds = Array.from(new Set(zceRows.map((r) => String(r.movil))));
   let mzResult: { data: MovilZonaRow[] | null; error: { message: string } | null } = { data: [], error: null };
   if (movilIds.length > 0) {
+    // Filtrar por el tipo de servicio activo: el detalle (en_transito) y el conteo
+    // de zonas P|T deben reflejar SOLO las zonas del móvil en ese tipo de servicio.
     const mzQuery = db.from('moviles_zonas')
       .select('movil_id, zona_id, escenario_id, prioridad_o_transito')
       .in('movil_id', movilIds)
-      .eq('escenario_id', escenario);
+      .eq('escenario_id', escenario)
+      .eq('tipo_de_servicio', tipoServicio);
     mzResult = await (mzQuery as unknown as Promise<{ data: MovilZonaRow[] | null; error: { message: string } | null }>);
   }
 
