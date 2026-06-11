@@ -45,18 +45,24 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-// ── fórmula de prorrateo ponderado (espejo de lib/zonas-cap-entrega.ts) ─────
+// ── fórmula de prorrateo ponderado, SEPARADO POR TIPO DE SERVICIO ───────────
+// (espejo de lib/zonas-cap-entrega.ts)
 function calcularPorciones(zonas, loteLibre, alpha) {
   if (zonas.length === 0) return [];
   const loteEfectivo = Math.max(0, loteLibre);
   const pesoDeZona = (z) => (z.prioridad_o_transito === 1 ? 1 : alpha);
-  const W_total = zonas.reduce((acc, z) => acc + pesoDeZona(z), 0);
+  // W por tipo de servicio: el lote se prorratea independiente por cada tipo.
+  const W_porTipo = new Map();
+  for (const z of zonas) {
+    W_porTipo.set(z.tipo_de_servicio, (W_porTipo.get(z.tipo_de_servicio) ?? 0) + pesoDeZona(z));
+  }
   return zonas.map((z) => {
+    const W = W_porTipo.get(z.tipo_de_servicio) ?? 0;
     let porcion;
-    if (loteEfectivo === 0 || W_total <= 0) {
+    if (loteEfectivo === 0 || W <= 0) {
       porcion = 0;
     } else {
-      porcion = Math.round(((loteEfectivo / W_total) * pesoDeZona(z)) * 10000) / 10000;
+      porcion = Math.round(((loteEfectivo / W) * pesoDeZona(z)) * 10000) / 10000;
     }
     return {
       zona_id: z.zona_id,
