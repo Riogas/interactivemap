@@ -1179,10 +1179,13 @@ const MapView = memo(function MapView({
     const bg = lightColor ? `linear-gradient(135deg,${color} 0%,${lightColor} 100%)` : color;
     // halo: outline blanco + sombra oscura que SIGUE LA SILUETA del shape.
     // - circle/square/pin (rectangulares): usan box-shadow con spread, que respeta border-radius y replica el contorno.
-    // - triangle/diamond/hexagon/star (clip-path o border-trick): usan filter:drop-shadow apilado en 4 direcciones cardinales (genera outline siguiendo el alpha del shape) + drop-shadow oscuro suave.
+    // - triangle/diamond/hexagon/star (clip-path o border-trick): usan filter:drop-shadow apilado.
+    //   Se usan 8 direcciones (4 cardinales + 4 diagonales) para que el reborde
+    //   blanco cubra tambien las aristas/vertices diagonales (con solo cardinales
+    //   las diagonales quedaban sin outline). El ultimo drop-shadow es la sombra oscura.
     const haloCss = halo ? '0 0 0 2px white,0 0 0 3.5px rgba(0,0,0,0.5),' : '';
     const haloFilter = halo
-      ? 'drop-shadow(1.5px 0 0 white) drop-shadow(-1.5px 0 0 white) drop-shadow(0 1.5px 0 white) drop-shadow(0 -1.5px 0 white) drop-shadow(0 0 1.5px rgba(0,0,0,0.6)) '
+      ? 'drop-shadow(1.2px 0 0 white) drop-shadow(-1.2px 0 0 white) drop-shadow(0 1.2px 0 white) drop-shadow(0 -1.2px 0 white) drop-shadow(0.9px 0.9px 0 white) drop-shadow(-0.9px 0.9px 0 white) drop-shadow(0.9px -0.9px 0 white) drop-shadow(-0.9px -0.9px 0 white) drop-shadow(0 0 1.5px rgba(0,0,0,0.6)) '
       : '';
     switch (shape) {
       case 'circle':
