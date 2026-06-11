@@ -91,10 +91,11 @@ export function isPedidoEntregado(p: EntregadoCheckable): boolean {
 
 /**
  * Devuelve true si el service corresponde a "Entregado".
- * Criterio: estado_nro = 2 y sub_estado_nro = 3 (ENTREGADO).
+ * Mismo criterio que pedidos: estado_nro = 2 y sub_estado_nro = 3 (ENTREGADO)
+ * o 19 (ENTR. SIN 1710).
  */
 export function isServiceEntregado(s: EntregadoCheckable): boolean {
-  return Number(s.estado_nro) === 2 && Number(s.sub_estado_nro) === 3;
+  return Number(s.estado_nro) === 2 && (Number(s.sub_estado_nro) === 3 || Number(s.sub_estado_nro) === 19);
 }
 
 /**

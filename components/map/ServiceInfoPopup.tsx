@@ -140,20 +140,25 @@ export const ServiceInfoPopup: React.FC<ServiceInfoPopupProps> = ({
                 ⏱ {delayInfo.badgeText}
               </span>
             </div>
-            ) : (
-            <div 
-              className="flex items-center justify-between rounded-lg px-3 py-2 border"
-              style={{ backgroundColor: '#22c55e15', borderColor: '#22c55e40' }}
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }} />
-                <span className="text-xs font-bold" style={{ color: '#22c55e' }}>Completado</span>
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#22c55e' }}>
-                ✔ Completado
-              </span>
-            </div>
-            )}
+            ) : (() => {
+              const esEntregado = isServiceEntregado(service);
+              const bannerColor = esEntregado ? '#22c55e' : '#ef4444';
+              const estadoDesc = getEstadoDescripcion(service.sub_estado_nro, service.sub_estado_desc, service.estado_nro);
+              return (
+                <div
+                  className="flex items-center justify-between rounded-lg px-3 py-2 border"
+                  style={{ backgroundColor: `${bannerColor}15`, borderColor: `${bannerColor}40` }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: bannerColor }} />
+                    <span className="text-xs font-bold" style={{ color: bannerColor }}>{estadoDesc}</span>
+                  </div>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: bannerColor }}>
+                    {esEntregado ? '✔ Entregado' : '✗ No Entregado'}
+                  </span>
+                </div>
+              );
+            })()}
 
             {/* Defecto */}
             {service.defecto && (

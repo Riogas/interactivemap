@@ -3117,12 +3117,13 @@ function DashboardContent() {
       if (Number(p.estado_nro) !== targetEstado) return false;
       if (!p.movil || Number(p.movil) === 0) {
         // Caso 6: en pendientes pasa si está en modo "Todos" O si el filtro
-        // de asignacion es 'sin_movil' (bypass explícito). En finalizados
-        // queda estricto.
-        // Caso "Ninguno" + funcionalidad: también pasa (solo sin asignar visible).
+        // de asignacion es 'sin_movil' (bypass explícito), gateado por la
+        // funcionalidad SA. En FINALIZADOS los entregados/no-entregados sin
+        // móvil se ven SIEMPRE (sin gate de funcionalidad SA ni ventana),
+        // respetando solo empresa/scope y filtros de la vista.
         const allowsUnassigned = isPendientes
           ? canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil' || (isExplicitlyNone && !isEmpresaPartial))
-          : canVerSinAsignarUnitario && allMovilesSelected && isPendientes;
+          : (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil' || (isExplicitlyNone && !isEmpresaPartial));
         if (!allowsUnassigned) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
           const zonaId = p.zona_nro != null ? Number(p.zona_nro) : null;
@@ -3175,11 +3176,12 @@ function DashboardContent() {
     let base = servicesCompletos.filter(s => {
       if (Number(s.estado_nro) !== targetEstado) return false;
       if (!s.movil || Number(s.movil) === 0) {
-        // Mismo gate Caso 6 que pedidosForMap (con services).
-        // Caso "Ninguno" + funcionalidad: también pasa (solo sin asignar visible).
+        // Mismo gate que pedidosForMap: en FINALIZADOS los services sin móvil
+        // entregados/no-entregados se ven SIEMPRE (sin gate de funcionalidad SA
+        // ni ventana), respetando solo empresa/scope y filtros de la vista.
         const allowsUnassigned = isPendientes
           ? canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil' || (isExplicitlyNoneSvc && !isEmpresaPartial))
-          : canVerSinAsignarUnitario && allMovilesSelected && isPendientes;
+          : (allMovilesSelected || servicesFilters.asignacion === 'sin_movil' || (isExplicitlyNoneSvc && !isEmpresaPartial));
         if (!allowsUnassigned) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
           const zonaId = s.zona_nro != null ? Number(s.zona_nro) : null;

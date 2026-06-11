@@ -2202,6 +2202,7 @@ export default function MovilSelector({
                                 const isSinAsignar = !service.movil || Number(service.movil) === 0;
                                 const delayMins = !isFinalizados ? computeDelayMinutes(service.fch_hora_max_ent_comp) : null;
                                 const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
+                                const esEntregado = isFinalizados && isServiceEntregado(service);
 
                                 return (
                                   <button
@@ -2210,7 +2211,9 @@ export default function MovilSelector({
                                     className={clsx(
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
                                       isFinalizados
-                                        ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                                        ? esEntregado
+                                          ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                                          : 'bg-red-50 border-red-200 hover:bg-red-100'
                                         : isSinAsignar
                                           ? 'bg-blue-50 border-blue-300 hover:bg-blue-100'
                                           : delayInfo?.bgClass
@@ -2233,11 +2236,14 @@ export default function MovilSelector({
                                       )}
                                       {isFinalizados ? (
                                         <span
-                                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
-                                          style={{ backgroundColor: '#22c55e22' }}
-                                          title="Finalizado"
+                                          className={clsx(
+                                            'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
+                                            esEntregado ? 'text-green-700' : 'text-red-700'
+                                          )}
+                                          style={{ backgroundColor: esEntregado ? '#22c55e22' : '#ef444422' }}
+                                          title={esEntregado ? 'Entregado' : 'No Entregado'}
                                         >
-                                          Finalizado
+                                          {esEntregado ? 'Entregado' : 'No Entregado'}
                                         </span>
                                       ) : (
                                         <span

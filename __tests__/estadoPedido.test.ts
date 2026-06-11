@@ -141,16 +141,20 @@ describe('isPedidoEntregado (no regresion)', () => {
 // No regresion: isServiceEntregado no se ve afectado
 // ---------------------------------------------------------------------------
 
-describe('isServiceEntregado (no regresion)', () => {
-  it('sigue devolviendo true para sub_estado_nro=3', () => {
+describe('isServiceEntregado (mismo criterio que pedidos)', () => {
+  it('devuelve true para sub_estado_nro=3 (ENTREGADO)', () => {
     expect(isServiceEntregado({ estado_nro: 2, sub_estado_nro: 3 })).toBe(true);
   });
 
-  it('devuelve false para sub_estado_nro=19 (services no usan 19)', () => {
-    expect(isServiceEntregado({ estado_nro: 2, sub_estado_nro: 19 })).toBe(false);
+  it('devuelve true para sub_estado_nro=19 (ENTR. SIN 1710, igual que pedidos)', () => {
+    expect(isServiceEntregado({ estado_nro: 2, sub_estado_nro: 19 })).toBe(true);
   });
 
   it('devuelve false para sub_estado_nro=17', () => {
     expect(isServiceEntregado({ estado_nro: 2, sub_estado_nro: 17 })).toBe(false);
+  });
+
+  it('devuelve false para estado_nro=1', () => {
+    expect(isServiceEntregado({ estado_nro: 1, sub_estado_nro: 3 })).toBe(false);
   });
 });

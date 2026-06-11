@@ -5,7 +5,7 @@ import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leafle
 import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { isPedidoEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { filterPuntosInteresByScope } from '@/lib/puntos-interes-scope';
 import { getScopedEmpresas, canSeeAllEmpresas } from '@/lib/auth-scope';
 import { authStorage } from '@/lib/auth-storage';
@@ -854,7 +854,7 @@ interface CulledServicesLayerProps {
   popupServiceId: number | undefined;
   servicesVista: 'pendientes' | 'finalizados';
   getServiceIcon: (fchHoraMaxEntComp: string | null, isSinAsignar?: boolean) => L.DivIcon;
-  getFinalizadoServiceIcon: () => L.DivIcon;
+  getFinalizadoServiceIcon: (entregado: boolean) => L.DivIcon;
   onServiceClick: ((serviceId: number | undefined) => void) | undefined;
   pedidosCluster: boolean;
 }
@@ -887,11 +887,12 @@ const CulledServicesLayer = React.memo(function CulledServicesLayer({
     const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
     const delayInfo = getDelayInfo(delayMins);
     const iconFchHora = isSinAsignar ? null : service.fch_hora_max_ent_comp;
+    const esEntregado = isServiceEntregado(service);
     return (
       <OptimizedMarker
         key={`service-tabla-${service.id}`}
         position={[service.latitud!, service.longitud!]}
-        icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(iconFchHora, isSinAsignar)}
+        icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon(esEntregado) : getServiceIcon(iconFchHora, isSinAsignar)}
         eventHandlers={{
           click: () => { onServiceClick && onServiceClick(service.id); }
         }}
@@ -912,7 +913,9 @@ const CulledServicesLayer = React.memo(function CulledServicesLayer({
               <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Movil: {service.movil}</div>
             )}
             {servicesVista === 'finalizados' ? (
-              <div style={{ color: '#2563eb', fontWeight: 'bold' }}>Finalizado</div>
+              <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
+                {esEntregado ? 'Entregado' : 'No Entregado'}
+              </div>
             ) : (
               <div style={{ color: isSinAsignar ? '#2563EB' : delayInfo.color, fontWeight: 'bold' }}>
                 {delayInfo.label}: {delayInfo.badgeText}
@@ -2346,9 +2349,13 @@ const MapView = memo(function MapView({
     }));
   }, [pedidoShape]);
 
-  // ?? Iconos para SERVICES FINALIZADOS - azul con tick
-  const createFinalizadoServiceIcon = useCallback(() => {
-    return getCachedIcon('service-finalizado', () => L.divIcon({
+  // ✅ Iconos para SERVICES FINALIZADOS - verde (entregado) o rojo (no entregado)
+  const createFinalizadoServiceIcon = useCallback((entregado: boolean) => {
+    const cacheKey = entregado ? 'service-finalizado-ok' : 'service-finalizado-no';
+    const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
+    const shadow = entregado ? 'rgba(22, 163, 74, 0.3)' : 'rgba(220, 38, 38, 0.3)';
+    const symbol = entregado ? '✓' : '✗';
+    return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `
         <div style="
@@ -2357,10 +2364,10 @@ const MapView = memo(function MapView({
           position: absolute;
           left: -10px;
           top: -10px;
-          background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
+          background: ${bg};
           border: 2px solid white;
           border-radius: 5px;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px rgba(37, 99, 235, 0.3);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px ${shadow};
           display: flex;
           align-items: center;
           justify-content: center;
@@ -2371,39 +2378,42 @@ const MapView = memo(function MapView({
           font-weight: bold;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">?</div>
+        onmouseout="this.style.transform='scale(1)'">${symbol}</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // ?? Iconos COMPACTOS para services finalizados (azul con tick)
-  const createFinalizadoServiceIconCompact = useCallback(() => {
-    const cacheKey = `service-finalizado-compact-${serviceShape}`;
+  // ✅ Iconos COMPACTOS para services finalizados (verde tick / rojo cruz)
+  const createFinalizadoServiceIconCompact = useCallback((entregado: boolean) => {
+    const cacheKey = `service-finalizado-compact-${entregado ? 'ok' : 'no'}-${serviceShape}`;
+    const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
+    const symbol = entregado ? '✓' : '✗';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `<div style="
         width: 14px; height: 14px; position: absolute; left: -7px; top: -7px;
-        background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
+        background: ${bg};
         border: 1.5px solid white; border-radius: 3px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         display: flex; align-items: center; justify-content: center;
         font-size: 9px; color: white; font-weight: bold; cursor: pointer;
-      ">?</div>`,
+      ">${symbol}</div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
   }, [serviceShape]);
 
-  // ?? Iconos MINI para services finalizados (azul)
-  const createFinalizadoServiceIconMini = useCallback(() => {
-    const cacheKey = `service-finalizado-mini-${serviceShape}`;
+  // ✅ Iconos MINI para services finalizados (verde / rojo)
+  const createFinalizadoServiceIconMini = useCallback((entregado: boolean) => {
+    const cacheKey = `service-finalizado-mini-${entregado ? 'ok' : 'no'}-${serviceShape}`;
+    const color = entregado ? '#16a34a' : '#dc2626';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `<div style="
         width: 10px; height: 10px; position: absolute; left: -5px; top: -5px;
-        background: #2563eb; border: 1px solid white; border-radius: 2px;
+        background: ${color}; border: 1px solid white; border-radius: 2px;
         box-shadow: 0 1px 2px rgba(0,0,0,0.3); cursor: pointer;
       "></div>`,
       iconSize: [10, 10],
@@ -2418,10 +2428,10 @@ const MapView = memo(function MapView({
     return createFinalizadoPedidoIcon(entregado);
   }, [pedidoMarkerStyle, createFinalizadoPedidoIcon, createFinalizadoPedidoIconCompact, createFinalizadoPedidoIconMini]);
 
-  const getFinalizadoServiceIcon = useCallback(() => {
-    if (serviceMarkerStyle === 'mini') return createFinalizadoServiceIconMini();
-    if (serviceMarkerStyle === 'compact') return createFinalizadoServiceIconCompact();
-    return createFinalizadoServiceIcon();
+  const getFinalizadoServiceIcon = useCallback((entregado: boolean) => {
+    if (serviceMarkerStyle === 'mini') return createFinalizadoServiceIconMini(entregado);
+    if (serviceMarkerStyle === 'compact') return createFinalizadoServiceIconCompact(entregado);
+    return createFinalizadoServiceIcon(entregado);
   }, [serviceMarkerStyle, createFinalizadoServiceIcon, createFinalizadoServiceIconCompact, createFinalizadoServiceIconMini]);
 
   // ?? OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
@@ -3351,6 +3361,8 @@ const MapView = memo(function MapView({
         {/* Marcadores de Pedidos desde tabla  viewport-culled */}
         {(() => {
           const pedidosFiltrados = (pedidos ?? []).filter(p => p.latitud && p.longitud).filter(p =>
+            // Finalizados (estado_nro=2) no se filtran por ventana SA: se ven siempre.
+            Number(p.estado_nro) === 2 ||
             isVisibleByWindow(p.fch_hora_para, serverNow, minutosAntesSa, !!(p.movil && Number(p.movil) !== 0))
           );
           if (!pedidosFiltrados.length) return null;
@@ -3370,6 +3382,8 @@ const MapView = memo(function MapView({
         {/* Marcadores de Services desde tabla  viewport-culled */}
         {(() => {
           const servicesFiltrados = (services ?? []).filter(s => s.latitud && s.longitud).filter(s =>
+            // Finalizados (estado_nro=2) no se filtran por ventana SA: se ven siempre.
+            Number(s.estado_nro) === 2 ||
             isVisibleByWindow(s.fch_hora_para, serverNow, minutosAntesSa, !!(s.movil && Number(s.movil) !== 0))
           );
           if (!servicesFiltrados.length) return null;
