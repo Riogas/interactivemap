@@ -3236,9 +3236,15 @@ function DashboardContent() {
   const prevPedidosKeyRef = useRef<Map<number, number>>(new Map());
   
   useEffect(() => {
-    // ?? Pausar actualizaciones si la tab no está visible (ahorro de CPU)
-    if (!isTabVisible) {
-      console.log('?? Tab oculto - pausando actualización de lote');
+    // Pausa de recálculo de lote por tab oculto: SOLO si la preferencia
+    // "Refetch al volver al tab" está activa (default). Con esa pref encendida,
+    // al volver a la pestaña se hace un refetch de recuperación, así que pausar
+    // en background es seguro (ahorra CPU). Con la pref APAGADA no hay refetch de
+    // recuperación, por lo que las actualizaciones deben seguir fluyendo en
+    // background y NO se pausa.
+    const pauseOnHidden = preferences.realtimeRefetchOnVisible !== false;
+    if (pauseOnHidden && !isTabVisible) {
+      console.log('🙈 Tab oculto - pausando actualización de lote');
       return;
     }
     
@@ -3291,7 +3297,7 @@ function DashboardContent() {
       
       return cambios ? updated : prevMoviles;
     });
-  }, [pedidosCompletos, isTabVisible]); // Se ejecuta cada vez que cambian los pedidos o visibilidad
+  }, [pedidosCompletos, isTabVisible, preferences.realtimeRefetchOnVisible]); // Se ejecuta cada vez que cambian los pedidos o visibilidad
 
   // Initial fetch - posiciones (gated por feature flag NEXT_PUBLIC_USE_MOVILES_DIA)
   useEffect(() => {

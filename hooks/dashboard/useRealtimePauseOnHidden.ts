@@ -20,6 +20,11 @@ interface Options {
 export function useRealtimePauseOnHidden({ enabled, graceMinutes }: Options): boolean {
   const [paused, setPaused] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // pausedRef: refleja siempre el valor actual de `paused` para que el handler
+  // de visibilitychange no use un valor stale capturado por closure (el efecto
+  // no se re-ejecuta cuando cambia `paused`, así que la closure quedaría vieja).
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   useEffect(() => {
     if (!enabled) {
@@ -28,7 +33,7 @@ export function useRealtimePauseOnHidden({ enabled, graceMinutes }: Options): bo
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-      if (paused) setPaused(false);
+      if (pausedRef.current) setPaused(false);
       return;
     }
 
@@ -49,7 +54,7 @@ export function useRealtimePauseOnHidden({ enabled, graceMinutes }: Options): bo
           clearTimeout(timerRef.current);
           timerRef.current = null;
         }
-        if (paused) {
+        if (pausedRef.current) {
           console.log('[realtime-pause] Tab visible — reconectando Realtime');
           setPaused(false);
         }
@@ -67,8 +72,6 @@ export function useRealtimePauseOnHidden({ enabled, graceMinutes }: Options): bo
         timerRef.current = null;
       }
     };
-    // paused intencionalmente fuera de deps para no reiniciar el effect cada vez.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, graceMinutes]);
 
   return paused;
