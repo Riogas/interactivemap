@@ -1195,7 +1195,7 @@ const MapView = memo(function MapView({
     };
     const clip = CLIP[shape];
     if (clip) {
-      const bw = halo ? Math.max(2, Math.round(size * 0.16)) : Math.max(1.5, Math.round(size * 0.12));
+      const bw = halo ? Math.max(3, Math.round(size * 0.24)) : Math.max(1.5, Math.round(size * 0.12));
       const innerSize = size - bw * 2;
       const darkShadow = halo
         ? 'drop-shadow(0 0 2px rgba(0,0,0,0.55))'
