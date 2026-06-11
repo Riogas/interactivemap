@@ -2277,12 +2277,13 @@ const MapView = memo(function MapView({
     return createServiceIconByDelay(fchHoraMaxEntComp, isSinAsignar);
   }, [serviceMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
 
-  // ? Iconos para PEDIDOS FINALIZADOS - verde (entregado) o rojo (no entregado)
+  // ✅ Iconos para PEDIDOS FINALIZADOS - verde (entregado) o rojo (no entregado).
+  // Estilo "normal": mismo emoji 📦 que los pendientes, solo cambia el color a
+  // verde/rojo segun entrega (sin check/cruz, para uniformidad con la forma).
   const createFinalizadoPedidoIcon = useCallback((entregado: boolean) => {
     const cacheKey = entregado ? 'pedido-finalizado-ok' : 'pedido-finalizado-no';
     const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
     const shadow = entregado ? 'rgba(22, 163, 74, 0.3)' : 'rgba(220, 38, 38, 0.3)';
-    const symbol = entregado ? '✓' : '✗';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `
@@ -2299,62 +2300,49 @@ const MapView = memo(function MapView({
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 12px;
+          font-size: 11px;
           cursor: pointer;
           transition: transform 0.2s;
-          color: white;
-          font-weight: bold;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">${symbol}</div>
+        onmouseout="this.style.transform='scale(1)'">📦</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // ? Iconos COMPACTOS para pedidos finalizados
+  // ✅ Iconos COMPACTOS para pedidos finalizados - respeta la forma elegida, color verde/rojo
   const createFinalizadoPedidoIconCompact = useCallback((entregado: boolean) => {
-    const cacheKey = `pedido-finalizado-compact-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
-    const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
-    const symbol = entregado ? '✓' : '✗';
+    const cacheKey = `pedido-finalizado-compact-${entregado ? 'ok' : 'no'}-${pedidoShape}-${pedidoHalo}`;
+    const color = entregado ? '#16a34a' : '#dc2626';
+    const lightColor = entregado ? '#4ade80' : '#f87171';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="
-        width: 14px; height: 14px; position: absolute; left: -7px; top: -7px;
-        background: ${bg};
-        border: 1.5px solid white; border-radius: 3px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 9px; color: white; font-weight: bold; cursor: pointer;
-      ">${symbol}</div>`,
+      html: getShapeHtml(pedidoShape, 14, color, lightColor, pedidoHalo),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [pedidoShape]);
+  }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
-  // ? Iconos MINI para pedidos finalizados
+  // ✅ Iconos MINI para pedidos finalizados - respeta la forma elegida, color verde/rojo
   const createFinalizadoPedidoIconMini = useCallback((entregado: boolean) => {
-    const cacheKey = `pedido-finalizado-mini-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
+    const cacheKey = `pedido-finalizado-mini-${entregado ? 'ok' : 'no'}-${pedidoShape}-${pedidoHalo}`;
     const color = entregado ? '#16a34a' : '#dc2626';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="
-        width: 10px; height: 10px; position: absolute; left: -5px; top: -5px;
-        background: ${color}; border: 1px solid white; border-radius: 2px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.3); cursor: pointer;
-      "></div>`,
+      html: getShapeHtml(pedidoShape, 10, color, undefined, pedidoHalo),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, [pedidoShape]);
+  }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
-  // ✅ Iconos para SERVICES FINALIZADOS - verde (entregado) o rojo (no entregado)
+  // ✅ Iconos para SERVICES FINALIZADOS - verde (entregado) o rojo (no entregado).
+  // Estilo "normal": mismo emoji 🔧 que los pendientes, solo cambia el color.
   const createFinalizadoServiceIcon = useCallback((entregado: boolean) => {
     const cacheKey = entregado ? 'service-finalizado-ok' : 'service-finalizado-no';
     const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
     const shadow = entregado ? 'rgba(22, 163, 74, 0.3)' : 'rgba(220, 38, 38, 0.3)';
-    const symbol = entregado ? '✓' : '✗';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `
@@ -2371,55 +2359,42 @@ const MapView = memo(function MapView({
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 12px;
+          font-size: 11px;
           cursor: pointer;
           transition: transform 0.2s;
-          color: white;
-          font-weight: bold;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">${symbol}</div>
+        onmouseout="this.style.transform='scale(1)'">🔧</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // ✅ Iconos COMPACTOS para services finalizados (verde tick / rojo cruz)
+  // ✅ Iconos COMPACTOS para services finalizados - respeta la forma elegida, color verde/rojo
   const createFinalizadoServiceIconCompact = useCallback((entregado: boolean) => {
-    const cacheKey = `service-finalizado-compact-${entregado ? 'ok' : 'no'}-${serviceShape}`;
-    const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
-    const symbol = entregado ? '✓' : '✗';
+    const cacheKey = `service-finalizado-compact-${entregado ? 'ok' : 'no'}-${serviceShape}-${serviceHalo}`;
+    const color = entregado ? '#16a34a' : '#dc2626';
+    const lightColor = entregado ? '#4ade80' : '#f87171';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="
-        width: 14px; height: 14px; position: absolute; left: -7px; top: -7px;
-        background: ${bg};
-        border: 1.5px solid white; border-radius: 3px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 9px; color: white; font-weight: bold; cursor: pointer;
-      ">${symbol}</div>`,
+      html: getShapeHtml(serviceShape, 14, color, lightColor, serviceHalo),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [serviceShape]);
+  }, [serviceShape, serviceHalo, getShapeHtml]);
 
-  // ✅ Iconos MINI para services finalizados (verde / rojo)
+  // ✅ Iconos MINI para services finalizados - respeta la forma elegida, color verde/rojo
   const createFinalizadoServiceIconMini = useCallback((entregado: boolean) => {
-    const cacheKey = `service-finalizado-mini-${entregado ? 'ok' : 'no'}-${serviceShape}`;
+    const cacheKey = `service-finalizado-mini-${entregado ? 'ok' : 'no'}-${serviceShape}-${serviceHalo}`;
     const color = entregado ? '#16a34a' : '#dc2626';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="
-        width: 10px; height: 10px; position: absolute; left: -5px; top: -5px;
-        background: ${color}; border: 1px solid white; border-radius: 2px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.3); cursor: pointer;
-      "></div>`,
+      html: getShapeHtml(serviceShape, 10, color, undefined, serviceHalo),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, [serviceShape]);
+  }, [serviceShape, serviceHalo, getShapeHtml]);
 
   // ?? Funciones selectoras de icono finalizado por estilo
   const getFinalizadoPedidoIcon = useCallback((entregado: boolean) => {
