@@ -258,8 +258,8 @@ export default function SaturacionZonaModal({
             )}
           </section>
 
-          {/* ── Sección: Pedidos sin asignar — solo si tiene feature ── */}
-          {canVerSinAsigPorZona && (
+          {/* ── Sección: Pedidos sin asignar — solo con feature y si hay al menos 1 ── */}
+          {canVerSinAsigPorZona && pedidosSinAsignar > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-orange-500"><IconPackage /></span>
@@ -271,9 +271,7 @@ export default function SaturacionZonaModal({
                 </h3>
               </div>
 
-              {pedidosSinAsignar === 0 ? (
-                <p className="text-sm text-gray-400 italic pl-1">Sin pedidos pendientes en esta zona.</p>
-              ) : canVerSinAsignarUnitario && pedidosDetalle.length > 0 ? (
+              {canVerSinAsignarUnitario && pedidosDetalle.length > 0 ? (
                 // Detalle por pedido: SOLO con "Ped s/asignar unitarios".
                 <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
                   {pedidosDetalle.map(p => (
