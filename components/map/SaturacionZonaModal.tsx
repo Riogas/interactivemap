@@ -156,7 +156,6 @@ export default function SaturacionZonaModal({
   // Defensa en profundidad: si el caller pasó scope y la zona no está, no renderizar.
   if (scopedZonaIds && !scopedZonaIds.has(zonaId)) return null;
 
-  const capacidadTotal = snapshot?.capacidad_total ?? 0;
   const movilesPrioridad = snapshot?.moviles_prioridad ?? 0;
   const movilesTransito = snapshot?.moviles_transito ?? 0;
   const pedidosSinAsignar = snapshot?.pedidos_sin_asignar ?? 0;
@@ -188,8 +187,6 @@ export default function SaturacionZonaModal({
               <span className={`font-bold text-base ${colorClass}`}>
                 {formatCapEntregaLabel(capacidadMostrada)}
               </span>
-              <span className="text-gray-400">de</span>
-              <span className="font-semibold">{capacidadTotal} total</span>
             </div>
           </div>
           <button
