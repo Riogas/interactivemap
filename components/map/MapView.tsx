@@ -699,6 +699,56 @@ interface CulledMovilesLayerProps {
   onPedidoServicioClose: () => void;
 }
 
+// Cache module-level de datos de sesion (chofer/telefono) por movil_id.
+// Compartido entre todos los tooltips; evita refetch al re-hoverear el mismo movil.
+const movilSessionCache = new Map<number, { chofer: string | null; telefono: string | null }>();
+
+/**
+ * Contenido del tooltip hover de un movil. Se monta cuando react-leaflet abre el
+ * Tooltip (es decir, al pasar el mouse), por lo que el fetch a /api/movil-session
+ * — la MISMA API que usa la ficha del movil — ocurre on-demand y no al cargar el mapa.
+ * Mantiene su propio estado local, asi no depende de que el Marker (memoizado) re-renderice.
+ */
+function MovilHoverTooltipContent({ movilId, movilName }: { movilId: number; movilName: string }) {
+  const [data, setData] = useState<{ chofer: string | null; telefono: string | null } | null>(
+    movilSessionCache.get(movilId) ?? null,
+  );
+  const [loading, setLoading] = useState(!movilSessionCache.has(movilId));
+
+  useEffect(() => {
+    if (movilSessionCache.has(movilId)) {
+      setData(movilSessionCache.get(movilId)!);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    // El endpoint usa la fecha de hoy por default (igual que la ficha).
+    fetch(`/api/movil-session/${movilId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        const val = res
+          ? { chofer: res.chofer ?? null, telefono: res.telefono ?? null }
+          : { chofer: null, telefono: null };
+        movilSessionCache.set(movilId, val);
+        if (!cancelled) { setData(val); setLoading(false); }
+      })
+      .catch(() => {
+        if (!cancelled) { setData({ chofer: null, telefono: null }); setLoading(false); }
+      });
+    return () => { cancelled = true; };
+  }, [movilId]);
+
+  return (
+    <div className="text-xs leading-snug">
+      <div className="font-bold text-gray-900">{movilName}</div>
+      <div><span className="text-gray-500">Nro:</span> {movilId}</div>
+      <div><span className="text-gray-500">Chofer:</span> {loading ? '…' : (data?.chofer || '—')}</div>
+      <div><span className="text-gray-500">Celular:</span> {loading ? '…' : (data?.telefono || '—')}</div>
+    </div>
+  );
+}
+
 // perf: React.memo evita re-render cuando las props no cambian por referencia.
 // Los callbacks (createCustomIcon, etc.) vienen memoizados desde MapView.
 const CulledMovilesLayer = React.memo(function CulledMovilesLayer({
@@ -728,43 +778,10 @@ const CulledMovilesLayer = React.memo(function CulledMovilesLayer({
 
   const visibleMoviles = useViewportCullingWithAlwaysVisible(moviles, getCoords, getId, alwaysVisibleIds);
 
-  // Cache de datos de sesion (chofer/telefono) por movil, para el tooltip hover.
-  // Se llena bajo demanda al pasar el mouse — evita N fetches al cargar el mapa.
-  const [sessionCache, setSessionCache] = useState<Map<number, { chofer: string | null; telefono: string | null } | 'loading'>>(new Map());
-
-  const fetchSessionForHover = useCallback((movilId: number) => {
-    setSessionCache((prev) => {
-      if (prev.has(movilId)) return prev; // ya cargado o cargando
-      const next = new Map(prev);
-      next.set(movilId, 'loading');
-      // Disparar fetch (no bloqueante). El endpoint usa la fecha de hoy por default.
-      fetch(`/api/movil-session/${movilId}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          setSessionCache((p) => {
-            const m = new Map(p);
-            m.set(movilId, data
-              ? { chofer: data.chofer ?? null, telefono: data.telefono ?? null }
-              : { chofer: null, telefono: null });
-            return m;
-          });
-        })
-        .catch(() => {
-          setSessionCache((p) => {
-            const m = new Map(p);
-            m.set(movilId, { chofer: null, telefono: null });
-            return m;
-          });
-        });
-      return next;
-    });
-  }, []);
-
   return (
     <>
       {visibleMoviles.map((movil) => {
         if (!movil.currentPosition) return null;
-        const session = sessionCache.get(movil.id);
         return (
           <OptimizedMarker
             key={movil.id}
@@ -781,26 +798,10 @@ const CulledMovilesLayer = React.memo(function CulledMovilesLayer({
                 onPedidoServicioClose();
                 if (onMovilClick) onMovilClick(movil.id);
               },
-              mouseover: () => fetchSessionForHover(movil.id),
             }}
           >
             <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-              <div className="text-xs leading-snug">
-                <div className="font-bold text-gray-900">{movil.name}</div>
-                <div><span className="text-gray-500">Nro:</span> {movil.id}</div>
-                <div>
-                  <span className="text-gray-500">Chofer:</span>{' '}
-                  {session === 'loading' || session === undefined
-                    ? '…'
-                    : (session.chofer || '—')}
-                </div>
-                <div>
-                  <span className="text-gray-500">Celular:</span>{' '}
-                  {session === 'loading' || session === undefined
-                    ? '…'
-                    : (session.telefono || '—')}
-                </div>
-              </div>
+              <MovilHoverTooltipContent movilId={movil.id} movilName={movil.name} />
             </Tooltip>
           </OptimizedMarker>
         );

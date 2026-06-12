@@ -30,6 +30,14 @@ interface NominatimResult {
   category?: string;
   geojson?: GeoJSON.Geometry;
   boundingbox?: [string, string, string, string];
+  address?: {
+    road?: string;
+    city?: string;
+    town?: string;
+    village?: string;
+    state?: string;
+    [k: string]: string | undefined;
+  };
 }
 
 interface StreetSearchControlProps {
@@ -127,14 +135,15 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
   }, [query, open, map]);
 
   const handleSelect = useCallback(
-    (r: NominatimResult) => {
+    async (r: NominatimResult) => {
       clearHighlight();
 
       const lat = parseFloat(r.lat);
       const lon = parseFloat(r.lon);
 
-      if (r.geojson) {
-        const layer = L.geoJSON(r.geojson as GeoJSON.GeoJsonObject, {
+      // Dibuja una geometría GeoJSON resaltada y encuadra el mapa en ella.
+      const drawGeometry = (geom: GeoJSON.GeoJsonObject) => {
+        const layer = L.geoJSON(geom, {
           style: () => HIGHLIGHT_STYLE,
           pointToLayer: (_feat, latlng) =>
             L.circleMarker(latlng, { radius: 9, ...HIGHLIGHT_STYLE }),
@@ -145,27 +154,47 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
         try {
           const bounds = layer.getBounds();
           if (bounds.isValid()) {
-            map.fitBounds(bounds.pad(0.3), { maxZoom: 18, animate: true });
-          } else if (Number.isFinite(lat) && Number.isFinite(lon)) {
-            map.setView([lat, lon], 17, { animate: true });
+            map.fitBounds(bounds.pad(0.2), { maxZoom: 17, animate: true });
+            return;
           }
-        } catch {
-          if (Number.isFinite(lat) && Number.isFinite(lon)) {
-            map.setView([lat, lon], 17, { animate: true });
-          }
+        } catch { /* ignore */ }
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          map.setView([lat, lon], 17, { animate: true });
         }
-      } else if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        const marker = L.geoJSON(
-          { type: 'Point', coordinates: [lon, lat] } as GeoJSON.Point,
-          {
-            pointToLayer: (_feat, latlng) =>
-              L.circleMarker(latlng, { radius: 9, ...HIGHLIGHT_STYLE }),
-          },
-        );
-        marker.addTo(map);
-        highlightRef.current = marker;
-        setHasHighlight(true);
-        map.setView([lat, lon], 17, { animate: true });
+      };
+
+      // Nombre de la calle: preferir address.road (exacto), si no la 1ª parte del display_name.
+      const streetName = (r.address?.road || r.display_name.split(',')[0] || '').trim();
+      const city = (r.address?.city || r.address?.town || r.address?.village || r.address?.state || '').trim();
+      const isStreet = (r.category === 'highway') || (r.type && /^(residential|primary|secondary|tertiary|unclassified|living_street|trunk|road|street)$/.test(r.type)) || !!r.address?.road;
+
+      let drawn = false;
+
+      // 1) Intentar pintar la CALLE COMPLETA via Overpass (todos los tramos por nombre).
+      if (isStreet && streetName) {
+        try {
+          const b = map.getBounds();
+          const bbox = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
+          const params = new URLSearchParams({ name: streetName, bbox });
+          if (city) params.set('city', city);
+          const res = await fetch(`/api/overpass?${params.toString()}`);
+          if (res.ok) {
+            const geom = await res.json();
+            if (geom?.type === 'MultiLineString' && Array.isArray(geom.coordinates) && geom.coordinates.length > 0) {
+              drawGeometry(geom as GeoJSON.GeoJsonObject);
+              drawn = true;
+            }
+          }
+        } catch { /* fallback abajo */ }
+      }
+
+      // 2) Fallback: geometría que devolvió Nominatim (segmento), o un punto.
+      if (!drawn) {
+        if (r.geojson) {
+          drawGeometry(r.geojson as GeoJSON.GeoJsonObject);
+        } else if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          drawGeometry({ type: 'Point', coordinates: [lon, lat] } as GeoJSON.Point);
+        }
       }
 
       // Mostrar el nombre elegido y cerrar el dropdown.
