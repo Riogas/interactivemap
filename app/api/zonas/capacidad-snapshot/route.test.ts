@@ -118,7 +118,7 @@ function makeSupabaseMock(overrides: {
   // Query builder genérico que termina en una Promise
   const makeQb = (data: unknown[]) => {
     const qb: Record<string, unknown> = {};
-    const methods = ['eq', 'in', 'or'];
+    const methods = ['eq', 'in', 'or', 'gte', 'lte'];
     for (const m of methods) {
       qb[m] = () => qb;
     }

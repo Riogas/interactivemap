@@ -156,6 +156,36 @@ export function pendienteDateRangeCompact(fecha: string, now: Date = new Date())
   return pendienteDateRange(fecha, now).map(f => f.replace(/-/g, ''));
 }
 
+/**
+ * Ventana de fecha CANÓNICA (request 2026-06-12), transversal a toda la app.
+ *
+ * Devuelve los límites `fch_para` (formato `YYYY-MM-DD`, igual que la BD) que
+ * definen qué registros "existen" para la fecha seleccionada:
+ *
+ *  - Si `fecha` === hoy (Montevideo):  desde = ayer, hasta = hoy, isToday = true.
+ *      (la app debe traer: pendientes de ayer + pendientes de hoy + finalizados de hoy)
+ *  - Si `fecha` < hoy (día pasado):    desde = hasta = fecha, isToday = false.
+ *      (solo importan los registros de la fecha seleccionada, cualquier estado)
+ *
+ * El acoplamiento con `estado_nro` (estado=1 para el arrastre de ayer, estado=2
+ * para finalizados de hoy) lo aplica cada call site, porque varía según el uso
+ * (ej. el conteo de "sin asignar" solo considera estado=1).
+ *
+ * NOTA: la BD almacena `fch_para` como `YYYY-MM-DD` (con guiones) tanto en
+ * `pedidos` como en `services` — NO usar el formato compacto YYYYMMDD para
+ * comparar contra `fch_para`.
+ */
+export function dateWindowBounds(
+  fecha: string,
+  now: Date = new Date(),
+): { isToday: boolean; desde: string; hasta: string } {
+  const hoy = todayMontevideo(now);
+  if (fecha === hoy) {
+    return { isToday: true, desde: daysAgoMontevideo(1, now), hasta: hoy };
+  }
+  return { isToday: false, desde: fecha, hasta: fecha };
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Formatters de display — siempre con timeZone: 'America/Montevideo'
 //

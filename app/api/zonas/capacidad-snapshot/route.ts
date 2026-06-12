@@ -31,7 +31,7 @@ import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
 import { MOVIL_ESTADOS_INACTIVOS } from '@/lib/movil-estados';
 import { getEscenarioSettings } from '@/lib/escenario-settings';
-import { todayMontevideo } from '@/lib/date-utils';
+import { todayMontevideo, dateWindowBounds } from '@/lib/date-utils';
 import type { ZonaCapSnapshot, PedidoSinAsignarMini, MovilDetalleZona } from '@/types/zona-capacidad';
 
 /**
@@ -53,17 +53,6 @@ function buildSaWindowEnd(serverNow: Date, minutosAntes: number | null): string 
   return new Date(serverNow.getTime() + minutosAntes * 60_000).toISOString();
 }
 
-/**
- * Resta `days` días a una fecha 'YYYY-MM-DD' devolviendo otra 'YYYY-MM-DD'.
- * Usa UTC puro para evitar drift por timezone del proceso.
- */
-function addDaysISODate(isoDate: string, days: number): string {
-  const [y, m, d] = isoDate.split('-').map((v) => parseInt(v, 10));
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return dt.toISOString().slice(0, 10);
-}
-
 
 const CAP_LOG = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
 const clog = (...args: unknown[]) => { if (CAP_LOG) console.log('[CAP-SNAPSHOT]', ...args); };
@@ -79,6 +68,8 @@ type SQB = {
   eq: (col: string, val: unknown) => SQB;
   in: (col: string, vals: unknown[]) => SQB;
   or: (filter: string) => SQB;
+  gte: (col: string, val: unknown) => SQB;
+  lte: (col: string, val: unknown) => SQB;
   then: Promise<{ data: unknown[] | null; error: { message: string } | null }>['then'];
 };
 
@@ -168,10 +159,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     : null;
 
   // 5b. fecha (opcional) — fecha "parado en el mapa". Default: hoy Montevideo.
-  //     Define la ventana temporal de los SA: hoy + ayer (ver Query 5).
+  //     Define la ventana de fecha canónica (ver lib/date-utils.dateWindowBounds y Query 5).
   const fechaParam = sp.get('fecha');
-  const fechaHoy = fechaParam && /^\d{4}-\d{2}-\d{2}$/.test(fechaParam) ? fechaParam : todayMontevideo();
-  const fechaAyer = addDaysISODate(fechaHoy, -1);
+  const fechaSel = fechaParam && /^\d{4}-\d{2}-\d{2}$/.test(fechaParam) ? fechaParam : todayMontevideo();
+  const { isToday: fechaEsHoy, desde: fechaDesde, hasta: fechaHasta } = dateWindowBounds(fechaSel);
 
   // 6. Auth-scope desde headers
   const isRoot = request.headers.get('x-track-isroot') === 'S';
@@ -313,21 +304,36 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // Ventana SA transversal (R4): ademas, los SA solo se cuentan si caen dentro de
   // la ventana temporal del escenario (fch_hora_para <= ahora + minutosAntes).
 
+  // ─── Query 5: pedidos sin asignar (solo si hasCount) ───────────────────────
+  //
+  // Ventana de fecha canónica (request 2026-06-12, dateWindowBounds):
+  //   - fecha = hoy:  fch_para entre ayer y hoy (estado=1, "sin asignar" pendientes).
+  //   - fecha pasada: fch_para = fecha (estado=1).
+  // Los SA son por definición estado=1 (pendientes sin móvil); por eso NO se
+  // incluyen finalizados (estado=2) en este conteo de capacidad.
+  //
+  // Ventana SA transversal: SOLO cuando la fecha es hoy, los SA además deben caer
+  // dentro de la ventana del escenario (fch_hora_para <= ahora + minutosAntes).
+  // En fechas pasadas "ahora" no aplica → no se filtra por fch_hora_para.
+
   let pedidosSinAsignarRows: PedidoSinAsignarRow[] = [];
   if (hasCount && zonaIds.length > 0) {
-    const { pedidosSaMinutosAntes } = await getEscenarioSettings(escenario);
-    const saWindowEnd = buildSaWindowEnd(new Date(), pedidosSaMinutosAntes);
-
     let pedQuery = db.from('pedidos')
       .select('id, zona_nro, servicio_nombre, fch_para, fch_hora_para, cliente_direccion')
       .eq('escenario', escenario)
-      .or(`and(fch_para.gte.${fechaAyer},estado_nro.eq.1),and(fch_para.eq.${fechaHoy},estado_nro.eq.2)`)
+      .eq('estado_nro', 1)
+      .gte('fch_para', fechaDesde)
+      .lte('fch_para', fechaHasta)
       .in('zona_nro', zonaIds)
       .or('movil.is.null,movil.eq.0');
 
-    // Ventana SA: incluir SA dentro de la ventana O sin fecha-hora registrada.
-    if (saWindowEnd !== null) {
-      pedQuery = pedQuery.or(`fch_hora_para.is.null,fch_hora_para.lte.${saWindowEnd}`);
+    if (fechaEsHoy) {
+      const { pedidosSaMinutosAntes } = await getEscenarioSettings(escenario);
+      const saWindowEnd = buildSaWindowEnd(new Date(), pedidosSaMinutosAntes);
+      // Ventana SA: incluir SA dentro de la ventana O sin fecha-hora registrada.
+      if (saWindowEnd !== null) {
+        pedQuery = pedQuery.or(`fch_hora_para.is.null,fch_hora_para.lte.${saWindowEnd}`);
+      }
     }
 
     const pedResult = await (pedQuery as unknown as Promise<{ data: PedidoSinAsignarRow[] | null; error: { message: string } | null }>);
