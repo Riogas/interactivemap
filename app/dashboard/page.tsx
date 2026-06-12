@@ -886,6 +886,8 @@ function DashboardContent() {
           capacidad: number;
           cant_ped: number;
           cant_serv: number;
+          empresa_fletera_id?: number;
+          empresa_fletera_nom?: string | null;
         }
 
         // Mapear por ID (que es TEXT), no por nro
@@ -919,6 +921,7 @@ function DashboardContent() {
               capacidad: extendedData.capacidad ?? 0,
               cant_ped: extendedData.cant_ped ?? 0,
               cant_serv: extendedData.cant_serv ?? 0,
+              empresaFleteraNom: extendedData.empresa_fletera_nom ?? undefined,
               color: calculatedColor,
             };
           }

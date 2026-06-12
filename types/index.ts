@@ -18,6 +18,7 @@ export interface MovilData {
   name: string;
   color: string;
   empresaFleteraId?: number; // ID de la empresa fletera a la que pertenece
+  empresaFleteraNom?: string; // Nombre de la empresa fletera (desde tabla moviles)
   currentPosition?: MovilCoordinate;
   history?: MovilCoordinate[];
   pedidosPendientes?: number;

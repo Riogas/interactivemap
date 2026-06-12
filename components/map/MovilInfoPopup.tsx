@@ -144,7 +144,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   <span className="text-lg">🚚</span>
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm">{movil.name} <span className="font-normal opacity-80">– {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}</span></h3>
+                  <h3 className="font-bold text-sm">{movil.name} <span className="font-normal opacity-80">– {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}{movil.empresaFleteraNom ? ` - ${movil.empresaFleteraNom}` : ''}</span></h3>
                   <p className="text-[10px] opacity-90">Móvil #{movil.id}</p>
                 </div>
               </div>

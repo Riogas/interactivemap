@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useMemo, useEffect } from 'react';
+import React, { memo, useMemo, useEffect, useState } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
@@ -245,23 +245,53 @@ const MovilesZonasLayer = memo(function MovilesZonasLayer({
   demoras,
   visualRefs,
 }: MovilesZonasLayerProps) {
+  // Estado completo de TODOS los moviles (incluye inactivos sin GPS), tomado de
+  // /api/moviles-extended — misma fuente que ZonaMovilesViewModal. Necesario porque
+  // el prop `movilEstados` puede venir vacío en el path moviles_dia (USE_NEW), lo
+  // que provocaba que los inactivos se contaran (bug: zona mostraba de más).
+  const [fetchedEstados, setFetchedEstados] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/moviles-extended')
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled || !res?.success || !Array.isArray(res.data)) return;
+        const m = new Map<string, number>();
+        for (const movil of res.data) {
+          if (movil.estadoNro !== undefined && movil.estadoNro !== null) {
+            m.set(String(movil.nro), movil.estadoNro);
+          }
+        }
+        setFetchedEstados(m);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Map combinado: base completa de la API + override con los estados en vivo del prop.
+  const estadosMap = useMemo(() => {
+    const m = new Map<string, number>(fetchedEstados);
+    if (movilEstados) {
+      for (const [k, v] of movilEstados) m.set(k, v);
+    }
+    return m;
+  }, [fetchedEstados, movilEstados]);
+
   // Filtrar registros de moviles_zonas segun tipo de servicio seleccionado.
   // Excluir moviles no-activos (estado !== 0/1/2) y los ocultos-pero-operativos.
   const filteredData = useMemo(() => {
     let data = movilesZonasData.filter(mz => (mz.tipo_de_servicio || '').toUpperCase() === serviceFilter.toUpperCase());
-    if ((movilEstados && movilEstados.size > 0) || (hiddenMovilIds && hiddenMovilIds.size > 0)) {
+    if (estadosMap.size > 0 || (hiddenMovilIds && hiddenMovilIds.size > 0)) {
       data = data.filter(mz => {
         const key = String(mz.movil_id);
         if (hiddenMovilIds && hiddenMovilIds.has(key)) return false;
-        if (movilEstados) {
-          const estado = movilEstados.get(key);
-          if (estado !== undefined && !isMovilActiveForUI(estado)) return false;
-        }
+        const estado = estadosMap.get(key);
+        if (estado !== undefined && !isMovilActiveForUI(estado)) return false;
         return true;
       });
     }
     return data;
-  }, [movilesZonasData, serviceFilter, movilEstados, hiddenMovilIds]);
+  }, [movilesZonasData, serviceFilter, estadosMap, hiddenMovilIds]);
 
   // Computar conteo por zona segun el subconjunto elegido (combo "Moviles").
   // Unifica el comportamiento para todos los tipos de servicio (URGENTE/NOCTURNO/SERVICE):
