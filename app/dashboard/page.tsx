@@ -3033,6 +3033,7 @@ function DashboardContent() {
     escenario: escenarioId,
     tipoServicio: _snapshotTipoServicio,
     zonas: _snapshotZonas,
+    fecha: selectedDate,
     // Acceso total efectivo (root legacy o "ver todas las empresas" / allowedEmpresas null):
     // se manda x-track-isroot=S igual que el resto de los fetches. Sin esto, un usuario con
     // verTodasEmpresas mandaba empresasIds=[] y el endpoint hacia fail-closed -> [] (zonas vacias).

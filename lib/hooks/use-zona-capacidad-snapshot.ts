@@ -42,6 +42,8 @@ export interface UseZonaCapacidadSnapshotParams {
    * Si se omite, el endpoint devuelve todas las zonas del scope del caller.
    */
   zonas?: number[];
+  /** Fecha "parado en el mapa" (YYYY-MM-DD). Define la ventana SA (hoy+ayer). Default: hoy. */
+  fecha?: string;
   // ─── Auth-scope del caller (enviados como headers al endpoint) ────────────
   /** true si el usuario es root o despacho (sin restricción de empresa). */
   isRoot: boolean;
@@ -79,8 +81,9 @@ function buildCacheKey(
   escenario: number,
   tipoServicio: string,
   zonasKey: string,
+  fecha: string,
 ): string {
-  return [escenario, tipoServicio, zonasKey].join('|');
+  return [escenario, tipoServicio, zonasKey, fecha].join('|');
 }
 
 /**
@@ -103,6 +106,7 @@ async function fetchSnapshot(params: UseZonaCapacidadSnapshotParams): Promise<Zo
   sp.set('escenario', String(params.escenario));
   sp.set('tipoServicio', params.tipoServicio);
   if (params.zonas && params.zonas.length > 0) sp.set('zonas', params.zonas.join(','));
+  if (params.fecha) sp.set('fecha', params.fecha);
 
   const funcs = params.funcionalidades
     .map((f) => String(f).trim())
@@ -171,10 +175,10 @@ export function useZonaCapacidadSnapshot(
 
   const refetch = useCallback(() => {
     if (params.escenario == null) return;
-    const key = buildCacheKey(params.escenario, params.tipoServicio, zonasKey);
+    const key = buildCacheKey(params.escenario, params.tipoServicio, zonasKey, params.fecha ?? '');
     _cache.delete(key);
     setRefetchTrigger((n) => n + 1);
-  }, [params.escenario, params.tipoServicio, zonasKey]);
+  }, [params.escenario, params.tipoServicio, zonasKey, params.fecha]);
 
   useEffect(() => {
     if (params.escenario == null) {
@@ -182,7 +186,7 @@ export function useZonaCapacidadSnapshot(
       return;
     }
 
-    const key = buildCacheKey(params.escenario, params.tipoServicio, zonasKey);
+    const key = buildCacheKey(params.escenario, params.tipoServicio, zonasKey, params.fecha ?? '');
     const cached = _cache.get(key);
     const now = Date.now();
 
@@ -220,6 +224,7 @@ export function useZonaCapacidadSnapshot(
     params.escenario,
     params.tipoServicio,
     params.isRoot,
+    params.fecha,
     zonasKey,
     empresasKey,
     funcsKey,
