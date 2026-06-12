@@ -13,7 +13,7 @@ export type PedidosZonaFilter = 'pendientes' | 'sin_asignar' | 'atrasados';
  * Tipo de la capa: pedidos o services.
  * Controla la fuente de datos que se muestra en la capa de zonas.
  */
-export type ZonaLayerTipo = 'pedidos' | 'services';
+export type ZonaLayerTipo = 'URGENTE' | 'NOCTURNO' | 'OTROS' | 'SERVICE' | 'TODOS';
 
 export interface PedidoZonaData {
   zona_id: number;
@@ -111,7 +111,7 @@ function adjustOpacity(base: number, zonaOpacity: number): number {
 function PedidosZonaFilterControl({
   filter,
   onFilterChange,
-  tipo = 'pedidos',
+  tipo = 'TODOS',
   onTipoChange,
   hideSinAsignarOption = false,
 }: {
@@ -136,8 +136,11 @@ function PedidosZonaFilterControl({
           <div class="mz-filter-inner">
             <span class="mz-filter-label">Tipo:</span>
             <select class="mz-filter-select mz-tipo-select">
-              <option value="pedidos">Pedidos</option>
-              <option value="services">Services</option>
+              <option value="URGENTE">Urgente</option>
+              <option value="NOCTURNO">Nocturno</option>
+              <option value="OTROS">Otros Servicios</option>
+              <option value="SERVICE">Services</option>
+              <option value="TODOS">Todos los pedidos</option>
             </select>
             <span class="mz-filter-label" style="margin-top:4px">Estado:</span>
             <select class="mz-filter-select mz-estado-select">
@@ -236,7 +239,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({
   pedidosCount,
   filter,
   onFilterChange,
-  tipo = 'pedidos',
+  tipo = 'TODOS',
   onTipoChange,
   zonaOpacity = 50,
   onZonaClick,

@@ -60,7 +60,7 @@ export interface ViewState {
   pedidosZonaFilter: 'pendientes' | 'sin_asignar' | 'atrasados';
   movilesZonasServiceFilter: string;
   movilesZonaMovilFilter?: "prio_transito" | "prioridad" | "transito";
-  zonaLayerTipo?: "pedidos" | "services";
+  zonaLayerTipo?: string;
   modal: ModalSnapshot;
   panelScrolls: PanelScrolls;
 }

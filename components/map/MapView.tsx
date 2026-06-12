@@ -1218,7 +1218,7 @@ const MapView = memo(function MapView({
   visualRefs,
   escenarioId,
   isRoot,
-  zonaLayerTipo = "pedidos",
+  zonaLayerTipo = "TODOS",
   onZonaLayerTipoChange,
   movilesZonaMovilFilter = "prio_transito",
   onMovilesZonaMovilFilterChange,

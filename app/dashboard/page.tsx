@@ -20,6 +20,7 @@ import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtime
 import { useMovilesDiaRealtime } from '@/lib/hooks/useMovilesDiaRealtime';
 import { useZonaCapacidadSnapshot, invalidateZonaCapacidadSnapshot } from '@/lib/hooks/use-zona-capacidad-snapshot';
 import type { TipoServicioSnapshot } from '@/types/zona-capacidad';
+import type { ZonaLayerTipo } from '@/components/map/PedidosZonasLayer';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado, filterPedidosVisibles } from '@/utils/estadoPedido';
@@ -452,7 +453,7 @@ function DashboardContent() {
   // Filtro de subconjunto de moviles para la capa moviles-zonas (feature 2026-05-29)
   const [movilesZonaMovilFilter, setMovilesZonaMovilFilter] = useState<'prio_transito' | 'prioridad' | 'transito'>('prio_transito');
   // Tipo de la capa pedidos-zona: pedidos o services (feature 2026-05-29)
-  const [zonaLayerTipo, setZonaLayerTipo] = useState<'pedidos' | 'services'>('pedidos');
+  const [zonaLayerTipo, setZonaLayerTipo] = useState<ZonaLayerTipo>('TODOS');
   const [servicesFilters, setServicesFilters] = useState<ServiceFilters>(defaultServicesFilters);
   const [servicesResetToken, setServicesResetToken] = useState(0);
 
@@ -635,7 +636,15 @@ function DashboardContent() {
     if (hydration.pedidosZonaFilter !== null) setPedidosZonaFilter(hydration.pedidosZonaFilter);
     if (hydration.movilesZonasServiceFilter !== null) setMovilesZonasServiceFilter(hydration.movilesZonasServiceFilter);
     if (hydration.movilesZonaMovilFilter !== null) setMovilesZonaMovilFilter(hydration.movilesZonaMovilFilter);
-    if (hydration.zonaLayerTipo !== null) setZonaLayerTipo(hydration.zonaLayerTipo);
+    if (hydration.zonaLayerTipo !== null) {
+      // Mapear valores legacy persistidos ('pedidos'/'services') a los nuevos.
+      const legacy = hydration.zonaLayerTipo as string;
+      const mapped: ZonaLayerTipo =
+        legacy === 'pedidos' ? 'TODOS'
+        : legacy === 'services' ? 'SERVICE'
+        : (['URGENTE', 'NOCTURNO', 'OTROS', 'SERVICE', 'TODOS'].includes(legacy) ? legacy as ZonaLayerTipo : 'TODOS');
+      setZonaLayerTipo(mapped);
+    }
 
     // Modales: abrir el modal correspondiente
     const m = hydration.modal;
@@ -2939,6 +2948,12 @@ function DashboardContent() {
     pedidosCompletos.forEach(p => {
       const estado = Number(p.estado_nro);
       const tieneMovil = p.movil != null && Number(p.movil) !== 0;
+      // Filtro por servicio_nombre segun el combo de tipo (capa Pedidos/Zona).
+      // SERVICE se sirve desde servicesZonaData (no aca). TODOS = sin filtro.
+      const sn = (p.servicio_nombre ?? '').toUpperCase();
+      if (zonaLayerTipo === 'URGENTE' && sn !== 'URGENTE') return;
+      if (zonaLayerTipo === 'NOCTURNO' && sn !== 'NOCTURNO') return;
+      if (zonaLayerTipo === 'OTROS' && (sn === 'URGENTE' || sn === 'NOCTURNO')) return;
       // Gate B (funcionalidad): sin 'Ped s/asignar x zona', no contar pedidos sin movil en esta capa.
       if (!tieneMovil && !canVerSinAsigPorZona) return;
       // pendientes totales = todos los estado 1 (con o sin movil)
@@ -2961,7 +2976,7 @@ function DashboardContent() {
       map.set(zona, (map.get(zona) ?? 0) + 1);
     });
     return map;
-  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, minutosAntesSa, canVerSinAsigPorZona]);
+  }, [pedidosCompletos, pedidosZonaFilter, scopedZonaIds, minutosAntesSa, canVerSinAsigPorZona, zonaLayerTipo]);
 
   // Conteo de services por zona — analogo a pedidosZonaData pero usando servicesCompletos.
   // Misma logica de los 3 estados (pendientes/sin_asignar/atrasados) con los mismos gates.
@@ -2990,8 +3005,8 @@ function DashboardContent() {
     return map;
   }, [servicesCompletos, pedidosZonaFilter, scopedZonaIds, minutosAntesSa, canVerSinAsigPorZona]);
 
-  // Seleccionar la fuente correcta segun zonaLayerTipo
-  const zonaCountData = zonaLayerTipo === 'services' ? servicesZonaData : pedidosZonaData;
+  // Seleccionar la fuente correcta segun zonaLayerTipo (SERVICE → tabla services).
+  const zonaCountData = zonaLayerTipo === 'SERVICE' ? servicesZonaData : pedidosZonaData;
 
   // Si el filtro pedidos/zona quedo en 'sin_asignar' pero el usuario no tiene la funcionalidad,
   // forzarlo a 'pendientes' (ej. estado persistido entre sesiones).
@@ -3657,7 +3672,7 @@ function DashboardContent() {
     [updatePreference],
   );
   const handleZonaClickPedidosZona = useCallback((zonaId: number) => {
-    if (zonaLayerTipo === 'services') {
+    if (zonaLayerTipo === 'SERVICE') {
       setServicesOpenSource('zona_combo');
       snapshotServicesState();
       setPreFilterZona(zonaId);

@@ -38,7 +38,7 @@ export interface HydrationResult {
   pedidosZonaFilter: 'pendientes' | 'sin_asignar' | 'atrasados' | null;
   movilesZonasServiceFilter: string | null;
   movilesZonaMovilFilter: "prio_transito" | "prioridad" | "transito" | null;
-  zonaLayerTipo: "pedidos" | "services" | null;
+  zonaLayerTipo: string | null;
   modal: ModalSnapshot;
   panelScrolls: PanelScrolls | null;
 }
@@ -51,7 +51,7 @@ export interface SyncArgs {
   pedidosZonaFilter: 'pendientes' | 'sin_asignar' | 'atrasados';
   movilesZonasServiceFilter: string;
   movilesZonaMovilFilter: "prio_transito" | "prioridad" | "transito";
-  zonaLayerTipo: "pedidos" | "services";
+  zonaLayerTipo: string;
   modal: ModalSnapshot;
 }
 
