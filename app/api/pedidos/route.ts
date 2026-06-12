@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
-import { pendienteDateRangeCompact } from '@/lib/date-utils';
+import { buildFchParaWindowOr } from '@/lib/date-utils';
 
 /**
  * GET /api/pedidos
@@ -130,32 +130,14 @@ export async function GET(request: NextRequest) {
       query = query.eq('estado_nro', parseInt(estado));
     }
 
-    // Filtrar por fecha: usar OR para capturar pedidos por fch_hora_para (timestamp) O fch_para (date)
-    // Los pedidos finalizados (estado_nro=2) pueden no tener fch_hora_para pero si fch_para
-    // NOTA: fch_para se almacena como YYYYMMDD (sin guiones) en la BD
-    //
-    // Arrastre (feature 2026-05-29): cuando fecha === hoy (Montevideo), el rango de fch_para
-    // se amplía a [hoy] (cualquier estado) + [ayer SOLO si estado_nro=1].
-    // ASIMETRÍA INTENCIONAL: finalizados de ayer NO se traen — el cliente los descartaría
-    // igual y solo desperdiciaba ancho de banda y memoria.
+    // Filtrar por VENTANA DE FECHA canónica (lib/date-utils.buildFchParaWindowOr).
+    // fch_para se almacena como YYYY-MM-DD (con guiones) en la BD.
+    //   - fecha === hoy: (fch_para entre ayer y hoy ∧ estado=1) ∨ (fch_para=hoy ∧ estado=2)
+    //   - fecha pasada:  fch_para = fecha (cualquier estado)
+    // Esto ARREGLA el arrastre de pendientes de ayer, que antes quedaba inactivo
+    // por comparar contra el formato compacto YYYYMMDD (que nunca matcheaba).
     if (fecha) {
-      const fechaInicio = `${fecha}T00:00:00`;
-      const fechaFin = `${fecha}T23:59:59`;
-      const rangoCompact = pendienteDateRangeCompact(fecha); // ['YYYYMMDD'] o ['YYYYMMDD', 'YYYYMMDD_ayer']
-
-      if (rangoCompact.length === 1) {
-        // Fecha pasada: comportamiento original
-        const fechaSinGuiones = rangoCompact[0];
-        query = query.or(`and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${fechaSinGuiones}`);
-      } else {
-        // Hoy: fch_para = hoy (cualquier estado) OR fch_para = ayer (solo estado_nro=1)
-        //      OR fch_hora_para en rango de hoy (cualquier estado).
-        // El nested and() garantiza que SQL solo traiga lo que el cliente realmente usa.
-        const [hoyCompact, ayerCompact] = rangoCompact;
-        query = query.or(
-          `and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${hoyCompact},and(fch_para.eq.${ayerCompact},estado_nro.eq.1)`
-        );
-      }
+      query = query.or(buildFchParaWindowOr(fecha));
     }
 
     // Filtrar solo pedidos con coordenadas

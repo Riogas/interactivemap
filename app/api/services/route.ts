@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
+import { buildFchParaWindowOr } from '@/lib/date-utils';
 
 /**
  * GET /api/services
@@ -111,13 +112,14 @@ export async function GET(request: NextRequest) {
       query = query.eq('estado_nro', parseInt(estado));
     }
 
-    // Filtrar por fecha: OR para capturar services por fch_hora_para (timestamp) O fch_para (date)
-    // NOTA: fch_para se almacena como YYYYMMDD (sin guiones) en la BD
+    // Filtrar por VENTANA DE FECHA canónica (lib/date-utils.buildFchParaWindowOr).
+    // fch_para se almacena como YYYY-MM-DD (con guiones) en la BD.
+    //   - fecha === hoy: (fch_para entre ayer y hoy ∧ estado=1) ∨ (fch_para=hoy ∧ estado=2)
+    //   - fecha pasada:  fch_para = fecha (cualquier estado)
+    // Antes services NO tenía arrastre y comparaba contra YYYYMMDD (formato que
+    // nunca matcheaba); ahora queda alineado con /api/pedidos.
     if (fecha) {
-      const fechaInicio = `${fecha}T00:00:00`;
-      const fechaFin = `${fecha}T23:59:59`;
-      const fechaSinGuiones = fecha.replace(/-/g, ''); // '2026-02-17' → '20260217'
-      query = query.or(`and(fch_hora_para.gte.${fechaInicio},fch_hora_para.lte.${fechaFin}),fch_para.eq.${fechaSinGuiones}`);
+      query = query.or(buildFchParaWindowOr(fecha));
     }
 
     if (conCoordenadas) {

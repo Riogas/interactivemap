@@ -186,6 +186,27 @@ export function dateWindowBounds(
   return { isToday: false, desde: fecha, hasta: fecha };
 }
 
+/**
+ * Cláusula PostgREST `.or(...)` que implementa la VENTANA DE FECHA canónica
+ * (request 2026-06-12) sobre `fch_para` (formato `YYYY-MM-DD`, igual que la BD).
+ *
+ *  - fecha === hoy:  `(fch_para entre ayer y hoy ∧ estado=1) ∨ (fch_para=hoy ∧ estado=2)`
+ *  - fecha < hoy:    `fch_para = fecha`  (cualquier estado)
+ *
+ * Uso: `query.or(buildFchParaWindowOr(fecha))`.
+ *
+ * IMPORTANTE: usa guiones (`2026-06-12`). NO usar el formato compacto YYYYMMDD
+ * (era el bug histórico: la comparación nunca matcheaba y el arrastre de
+ * pendientes de ayer quedaba inactivo).
+ */
+export function buildFchParaWindowOr(fecha: string, now: Date = new Date()): string {
+  const { isToday, desde, hasta } = dateWindowBounds(fecha, now);
+  if (isToday) {
+    return `and(fch_para.gte.${desde},fch_para.lte.${hasta},estado_nro.eq.1),and(fch_para.eq.${hasta},estado_nro.eq.2)`;
+  }
+  return `fch_para.eq.${fecha}`;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Formatters de display — siempre con timeZone: 'America/Montevideo'
 //

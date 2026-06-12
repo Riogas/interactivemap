@@ -2584,8 +2584,6 @@ function DashboardContent() {
   }, []);
 
   // Combinar pedidos iniciales con updates de realtime
-  // Fecha seleccionada en formato YYYYMMDD para filtrar por fch_para
-  const selectedDateCompact = useMemo(() => selectedDate.replace(/-/g, ''), [selectedDate]);
 
   // Set de IDs de móviles permitidos para el usuario actual. Se computa a partir
   // de movilesFiltered (que ya respeta selectedEmpresas + allowedEmpresas).
@@ -2722,12 +2720,12 @@ function DashboardContent() {
     // Arrastre (feature 2026-05-29): cuando isToday, aceptar tambien fch_para === ayerCompact
     // pero SOLO para pendientes (estado_nro === 1). Los finalizados de ayer quedan excluidos
     // (asimetria intencional: finalizados = fch_para === hoy solamente).
-    const ayerCompact = isToday ? daysAgoMontevideo(1).replace(/-/g, '') : null;
+    const ayerDash = isToday ? daysAgoMontevideo(1) : null;
     let resultado = Array.from(pedidosMap.values()).filter(p => {
-      // Verificar por fch_para (formato YYYYMMDD) o por fch_hora_para (timestamp)
-      if (p.fch_para && p.fch_para === selectedDateCompact) return true;
+      // VENTANA DE FECHA canónica. fch_para es YYYY-MM-DD (igual que la BD).
+      if (p.fch_para && p.fch_para === selectedDate) return true;
       // Arrastre: pedido de ayer estado=1 en la vista de hoy
-      if (isToday && ayerCompact && Number(p.estado_nro) === 1 && p.fch_para === ayerCompact) return true;
+      if (isToday && ayerDash && Number(p.estado_nro) === 1 && p.fch_para === ayerDash) return true;
       if (p.fch_hora_para && p.fch_hora_para.startsWith(selectedDate)) return true;
       // Si no tiene ninguno de los dos campos, incluir (para no perder datos)
       if (!p.fch_para && !p.fch_hora_para) return true;
@@ -2765,7 +2763,7 @@ function DashboardContent() {
     dbg(`?? Iniciales: ${pedidosIniciales.length} | Realtime: ${pedidosRealtime.length} | Filtrados por fecha ${selectedDate}: ${resultado.length}`);
 
     return resultado;
-  }, [pedidosIniciales, pedidosRealtime, selectedDateCompact, selectedDate, isToday, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
+  }, [pedidosIniciales, pedidosRealtime, selectedDate, isToday, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
 
   // Combinar services iniciales con updates de realtime
   const servicesCompletos = useMemo(() => {
@@ -2776,11 +2774,12 @@ function DashboardContent() {
     // Filtrar por fecha seleccionada.
     // Arrastre (feature 2026-05-29): cuando isToday, aceptar tambien fch_para === ayerCompact
     // pero SOLO para pendientes (estado_nro === 1), igual que pedidosCompletos.
-    const ayerCompactSvc = isToday ? daysAgoMontevideo(1).replace(/-/g, '') : null;
+    const ayerDashSvc = isToday ? daysAgoMontevideo(1) : null;
     let resultado = Array.from(servicesMap.values()).filter(s => {
-      if (s.fch_para && s.fch_para === selectedDateCompact) return true;
+      // VENTANA DE FECHA canónica. fch_para es YYYY-MM-DD (igual que la BD).
+      if (s.fch_para && s.fch_para === selectedDate) return true;
       // Arrastre: service de ayer estado=1 en la vista de hoy
-      if (isToday && ayerCompactSvc && Number(s.estado_nro) === 1 && s.fch_para === ayerCompactSvc) return true;
+      if (isToday && ayerDashSvc && Number(s.estado_nro) === 1 && s.fch_para === ayerDashSvc) return true;
       if (s.fch_hora_para && s.fch_hora_para.startsWith(selectedDate)) return true;
       if (!s.fch_para && !s.fch_hora_para) return true;
       return false;
@@ -2806,7 +2805,7 @@ function DashboardContent() {
 
     dbg(`?? DASHBOARD: servicesCompletos filtrados por ${selectedDate}: ${resultado.length}`);
     return resultado;
-  }, [servicesIniciales, servicesRealtime, selectedDateCompact, selectedDate, isToday, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
+  }, [servicesIniciales, servicesRealtime, selectedDate, isToday, userHasEmpresaRestriction, allowedMovilIds, empresas.length, selectedEmpresas.length, isViewingHistorical]);
 
   // Mantener refs sincronizadas con las listas memoizadas para acceso sincrónico
   // desde callbacks definidos antes en el render.
