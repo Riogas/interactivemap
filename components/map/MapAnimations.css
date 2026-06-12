@@ -54,16 +54,31 @@
   animation: none !important;
 }
 
+/* 🚀 Apagar TODAS las animaciones de markers (alarm-pulse, etc.) cuando el
+ * contenedor tiene .no-marker-anim. Se activa en alta densidad, modo histórico
+ * o prefers-reduced-motion. Una regla con !important en hoja de estilos
+ * sobreescribe el `animation:` inline (sin !important) de los iconos.
+ * Cubre tanto el icono como sus hijos (los shapes con animación inline). */
+.no-marker-anim .leaflet-marker-icon,
+.no-marker-anim .leaflet-marker-icon *,
+.no-marker-anim .leaflet-marker-icon [style*="animation"] {
+  animation: none !important;
+}
+
 /* Custom marker icon reset */
 .custom-marker-icon {
   background: transparent !important;
   border: none !important;
 }
 
-/* Optimización: Los marcadores usan GPU compositing */
+/* Optimización GPU: solo los markers que REALMENTE animan reciben capa de
+ * compositing. El will-change global creaba una capa por cada marker (cientos),
+ * aunque fueran estáticos. Ahora se limita a los que tienen animación inline. */
 .leaflet-marker-pane .leaflet-marker-icon {
-  will-change: transform;
   contain: layout style;
+}
+.leaflet-marker-pane .leaflet-marker-icon [style*="animation"] {
+  will-change: transform;
 }
 
 /* Animación pulse más suave para móviles inactivos en el sidebar */
@@ -74,4 +89,14 @@
 
 .animate-pulse-slow {
   animation: pulse-slow 2s ease-in-out infinite;
+}
+
+/* ♿ Accesibilidad + ahorro GPU: respetar prefers-reduced-motion del sistema.
+ * Apaga toda animación de markers y del pulse-slow del sidebar. */
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-marker-icon,
+  .leaflet-marker-icon *,
+  .animate-pulse-slow {
+    animation: none !important;
+  }
 }

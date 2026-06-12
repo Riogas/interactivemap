@@ -34,6 +34,7 @@ import ZonasActivasLayer from './ZonasActivasLayer';
 import SaturacionZonasLayer, { SaturacionZonaData, SaturacionZonaStats } from './SaturacionZonasLayer';
 import dynamic from 'next/dynamic';
 import { isVisibleByWindow } from '@/lib/sa-window-filter';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import './DataViewControl.css';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
@@ -2625,6 +2626,18 @@ const MapView = memo(function MapView({
   const isHighDensity = totalMarkerCount > HIGH_DENSITY_THRESHOLD;
   const shouldDisableAnimations = totalMarkerCount > DISABLE_ANIMATIONS_THRESHOLD;
 
+  // Apagar animaciones de markers (alarm-pulse, etc.) cuando:
+  //  - alta densidad (>150 markers): perf
+  //  - modo histórico (fecha < hoy): no hay alarmas en vivo que mostrar
+  //  - prefers-reduced-motion del sistema: accesibilidad
+  // NOTA: en modo "hoy + visible" (incluido monitoreo/TV) las animaciones SIGUEN.
+  // La pausa por tab-oculto se maneja aparte (realtime). Esto se aplica via clase
+  // CSS en el contenedor: una regla con !important en hoja de estilos sobreescribe
+  // los `animation:` inline (sin !important) de los iconos — robusto y sin tocar
+  // los generadores de iconos cacheados.
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const disableMarkerAnimations = shouldDisableAnimations || !isToday || prefersReducedMotion;
+
   // ?? getBounds para el botón de centrado  todos los puntos visibles (móviles + pedidos + zonas)
   const getMapBounds = useCallback((): [number, number][] | null => {
     const pts: [number, number][] = [];
@@ -2644,7 +2657,7 @@ const MapView = memo(function MapView({
   }, [moviles, pedidos, allZonas, zonas]);
 
   return (
-    <div className={`h-full w-full rounded-xl overflow-hidden shadow-2xl relative ${isHighDensity ? 'high-density-map' : ''}`}>
+    <div className={`h-full w-full rounded-xl overflow-hidden shadow-2xl relative ${isHighDensity ? 'high-density-map' : ''} ${disableMarkerAnimations ? 'no-marker-anim' : ''}`}>
       <MapContainer
         center={defaultCenter}
         zoom={13}
@@ -3279,7 +3292,7 @@ const MapView = memo(function MapView({
               })
               .filter(marker => marker !== null)}
           </>
-        ) : (
+        ) : movilesToShow.length === 0 ? null : (
           // Mostrar móviles (todos o solo el enfocado)  viewport-culled
           <CulledMovilesLayer
             moviles={movilesToShow}

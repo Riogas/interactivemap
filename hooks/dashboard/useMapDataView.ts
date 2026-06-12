@@ -489,7 +489,10 @@ export function useMapDataView({
     const intervalMs = getIntervalMs();
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    if (intervalMs > 0) {
+    // Modo histórico (fecha < hoy): los datos no cambian, no se arranca el polling.
+    // Esto evita fetch + re-render periódico innecesario (consumo CPU/GPU casi nulo
+    // en histórico cuando no hay interacción).
+    if (isToday && intervalMs > 0) {
       console.log(`Polling activado para "${dataViewMode}" cada ${intervalMs / 1000}s`);
       intervalId = setInterval(loadDataView, intervalMs);
     }
