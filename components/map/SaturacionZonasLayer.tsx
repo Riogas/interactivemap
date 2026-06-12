@@ -307,7 +307,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
               html: `
                 <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
-                  ${showLabels && label ? `<span class="demora-label-time" style="font-size:9px">${label}</span>` : ''}
+                  ${showLabels && label && !isInactive ? `<span class="demora-label-time" style="font-size:9px">${label}</span>` : ''}
                 </div>
               `,
               iconSize: [64, 36],
