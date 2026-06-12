@@ -117,6 +117,11 @@ export function useMapDataView({
     determineServicePeriod(serverNow, aplicaNocturno)
   );
 
+  // Combo de la capa Cap. Entrega (saturacion). Estado PROPIO, independiente del
+  // de moviles-zonas: admite 5 valores (URGENTE/NOCTURNO/OTROS/SERVICE/TODOS) y NO
+  // está sujeto al reset por periodo horario (que sí aplica a moviles-zonas).
+  const [capServiceFilter, setCapServiceFilter] = useState<string>('URGENTE');
+
   // Ref para trackear el ultimo periodo conocido sin causar re-renders.
   // Se inicializa con el mismo valor que el estado para consistencia.
   const lastKnownPeriodRef = useRef<string>(determineServicePeriod(serverNow, aplicaNocturno));
@@ -531,6 +536,8 @@ export function useMapDataView({
     movilesZonasData,
     movilesZonasServiceFilter,
     setMovilesZonasServiceFilter,
+    capServiceFilter,
+    setCapServiceFilter,
     handleDataViewChange,
   };
 }

@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePedidosRealtime, useServicesRealtime } from '@/lib/hooks/useRealtimeSubscriptions';
 import { useMovilesDiaRealtime } from '@/lib/hooks/useMovilesDiaRealtime';
 import { useZonaCapacidadSnapshot, invalidateZonaCapacidadSnapshot } from '@/lib/hooks/use-zona-capacidad-snapshot';
+import type { TipoServicioSnapshot } from '@/types/zona-capacidad';
 import { useTabVisibility } from '@/hooks/usePerformanceOptimizations';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
 import { isPedidoEntregado, isServiceEntregado, filterPedidosVisibles } from '@/utils/estadoPedido';
@@ -350,6 +351,7 @@ function DashboardContent() {
     showZonas, setShowZonas,
     zonasData, allZonasData, demorasData,
     movilesZonasData, movilesZonasServiceFilter, setMovilesZonasServiceFilter,
+    capServiceFilter, setCapServiceFilter,
     handleDataViewChange,
   } = useMapDataView({
     dataViewMode,
@@ -3001,12 +3003,14 @@ function DashboardContent() {
 
   // ─── Snapshot de capacidad por zona (PR2) ────────────────────────────────
   // El filtro del mapa ya contiene uno de los 3 valores reales de BD.
-  const _snapshotTipoServicio: 'URGENTE' | 'SERVICE' | 'NOCTURNO' = useMemo(() => {
-    const upper = movilesZonasServiceFilter.toUpperCase();
+  const _snapshotTipoServicio: TipoServicioSnapshot = useMemo(() => {
+    const upper = capServiceFilter.toUpperCase();
     if (upper === 'SERVICE') return 'SERVICE';
     if (upper === 'NOCTURNO') return 'NOCTURNO';
+    if (upper === 'OTROS') return 'OTROS';
+    if (upper === 'TODOS') return 'TODOS';
     return 'URGENTE';
-  }, [movilesZonasServiceFilter]);
+  }, [capServiceFilter]);
 
   // Construir array de nombres de funcionalidades del usuario (para el endpoint).
   const _userFuncionalidades = useMemo((): string[] => {
@@ -4483,6 +4487,8 @@ function DashboardContent() {
                 allHiddenMovilIds={allHiddenMovilIds}
                 movilesZonasData={movilesZonasData}
                 movilesZonasServiceFilter={movilesZonasServiceFilter}
+                capServiceFilter={capServiceFilter}
+                onCapServiceFilterChange={setCapServiceFilter}
                 onMovilesZonasServiceFilterChange={setMovilesZonasServiceFilter}
                 zonaLayerTipo={zonaLayerTipo}
                 onZonaLayerTipoChange={setZonaLayerTipo}

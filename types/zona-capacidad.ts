@@ -8,10 +8,14 @@
  */
 
 /**
- * Tipo de servicio aceptado por el endpoint y el hook.
- * Coincide 1:1 con los valores en `zonas_cap_entrega.tipo_servicio`.
+ * Tipo de servicio aceptado por el endpoint y el hook (combo de la capa).
+ *  - URGENTE / NOCTURNO: SA de la tabla `pedidos` con ese servicio_nombre.
+ *  - OTROS:  SA de `pedidos` con servicio_nombre ≠ URGENTE/NOCTURNO (incluye null).
+ *  - TODOS:  SA de `pedidos` de cualquier servicio_nombre (acumulado).
+ *  - SERVICE: SA de la tabla `services`.
+ * Para capacidad (denominador), OTROS y TODOS usan el bucket URGENTE (flota diurna).
  */
-export type TipoServicioSnapshot = 'URGENTE' | 'SERVICE' | 'NOCTURNO';
+export type TipoServicioSnapshot = 'URGENTE' | 'SERVICE' | 'NOCTURNO' | 'OTROS' | 'TODOS';
 
 /**
  * Pedido sin asignar en versión compacta para el detalle de zona.

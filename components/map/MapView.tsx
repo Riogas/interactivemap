@@ -119,6 +119,9 @@ interface MapViewProps {
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
   onMovilesZonasServiceFilterChange?: (f: MovilesZonasServiceFilter) => void; // Callback cambio filtro
+  /** Filtro del combo de la capa Cap. Entrega (saturacion): URGENTE/NOCTURNO/OTROS/SERVICE/TODOS. */
+  capServiceFilter?: string;
+  onCapServiceFilterChange?: (f: string) => void;
   saturacionData?: Map<number, SaturacionZonaStats>; // Mapa zona_id ? stats de saturación
   tiposServicioDisponibles?: string[]; // Valores distintos de servicio_nombre
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
@@ -623,6 +626,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.hideSinAsignarOption === next.hideSinAsignarOption &&
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
+    prev.capServiceFilter === next.capServiceFilter &&
     prev.zonaLayerTipo === next.zonaLayerTipo &&
     prev.streetSearchOpen === next.streetSearchOpen &&
     prev.movilesZonaMovilFilter === next.movilesZonaMovilFilter &&
@@ -1178,6 +1182,8 @@ const MapView = memo(function MapView({
   movilesZonasData = [],
   movilesZonasServiceFilter = 'all',
   onMovilesZonasServiceFilterChange,
+  capServiceFilter = 'URGENTE',
+  onCapServiceFilterChange,
   tiposServicioDisponibles = [],
   saturacionData,
   allZonas = [],
@@ -2789,7 +2795,7 @@ const MapView = memo(function MapView({
 
         {/* ?? Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
         {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
+          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={capServiceFilter} onServiceFilterChange={onCapServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (

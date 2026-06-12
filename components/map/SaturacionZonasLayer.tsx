@@ -165,7 +165,13 @@ function SaturacionLegend({
   return null;
 }
 
-const TIPOS_SERVICIO_SAT = ['URGENTE', 'SERVICE', 'NOCTURNO'] as const;
+const TIPOS_SERVICIO_SAT: { value: string; label: string }[] = [
+  { value: 'URGENTE', label: 'Urgente' },
+  { value: 'NOCTURNO', label: 'Nocturno' },
+  { value: 'OTROS', label: 'Otros Servicios' },
+  { value: 'SERVICE', label: 'Services' },
+  { value: 'TODOS', label: 'Todos los pedidos' },
+];
 
 /** Control Leaflet para filtro por tipo de servicio en Cap. Entrega */
 function SaturacionFilterControl({ serviceFilter, onServiceFilterChange }: { serviceFilter: string; onServiceFilterChange: (f: string) => void }) {
@@ -181,7 +187,7 @@ function SaturacionFilterControl({ serviceFilter, onServiceFilterChange }: { ser
           <div class="mz-filter-inner">
             <span class="mz-filter-label">Tipo Servicio:</span>
             <select class="mz-filter-select">
-              ${TIPOS_SERVICIO_SAT.map(t => `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()}</option>`).join('')}
+              ${TIPOS_SERVICIO_SAT.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
             </select>
           </div>
         `;

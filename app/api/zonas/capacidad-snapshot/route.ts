@@ -57,8 +57,10 @@ function buildSaWindowEnd(serverNow: Date, minutosAntes: number | null): string 
 const CAP_LOG = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
 const clog = (...args: unknown[]) => { if (CAP_LOG) console.log('[CAP-SNAPSHOT]', ...args); };
 
-// Valores 1:1 con zonas_cap_entrega.tipo_servicio.
-const TIPO_SERVICIO_ALLOWED = new Set(['URGENTE', 'SERVICE', 'NOCTURNO']);
+// Valores admitidos en el combo de la capa. URGENTE/NOCTURNO/SERVICE existen como
+// bucket de capacidad en zonas_cap_entrega; OTROS/TODOS NO tienen bucket propio y
+// reusan la capacidad del bucket URGENTE (flota diurna) — ver capacityTipo.
+const TIPO_SERVICIO_ALLOWED = new Set(['URGENTE', 'SERVICE', 'NOCTURNO', 'OTROS', 'TODOS']);
 
 // ─── Supabase query builder type helper ──────────────────────────────────────
 // El tipo de retorno del Supabase JS client v2 es complejo y las vistas no
@@ -143,14 +145,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // 3. Validar tipoServicio (requerido) — uno de los 3 valores reales de BD
+  // 3. Validar tipoServicio (requerido)
   const tipoServicio = sp.get('tipoServicio') ?? '';
   if (!TIPO_SERVICIO_ALLOWED.has(tipoServicio)) {
     return NextResponse.json(
-      { success: false, error: 'Parámetro "tipoServicio" requerido: URGENTE | SERVICE | NOCTURNO', code: 'INVALID_TIPO_SERVICIO' },
+      { success: false, error: 'Parámetro "tipoServicio" requerido: URGENTE | NOCTURNO | OTROS | SERVICE | TODOS', code: 'INVALID_TIPO_SERVICIO' },
       { status: 400 },
     );
   }
+
+  // Bucket de capacidad a consultar en vw_zona_capacidad / zonas_cap_entrega.
+  // OTROS y TODOS no tienen bucket propio → usan la capacidad de URGENTE (flota diurna).
+  const capacityTipo = (tipoServicio === 'OTROS' || tipoServicio === 'TODOS') ? 'URGENTE' : tipoServicio;
 
   // 5. zonas (opcional CSV)
   const zonasRaw = sp.get('zonas');
@@ -210,7 +216,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let q = db.from('vw_zona_capacidad')
       .select('escenario, zona, emp_fletera_id, tipo_servicio, capacidad_total, moviles_count, moviles_prioridad, moviles_transito, last_sync')
       .eq('escenario', escenario)
-      .eq('tipo_servicio', tipoServicio);
+      .eq('tipo_servicio', capacityTipo);
     if (!isRoot && scopeEmpresaIds) q = q.in('emp_fletera_id', scopeEmpresaIds);
     if (zonasFiltro && zonasFiltro.length > 0) q = q.in('zona', zonasFiltro);
     return q;
@@ -220,7 +226,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let q = db.from('zonas_cap_entrega')
       .select('zona, movil, lote_disponible, emp_fletera_id, tipo_servicio')
       .eq('escenario', escenario)
-      .eq('tipo_servicio', tipoServicio);
+      .eq('tipo_servicio', capacityTipo);
     if (!isRoot && scopeEmpresaIds) q = q.in('emp_fletera_id', scopeEmpresaIds);
     if (zonasFiltro && zonasFiltro.length > 0) q = q.in('zona', zonasFiltro);
     return q;
@@ -304,21 +310,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // Ventana SA transversal (R4): ademas, los SA solo se cuentan si caen dentro de
   // la ventana temporal del escenario (fch_hora_para <= ahora + minutosAntes).
 
-  // ─── Query 5: pedidos sin asignar (solo si hasCount) ───────────────────────
+  // ─── Query 5: SA sin asignar (solo si hasCount) ────────────────────────────
   //
-  // Ventana de fecha canónica (request 2026-06-12, dateWindowBounds):
-  //   - fecha = hoy:  fch_para entre ayer y hoy (estado=1, "sin asignar" pendientes).
-  //   - fecha pasada: fch_para = fecha (estado=1).
-  // Los SA son por definición estado=1 (pendientes sin móvil); por eso NO se
-  // incluyen finalizados (estado=2) en este conteo de capacidad.
+  // Fuente segun el combo (tipoServicio):
+  //   - SERVICE → tabla `services` (todos; servicio_nombre es null en services).
+  //   - URGENTE/NOCTURNO → `pedidos` con servicio_nombre = ese valor.
+  //   - OTROS → `pedidos` con servicio_nombre ≠ URGENTE/NOCTURNO (incluye null).
+  //   - TODOS → `pedidos` de cualquier servicio_nombre (acumulado).
   //
-  // Ventana SA transversal: SOLO cuando la fecha es hoy, los SA además deben caer
-  // dentro de la ventana del escenario (fch_hora_para <= ahora + minutosAntes).
-  // En fechas pasadas "ahora" no aplica → no se filtra por fch_hora_para.
+  // Ventana de fecha canónica (dateWindowBounds): hoy → fch_para∈[ayer,hoy];
+  // fecha pasada → fch_para=fecha. SA = estado=1 sin móvil (movil null/0).
+  //
+  // Ventana SA transversal: SOLO cuando la fecha es hoy, además fch_hora_para ≤
+  // ahora + minutosAntes. En fechas pasadas "ahora" no aplica.
 
   let pedidosSinAsignarRows: PedidoSinAsignarRow[] = [];
   if (hasCount && zonaIds.length > 0) {
-    let pedQuery = db.from('pedidos')
+    const saTable = tipoServicio === 'SERVICE' ? 'services' : 'pedidos';
+    let pedQuery = db.from(saTable)
       .select('id, zona_nro, servicio_nombre, fch_para, fch_hora_para, cliente_direccion')
       .eq('escenario', escenario)
       .eq('estado_nro', 1)
@@ -326,6 +335,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .lte('fch_para', fechaHasta)
       .in('zona_nro', zonaIds)
       .or('movil.is.null,movil.eq.0');
+
+    // Filtro por servicio_nombre (solo aplica a la tabla pedidos).
+    if (tipoServicio === 'URGENTE' || tipoServicio === 'NOCTURNO') {
+      pedQuery = pedQuery.eq('servicio_nombre', tipoServicio);
+    } else if (tipoServicio === 'OTROS') {
+      // ≠ URGENTE y ≠ NOCTURNO, incluyendo servicio_nombre null.
+      pedQuery = pedQuery.or('servicio_nombre.is.null,and(servicio_nombre.neq.URGENTE,servicio_nombre.neq.NOCTURNO)');
+    }
+    // TODOS y SERVICE: sin filtro de servicio_nombre.
 
     if (fechaEsHoy) {
       const { pedidosSaMinutosAntes } = await getEscenarioSettings(escenario);
