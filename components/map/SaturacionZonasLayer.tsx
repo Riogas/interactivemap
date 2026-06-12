@@ -169,8 +169,8 @@ const TIPOS_SERVICIO_SAT: { value: string; label: string }[] = [
   { value: 'URGENTE', label: 'Urgente' },
   { value: 'NOCTURNO', label: 'Nocturno' },
   { value: 'OTROS', label: 'Otros Servicios' },
-  { value: 'SERVICE', label: 'Services' },
   { value: 'TODOS', label: 'Todos los pedidos' },
+  { value: 'SERVICE', label: 'Servicios Técnicos' },
 ];
 
 /** Control Leaflet para filtro por tipo de servicio en Cap. Entrega */

@@ -139,8 +139,8 @@ function PedidosZonaFilterControl({
               <option value="URGENTE">Urgente</option>
               <option value="NOCTURNO">Nocturno</option>
               <option value="OTROS">Otros Servicios</option>
-              <option value="SERVICE">Services</option>
               <option value="TODOS">Todos los pedidos</option>
+              <option value="SERVICE">Servicios Técnicos</option>
             </select>
             <span class="mz-filter-label" style="margin-top:4px">Estado:</span>
             <select class="mz-filter-select mz-estado-select">
