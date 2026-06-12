@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { canSeeAllEmpresas, isRoot } from '@/lib/auth-scope';
 import { useSearchParams } from 'next/navigation';
@@ -22,6 +22,14 @@ import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
 import { hasSaAcumulados } from '@/lib/role-funcionalidades';
+import {
+  exportCardPdf,
+  exportCardExcel,
+  sectionFromValuePct,
+  sectionFromStackRows,
+  sectionFromBucketRows,
+  type CardExportModel,
+} from '@/lib/stats-export';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
 interface Pedido {
@@ -149,10 +157,64 @@ const CARD_ICONS = {
 
 type CardIconName = keyof typeof CARD_ICONS;
 
+// ─── Botones de export (PDF / Excel) por card ────────────────────────────────
+function CardExportButtons({
+  getNode,
+  buildModel,
+  fechaLabel,
+}: {
+  getNode: () => HTMLElement | null;
+  buildModel: () => CardExportModel | null;
+  fechaLabel?: string;
+}) {
+  const [busy, setBusy] = useState<null | 'pdf' | 'xlsx'>(null);
+
+  const run = async (kind: 'pdf' | 'xlsx') => {
+    const node = getNode();
+    const model = buildModel();
+    if (!node || !model) return;
+    setBusy(kind);
+    try {
+      if (kind === 'pdf') await exportCardPdf(node, model, fechaLabel);
+      else await exportCardExcel(node, model, fechaLabel);
+    } catch (e) {
+      console.error('[stats-export] error exportando', kind, e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const btnCls =
+    'p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info disabled:opacity-50 disabled:cursor-wait';
+
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={() => run('pdf')} disabled={busy !== null} className={btnCls} title="Descargar PDF" aria-label="Descargar PDF">
+        {/* icono PDF */}
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <path d="M9 13h1.5a1.5 1.5 0 0 1 0 3H9v-3zm0 3v2" />
+          <path d="M14 13v5M14 13h2M14 15.5h1.5" />
+        </svg>
+      </button>
+      <button onClick={() => run('xlsx')} disabled={busy !== null} className={btnCls} title="Descargar Excel" aria-label="Descargar Excel">
+        {/* icono Excel */}
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <path d="m9.5 12.5 5 5M14.5 12.5l-5 5" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 // ─── Tarjeta expandible ───────────────────────────────────────────────────────
-function ExpandableCard({ title, icon, children, expandedChildren }: { title: string; icon?: CardIconName; children: React.ReactNode; expandedChildren?: React.ReactNode }) {
+function ExpandableCard({ title, icon, children, expandedChildren, exportModel, fechaLabel }: { title: string; icon?: CardIconName; children: React.ReactNode; expandedChildren?: React.ReactNode; exportModel?: () => CardExportModel | null; fechaLabel?: string }) {
   const [expanded, setExpanded] = useState(false);
   const iconNode = icon ? CARD_ICONS[icon] : null;
+  const contentRef = useRef<HTMLDivElement>(null);
   return (
     <>
       {expanded && (
@@ -187,20 +249,73 @@ function ExpandableCard({ title, icon, children, expandedChildren }: { title: st
             {iconNode && <span className="text-stats-info">{iconNode}</span>}
             {title}
           </h3>
-          <button
-            onClick={() => setExpanded(true)}
-            className="p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
-            title="Expandir"
-            aria-label="Expandir tarjeta"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1">
+            {exportModel && (
+              <CardExportButtons getNode={() => contentRef.current} buildModel={exportModel} fechaLabel={fechaLabel} />
+            )}
+            <button
+              onClick={() => setExpanded(true)}
+              className="p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+              title="Expandir"
+              aria-label="Expandir tarjeta"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
         </div>
-        {children}
+        <div ref={contentRef}>{children}</div>
       </div>
     </>
+  );
+}
+
+// ─── Bloque revelado (móviles/zona/empresa) con export ────────────────────────
+function RevealChartBlock({
+  title,
+  icon,
+  stackedData,
+  pendientesData,
+  finalizadosData,
+  fechaLabel,
+  labelCol,
+}: {
+  title: string;
+  icon: CardIconName;
+  stackedData: StackRow[];
+  pendientesData: BucketRow[];
+  finalizadosData: BucketRow[];
+  fechaLabel?: string;
+  labelCol: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const buildModel = (): CardExportModel => ({
+    title,
+    subtitle: `${stackedData.length} ${labelCol.toLowerCase()}s con actividad`,
+    sections: [
+      sectionFromStackRows('Volumen (entregados / no entregados / pendientes)', labelCol, stackedData),
+      sectionFromBucketRows('Pendientes por atraso', labelCol, pendientesData, BUCKETS_PENDIENTE_ORDEN),
+      sectionFromBucketRows('Finalizados por atraso', labelCol, finalizadosData, BUCKETS_FINALIZADO_ORDEN),
+    ],
+  });
+  return (
+    <div className="col-span-full">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2">
+          <span className="text-stats-info">{CARD_ICONS[icon]}</span>
+          {title}
+        </h3>
+        <CardExportButtons getNode={() => ref.current} buildModel={buildModel} fechaLabel={fechaLabel} />
+      </div>
+      <div ref={ref}>
+        <GraficosInlineSection
+          stackedData={stackedData}
+          pendientesData={pendientesData}
+          finalizadosData={finalizadosData}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -1328,7 +1443,38 @@ function StatsContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stats-section-enter" style={{ animationDelay: '180ms' }}>
 
             {/* Atrasos de pedidos pendientes — primera tarjeta, fila 1 */}
-            <ExpandableCard title="Atrasos de pedidos pendientes" icon="alert">
+            <ExpandableCard
+              title="Atrasos de pedidos pendientes"
+              icon="alert"
+              fechaLabel={`Datos del ${formatDate(date)}`}
+              exportModel={() => ({
+                title: 'Atrasos de pedidos pendientes',
+                subtitle: `${atrasosStats.total} pendientes en total · ${atrasosStats.pctAtraso}% con atraso`,
+                sections: [
+                  {
+                    heading: 'Pendientes por categoría',
+                    columns: ['Categoría', 'Cantidad', '%'],
+                    rows: [
+                      ['Muy Atrasado', atrasosStats.muyAtrasado, atrasosStats.total > 0 ? `${Math.round((atrasosStats.muyAtrasado / atrasosStats.total) * 100)}%` : '0%'],
+                      ['Atrasado', atrasosStats.atrasado, atrasosStats.total > 0 ? `${Math.round((atrasosStats.atrasado / atrasosStats.total) * 100)}%` : '0%'],
+                      ['Límite Cercana', atrasosStats.limiteCercana, atrasosStats.total > 0 ? `${Math.round((atrasosStats.limiteCercana / atrasosStats.total) * 100)}%` : '0%'],
+                      ['En Hora', atrasosStats.enHora, atrasosStats.total > 0 ? `${Math.round((atrasosStats.enHora / atrasosStats.total) * 100)}%` : '0%'],
+                      ['Sin Hora', atrasosStats.sinHora, atrasosStats.total > 0 ? `${Math.round((atrasosStats.sinHora / atrasosStats.total) * 100)}%` : '0%'],
+                    ],
+                  },
+                  {
+                    heading: `Atrasos por entregados (${atrasosEntregadosStats.total} entregados · ${atrasosEntregadosStats.conAtraso} con atraso)`,
+                    columns: ['Rango', 'Cantidad'],
+                    rows: [
+                      ['1 a 15 min', atrasosEntregadosStats.rango1a15],
+                      ['15 a 30 min', atrasosEntregadosStats.rango15a30],
+                      ['30 a 60 min', atrasosEntregadosStats.rango30a60],
+                      ['60+ min', atrasosEntregadosStats.rango60mas],
+                    ],
+                  },
+                ],
+              })}
+            >
               <p className="text-xs mb-4 text-stats-muted-fg dark:text-gray-500">{atrasosStats.total} pendientes en total</p>
 
               {/* % general con atraso */}
@@ -1425,14 +1571,45 @@ function StatsContent() {
 
             {/* Pedidos por hora — fila 1, segunda tarjeta */}
             {pedidosPorHora.length > 0 && (
-              <ExpandableCard title="Pedidos por hora" icon="clock">
+              <ExpandableCard
+                title="Pedidos por hora"
+                icon="clock"
+                fechaLabel={`Datos del ${formatDate(date)}`}
+                exportModel={() => ({
+                  title: 'Pedidos por hora',
+                  subtitle: `${pedidosPorHora.length} franjas horarias`,
+                  sections: [sectionFromValuePct(undefined, 'Hora', pedidosPorHora)],
+                })}
+              >
                 <BarChart data={pedidosPorHora} colorClass="bg-stats-info" />
               </ExpandableCard>
             )}
 
             {/* Estados de pedidos — fila 1, tercera tarjeta */}
             {estadosPedidos.length > 0 && (
-              <ExpandableCard title="Pedidos por estado" icon="grid">
+              <ExpandableCard
+                title="Pedidos por estado"
+                icon="grid"
+                fechaLabel={`Datos del ${formatDate(date)}`}
+                exportModel={() => ({
+                  title: 'Pedidos por estado',
+                  subtitle: `${estadosPedidos.reduce((s, e) => s + e.value, 0)} pedidos en total`,
+                  sections: [
+                    {
+                      heading: 'Por estado',
+                      columns: ['Estado', 'Cantidad', '%'],
+                      rows: estadosPedidos.map((e) => [e.label, e.value, `${e.pct}%`]),
+                    },
+                    ...estadosPedidos
+                      .filter((e) => e.subEstados.length > 0)
+                      .map((e) => ({
+                        heading: `${e.label} — detalle`,
+                        columns: ['Sub-estado', 'Cantidad', '%'],
+                        rows: e.subEstados.map((s) => [s.label, s.value, `${s.pct}%`]),
+                      })),
+                  ],
+                })}
+              >
                 <div className="space-y-4">
                   {estadosPedidos.map(estado => {
                     const labelUpper = (estado.label || '').toUpperCase();
@@ -1544,43 +1721,37 @@ function StatsContent() {
 
             {/* Reveals — siempre debajo de los 3 botones para mantenerlos apilados */}
             {showMoviles && (
-              <div className="col-span-full">
-                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2 mb-3">
-                  <span className="text-stats-info">{CARD_ICONS.truck}</span>
-                  Top móviles por entregas
-                </h3>
-                <GraficosInlineSection
-                  stackedData={movilesTop}
-                  pendientesData={pendientesPorMovil}
-                  finalizadosData={finalizadosPorMovil}
-                />
-              </div>
+              <RevealChartBlock
+                title="Top móviles por entregas"
+                icon="truck"
+                labelCol="Móvil"
+                stackedData={movilesTop}
+                pendientesData={pendientesPorMovil}
+                finalizadosData={finalizadosPorMovil}
+                fechaLabel={`Datos del ${formatDate(date)}`}
+              />
             )}
             {showZona && (
-              <div className="col-span-full">
-                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2 mb-3">
-                  <span className="text-stats-info">{CARD_ICONS.pin}</span>
-                  Pedidos por zona
-                </h3>
-                <GraficosInlineSection
-                  stackedData={pedidosPorZona}
-                  pendientesData={pendientesPorZona}
-                  finalizadosData={finalizadosPorZona}
-                />
-              </div>
+              <RevealChartBlock
+                title="Pedidos por zona"
+                icon="pin"
+                labelCol="Zona"
+                stackedData={pedidosPorZona}
+                pendientesData={pendientesPorZona}
+                finalizadosData={finalizadosPorZona}
+                fechaLabel={`Datos del ${formatDate(date)}`}
+              />
             )}
             {showEmpresa && (
-              <div className="col-span-full">
-                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2 mb-3">
-                  <span className="text-stats-info">{CARD_ICONS.building}</span>
-                  Pedidos por empresa
-                </h3>
-                <GraficosInlineSection
-                  stackedData={pedidosPorEmpresa}
-                  pendientesData={pendientesPorEmpresa}
-                  finalizadosData={finalizadosPorEmpresa}
-                />
-              </div>
+              <RevealChartBlock
+                title="Pedidos por empresa"
+                icon="building"
+                labelCol="Empresa"
+                stackedData={pedidosPorEmpresa}
+                pendientesData={pendientesPorEmpresa}
+                finalizadosData={finalizadosPorEmpresa}
+                fechaLabel={`Datos del ${formatDate(date)}`}
+              />
             )}
 
           </div>
