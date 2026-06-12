@@ -195,6 +195,7 @@ function DashboardContent() {
     isOsmImportOpen, setIsOsmImportOpen,
     isTourOpen, setIsTourOpen,
     isActionsExpanded, setIsActionsExpanded,
+    isStreetSearchOpen, setIsStreetSearchOpen,
     isFleterasZonasOpen, setIsFleterasZonasOpen,
     closePedidosTable, closeServicesTable,
   } = useDashboardModals();
@@ -3774,6 +3775,18 @@ function DashboardContent() {
             ? 'opacity-100 scale-100 translate-x-0' 
             : 'opacity-0 scale-75 translate-x-4 pointer-events-none w-0 overflow-hidden'
         }`}>
+          {/* Botón Buscar calle en el mapa */}
+          <button
+            id="tour-fab-buscar-calle"
+            onClick={() => { setIsStreetSearchOpen(true); setIsActionsExpanded(false); }}
+            className="flex items-center justify-center w-10 h-10 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-110 bg-gradient-to-br from-sky-500 to-cyan-600 hover:from-sky-600 hover:to-cyan-700"
+            title="Buscar calle en el área visible"
+          >
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+            </svg>
+          </button>
+
           {/* Botón de Asignación de Zonas */}
           <button
             id="tour-fab-zonas"
@@ -4454,6 +4467,8 @@ function DashboardContent() {
                 serviceShape={preferences.serviceShape || 'triangle'}
                 dataViewMode={dataViewMode}
                 onDataViewChange={handleDataViewChange}
+                streetSearchOpen={isStreetSearchOpen}
+                onStreetSearchClose={() => setIsStreetSearchOpen(false)}
                 isToday={isToday}
                 hideCapEntrega={!canSeeCapEntregaLayer}
                 demorasData={demorasData}

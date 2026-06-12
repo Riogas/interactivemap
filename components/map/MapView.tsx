@@ -25,6 +25,7 @@ import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
 import CenterMapControl from './CenterMapControl';
 import FullscreenControl from './FullscreenControl';
+import StreetSearchControl from './StreetSearchControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
 import PedidosZonasLayer, { PedidoZonaData, PedidosZonaFilter, ZonaLayerTipo } from './PedidosZonasLayer';
 import DistanceMeasurement from './DistanceMeasurement';
@@ -164,6 +165,10 @@ interface MapViewProps {
   movilesZonaMovilFilter?: MovilSubset;
   /** Callback para cambiar el subconjunto de moviles */
   onMovilesZonaMovilFilterChange?: (f: MovilSubset) => void;
+  /** Abre el buscador de calles (controlado desde la botonera de acciones rápidas). */
+  streetSearchOpen?: boolean;
+  /** Callback para cerrar el buscador de calles. */
+  onStreetSearchClose?: () => void;
 }
 
 
@@ -619,6 +624,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
     prev.zonaLayerTipo === next.zonaLayerTipo &&
+    prev.streetSearchOpen === next.streetSearchOpen &&
     prev.movilesZonaMovilFilter === next.movilesZonaMovilFilter &&
     prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
     prev.saturacionData?.size === next.saturacionData?.size &&
@@ -1156,6 +1162,8 @@ const MapView = memo(function MapView({
   onZonaLayerTipoChange,
   movilesZonaMovilFilter = "prio_transito",
   onMovilesZonaMovilFilterChange,
+  streetSearchOpen,
+  onStreetSearchClose,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -2684,6 +2692,12 @@ const MapView = memo(function MapView({
 
         {/* ? Botón de pantalla completa */}
         <FullscreenControl />
+
+        {/* Buscador de calles (abre desde la botonera de acciones rápidas) */}
+        <StreetSearchControl
+          open={!!streetSearchOpen}
+          onClose={() => onStreetSearchClose?.()}
+        />
 
         {/* ?? Control de Capas de Información (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
