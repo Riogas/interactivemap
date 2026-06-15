@@ -21,7 +21,7 @@ import { todayMontevideo, pendienteDateRangeCompact } from '@/lib/date-utils';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
-import { hasSaAcumulados } from '@/lib/role-funcionalidades';
+import { hasSaAcumulados, hasFuncionalidad } from '@/lib/role-funcionalidades';
 import {
   exportCardPdf,
   exportCardExcel,
@@ -330,6 +330,13 @@ function StatsContent() {
   // Root siempre puede. El rol del usuario ya no condiciona esta visibilidad.
   const canSeeUnassigned = isRoot(user) || hasSaAcumulados(user?.roles);
   const isPrivilegedScope = canSeeAllEmpresas(user);
+  // Gates por card de la fila 2 (root siempre pasa):
+  //   - 'Estadist.GlobalxMovil' → Top móviles por entregas
+  //   - 'Estadist.GlobalxZona'  → Pedidos por zona
+  //   - 'Estadist.GlobalxEF'    → Pedidos por empresa (EF = empresa fletera)
+  const canSeeStatsMovil = isRoot(user) || hasFuncionalidad(user?.roles, 'Estadist.GlobalxMovil');
+  const canSeeStatsZona = isRoot(user) || hasFuncionalidad(user?.roles, 'Estadist.GlobalxZona');
+  const canSeeStatsEmpresa = isRoot(user) || hasFuncionalidad(user?.roles, 'Estadist.GlobalxEF');
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
   const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
@@ -1668,6 +1675,7 @@ function StatsContent() {
             )}
 
             {/* Top móviles por entregas — fila 2, botón lazy */}
+            {canSeeStatsMovil && (
             <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-stats-info">{CARD_ICONS.truck}</span>
@@ -1684,8 +1692,10 @@ function StatsContent() {
                 {showMoviles ? 'Ocultar gráficos por móvil' : 'Mostrar gráficos por móvil'}
               </button>
             </div>
+            )}
 
             {/* Pedidos por zona — fila 2, botón lazy */}
+            {canSeeStatsZona && (
             <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-stats-info">{CARD_ICONS.pin}</span>
@@ -1702,8 +1712,10 @@ function StatsContent() {
                 {showZona ? 'Ocultar gráficos por zona' : 'Mostrar gráficos por zona'}
               </button>
             </div>
+            )}
 
             {/* Pedidos por empresa — fila 2, botón lazy */}
+            {canSeeStatsEmpresa && (
             <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-stats-info">{CARD_ICONS.building}</span>
@@ -1720,9 +1732,10 @@ function StatsContent() {
                 {showEmpresa ? 'Ocultar gráficos por empresa' : 'Mostrar gráficos por empresa'}
               </button>
             </div>
+            )}
 
             {/* Reveals — siempre debajo de los 3 botones para mantenerlos apilados */}
-            {showMoviles && (
+            {canSeeStatsMovil && showMoviles && (
               <RevealChartBlock
                 title="Top móviles por entregas"
                 icon="truck"
@@ -1733,7 +1746,7 @@ function StatsContent() {
                 fechaLabel={`Datos del ${formatDate(date)}`}
               />
             )}
-            {showZona && (
+            {canSeeStatsZona && showZona && (
               <RevealChartBlock
                 title="Pedidos por zona"
                 icon="pin"
@@ -1744,7 +1757,7 @@ function StatsContent() {
                 fechaLabel={`Datos del ${formatDate(date)}`}
               />
             )}
-            {showEmpresa && (
+            {canSeeStatsEmpresa && showEmpresa && (
               <RevealChartBlock
                 title="Pedidos por empresa"
                 icon="building"

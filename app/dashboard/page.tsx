@@ -46,6 +46,7 @@ import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import PoiCategoryIconsModal from '@/components/ui/PoiCategoryIconsModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
+import { capEntregaMostrada } from '@/lib/cap-entrega-color';
 import NovedadesModal from '@/components/ui/NovedadesModal';
 import HistoricalBanner from '@/components/ui/HistoricalBanner';
 import { todayMontevideo, daysAgoMontevideo } from '@/lib/date-utils';
@@ -2665,6 +2666,14 @@ function DashboardContent() {
     [user],
   );
 
+  // Gating del FAB "Buscar calle en el mapa":
+  // - root siempre lo ve.
+  // - resto: solo si algun rol tiene la funcionalidad "Buscador de Calles".
+  const canVerBuscadorCalles = useMemo(
+    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Buscador de Calles'),
+    [user],
+  );
+
   // Gating del modal de edición centralizada de iconos de categorías POI.
   const canMantenimientoPoi = useMemo(
     () => isRoot(user) || hasFuncionalidad(user?.roles, 'Mantenimiento P.Interes'),
@@ -3072,13 +3081,21 @@ function DashboardContent() {
       // capacidadDisponible internamente. NO restar aqui para evitar doble-descuento.
       const sinAsignarCount = canVerSinAsigPorZona ? snap.pedidos_sin_asignar : 0;
 
+      // Para usuarios sin la funcionalidad 'Ped s/asignar x zona' la Cap. Entrega
+      // nunca debe mostrarse negativa: el sobrecupo (capacidad_total < 0 por
+      // móviles sobre-asignados) se clampea a 0. Mantiene consistencia con el
+      // modal (capacidadMostrada = Math.max(neta, 0) cuando !canVerSinAsigPorZona).
+      const capacidadDisponible = canVerSinAsigPorZona
+        ? snap.capacidad_total
+        : Math.max(snap.capacidad_total, 0);
+
       map.set(snap.zona_id, {
         sinAsignar: sinAsignarCount,
         capacidadTotal: snap.capacidad_total,
-        // capacidadDisponible = capacidad_total (bruto); getCapEntregaColor calcula
-        // capEntrega = capacidadDisponible - sinAsignar => capacidad_total - pedidos_sin_asignar.
+        // capacidadDisponible: bruto si tiene la funcionalidad; clampeado a >=0 si no.
+        // getCapEntregaColor calcula capEntrega = capacidadDisponible - sinAsignar.
         // Coincide con capacidadMostrada del modal y el caption del poligono.
-        capacidadDisponible: snap.capacidad_total,
+        capacidadDisponible,
         movilesEnZona: snap.moviles_prioridad + snap.moviles_transito,
         movilesCompartidos: 0,
         asignadosWeight: 0,
@@ -3116,21 +3133,39 @@ function DashboardContent() {
     return map;
   }, [movilesFiltered, pedidosCompletos, servicesCompletos]);
 
+  // Mapa empresa_fletera_id → nombre, para completar empresaFleteraNom en la
+  // ficha del móvil. El path moviles-dia (USE_NEW) sólo trae empresa_fletera_id;
+  // el path legacy trae el nombre via /api/moviles-extended. Resolver el nombre
+  // acá garantiza que el header de la ficha lo muestre en ambos casos.
+  const empresaNombreById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const e of empresas) {
+      if (e.empresa_fletera_id != null && e.nombre) map.set(e.empresa_fletera_id, e.nombre);
+    }
+    return map;
+  }, [empresas]);
+
   const movilesFilteredMarked = useMemo(
     () => markInactiveMoviles(movilesFiltered).map(m => {
-      const count = pedidosAsignadosClientMap.get(m.id) ?? 0;
-      if (count === (m.pedidosAsignados ?? 0)) return m;
+      // Resolver nombre de empresa fletera si falta (path moviles-dia no lo trae).
+      const empresaNom = m.empresaFleteraNom
+        ?? (m.empresaFleteraId != null ? empresaNombreById.get(m.empresaFleteraId) : undefined);
+      const withEmpresa = empresaNom && empresaNom !== m.empresaFleteraNom
+        ? { ...m, empresaFleteraNom: empresaNom }
+        : m;
+      const count = pedidosAsignadosClientMap.get(withEmpresa.id) ?? 0;
+      if (count === (withEmpresa.pedidosAsignados ?? 0)) return withEmpresa;
       // Preservar color especial de NO_ACTIVO/BAJA_MOMENTÁNEA, recalcular el resto
-      const isPaused = m.estadoNro === 3 || m.estadoNro === 4;
+      const isPaused = withEmpresa.estadoNro === 3 || withEmpresa.estadoNro === 4;
       return {
-        ...m,
+        ...withEmpresa,
         pedidosAsignados: count,
-        ...(isPaused ? {} : { color: getMovilColorByOccupancy(count, m.tamanoLote ?? 0) }),
+        ...(isPaused ? {} : { color: getMovilColorByOccupancy(count, withEmpresa.tamanoLote ?? 0) }),
       };
     }),
     // When USE_NEW, pedidosAsignadosClientMap already encodes movilesFiltered counts;
     // the map shape and consumer logic here are identical for both paths.
-    [movilesFiltered, markInactiveMoviles, pedidosAsignadosClientMap, getMovilColorByOccupancy],
+    [movilesFiltered, markInactiveMoviles, pedidosAsignadosClientMap, getMovilColorByOccupancy, empresaNombreById],
   );
 
   const movilesForMap = useMemo(() => {
@@ -3797,7 +3832,8 @@ function DashboardContent() {
             ? 'opacity-100 scale-100 translate-x-0' 
             : 'opacity-0 scale-75 translate-x-4 pointer-events-none w-0 overflow-hidden'
         }`}>
-          {/* Botón Buscar calle en el mapa */}
+          {/* Botón Buscar calle en el mapa — gated por funcionalidad 'Buscador de Calles' */}
+          {canVerBuscadorCalles && (
           <button
             id="tour-fab-buscar-calle"
             onClick={() => { setIsStreetSearchOpen(true); setIsActionsExpanded(false); }}
@@ -3808,6 +3844,7 @@ function DashboardContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
             </svg>
           </button>
+          )}
 
           {/* Botón de Asignación de Zonas */}
           <button
@@ -4121,11 +4158,11 @@ function DashboardContent() {
       {/* No abrir si zona inactiva (demoras.activa===false) — sin métricas relevantes */}
       {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && demorasData.get(saturacionModalZonaId)?.activa !== false && (() => {
         const snap = zonaCapSnapshotData?.find(s => s.zona_id === saturacionModalZonaId);
-        const sinAsignarCount = canVerSinAsigPorZona ? (snap?.pedidos_sin_asignar ?? 0) : 0;
-        const capacidadNetaRaw = (snap?.capacidad_total ?? 0) - sinAsignarCount;
-        const capacidadMostrada = canVerSinAsigPorZona
-          ? Math.max(capacidadNetaRaw, -9999)
-          : Math.max(capacidadNetaRaw, 0);
+        const capacidadMostrada = capEntregaMostrada(
+          snap?.capacidad_total ?? 0,
+          snap?.pedidos_sin_asignar ?? 0,
+          canVerSinAsigPorZona,
+        );
         return (
           <SaturacionZonaModal
             zonaId={saturacionModalZonaId}
@@ -4474,7 +4511,7 @@ function DashboardContent() {
                 isPlacingMarker={isPlacingMarker}
                 onPlacingMarkerChange={setIsPlacingMarker}
                 onMarkersChange={setPuntosInteres}
-                allMoviles={movilesFiltered}
+                allMoviles={movilesFilteredMarked}
                 selectedDate={selectedDate}
                 selectedEmpresas={selectedEmpresas}
                 onMovilDateChange={handleTrackingConfirm}

@@ -15,6 +15,10 @@
  *   - "Ped s/asignar x zona"       → capa pedidos sin asignar por zona (id típico 11)
  *   - "Ped s/asignar unitarios"    → capa pedidos sin asignar unitarios (id típico 12)
  *   - "Ped s/asignar acumulados"   → capa pedidos sin asignar acumulados (id típico 9)
+ *   - "Estadist.GlobalxMovil"      → card "Top móviles por entregas" de Stats
+ *   - "Estadist.GlobalxZona"       → card "Pedidos por zona" de Stats
+ *   - "Estadist.GlobalxEF"         → card "Pedidos por empresa" de Stats (EF = empresa fletera)
+ *   - "Buscador de Calles"         → FAB buscar calle en el mapa
  */
 
 export interface RoleWithFuncionalidades {

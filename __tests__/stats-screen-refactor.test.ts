@@ -127,7 +127,7 @@ describe('Stats page — card order in JSX', () => {
     expect(btnZonaPos).toBeLessThan(btnEmpresaPos);
   });
 
-  test('source file: entity cards show buttons, not auto-rendered StackedBarChart', () => {
+  test('source file: entity cards show buttons, not auto-rendered charts', () => {
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(
@@ -137,22 +137,22 @@ describe('Stats page — card order in JSX', () => {
     const gridStart = src.indexOf('{/* ── Gráficos ── */}');
     const gridSection = src.substring(gridStart);
 
-    // The 3 entity cards should NOT have ExpandableCard wrappers (those render eagerly)
-    // They should have modal state guards: {modalMoviles && ...}
-    expect(gridSection).toContain('{modalMoviles && (');
-    expect(gridSection).toContain('{modalZona && (');
-    expect(gridSection).toContain('{modalEmpresa && (');
+    // The 3 entity cards should NOT have ExpandableCard wrappers (those render eagerly).
+    // They use reveal state guards: {showMoviles && ...} (gated por funcionalidad).
+    expect(gridSection).toContain('showMoviles && (');
+    expect(gridSection).toContain('showZona && (');
+    expect(gridSection).toContain('showEmpresa && (');
 
-    // And the buttons to trigger them
-    expect(gridSection).toContain("setModalMoviles(true)");
-    expect(gridSection).toContain("setModalZona(true)");
-    expect(gridSection).toContain("setModalEmpresa(true)");
+    // And the buttons to trigger them.
+    expect(gridSection).toContain('setShowMoviles((v) => !v)');
+    expect(gridSection).toContain('setShowZona((v) => !v)');
+    expect(gridSection).toContain('setShowEmpresa((v) => !v)');
 
-    // Verify StackedBarChart for entity cards is INSIDE the modal guard (lazy)
-    const movilBtnIdx = gridSection.indexOf('setModalMoviles(true)');
-    const movilChartIdx = gridSection.indexOf('StackedBarChart data={movilesTop}');
+    // Verify the chart for entity cards is INSIDE the reveal guard (lazy).
+    const movilBtnIdx = gridSection.indexOf('setShowMoviles((v) => !v)');
+    const movilChartIdx = gridSection.indexOf('stackedData={movilesTop}');
     expect(movilBtnIdx).toBeGreaterThan(0);
-    expect(movilChartIdx).toBeGreaterThan(movilBtnIdx); // chart is after button (inside modal)
+    expect(movilChartIdx).toBeGreaterThan(movilBtnIdx); // chart is after button (inside reveal)
   });
 });
 
@@ -255,9 +255,9 @@ describe('atrasosEntregadosStats — range logic', () => {
   });
 });
 
-// ─── 3. Lazy modal: no fetch without click ───────────────────────────────────
-describe('Lazy modal — no auto-compute of entity charts', () => {
-  test('source file: movilesTop StackedBarChart is guarded by modalMoviles state', () => {
+// ─── 3. Lazy reveal: no fetch without click ──────────────────────────────────
+describe('Lazy reveal — no auto-compute of entity charts', () => {
+  test('source file: movilesTop chart is guarded by showMoviles state', () => {
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(
@@ -265,20 +265,20 @@ describe('Lazy modal — no auto-compute of entity charts', () => {
       'utf8'
     );
 
-    // Verify that the StackedBarChart for movilesTop only appears inside {modalMoviles &&
-    const modalGuardIdx = src.indexOf('{modalMoviles && (');
-    const chartIdx = src.indexOf('StackedBarChart data={movilesTop}');
+    // El RevealChartBlock de movilesTop solo se renderiza tras el click (showMoviles).
+    const guardIdx = src.indexOf('showMoviles && (');
+    const chartIdx = src.indexOf('stackedData={movilesTop}');
 
-    expect(modalGuardIdx).toBeGreaterThan(0);
-    expect(chartIdx).toBeGreaterThan(modalGuardIdx);
+    expect(guardIdx).toBeGreaterThan(0);
+    expect(chartIdx).toBeGreaterThan(guardIdx);
 
-    // Also verify there is no ExpandableCard wrapping movilesTop outside the modal
-    // (ExpandableCard renders its children eagerly)
+    // Verificar que no hay ExpandableCard envolviendo movilesTop fuera del reveal
+    // (ExpandableCard renderiza sus children de forma eager).
     const gridStart = src.indexOf('{/* ── Gráficos ── */}');
     const gridSection = src.substring(gridStart);
     const expandableCardsInGrid = (gridSection.match(/ExpandableCard/g) || []).length;
     // Should only be 3 ExpandableCards: Atrasos, Por hora, Por estado
-    // (the entity cards are plain <div> with modal guards)
+    // (the entity cards are plain <div> with reveal guards)
     expect(expandableCardsInGrid).toBe(3 * 2); // each ExpandableCard appears as <ExpandableCard ... and </ExpandableCard>
   });
 
@@ -290,11 +290,10 @@ describe('Lazy modal — no auto-compute of entity charts', () => {
       'utf8'
     );
 
-    // The onClick of each entity button should ONLY set modal state
-    // Check pattern: onClick={() => setModalXxx(true)}
-    const movilBtn = src.indexOf("onClick={() => setModalMoviles(true)}");
-    const zonaBtn = src.indexOf("onClick={() => setModalZona(true)}");
-    const empresaBtn = src.indexOf("onClick={() => setModalEmpresa(true)}");
+    // El onClick de cada botón de entidad solo togglea el estado de reveal.
+    const movilBtn = src.indexOf('onClick={() => setShowMoviles((v) => !v)}');
+    const zonaBtn = src.indexOf('onClick={() => setShowZona((v) => !v)}');
+    const empresaBtn = src.indexOf('onClick={() => setShowEmpresa((v) => !v)}');
 
     expect(movilBtn).toBeGreaterThan(0);
     expect(zonaBtn).toBeGreaterThan(0);
@@ -302,8 +301,25 @@ describe('Lazy modal — no auto-compute of entity charts', () => {
 
     // Verify initial state is false (no auto-open)
     expect(src).toContain('useState(false)');
-    // The 3 modal states should default to false
+    // The 3 reveal states should default to false
     const falseStates = (src.match(/useState\(false\)/g) || []).length;
     expect(falseStates).toBeGreaterThanOrEqual(3);
+  });
+
+  test('source file: entity cards are gated by per-card funcionalidades', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../app/dashboard/stats/page.tsx'),
+      'utf8'
+    );
+
+    // Cada card y su reveal se gatea por la funcionalidad correspondiente (root pasa).
+    expect(src).toContain("hasFuncionalidad(user?.roles, 'Estadist.GlobalxMovil')");
+    expect(src).toContain("hasFuncionalidad(user?.roles, 'Estadist.GlobalxZona')");
+    expect(src).toContain("hasFuncionalidad(user?.roles, 'Estadist.GlobalxEF')");
+    expect(src).toContain('canSeeStatsMovil && showMoviles');
+    expect(src).toContain('canSeeStatsZona && showZona');
+    expect(src).toContain('canSeeStatsEmpresa && showEmpresa');
   });
 });

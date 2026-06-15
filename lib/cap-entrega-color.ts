@@ -54,6 +54,28 @@ export function formatCapEntregaLabel(capEntrega: number): string {
   return String(rounded);
 }
 
+/**
+ * Valor de Cap. Entrega que se MUESTRA al usuario, aplicando el gating de
+ * visibilidad de pedidos sin asignar.
+ *
+ *  - Con la funcionalidad (canVerSinAsignar=true): capacidad_total − pedidos_sin_asignar.
+ *    Puede ser negativa → sobrecupo real (floor defensivo −9999).
+ *  - Sin la funcionalidad: el sobrecupo NO se revela. Se ignoran los pedidos
+ *    sin asignar (no los puede ver) y el valor se clampea a ≥ 0, de modo que una
+ *    capacidad negativa (por móviles sobre-asignados) se muestra como 0.
+ *
+ * Única fuente de verdad del valor mostrado, usada por el modal de zona y por
+ * el caption del polígono de la capa Cap. Entrega.
+ */
+export function capEntregaMostrada(
+  capacidadTotal: number,
+  pedidosSinAsignar: number,
+  canVerSinAsignar: boolean,
+): number {
+  if (!canVerSinAsignar) return Math.max(capacidadTotal, 0);
+  return Math.max(capacidadTotal - pedidosSinAsignar, -9999);
+}
+
 export function getCapEntregaColor(
   stats: SaturacionZonaStats,
   visualRefs?: Record<string, string> | null,
