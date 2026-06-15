@@ -1,12 +1,17 @@
 /**
- * Lógica pura de cálculo de color/label para la capa Cap. Entrega del mapa.
- * Extraída de SaturacionZonasLayer para que pueda ser testeada sin dependencias
+ * Logica pura de calculo de color/label para la capa Cap. Entrega del mapa.
+ * Extraida de SaturacionZonasLayer para que pueda ser testeada sin dependencias
  * de browser (Leaflet, react-leaflet).
  */
 
+import { getRefColor } from '@/lib/visual-refs-catalog';
+
 /**
- * Estadísticas de saturación por zona. Espejo del tipo exportado en SaturacionZonasLayer
- * — duplicado aquí para evitar importar módulos con dependencias de browser en tests.
+ * Estadisticas de saturacion por zona. Espejo del tipo exportado en SaturacionZonasLayer
+ * — duplicado aqui para evitar importar modulos con dependencias de browser en tests.
+ *
+ * A partir de PR2, este map se construye desde ZonaCapSnapshot en app/dashboard/page.tsx
+ * en lugar de calcularse client-side desde movilesZonasData.
  */
 export interface SaturacionZonaStats {
   sinAsignar: number;
@@ -19,51 +24,98 @@ export interface SaturacionZonaStats {
 }
 
 /**
- * Calcula la Cap. Entrega = capacidadDisponible - sinAsignar y devuelve
- * color + texto de etiqueta según bandas numéricas.
+ * Calcula el color de la capa Cap. Entrega usando una escala de **valor absoluto**.
+ * (Antes usaba ratio, pero zonas chicas con cap=1/total=1 daban "holgura alta"
+ * cuando intuitivamente es baja.)
  *
  * Bandas:
- *  - Sin móviles + pedidos > 0   → marrón "Sin Cap." (sin cobertura, sentinel -999)
- *  - Sin móviles + sin pedidos   → gris "—" (sin datos, sentinel -1000)
- *  - capEntrega < 0              → marrón: privilegiados ven el número negativo,
- *                                  distribuidores siguen viendo "Sin Cap."
- *  - capEntrega = 0              → rojo
- *  - capEntrega = 1              → naranja
- *  - capEntrega = 2 o 3          → amarillo
- *  - capEntrega > 3              → verde claro
+ *  - Sin moviles + sin pedidos   → gris "—" (sin datos, sentinel -1000)
+ *  - cap >= 4                    → verde fuerte (#22c55e)  — Holgura alta
+ *  - 1 <= cap <= 3               → verde-amarillo (#84cc16) — Holgura baja
+ *  - cap = 0                     → amarillo (#eab308)       — Capacidad exacta
+ *  - -3 <= cap <= -1             → naranja (#f97316)        — Sobrecupo leve
+ *  - cap <= -4                   → rojo (#ef4444)           — Sobrecupo alto
  *
- * @param isPrivileged - true para root/despacho/dashboard/supervisor.
- *   Cuando true y capEntrega < 0 (cálculo real, no sentinel), el label muestra
- *   el valor negativo en lugar de "Sin Cap.".
+ * Los valores negativos (sobrecupo) se muestran a TODOS los usuarios por igual:
+ * la capa de capacidad no tiene gating por rol ni por funcionalidad.
+ *
+ * @param stats        Estadisticas de la zona (construidas desde ZonaCapSnapshot en PR2).
+ * @param visualRefs   Overrides de colores del usuario.
  */
+/**
+ * Formatea el valor de Cap. Entrega para mostrar como etiqueta.
+ * Redondeo "away from zero" (CapEntrega.docx + decisión 2026-06-11):
+ *   - positivos: hacia arriba (Math.ceil)  → 3.2 ⇒ 4
+ *   - negativos: hacia abajo (Math.floor)  → -5.3 ⇒ -6 (sobrecupo = peor caso)
+ * El COLOR se calcula sobre el decimal real, no sobre este valor redondeado.
+ */
+export function formatCapEntregaLabel(capEntrega: number): string {
+  const rounded = capEntrega >= 0 ? Math.ceil(capEntrega) : Math.floor(capEntrega);
+  return String(rounded);
+}
+
+/**
+ * Valor de Cap. Entrega que se MUESTRA al usuario, aplicando el gating de
+ * visibilidad de pedidos sin asignar.
+ *
+ *  - Con la funcionalidad (canVerSinAsignar=true): capacidad_total − pedidos_sin_asignar.
+ *    Puede ser negativa → sobrecupo real (floor defensivo −9999).
+ *  - Sin la funcionalidad: el sobrecupo NO se revela. Se ignoran los pedidos
+ *    sin asignar (no los puede ver) y el valor se clampea a ≥ 0, de modo que una
+ *    capacidad negativa (por móviles sobre-asignados) se muestra como 0.
+ *
+ * Única fuente de verdad del valor mostrado, usada por el modal de zona y por
+ * el caption del polígono de la capa Cap. Entrega.
+ */
+export function capEntregaMostrada(
+  capacidadTotal: number,
+  pedidosSinAsignar: number,
+  canVerSinAsignar: boolean,
+): number {
+  if (!canVerSinAsignar) return Math.max(capacidadTotal, 0);
+  return Math.max(capacidadTotal - pedidosSinAsignar, -9999);
+}
+
 export function getCapEntregaColor(
   stats: SaturacionZonaStats,
-  isPrivileged: boolean,
+  visualRefs?: Record<string, string> | null,
 ): { color: string; label: string; capEntrega: number } {
-  const { sinAsignar, capacidadDisponible, movilesEnZona } = stats;
+  const { capacidadDisponible, movilesEnZona } = stats;
 
-  if (movilesEnZona === 0 && sinAsignar > 0) {
-    // Sin móviles pero hay pendientes → sin capacidad de entrega (sentinel -999)
-    // NO se muestra el número negativo aunque el usuario sea privilegiado.
-    return { color: '#92400e', label: 'Sin Cap.', capEntrega: -999 };
-  }
-  if (movilesEnZona === 0 && sinAsignar === 0) {
-    // Sin datos (sentinel -1000)
-    return { color: '#d1d5db', label: '—', capEntrega: -1000 };
+  // Sin datos (sentinel -1000): sin moviles y sin pendientes
+  if (movilesEnZona === 0 && stats.sinAsignar === 0) {
+    return { color: getRefColor('Ref#26', visualRefs), label: '—', capEntrega: -1000 };
   }
 
-  const capEntrega = capacidadDisponible - sinAsignar;
+  // capEntrega puede ser decimal (prorrateo ponderado). Sin capping por rol.
+  const capEntrega = capacidadDisponible - stats.sinAsignar;
 
-  if (capEntrega < 0) {
-    // Cálculo real negativo: privilegiados ven el número, distribuidores ven "Sin Cap."
-    return {
-      color: '#92400e',
-      label: isPrivileged ? String(capEntrega) : 'Sin Cap.',
-      capEntrega,
-    };
+  // Sin moviles pero con pedidos pendientes → sin capacidad (cobertura 0)
+  if (movilesEnZona === 0) {
+    return { color: getRefColor('Ref#21', visualRefs), label: 'Sin Cap.', capEntrega: -999 };
   }
-  if (capEntrega === 0)  return { color: '#ef4444', label: '0', capEntrega };
-  if (capEntrega === 1)  return { color: '#f97316', label: '1', capEntrega };
-  if (capEntrega <= 3)   return { color: '#eab308', label: String(capEntrega), capEntrega };
-  return { color: '#86efac', label: String(capEntrega), capEntrega };
+
+  // Bandas por rango continuo (idénticas a las previas para valores enteros):
+  //   >= 4        verde         (holgura alta)
+  //   0 < x < 4   verde-amarillo (holgura baja)
+  //   == 0        amarillo      (capacidad exacta)
+  //   -4 < x < 0  naranja       (sobrecupo leve)
+  //   <= -4       rojo          (sobrecupo alto)
+  // El label se muestra redondeado (away-from-zero); el color usa el decimal real.
+  const label = formatCapEntregaLabel(capEntrega);
+
+  if (capEntrega >= 4) {
+    return { color: '#22c55e', label, capEntrega };
+  }
+  if (capEntrega > 0) {
+    return { color: '#84cc16', label, capEntrega };
+  }
+  if (capEntrega === 0) {
+    return { color: '#eab308', label: '0', capEntrega };
+  }
+  if (capEntrega > -4) {
+    return { color: '#f97316', label, capEntrega };
+  }
+  // capEntrega <= -4
+  return { color: '#ef4444', label, capEntrega };
 }

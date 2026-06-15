@@ -59,6 +59,8 @@ export interface ViewState {
   showCompletados: boolean;
   pedidosZonaFilter: 'pendientes' | 'sin_asignar' | 'atrasados';
   movilesZonasServiceFilter: string;
+  movilesZonaMovilFilter?: "prio_transito" | "prioridad" | "transito";
+  zonaLayerTipo?: string;
   modal: ModalSnapshot;
   panelScrolls: PanelScrolls;
 }

@@ -5,11 +5,19 @@
 import { describe, it, expect } from 'vitest';
 import {
   isRoot,
-  isDespacho,
+  canSeeAllEmpresas,
   shouldScopeByEmpresa,
   getScopedEmpresas,
   parseZonasJsonb,
 } from '../lib/auth-scope';
+
+// Helper: usuario con el flag verTodasEmpresas (EmpFletera {"TODAS":"*"})
+const rolPlano = (rolId: string, rolNombre: string) => ({
+  RolId: rolId,
+  RolNombre: rolNombre,
+  RolTipo: '',
+  funcionalidades: [],
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // isRoot
@@ -72,42 +80,46 @@ describe('isRoot', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// isDespacho
+// canSeeAllEmpresas — data-driven vía verTodasEmpresas (EmpFletera {"TODAS":"*"})
 // ─────────────────────────────────────────────────────────────────────────────
-describe('isDespacho', () => {
-  it('retorna true cuando roles incluye RolId "49"', () => {
-    expect(isDespacho({
-      roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+describe('canSeeAllEmpresas', () => {
+  it('retorna true para root (legacy isRoot=S)', () => {
+    expect(canSeeAllEmpresas({ isRoot: 'S' })).toBe(true);
+  });
+
+  it('retorna true para root (nuevo rol RolNombre=Root)', () => {
+    expect(canSeeAllEmpresas({
+      isRoot: 'N',
+      roles: [{ RolId: '99', RolNombre: 'Root', RolTipo: '', funcionalidades: [] }],
     })).toBe(true);
   });
 
-  it('retorna true cuando RolId viene como número 49 (cast a string)', () => {
-    expect(isDespacho({
-      roles: [{ RolId: 49 as unknown as string, RolNombre: 'Despacho', RolTipo: '' }],
+  it('retorna true cuando el usuario tiene verTodasEmpresas=true', () => {
+    expect(canSeeAllEmpresas({
+      roles: [rolPlano('49', 'Despacho')],
+      verTodasEmpresas: true,
     })).toBe(true);
   });
 
-  it('retorna false con RolId distinto (71)', () => {
-    expect(isDespacho({
-      roles: [{ RolId: '71', RolNombre: 'Otro', RolTipo: '' }],
+  it('retorna false cuando verTodasEmpresas es false/ausente', () => {
+    expect(canSeeAllEmpresas({
+      roles: [rolPlano('71', 'Distribuidor')],
     })).toBe(false);
   });
 
-  it('retorna false con roles vacíos', () => {
-    expect(isDespacho({ roles: [] })).toBe(false);
+  it('retorna false con roles vacíos y sin flag', () => {
+    expect(canSeeAllEmpresas({ roles: [] })).toBe(false);
   });
 
-  it('retorna false sin roles', () => {
-    expect(isDespacho({})).toBe(false);
+  it('retorna false sin roles ni flag', () => {
+    expect(canSeeAllEmpresas({})).toBe(false);
   });
 
-  it('retorna true cuando despacho está entre varios roles', () => {
-    expect(isDespacho({
-      roles: [
-        { RolId: '71', RolNombre: 'Otro', RolTipo: '' },
-        { RolId: '49', RolNombre: 'Despacho', RolTipo: '' },
-      ],
-    })).toBe(true);
+  // Ya NO hay privilegio por RolId 48/49/50: sin verTodasEmpresas, no ven todo.
+  it('retorna false para Despacho/Dashboard/Supervisor sin verTodasEmpresas (sin hardcodeo de rol)', () => {
+    expect(canSeeAllEmpresas({ roles: [rolPlano('48', 'Dashboard')] })).toBe(false);
+    expect(canSeeAllEmpresas({ roles: [rolPlano('49', 'Despacho')] })).toBe(false);
+    expect(canSeeAllEmpresas({ roles: [rolPlano('50', 'Supervisor')] })).toBe(false);
   });
 });
 
@@ -126,15 +138,16 @@ describe('shouldScopeByEmpresa', () => {
     })).toBe(false);
   });
 
-  it('retorna false para despacho', () => {
+  it('retorna false para usuario con verTodasEmpresas=true', () => {
     expect(shouldScopeByEmpresa({
-      roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+      roles: [rolPlano('49', 'Despacho')],
+      verTodasEmpresas: true,
     })).toBe(false);
   });
 
-  it('retorna true para usuario común no-root, no-despacho', () => {
+  it('retorna true para usuario común sin el flag', () => {
     expect(shouldScopeByEmpresa({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolPlano('71', 'Distribuidor')],
       allowedEmpresas: [5],
     })).toBe(true);
   });
@@ -155,44 +168,42 @@ describe('getScopedEmpresas', () => {
     })).toBeNull();
   });
 
-  it('retorna null para despacho aunque tenga allowedEmpresas (despacho wins)', () => {
+  it('retorna null para usuario con verTodasEmpresas aunque tenga allowedEmpresas', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+      roles: [rolPlano('49', 'Despacho')],
+      verTodasEmpresas: true,
       allowedEmpresas: [5],
     })).toBeNull();
   });
 
-  it('retorna [5,7] para no-despacho con allowedEmpresas=[5,7]', () => {
+  it('retorna [5,7] para distribuidor sin privilegios con allowedEmpresas=[5,7]', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolPlano('71', 'Distribuidor')],
       allowedEmpresas: [5, 7],
     })).toEqual([5, 7]);
   });
 
-  it('retorna [] (fail-closed) para no-despacho con allowedEmpresas=null', () => {
+  it('retorna [] (fail-closed) para distribuidor con allowedEmpresas=null', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolPlano('71', 'Distribuidor')],
       allowedEmpresas: null,
     })).toEqual([]);
   });
 
-  it('retorna [] (fail-closed) para no-despacho con allowedEmpresas ausente', () => {
+  it('retorna [] (fail-closed) para distribuidor con allowedEmpresas ausente', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolPlano('71', 'Distribuidor')],
     })).toEqual([]);
   });
 
-  it('retorna [] para no-despacho con allowedEmpresas=[]', () => {
+  it('retorna [] para distribuidor con allowedEmpresas=[]', () => {
     expect(getScopedEmpresas({
-      roles: [{ RolId: '71', RolNombre: 'Distribuidor', RolTipo: '' }],
+      roles: [rolPlano('71', 'Distribuidor')],
       allowedEmpresas: [],
     })).toEqual([]);
   });
 
   it('retorna [] para usuario null (fail-closed)', () => {
-    // usuario null → fail-closed (ni root ni despacho identificables) — el dashboard
-    // envuelve esto con un guard de "user existe" antes de invocar para evitar flash
-    // de contenido vacío durante el load inicial.
     expect(getScopedEmpresas(null)).toEqual([]);
   });
 });

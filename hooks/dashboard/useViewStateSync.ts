@@ -37,6 +37,8 @@ export interface HydrationResult {
   showCompletados: boolean | null;
   pedidosZonaFilter: 'pendientes' | 'sin_asignar' | 'atrasados' | null;
   movilesZonasServiceFilter: string | null;
+  movilesZonaMovilFilter: "prio_transito" | "prioridad" | "transito" | null;
+  zonaLayerTipo: string | null;
   modal: ModalSnapshot;
   panelScrolls: PanelScrolls | null;
 }
@@ -48,6 +50,8 @@ export interface SyncArgs {
   showCompletados: boolean;
   pedidosZonaFilter: 'pendientes' | 'sin_asignar' | 'atrasados';
   movilesZonasServiceFilter: string;
+  movilesZonaMovilFilter: "prio_transito" | "prioridad" | "transito";
+  zonaLayerTipo: string;
   modal: ModalSnapshot;
 }
 
@@ -71,6 +75,8 @@ function computeHydration(): HydrationResult | null {
     showCompletados: snapshot.showCompletados,
     pedidosZonaFilter: snapshot.pedidosZonaFilter,
     movilesZonasServiceFilter: snapshot.movilesZonasServiceFilter,
+    movilesZonaMovilFilter: snapshot.movilesZonaMovilFilter ?? null,
+    zonaLayerTipo: snapshot.zonaLayerTipo ?? null,
     modal: snapshot.modal,
     panelScrolls: snapshot.panelScrolls,
   };
@@ -135,6 +141,8 @@ export function useViewStateSync(args: SyncArgs): {
       showCompletados: current.showCompletados,
       pedidosZonaFilter: current.pedidosZonaFilter,
       movilesZonasServiceFilter: current.movilesZonasServiceFilter,
+      movilesZonaMovilFilter: current.movilesZonaMovilFilter,
+      zonaLayerTipo: current.zonaLayerTipo,
       modal: current.modal,
       panelScrolls,
     };

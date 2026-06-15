@@ -33,6 +33,15 @@ function preferencesToDb(prefs: Record<string, any>) {
     'poisVisible', 'hiddenPoiCategories', 'poiMarkerSize', 'poiDefaultIcon',
     'demorasPollingSeconds', 'movilesZonasPollingSeconds',
     'lightMode', 'serviceMarkerStyle',
+    'movilHalo', 'pedidoHalo', 'serviceHalo', 'zonaPattern',
+    // Conf. Visual: colores de refs visuales Ref#1..Ref#26
+    'visualRefs',
+    // Prefs adicionales — se agregan aqui a medida que se definen
+    'showCapEntregaLabels', 'showPedidosZonaLabels',
+    'realtimePollingReconcileSeconds', 'realtimeSilenceTimeoutSeconds',
+    'realtimeRefetchOnVisible', 'realtimeHeartbeatSeconds', 'realtimeEventsPerSecond',
+    'realtimePauseOnHiddenEnabled', 'realtimePauseOnHiddenMinutes',
+    'poiCategoryIcons',
   ];
   for (const key of extraKeys) {
     if (prefs[key] !== undefined) extra[key] = prefs[key];
@@ -62,7 +71,7 @@ function dbToPreferences(row: Record<string, any>) {
     showDemoraLabels: row.show_demora_labels,
   };
 
-  // Merge campos extra (si existen)
+  // Merge campos extra (si existen) — incluye visualRefs y resto de prefs JSONB
   const extra = row.preferences_extra ?? {};
   return { ...base, ...extra };
 }
@@ -90,7 +99,7 @@ export async function GET(request: NextRequest) {
 
     if (error && error.code !== 'PGRST116') {
       // PGRST116 = no rows found (not an error, just no prefs yet)
-      console.error('❌ Error al obtener preferencias:', error);
+      console.error('Error al obtener preferencias:', error);
       return NextResponse.json(
         { error: 'Error al obtener preferencias', details: error.message },
         { status: 500 }
@@ -107,7 +116,7 @@ export async function GET(request: NextRequest) {
       data: dbToPreferences(data),
     });
   } catch (error: any) {
-    console.error('❌ Error inesperado en GET user-preferences:', error);
+    console.error('Error inesperado en GET user-preferences:', error);
     return NextResponse.json(
       { error: 'Error interno del servidor', details: error.message },
       { status: 500 }
@@ -152,7 +161,7 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error('❌ Error al guardar preferencias:', error);
+      console.error('Error al guardar preferencias:', error);
       return NextResponse.json(
         { error: 'Error al guardar preferencias', details: error.message },
         { status: 500 }
@@ -164,7 +173,7 @@ export async function PUT(request: NextRequest) {
       data: dbToPreferences(data),
     });
   } catch (error: any) {
-    console.error('❌ Error inesperado en PUT user-preferences:', error);
+    console.error('Error inesperado en PUT user-preferences:', error);
     return NextResponse.json(
       { error: 'Error interno del servidor', details: error.message },
       { status: 500 }

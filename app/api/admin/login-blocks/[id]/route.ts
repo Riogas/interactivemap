@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
-
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Query Inicios de sesion');
   if (gate !== true) return gate;
 
   try {

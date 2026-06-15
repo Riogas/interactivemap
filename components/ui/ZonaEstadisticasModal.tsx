@@ -9,6 +9,7 @@ import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import { isPedidoInScope, isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 import type { MovilZonaRecord } from '@/components/map/MovilesZonasLayer';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { filterPedidosByEmpresa } from '@/lib/dashboard-indicators-filter';
 
 // ============= Types =============
 
@@ -16,6 +17,9 @@ interface ZonaInfo {
   zona_id: number;
   nombre: string | null;
 }
+
+/** Identificadores de columnas clickeables para drill-down a la tabla extendida. */
+export type ZonaCellKind = 'sinAsignar' | 'pendientes' | 'atrasados' | 'entregados' | 'noEntregados';
 
 interface ZonaEstadisticasModalProps {
   isOpen: boolean;
@@ -31,8 +35,15 @@ interface ZonaEstadisticasModalProps {
   allHiddenMovilIds?: Set<string>;
   /** Callback al clickear una zona: abre vista extendida de pedidos/services */
   onZonaClick?: (zonaId: number, serviceFilter: string) => void;
-  /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona */
-  onMovsPrioClick?: (zonaId: number, movilIds: number[], serviceFilter: string) => void;
+  /** Callback al clickear la celda #MOVS P.: abre detalle del/los movil(es) de esa zona.
+   *  tipoServicio y subFiltro reflejan los combos activos del padre para pre-cargar el hijo. */
+  onMovsPrioClick?: (zonaId: number, movilIds: number[], serviceFilter: string, tipoServicio: 'PEDIDOS' | 'SERVICE', subFiltro?: 'URGENTE' | 'NOCTURNO') => void;
+  /** Callback al clickear la celda M.Trans: abre detalle de moviles en transito de esa zona.
+   *  tipoServicio y subFiltro reflejan los combos activos del padre para pre-cargar el hijo. */
+  onMovsTransClick?: (zonaId: number, movilIds: number[], serviceFilter: string, tipoServicio: 'PEDIDOS' | 'SERVICE', subFiltro?: 'URGENTE' | 'NOCTURNO') => void;
+  /** Callback al clickear uno de los 5 números de estadísticas (sinAsignar/pendientes/atrasados/entregados/noEntregados).
+   *  Si el valor es 0, el click no se emite (cursor default). */
+  onCellClick?: (zonaId: number, kind: ZonaCellKind) => void;
   /** Scope de zonas permitidas (null = root/despacho, sin restricción). */
   scopedZonaIds?: Set<number> | null;
   /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
@@ -43,6 +54,10 @@ interface ZonaEstadisticasModalProps {
   serverNow?: Date;
   /** Minutos de anticipacion del escenario. null = sin filtro (backwards-compat). */
   minutosAntesSa?: number | null;
+  /** Móviles seleccionados en el sidebar (filtra entregados/pendientes igual que DashboardIndicators). */
+  selectedMoviles?: number[];
+  /** Empresas seleccionadas en el header (filtra pedidos por empresa_fletera_id). */
+  selectedEmpresas?: number[];
   /** Ocultar la columna/sección sin-asignar.
    *  Controlado desde el caller según la funcionalidad 'Ped s/asignar x zona'
    *  (true = sin permiso, false = con permiso). Root siempre false.
@@ -50,11 +65,15 @@ interface ZonaEstadisticasModalProps {
   hideSinAsignarOverride?: boolean;
 }
 
-type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio';
+type SortKey = 'zona' | 'sinAsignar' | 'pendientes' | 'atrasados' | 'pctAtrasos' | 'entregados' | 'noEntregados' | 'pctCumplimiento' | 'demora' | 'movsPrio' | 'movsTransito';
 
 const TIPOS_SERVICIO = ['PEDIDOS', 'SERVICE'] as const;
 /** servicio_nombre values que corresponden a "PEDIDOS" */
 const PEDIDOS_SERVICES = new Set(['URGENTE', 'NOCTURNO']);
+
+/** Sub-tipos disponibles cuando tipoPrincipal === 'PEDIDOS' */
+const PEDIDOS_SUB_TIPOS = ['TODOS', 'NOCTURNO', 'URGENTE'] as const;
+type PedidosSubTipo = typeof PEDIDOS_SUB_TIPOS[number];
 
 // ============= Component =============
 
@@ -68,18 +87,41 @@ export default function ZonaEstadisticasModal({
   allHiddenMovilIds,
   onZonaClick,
   onMovsPrioClick,
+  onMovsTransClick,
+  onCellClick,
   scopedZonaIds = null,
   scopedEmpresas = null,
   scope,
   hideSinAsignarOverride = false,
   serverNow,
   minutosAntesSa = null,
+  // selectedMoviles removido del conteo (decision 2026-05-19) — los totales del modal
+  // ya no se filtran por moviles del sidebar. Mantenemos el prop en la interface por
+  // compat con el call site, pero internamente no se usa.
+  selectedEmpresas = [],
 }: ZonaEstadisticasModalProps) {
   const [sortBy, setSortBy] = useState<SortKey>('zona');
   const [sortAsc, setSortAsc] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [serviceFilter, setServiceFilter] = useState<string>('PEDIDOS');
+  // Primer combo: tipo principal (PEDIDOS / SERVICE)
+  const [tipoPrincipal, setTipoPrincipal] = useState<string>('PEDIDOS');
+  // Segundo combo: sub-tipo de PEDIDOS (solo visible cuando tipoPrincipal === 'PEDIDOS')
+  const [subTipoPedidos, setSubTipoPedidos] = useState<PedidosSubTipo>('TODOS');
   const [filters, setFilters] = useState<Partial<Record<SortKey | 'zonaText', string>>>({});
+
+  // Filtro efectivo que se pasa a filteredPedidos, filteredMovilesZonas y callbacks:
+  // - PEDIDOS + TODOS  → 'PEDIDOS'   (muestra todos los pedidos URGENTE+NOCTURNO)
+  // - PEDIDOS + sub    → sub         (ej: 'NOCTURNO')
+  // - SERVICE          → 'SERVICE'
+  // Calculado como useMemo para que esté disponible desde el primer render sin depender
+  // de ningún useEffect — esto garantiza que el segundo combo y la tabla sean consistentes
+  // en el render inicial.
+  const effectiveServiceFilter = useMemo(() => {
+    if (tipoPrincipal === 'PEDIDOS') {
+      return subTipoPedidos === 'TODOS' ? 'PEDIDOS' : subTipoPedidos;
+    }
+    return tipoPrincipal;
+  }, [tipoPrincipal, subTipoPedidos]);
 
   // Ocultar sin-asignar controlado únicamente por la funcionalidad 'Ped s/asignar x zona'
   // (hideSinAsignarOverride=true cuando el usuario no tiene la funcionalidad).
@@ -192,7 +234,7 @@ export default function ZonaEstadisticasModal({
   // con hideEntregadosSinMovil=true para que las estadísticas no incluyan entregados huérfanos
   // ni pedidos/services fuera del scope (móvil + zona).
   const filteredPedidos = useMemo(() => {
-    const upper = serviceFilter.toUpperCase();
+    const upper = effectiveServiceFilter.toUpperCase();
     let base: PedidoSupabase[];
     if (upper === 'SERVICE') {
       // Los services están en su propio array — aplicar scope con isServiceInScope antes del cast
@@ -212,12 +254,22 @@ export default function ZonaEstadisticasModal({
     if (scope?.isRestricted) {
       base = base.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: true }));
     }
+    // NOTA (2026-05-19): NO filtrar por selectedMoviles (sidebar). Decision del
+    // usuario: el modal debe contar todos los entregados del dia para las
+    // empresas seleccionadas, sin importar que moviles esten marcados en el
+    // sidebar. Alinea con DashboardIndicators (navbar) que tambien removio
+    // ese filtro.
+    //
+    // Filtro por empresa fletera SI aplica (selectedEmpresas del header).
+    if (!scope?.isRestricted && selectedEmpresas.length > 0) {
+      base = filterPedidosByEmpresa(base, selectedEmpresas);
+    }
     return base;
-  }, [pedidos, services, serviceFilter, scope]);
+  }, [pedidos, services, effectiveServiceFilter, scope, selectedEmpresas]);
 
   // Filter movilesZonasData by service type + active + not hidden-operativo
   const filteredMovilesZonas = useMemo(() => {
-    const upper = serviceFilter.toUpperCase();
+    const upper = effectiveServiceFilter.toUpperCase();
     return movilesZonasData.filter(r => {
       if (!r.activa) return false;
       const key = String(r.movil_id);
@@ -228,7 +280,7 @@ export default function ZonaEstadisticasModal({
       if (upper === 'PEDIDOS') return PEDIDOS_SERVICES.has(svc);
       return svc === upper;
     });
-  }, [movilesZonasData, serviceFilter, movilEstados, allHiddenMovilIds]);
+  }, [movilesZonasData, effectiveServiceFilter, movilEstados, allHiddenMovilIds]);
 
   const stats = useMemo(() => {
     // Build zona name map
@@ -257,6 +309,7 @@ export default function ZonaEstadisticasModal({
       pctCumplimiento: number;
       demora: number | null;
       movsPrio: number;
+      movsTransito: number;
     }> = [];
 
     for (const zonaId of zonaIds) {
@@ -316,6 +369,14 @@ export default function ZonaEstadisticasModal({
       );
       const movsPrio = movsPrioIds.size;
 
+      // Moviles en transito (prioridad_o_transito !== 1) — deduplicar por movil_id
+      const movsTransitoIds = new Set(
+        filteredMovilesZonas
+          .filter(r => r.zona_id === zonaId && r.prioridad_o_transito !== 1)
+          .map(r => String(r.movil_id))
+      );
+      const movsTransito = movsTransitoIds.size;
+
       result.push({
         zonaId,
         zonaNombre: zonaNames.get(zonaId) || `Zona ${zonaId}`,
@@ -328,6 +389,7 @@ export default function ZonaEstadisticasModal({
         pctCumplimiento,
         demora,
         movsPrio,
+        movsTransito,
       });
     }
 
@@ -353,6 +415,7 @@ export default function ZonaEstadisticasModal({
         [z.pctCumplimiento, 'pctCumplimiento'],
         [z.demora, 'demora'],
         [z.movsPrio, 'movsPrio'],
+        [z.movsTransito, 'movsTransito'],
       ];
       for (const [val, key] of checks) {
         const raw = filters[key];
@@ -381,6 +444,7 @@ export default function ZonaEstadisticasModal({
         case 'pctCumplimiento': return dir * (a.pctCumplimiento - b.pctCumplimiento);
         case 'demora': return dir * ((a.demora ?? 9999) - (b.demora ?? 9999));
         case 'movsPrio': return dir * (a.movsPrio - b.movsPrio);
+        case 'movsTransito': return dir * (a.movsTransito - b.movsTransito);
         default: return 0;
       }
     });
@@ -445,9 +509,13 @@ export default function ZonaEstadisticasModal({
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                {/* Primer combo: tipo principal */}
                 <select
-                  value={serviceFilter}
-                  onChange={e => setServiceFilter(e.target.value)}
+                  value={tipoPrincipal}
+                  onChange={e => {
+                    setTipoPrincipal(e.target.value);
+                    setSubTipoPedidos('TODOS');
+                  }}
                   className="bg-black/30 text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-white/20 focus:outline-none focus:border-white/50 cursor-pointer appearance-none"
                   style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27white%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M7 10l5 5 5-5z%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center', backgroundSize: '18px', paddingRight: '28px' }}
                 >
@@ -455,6 +523,24 @@ export default function ZonaEstadisticasModal({
                     <option key={t} value={t} className="bg-slate-800 text-white">{t}</option>
                   ))}
                 </select>
+                {/* Segundo combo: sub-tipo de PEDIDOS — visible cuando tipoPrincipal NO es SERVICE.
+                    Usamos !== 'SERVICE' en vez de === 'PEDIDOS' como guard defensivo:
+                    si por algun edge case el initial state queda en string vacio o un valor
+                    inesperado, igual se muestra el combo (que es lo deseado en estadisticas
+                    por zona, donde el flujo default es PEDIDOS). Bug reportado: el segundo
+                    combo no aparecia en el primer render hasta cambiar a Services y volver. */}
+                {tipoPrincipal !== 'SERVICE' && (
+                  <select
+                    value={subTipoPedidos}
+                    onChange={e => setSubTipoPedidos(e.target.value as PedidosSubTipo)}
+                    className="bg-black/30 text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-white/20 focus:outline-none focus:border-white/50 cursor-pointer appearance-none"
+                    style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27white%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M7 10l5 5 5-5z%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center', backgroundSize: '18px', paddingRight: '28px' }}
+                  >
+                    {PEDIDOS_SUB_TIPOS.map(t => (
+                      <option key={t} value={t} className="bg-slate-800 text-white">{t}</option>
+                    ))}
+                  </select>
+                )}
                 <button
                   onClick={onClose}
                   className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 flex items-center justify-center transition-colors"
@@ -494,7 +580,8 @@ export default function ZonaEstadisticasModal({
                   <ThSort label="#No Ent." sortKey="noEntregados" current={sortBy} asc={sortAsc} onClick={handleSort} title="No Entregados (estado 2, sub_estado ≠ 3 y ≠ 19)" />
                   <ThSort label="% Cump." sortKey="pctCumplimiento" current={sortBy} asc={sortAsc} onClick={handleSort} title="% Cumplimiento = entregados / (entregados + no entregados)" />
                   <ThSort label="Min Dem." sortKey="demora" current={sortBy} asc={sortAsc} onClick={handleSort} title="Minutos de demora de la zona" />
-                  <ThSort label="#Movs P." sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles activos en prioridad del tipo de servicio seleccionado (excl. est. 3/5/15)" />
+                  <ThSort label="M.Prio" sortKey="movsPrio" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles activos en prioridad del tipo de servicio seleccionado (excl. est. 3/5/15)" />
+                  <ThSort label="M.Trans" sortKey="movsTransito" current={sortBy} asc={sortAsc} onClick={handleSort} title="Móviles en tránsito del tipo de servicio seleccionado" />
                 </tr>
                 {/* Filter row */}
                 <tr className="bg-slate-900/95 border-b border-cyan-500/20">
@@ -509,8 +596,8 @@ export default function ZonaEstadisticasModal({
                     />
                   </th>
                   {((hideSinAsignar
-                    ? ['pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio']
-                    : ['sinAsignar', 'pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio']
+                    ? ['pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio', 'movsTransito']
+                    : ['sinAsignar', 'pendientes', 'atrasados', 'pctAtrasos', 'entregados', 'noEntregados', 'pctCumplimiento', 'demora', 'movsPrio', 'movsTransito']
                   ) as (SortKey)[]).map(key => (
                     <th key={key} className="py-1 px-1">
                       <input
@@ -539,7 +626,7 @@ export default function ZonaEstadisticasModal({
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: Math.min(idx * 0.02, 0.5) }}
                       className={`border-b border-white/5 hover:bg-white/5 transition-colors ${onZonaClick ? 'cursor-pointer' : ''}`}
-                      onClick={() => onZonaClick?.(z.zonaId, serviceFilter)}
+                      onClick={() => onZonaClick?.(z.zonaId, effectiveServiceFilter)}
                     >
                       <td className="py-1.5 px-2 text-left">
                         <span className="text-white font-semibold text-xs">{z.zonaNombre}</span>
@@ -547,18 +634,51 @@ export default function ZonaEstadisticasModal({
                       </td>
                       {!hideSinAsignar && (
                         <td className="py-1.5 px-1 text-center">
-                          <span className={`text-xs font-bold ${z.sinAsignar > 0 ? 'text-amber-400' : 'text-gray-600'}`}>
+                          <span
+                            className={`text-xs font-bold ${
+                              z.sinAsignar > 0
+                                ? 'text-amber-400 cursor-pointer hover:underline'
+                                : 'text-gray-600 cursor-default'
+                            }`}
+                            title={z.sinAsignar > 0 ? `Ver ${z.sinAsignar} pedidos sin asignar de ${z.zonaNombre}` : undefined}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (z.sinAsignar > 0) onCellClick?.(z.zonaId, 'sinAsignar');
+                            }}
+                          >
                             {z.sinAsignar}
                           </span>
                         </td>
                       )}
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.pendientes > 0 ? 'text-blue-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${
+                            z.pendientes > 0
+                              ? 'text-blue-400 cursor-pointer hover:underline'
+                              : 'text-gray-600 cursor-default'
+                          }`}
+                          title={z.pendientes > 0 ? `Ver ${z.pendientes} pedidos pendientes de ${z.zonaNombre}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.pendientes > 0) onCellClick?.(z.zonaId, 'pendientes');
+                          }}
+                        >
                           {z.pendientes}
                         </span>
                       </td>
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.atrasados > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${
+                            z.atrasados > 0
+                              ? 'text-red-400 cursor-pointer hover:underline'
+                              : 'text-gray-600 cursor-default'
+                          }`}
+                          title={z.atrasados > 0 ? `Ver ${z.atrasados} pedidos atrasados de ${z.zonaNombre}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.atrasados > 0) onCellClick?.(z.zonaId, 'atrasados');
+                          }}
+                        >
                           {z.atrasados}
                         </span>
                       </td>
@@ -570,12 +690,34 @@ export default function ZonaEstadisticasModal({
                         </span>
                       </td>
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.entregados > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${
+                            z.entregados > 0
+                              ? 'text-green-400 cursor-pointer hover:underline'
+                              : 'text-gray-600 cursor-default'
+                          }`}
+                          title={z.entregados > 0 ? `Ver ${z.entregados} pedidos entregados de ${z.zonaNombre}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.entregados > 0) onCellClick?.(z.zonaId, 'entregados');
+                          }}
+                        >
                           {z.entregados}
                         </span>
                       </td>
                       <td className="py-1.5 px-1 text-center">
-                        <span className={`text-xs font-bold ${z.noEntregados > 0 ? 'text-orange-400' : 'text-gray-600'}`}>
+                        <span
+                          className={`text-xs font-bold ${
+                            z.noEntregados > 0
+                              ? 'text-orange-400 cursor-pointer hover:underline'
+                              : 'text-gray-600 cursor-default'
+                          }`}
+                          title={z.noEntregados > 0 ? `Ver ${z.noEntregados} pedidos no entregados de ${z.zonaNombre}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.noEntregados > 0) onCellClick?.(z.zonaId, 'noEntregados');
+                          }}
+                        >
                           {z.noEntregados}
                         </span>
                       </td>
@@ -598,11 +740,29 @@ export default function ZonaEstadisticasModal({
                                   .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito === 1)
                                   .map(r => Number(r.movil_id))
                               )];
-                              onMovsPrioClick(z.zonaId, movilIds, serviceFilter);
+                              onMovsPrioClick(z.zonaId, movilIds, effectiveServiceFilter, tipoPrincipal as "PEDIDOS" | "SERVICE", tipoPrincipal === "PEDIDOS" && subTipoPedidos !== "TODOS" ? subTipoPedidos as "URGENTE" | "NOCTURNO" : undefined);
                             }
                           }}
                         >
                           {z.movsPrio}
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-1 text-center">
+                        <span
+                          className={`text-xs font-bold ${z.movsTransito > 0 ? 'text-indigo-400 cursor-pointer hover:underline' : 'text-gray-600'}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (z.movsTransito > 0 && onMovsTransClick) {
+                              const movilIds = [...new Set(
+                                filteredMovilesZonas
+                                  .filter(r => r.zona_id === z.zonaId && r.prioridad_o_transito !== 1)
+                                  .map(r => Number(r.movil_id))
+                              )];
+                              onMovsTransClick(z.zonaId, movilIds, effectiveServiceFilter, tipoPrincipal as "PEDIDOS" | "SERVICE", tipoPrincipal === "PEDIDOS" && subTipoPedidos !== "TODOS" ? subTipoPedidos as "URGENTE" | "NOCTURNO" : undefined);
+                            }
+                          }}
+                        >
+                          {z.movsTransito}
                         </span>
                       </td>
                     </motion.tr>
@@ -610,7 +770,7 @@ export default function ZonaEstadisticasModal({
                 })}
                 {sorted.length === 0 && (
                   <tr>
-                    <td colSpan={hideSinAsignar ? 9 : 10} className="py-8 text-center text-gray-500 text-sm">
+                    <td colSpan={hideSinAsignar ? 10 : 11} className="py-8 text-center text-gray-500 text-sm">
                       {loading ? (
                         <span className="flex items-center justify-center gap-2">
                           <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
@@ -639,7 +799,7 @@ export default function ZonaEstadisticasModal({
                 </button>
               )}
             </div>
-            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en #Movs P. = Detalle móvil · Filtrar en fila 2 · Cabecera = Ordenar</span>
+            <span className="text-[10px] text-gray-500">Click en fila = Vista Extendida · Click en número = Tabla filtrada · Click en M.Prio = Detalle móvil · Filtrar en fila 2 · Cabecera = Ordenar</span>
           </div>
         </motion.div>
       </motion.div>

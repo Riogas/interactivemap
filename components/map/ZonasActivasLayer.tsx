@@ -4,6 +4,8 @@ import React, { memo, useMemo, useEffect } from 'react';
 import { Polygon, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { ZonaPattern, getPatternFillUrl } from '@/lib/zona-patterns';
+import { getRefColor } from '@/lib/visual-refs-catalog';
 
 export interface ZonaActivaData {
   zona_id: number;
@@ -19,9 +21,12 @@ interface ZonasActivasLayerProps {
   demoras: Map<number, { minutos: number; activa: boolean }>;
   /** Opacidad global de zonas (0-100). Por defecto 50 */
   zonaOpacity?: number;
+  zonaPattern?: ZonaPattern;
+  /** Overrides de colores del usuario (de UserPreferences.visualRefs) */
+  visualRefs?: Record<string, string> | null;
 }
 
-/** Centroide del polígono (área con signo) */
+/** Centroide del poligono (area con signo) */
 function polygonCentroid(pts: Array<{ lat: number; lng: number }>): [number, number] {
   if (pts.length < 3) {
     const latS = pts.reduce((s, p) => s + p.lat, 0);
@@ -80,7 +85,7 @@ function parseGeo(raw: any): Array<{ lat: number; lng: number }> | null {
 /**
  * Leyenda de colores de zonas activas como control Leaflet
  */
-function ZonasActivasLegend() {
+function ZonasActivasLegend({ visualRefs }: { visualRefs?: Record<string, string> | null }) {
   const map = useMap();
   useEffect(() => {
     const LegendControl = L.Control.extend({
@@ -88,9 +93,9 @@ function ZonasActivasLegend() {
         const div = L.DomUtil.create('div', 'demora-legend');
         div.innerHTML = `
           <div class="demora-legend-title">Zonas Activas</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">Activa</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">No Activa</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#9ca3af"></span><span class="demora-legend-label">Sin dato</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#13', visualRefs)}"></span><span class="demora-legend-label">Activa</span><span class="demora-legend-ref" title="Click para editar este color">Ref#13</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#14', visualRefs)}"></span><span class="demora-legend-label">No Activa</span><span class="demora-legend-ref" title="Click para editar este color">Ref#14</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#15', visualRefs)}"></span><span class="demora-legend-label">Sin dato</span><span class="demora-legend-ref" title="Click para editar este color">Ref#15</span></div>
         `;
         L.DomEvent.disableClickPropagation(div);
         return div;
@@ -99,12 +104,12 @@ function ZonasActivasLegend() {
     const legend = new LegendControl({ position: 'bottomleft' });
     legend.addTo(map);
     return () => { legend.remove(); };
-  }, [map]);
+  }, [map, visualRefs]);
   return null;
 }
 
 /**
- * Capa "Zonas Activas": dibuja polígonos de zonas coloreados según el campo
+ * Capa "Zonas Activas": dibuja poligonos de zonas coloreados segun el campo
  * `activa` de la tabla demoras.  Verde = activa, Rojo = inactiva.
  * Las zonas sin registro en demoras se muestran en gris.
  * Etiqueta fija: nro de zona + "Activa" / "Inactiva".
@@ -113,6 +118,8 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
   zonas,
   demoras,
   zonaOpacity = 50,
+  zonaPattern = 'liso' as ZonaPattern,
+  visualRefs,
 }: ZonasActivasLayerProps) {
   // Pre-calcular etiquetas
   const labels = useMemo(() => {
@@ -141,27 +148,42 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
         const info = demoras.get(zona.zona_id);
         const activa = info?.activa ?? null;
 
-        // Verde activa, rojo inactiva, gris sin dato. La capa "Zonas Activas"
-        // mantiene siempre relleno solido — su proposito es justamente
-        // visualizar el estado activa/inactiva con color (legenda Activa/No
-        // Activa/Sin dato), no aplicar el tratamiento transparente+punteado
-        // que sí aplica al resto de capas (request 2026-05-07).
-        const fillColor = activa === true ? '#22c55e' : activa === false ? '#ef4444' : '#9ca3af';
+        // Verde activa, rojo inactiva, gris sin dato.
+        const fillColor =
+          activa === true
+            ? getRefColor('Ref#13', visualRefs)
+            : activa === false
+            ? getRefColor('Ref#14', visualRefs)
+            : getRefColor('Ref#15', visualRefs);
         // Borde negro fijo en todas las capas de zonas (request 2026-05-06).
         const borderColor = '#000000';
 
         return (
-          <Polygon
-            key={zona.zona_id}
-            positions={positions}
-            pathOptions={{
-              color: borderColor,
-              fillColor,
-              fillOpacity: adjustOpacity(0.35, zonaOpacity),
-              weight: 2,
-              opacity: adjustOpacity(0.8, zonaOpacity),
-            }}
-          />
+          <React.Fragment key={zona.zona_id}>
+            <Polygon
+              positions={positions}
+              pathOptions={{
+                color: borderColor,
+                fillColor,
+                fillOpacity: adjustOpacity(0.35, zonaOpacity),
+                weight: 2,
+                opacity: adjustOpacity(0.8, zonaOpacity),
+              }}
+            />
+            {zonaPattern !== 'liso' && getPatternFillUrl(zonaPattern) && (
+              <Polygon
+                positions={positions}
+                renderer={L.svg()}
+                pathOptions={{
+                  fillColor: getPatternFillUrl(zonaPattern)!,
+                  fillOpacity: 0.85,
+                  stroke: false,
+                  color: 'transparent',
+                  weight: 0,
+                }}
+              />
+            )}
+          </React.Fragment>
         );
       })}
 
@@ -185,7 +207,7 @@ const ZonasActivasLayer = memo(function ZonasActivasLayer({
       ))}
 
       {/* Leyenda de colores */}
-      <ZonasActivasLegend />
+      <ZonasActivasLegend visualRefs={visualRefs} />
     </>
   );
 });

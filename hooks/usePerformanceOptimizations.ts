@@ -72,9 +72,9 @@ export function useTabVisibility(): boolean {
       setIsVisible(!document.hidden);
       
       if (!document.hidden) {
-        console.log('👁️ [Tab Visibility] Pestaña visible - reanudando actualizaciones');
+        console.log('👁️ [Tab Visibility] Pestaña visible');
       } else {
-        console.log('🙈 [Tab Visibility] Pestaña oculta - pausando actualizaciones');
+        console.log('🙈 [Tab Visibility] Pestaña oculta');
       }
     };
 

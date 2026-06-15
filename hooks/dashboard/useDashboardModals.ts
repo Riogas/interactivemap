@@ -40,6 +40,9 @@ export function useDashboardModals() {
   // FAB (floating action buttons) expandido
   const [isActionsExpanded, setIsActionsExpanded] = useState(false);
 
+  // Buscador de calles sobre el mapa
+  const [isStreetSearchOpen, setIsStreetSearchOpen] = useState(false);
+
   // --- Helpers ---
 
   /** Abrir modal de vista de zona (con zonaId específica o null para todas) */
@@ -91,6 +94,8 @@ export function useDashboardModals() {
     isTourOpen, setIsTourOpen,
     // FAB
     isActionsExpanded, setIsActionsExpanded,
+    // Buscador de calles
+    isStreetSearchOpen, setIsStreetSearchOpen,
     // Fleteras Zonas
     isFleterasZonasOpen, setIsFleterasZonasOpen,
     // Helpers

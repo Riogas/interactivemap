@@ -1,14 +1,14 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PedidoSupabase, MovilData } from '@/types';
+import { PedidoSupabase, ServiceSupabase, MovilData, MovilOption } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion, isPedidoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
 import { matchesSearchPedido } from '@/utils/tableSearch';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
-import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { isVisibleByWindow } from '@/lib/sa-window-filter';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -19,13 +19,25 @@ interface Filters {
   search: string;
   atraso: AtrasoFilter[];
   zona: number | null;
-  movil: number | null;
+  movil: number[];        // Caso 5: multi-select
   producto: string | null;
   soloSinCoords: boolean;
   asignacion: 'todos' | 'con_movil' | 'sin_movil';
   entrega: 'todos' | 'entregados' | 'no_entregados';
   tipoServicio: string[];
 }
+
+const DEFAULT_FILTERS: Filters = {
+  search: '',
+  atraso: [],
+  zona: null,
+  movil: [],
+  producto: null,
+  soloSinCoords: false,
+  asignacion: 'todos',
+  entrega: 'todos',
+  tipoServicio: [],
+};
 
 const ATRASO_OPTIONS: { key: AtrasoFilter; label: string; color: string; dotColor: string }[] = [
   { key: 'muy_atrasado', label: 'Muy Atrasado', color: 'bg-red-500/20 text-red-300 border-red-500/30', dotColor: 'bg-red-400' },
@@ -63,6 +75,11 @@ interface PedidosTableModalProps {
   preFilterZona?: number;
   onClearPreFilter?: () => void;
   initialAsignacion?: 'todos' | 'con_movil' | 'sin_movil';
+  /** Filtro de atraso a aplicar al abrir el modal. Se setea como filtro
+   *  interno cada vez que el prop cambia, permitiendo que un caller (ej.
+   *  click en zona del mapa Pedidos/Zona con combo "Atrasados") pre-filtre
+   *  por ['muy_atrasado','atrasado']. Comportamiento análogo a initialAsignacion. */
+  initialAtraso?: AtrasoFilter[];
   hideUnassigned?: boolean;
   /** True cuando el usuario está en modo "Todos" — todas las empresas
    *  seleccionadas Y todos los móviles operativos seleccionados. Habilita la
@@ -78,13 +95,46 @@ interface PedidosTableModalProps {
    *  en la tabla y en el filtro de asignacion. */
   canVerSinAsignarUnitario?: boolean;
   onInnerFiltersChange?: (f: Filters) => void;
+  /** Callback para sincronizar selectedMoviles desde el dropdown movil del
+   *  modal. Cuando openSource='colapsable', el dropdown lee/escribe
+   *  directamente sobre selectedMoviles (no sobre filters.movil), porque la
+   *  fuente de verdad es el colapsable de móviles. Cambios en el dropdown se
+   *  reflejan en colapsable + mapa + tabla extendida en tiempo real. */
+  onSelectedMovilesChange?: (ids: number[]) => void;
+  /** Si se provee, el modal queda controlled: los filtros internos se reemplazan
+   *  por este objeto en cada render, y los cambios del usuario se reportan via
+   *  `onInnerFiltersChange` sin guardarse en state local. Permite sincronía
+   *  bidireccional con el colapsable (MovilSelector) y el mapa. */
+  externalFilters?: Filters;
   externalResetToken?: number;
+  /** Origen de apertura del modal — determina si los filtros del colapsable
+   *  (selectedMoviles/selectedEmpresas) se respetan o se ignoran. Ver
+   *  docs/superpowers/specs/2026-05-21-tabla-extendida-casos.md
+   *
+   *  - 'colapsable' (default): respeta selectedMoviles en ambas vistas (Caso 1).
+   *  - 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' |
+   *    'movil_individual': ignora selectedMoviles del colapsable; el dataset
+   *    `pedidos` ya cubre el scope del usuario. */
+  openSource?: 'colapsable' | 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' | 'movil_individual';
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
   scope?: ScopeFilter;
   /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
   serverNow?: Date;
   /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
   minutosAntesSa?: number | null;
+  /** IDs de moviles inactivos extra seleccionados en el modal (solo en colapsable+finalizados). */
+  modalExtraSelectedMoviles?: number[];
+  onModalExtraSelectedMovilesChange?: (ids: number[]) => void;
+  /** Moviles inactivos relevantes para la vista finalizados desde colapsable. */
+  inactiveMovilesAvailable?: MovilOption[];
+  /** Filtros iniciales a aplicar cuando openSource !== 'colapsable' (non-controlled mode).
+   *  Al abrirse el modal, localFilters se inicializa con DEFAULT_FILTERS + initialFilters.
+   *  Los cambios internos quedan en state local y NO se propagan al dashboard. */
+  initialFilters?: Partial<Filters>;
+  /** Services a mostrar en modo Tipo=Services (feature 2026-05-29). */
+  services?: ServiceSupabase[];
+  /** Tipo inicial del modal al abrirse: pedidos (default) o services (feature 2026-05-29). */
+  initialTipo?: "pedidos" | "services";
 }
 
 // ========== Row bg colors for dark theme based on delay ==========
@@ -108,23 +158,66 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, externalResetToken, scope, serverNow = new Date(), minutosAntesSa = null }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters, services, initialTipo }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
-  const [filters, setFilters] = useState<Filters>({
-    search: '',
-    atraso: [],
-    zona: null,
-    movil: null,
-    producto: null,
-    soloSinCoords: false,
-    asignacion: 'todos',
-    entrega: 'todos',
-    tipoServicio: [],
-  });
+  // Cuando el openSource no es 'colapsable', todos los filtros excepto search
+  // se muestran disabled+grisaceos (visibles pero no clickeables).
+  const isFilterDisabled = openSource !== 'colapsable';
+
+  // Tipo activo del modal: pedidos o services. Controlado por initialTipo (feature 2026-05-29).
+  // Solo relevante cuando services prop esta provisto.
+  const [modalTipo, setModalTipo] = useState<"pedidos" | "services">(initialTipo ?? "pedidos");
+  // Sincronizar modalTipo con initialTipo cada vez que el modal se abre
+  const prevIsOpenForTipo = useRef(false);
+  useEffect(() => {
+    if (isOpen && !prevIsOpenForTipo.current) {
+      setModalTipo(initialTipo ?? "pedidos");
+    }
+    prevIsOpenForTipo.current = isOpen;
+  }, [isOpen, initialTipo]);
+
+  // Fuente de datos activa segun el tipo seleccionado
+  // Tipo=Services usa services[], Tipo=Pedidos usa pedidos[]
+  const activeData = modalTipo === "services" ? (services ?? []) : pedidos;
+
+  // Modo controlled vs uncontrolled:
+  //   - Controlled (externalFilters definido): los filtros viven en el parent.
+  //     Cualquier cambio se reporta via onInnerFiltersChange y se refleja al
+  //     re-render con nuevos externalFilters. Habilita la sincronía bidireccional
+  //     con el colapsable (MovilSelector) y el mapa.
+  //   - Uncontrolled (externalFilters undefined): el modal mantiene su propio
+  //     state local (compat con consumidores legacy).
+  const [localFilters, setLocalFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const isControlled = externalFilters !== undefined;
+  const filters = isControlled ? externalFilters : localFilters;
+  // filtersRef permite que los updaters funcionales (setFilters(f => ...)) lean
+  // siempre el último valor incluso cuando varios setters se encadenan en el
+  // mismo tick (React batchea; sin el ref, el segundo updater veria el filters
+  // de la render previa).
+  const filtersRef = useRef<Filters>(filters);
+  useEffect(() => { filtersRef.current = filters; });
+  const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
+  useEffect(() => { onInnerFiltersChangeRef.current = onInnerFiltersChange; });
+  const setFilters = useCallback((update: Filters | ((prev: Filters) => Filters)) => {
+    const next = typeof update === 'function'
+      ? (update as (prev: Filters) => Filters)(filtersRef.current)
+      : update;
+    filtersRef.current = next;
+    if (isControlled) {
+      onInnerFiltersChangeRef.current?.(next);
+    } else {
+      setLocalFilters(next);
+      onInnerFiltersChangeRef.current?.(next);
+    }
+  }, [isControlled]);
   const [servicioDropdownOpen, setServicioDropdownOpen] = useState(false);
   const servicioDropdownRef = useRef<HTMLDivElement>(null);
   const servicioButtonRef = useRef<HTMLButtonElement>(null);
   const [servicioDropdownPos, setServicioDropdownPos] = useState({ top: 0, left: 0 });
+  const [movilDropdownOpen, setMovilDropdownOpen] = useState(false);
+  const movilDropdownRef = useRef<HTMLDivElement>(null);
+  const movilButtonRef = useRef<HTMLButtonElement>(null);
+  const [movilDropdownPos, setMovilDropdownPos] = useState({ top: 0, left: 0 });
   // Default sortKey según vista:
   //   - finalizados → 'cumplido' (fch_hora_finalizacion asc)
   //   - pendientes  → 'delay' (atraso asc)
@@ -144,25 +237,38 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     setPage(0);
   }, [vista]);
 
-  // Report inner filter changes upward
-  const onInnerFiltersChangeRef = useRef(onInnerFiltersChange);
-  useEffect(() => { onInnerFiltersChangeRef.current = onInnerFiltersChange; });
-  useEffect(() => { onInnerFiltersChangeRef.current?.(filters); }, [filters]);
-
   // Accept external reset
   const prevResetToken = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (externalResetToken !== undefined && prevResetToken.current !== undefined && prevResetToken.current !== externalResetToken) {
-      setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos', tipoServicio: [] });
+      setFilters(DEFAULT_FILTERS);
     }
     prevResetToken.current = externalResetToken;
-  }, [externalResetToken]);
+  }, [externalResetToken, setFilters]);
 
-  // Click-outside para cerrar dropdown de tipo de servicio
+  // Re-init local filters from initialFilters when opened in non-controlled mode (openSource != 'colapsable').
+  // Ensures that each open from navbar/zona/movil starts with the correct pre-applied filters
+  // (e.g. entrega='entregado' for Entregados) without touching the dashboard pedidosFilters.
+  const prevIsOpen = useRef(false);
+  useEffect(() => {
+    if (!isControlled && isOpen && !prevIsOpen.current && initialFilters) {
+      const next = { ...DEFAULT_FILTERS, ...initialFilters };
+      setLocalFilters(next);
+      filtersRef.current = next;
+    }
+    prevIsOpen.current = isOpen;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // initialFilters e isControlled excluidos intencionalmente — solo reinit al abrir
+
+  // Click-outside para cerrar dropdowns (tipo de servicio + movil)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (servicioDropdownRef.current && !servicioDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (servicioDropdownRef.current && !servicioDropdownRef.current.contains(target)) {
         setServicioDropdownOpen(false);
+      }
+      if (movilDropdownRef.current && !movilDropdownRef.current.contains(target)) {
+        setMovilDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -183,10 +289,10 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       const matchStr = pedidos.filter(p => String(p.movil) === String(preFilterMovil));
       console.log(`🔍 PRE-FILTER: Pedidos con String(movil)==='${preFilterMovil}': ${matchStr.length}`);
       
-      setFilters(f => ({ ...f, movil: preFilterMovil }));
+      setFilters(f => ({ ...f, movil: [preFilterMovil] }));
       setPage(0);
     }
-  }, [preFilterMovil, isOpen, pedidos]);
+  }, [preFilterMovil, isOpen, pedidos, setFilters]);
 
   // Aplicar pre-filtro de zona inmediatamente
   useEffect(() => {
@@ -194,22 +300,40 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       setFilters(f => ({ ...f, zona: preFilterZona }));
       setPage(0);
     }
-  }, [preFilterZona, isOpen]);
+  }, [preFilterZona, isOpen, setFilters]);
 
   // Aplicar filtro inicial de asignación sólo cuando el prop cambia (no en cada reopen)
   useEffect(() => {
-    setFilters(f => ({ ...f, asignacion: initialAsignacion }));
+    // Bug fix: do NOT override if initialFilters already specifies asignacion.
+    // initialFilters is applied by the isOpen effect and should win.
+    // initialAsignacion was a legacy prop; when initialFilters is present (non-colapsable
+    // open sources like zona_combo), the asignacion from initialFilters takes precedence.
+    if (!initialFilters?.asignacion) {
+      setFilters(f => ({ ...f, asignacion: initialAsignacion }));
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAsignacion]);
+
+  // Aplicar filtro inicial de atraso sólo cuando el prop cambia (no en cada reopen).
+  // Si initialAtraso es undefined, no toca el filtro; si es un array (vacío o con
+  // claves), reemplaza el filtro de atraso. Esto permite que el click en
+  // Pedidos/Zona con combo "Atrasados" pre-filtre por ['muy_atrasado','atrasado'].
+  useEffect(() => {
+    if (initialAtraso === undefined) return;
+    setFilters(f => ({ ...f, atraso: initialAtraso }));
+    setPage(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAtraso]);
 
   // ========== Pedidos base: según vista (pendientes/finalizados) + filtros externos ==========
   const pedidosBase = useMemo(() => {
     // Gate funcional: si el usuario no tiene "Ped s/asignar unitarios", excluir
     // pedidos sin movil desde el inicio. El filtro de asignacion sin_movil
     // tampoco aplica en ese caso (su boton queda oculto en la UI).
+    // activeData = pedidos or services depending on modalTipo
     const pedidosFiltradosPorGate = !canVerSinAsignarUnitario
-      ? pedidos.filter(p => p.movil && Number(p.movil) !== 0)
-      : pedidos;
+      ? (activeData as PedidoSupabase[]).filter(p => p.movil && Number(p.movil) !== 0)
+      : (activeData as PedidoSupabase[]);
     let result: PedidoSupabase[];
     if (isFinalizados) {
       result = pedidosFiltradosPorGate.filter(p => Number(p.estado_nro) === 2);
@@ -225,8 +349,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       result = pedidosFiltradosPorGate
         .filter(p => Number(p.estado_nro) === 1)
         .filter(p =>
-          (p.movil && Number(p.movil) !== 0) ||
-          isWithinSaWindow(p.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null)
+          isVisibleByWindow(p.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null, !!(p.movil && Number(p.movil) !== 0))
         );
 
       // Filtro de asignación (con móvil / sin móvil)
@@ -245,44 +368,42 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
 
     // Filtro por móviles / empresa del usuario.
-    // Regla: los finalizados también respetan la restricción de empresas (antes
-    //        el bloque `if (isFinalizados)` lo salteaba y mostraba TODO).
+    // El comportamiento depende de openSource (ver
+    // docs/superpowers/specs/2026-05-21-tabla-extendida-casos.md):
+    //   - 'colapsable': respeta selectedMoviles en pendientes Y finalizados (Caso 1).
+    //   - 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' |
+    //     'movil_individual': ignora selectedMoviles del colapsable (Casos 2/3/4).
+    //     El dataset `pedidos` (pedidosCompletos del dashboard) ya cubre el
+    //     scope del usuario.
+    const respectColapsableSelection = openSource === 'colapsable';
     if (preFilterMovil || preFilterZona) {
       // Pre-filtro activo — el dropdown interno se encarga.
+    } else if (!respectColapsableSelection) {
+      // Modal abierto desde navbar/zona/ficha móvil: NO filtra por
+      // selectedMoviles. Ya filtró por asignacion arriba y por scope.
     } else if (selectedMoviles.length > 0 && filters.asignacion !== 'sin_movil') {
+      // Caso 1: respeta selectedMoviles también en finalizados cuando viene
+      // del colapsable. Gate estricto (Caso 6 bypass por asignacion='sin_movil'
+      // no aplica acá: esta rama ya está condicionada a asignacion !== 'sin_movil';
+      // ese caso lo cubre el filtro de asignacion='sin_movil' aplicado arriba).
       result = result.filter(p => {
         if (!p.movil || Number(p.movil) === 0) {
-          // Finalizados sin móvil (huérfanos tipo "ENTR. SIN 1710"): solo pasan
-          // en modo "Todos" Y para usuarios privilegiados (despacho/root/
-          // supervisor/dashboard). Distribuidores nunca los ven, y con subset
-          // de móviles tampoco — no corresponden al recorte del usuario.
-          if (isFinalizados) {
-            return allMovilesSelected && privilegedUser;
-          }
-          // Pendientes sin móvil: pasa si tiene permiso "Ped s/asignar
-          // unitarios". La scope por zona ya se aplicó vía isPedidoInScope
-          // arriba (línea 243). Los gates legacy (hideUnassigned,
-          // allMovilesSelected) ya no aplican — refactor permisos.
-          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
+          return canVerSinAsignarUnitario && allMovilesSelected && filters.asignacion !== 'con_movil';
         }
-        // Móviles seleccionados pasan
         if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
-        // Móviles ocultos-pero-operativos: SOLO en modo "Todos". Con subset
-        // seleccionado, no pasan — corresponden a un segmento que el usuario
-        // no eligió ver.
         if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
         return false;
       });
     } else if (
       selectedMoviles.length === 0 &&
-      privilegedUser &&
+      canVerSinAsignarUnitario &&
       !hideUnassigned &&
       filters.asignacion === 'todos' &&
       !isFinalizados
     ) {
-      // Privilegiado SIN móviles seleccionados (handleClearAll) y empresas
-      // completas, vista pendientes con asignación 'todos': mostramos
-      // exclusivamente pedidos sin móvil ("solo sin asignar").
+      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios":
+      // mostrar exclusivamente pedidos sin móvil ("solo sin asignar").
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados.
       result = result.filter(p => !p.movil || Number(p.movil) === 0);
     } else if (hideUnassigned && filters.asignacion === 'todos') {
       // Sin móviles seleccionados, con restricción de empresa: restringir
@@ -305,7 +426,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     
     return result;
-  }, [pedidos, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope]);
+  }, [activeData, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, modalExtraSelectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
@@ -313,13 +434,13 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
   // También respetamos `scope` para que un distribuidor solo vea sus móviles/zonas/productos en los dropdowns.
   const pedidosParaOpciones = useMemo(() => {
     let result: PedidoSupabase[];
-    if (isFinalizados) result = pedidos.filter(p => Number(p.estado_nro) === 2);
-    else result = pedidos.filter(p => Number(p.estado_nro) === 1);
+    if (isFinalizados) result = (activeData as PedidoSupabase[]).filter(p => Number(p.estado_nro) === 2);
+    else result = (activeData as PedidoSupabase[]).filter(p => Number(p.estado_nro) === 1);
     if (scope?.isRestricted) {
       result = result.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: isFinalizados }));
     }
     return result;
-  }, [pedidos, isFinalizados, scope]);
+  }, [activeData, isFinalizados, scope]);
 
   const uniqueZonas = useMemo(() => {
     const set = new Set<number>();
@@ -333,7 +454,49 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     return Array.from(set).sort((a, b) => a - b);
   }, [pedidosParaOpciones]);
 
-  const uniqueProductos = useMemo(() => {
+  // §4.3 (NEXT_PUBLIC_USE_MOVILES_DIA): cuando el flag está ON y openSource='colapsable',
+  // el combo se construye desde el prop moviles completo (activo precalculado por el mapper):
+  // activos (m.activo===true) por id asc arriba, luego inactivos por id asc.
+  // Cuando el flag está OFF o no es colapsable, comportamiento existente sin cambio.
+  const USE_MOVILES_DIA_COMBO = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
+
+  // §4.3: listas activos/inactivos para el combo cuando el flag está ON.
+  const activosForCombo = useMemo((): MovilData[] => {
+    if (!USE_MOVILES_DIA_COMBO || openSource !== 'colapsable') return [];
+    return moviles.filter(m => m.activo === true).sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_COMBO, openSource, moviles]);
+
+  const inactivosForCombo = useMemo((): MovilData[] => {
+    if (!USE_MOVILES_DIA_COMBO || openSource !== 'colapsable') return [];
+    // Usa exactamente el mismo filtro que el colapsable: solo móviles del día marcados como inactivos.
+    return moviles.filter(m => m.inactivoDelDia === true).sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_COMBO, openSource, moviles]);
+
+  // En colapsable mode, el combo muestra TODOS los moviles activos del prop moviles
+  // (no solo los que tienen pedidos del dia) + inactivos relevantes por vista.
+  // En otros openSource, uniqueMoviles (del dataset filtrado) sigue siendo la fuente.
+  // §4.3: cuando el flag está ON, incluye todos los móviles (activos + inactivos).
+  const activeMovilesForCombo = useMemo((): number[] => {
+    if (openSource !== 'colapsable') return uniqueMoviles;
+    if (USE_MOVILES_DIA_COMBO) {
+      // Flag ON: todos los moviles del prop, activos por id asc, luego inactivos por id asc.
+      return [
+        ...activosForCombo.map(m => m.id),
+        ...inactivosForCombo.map(m => m.id),
+      ];
+    }
+    // Flag OFF: comportamiento existente (solo activos por isActive).
+    const isActive = (estadoNro: number | null | undefined) => {
+      if (estadoNro === null || estadoNro === undefined) return true;
+      return estadoNro === 0 || estadoNro === 1 || estadoNro === 2 || estadoNro === 4;
+    };
+    return moviles
+      .filter(m => isActive(m.estadoNro ?? null))
+      .map(m => m.id)
+      .sort((a, b) => a - b);
+  }, [openSource, moviles, uniqueMoviles, USE_MOVILES_DIA_COMBO, activosForCombo, inactivosForCombo]);
+
+    const uniqueProductos = useMemo(() => {
     const set = new Set<string>();
     pedidosParaOpciones.forEach(p => { if (p.producto_nom) set.add(p.producto_nom); });
     return Array.from(set).sort();
@@ -377,13 +540,12 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       result = result.filter(({ pedido: p }) => p.zona_nro === filters.zona);
     }
 
-    // Movil filter
-    if (filters.movil !== null) {
-      console.log(`🔍 FILTER: Filtrando por movil=${filters.movil} (type: ${typeof filters.movil})`);
-      console.log(`🔍 FILTER: Antes del filtro: ${result.length} pedidos`);
-      console.log(`🔍 FILTER: Moviles en datos:`, [...new Set(result.map(({pedido: p}) => `${p.movil}(${typeof p.movil})`))].slice(0, 10));
-      result = result.filter(({ pedido: p }) => String(p.movil) === String(filters.movil));
-      console.log(`🔍 FILTER: Después del filtro: ${result.length} pedidos`);
+    // Movil filter (multi-select). En colapsable mode no aplica:
+    // selectedMoviles ya hace ese filtrado (el dropdown escribe sobre
+    // selectedMoviles, no sobre filters.movil).
+    if (filters.movil.length > 0 && openSource !== 'colapsable') {
+      const movilSet = new Set(filters.movil.map(Number));
+      result = result.filter(({ pedido: p }) => movilSet.has(Number(p.movil)));
     }
 
     // Producto filter
@@ -462,12 +624,12 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
         : [...prev.atraso, key],
     }));
     setPage(0);
-  }, []);
+  }, [setFilters]);
 
   const clearFilters = useCallback(() => {
-    setFilters({ search: '', atraso: [], zona: null, movil: null, producto: null, soloSinCoords: false, asignacion: 'todos', entrega: 'todos', tipoServicio: [] });
+    setFilters(DEFAULT_FILTERS);
     setPage(0);
-  }, []);
+  }, [setFilters]);
 
   const getMovilName = useCallback((movilId: number | null) => {
     if (!movilId) return '—';
@@ -481,7 +643,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     return m?.color || '#6B7280';
   }, [moviles]);
 
-  const hasActiveFilters = filters.search || filters.atraso.length > 0 || filters.zona !== null || filters.movil !== null || filters.producto !== null || filters.soloSinCoords || filters.tipoServicio.length > 0;
+  const hasActiveFilters = filters.search || filters.atraso.length > 0 || filters.zona !== null || filters.movil.length > 0 || filters.producto !== null || filters.soloSinCoords || filters.tipoServicio.length > 0;
 
   // ========== Sort Arrow Component ==========
   const SortArrow = ({ col }: { col: SortKey }) => {
@@ -512,7 +674,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3"
+          className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3"
           onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
           <motion.div
@@ -544,22 +706,42 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
               {/* Vista toggle - en el centro del header */}
               <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5">
                 <button
-                  onClick={() => { onVistaChange?.('pendientes'); setFilters(f => ({ ...f, entrega: 'todos' })); }}
+                  disabled={isFilterDisabled}
+                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('pendientes'); setFilters(f => ({ ...f, entrega: 'todos' })); } }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
                     vista === 'pendientes' ? 'bg-teal-500/30 text-teal-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                  }`}
+                  } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   Pendientes
                 </button>
                 <button
-                  onClick={() => { onVistaChange?.('finalizados'); setFilters(f => ({ ...f, asignacion: 'todos' })); }}
+                  disabled={isFilterDisabled}
+                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('finalizados'); setFilters(f => ({ ...f, asignacion: 'todos' })); } }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
                     isFinalizados ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                  }`}
+                  } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   Finalizados
                 </button>
               </div>
+
+              {/* Tipo toggle (Pedidos / Services) — solo cuando services prop esta disponible */}
+              {services && services.length >= 0 && (
+                <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setModalTipo("pedidos")}
+                    className={"px-3 py-1.5 text-xs rounded-md transition-all font-medium " + (modalTipo === "pedidos" ? "bg-blue-500/30 text-blue-300 shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                  >
+                    Pedidos
+                  </button>
+                  <button
+                    onClick={() => setModalTipo("services")}
+                    className={"px-3 py-1.5 text-xs rounded-md transition-all font-medium " + (modalTipo === "services" ? "bg-purple-500/30 text-purple-300 shadow-sm" : "text-gray-500 hover:text-gray-300")}
+                  >
+                    Services
+                  </button>
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 {/* Toggle Filters */}
@@ -602,26 +784,29 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                   {/* Filtro Entregados / No Entregados */}
                   <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
                     <button
-                      onClick={() => setFilters(f => ({ ...f, entrega: 'todos' }))}
+                      disabled={isFilterDisabled}
+                      onClick={() => { if (!isFilterDisabled) setFilters(f => ({ ...f, entrega: 'todos' })); }}
                       className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
                         filters.entrega === 'todos' ? 'bg-gray-600/40 text-gray-200 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                      }`}
+                      } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       Todos
                     </button>
                     <button
-                      onClick={() => setFilters(f => ({ ...f, entrega: 'entregados' }))}
+                      disabled={isFilterDisabled}
+                      onClick={() => { if (!isFilterDisabled) setFilters(f => ({ ...f, entrega: 'entregados' })); }}
                       className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
                         filters.entrega === 'entregados' ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                      }`}
+                      } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       Entregados
                     </button>
                     <button
-                      onClick={() => setFilters(f => ({ ...f, entrega: 'no_entregados' }))}
+                      disabled={isFilterDisabled}
+                      onClick={() => { if (!isFilterDisabled) setFilters(f => ({ ...f, entrega: 'no_entregados' })); }}
                       className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
                         filters.entrega === 'no_entregados' ? 'bg-red-500/30 text-red-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                      }`}
+                      } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       No Entregados
                     </button>
@@ -640,27 +825,30 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                       Todos y Con Movil siempre visibles; Sin Movil gateado por canVerSinAsignarUnitario. */}
                   <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5 ml-2">
                       <button
-                        onClick={() => setFilters(f => ({ ...f, asignacion: 'todos' }))}
+                        disabled={isFilterDisabled}
+                        onClick={() => { if (!isFilterDisabled) setFilters(f => ({ ...f, asignacion: 'todos' })); }}
                         className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
                           filters.asignacion === 'todos' ? 'bg-gray-600/40 text-gray-200 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                        }`}
+                        } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         Todos
                       </button>
                       <button
-                        onClick={() => setFilters(f => ({ ...f, asignacion: 'con_movil' }))}
+                        disabled={isFilterDisabled}
+                        onClick={() => { if (!isFilterDisabled) setFilters(f => ({ ...f, asignacion: 'con_movil' })); }}
                         className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
                           filters.asignacion === 'con_movil' ? 'bg-blue-500/30 text-blue-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                        }`}
+                        } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         Con Móvil
                       </button>
                       {canVerSinAsignarUnitario && (
                         <button
-                          onClick={() => setFilters(f => ({ ...f, asignacion: 'sin_movil' }))}
+                          disabled={isFilterDisabled}
+                          onClick={() => { if (!isFilterDisabled) setFilters(f => ({ ...f, asignacion: 'sin_movil' })); }}
                           className={`px-2.5 py-1 text-[11px] rounded-md transition-all font-medium ${
                             filters.asignacion === 'sin_movil' ? 'bg-orange-500/30 text-orange-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
-                          }`}
+                          } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                           Sin Móvil
                         </button>
@@ -705,7 +893,9 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                         <div className="relative" ref={servicioDropdownRef}>
                           <button
                             ref={servicioButtonRef}
+                            disabled={isFilterDisabled}
                             onClick={() => {
+                              if (isFilterDisabled) return;
                               if (!servicioDropdownOpen && servicioButtonRef.current) {
                                 const r = servicioButtonRef.current.getBoundingClientRect();
                                 setServicioDropdownPos({ top: r.bottom + 4, left: r.left });
@@ -716,7 +906,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                               filters.tipoServicio.length > 0
                                 ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
                                 : 'bg-gray-800 border-gray-600/50 text-gray-200 hover:border-teal-500/50'
-                            }`}
+                            } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
                             <span>
                               {filters.tipoServicio.length === 0
@@ -768,36 +958,214 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
 
                       {/* Zona select */}
                       <select
+                        disabled={isFilterDisabled}
                         value={filters.zona ?? ''}
-                        onChange={(e) => { setFilters(f => ({ ...f, zona: e.target.value ? Number(e.target.value) : null })); setPage(0); }}
-                        className="bg-gray-800 border border-gray-600/50 rounded-lg text-sm text-gray-200 px-3 py-2 focus:outline-none focus:border-teal-500/50"
+                        onChange={(e) => { if (!isFilterDisabled) { setFilters(f => ({ ...f, zona: e.target.value ? Number(e.target.value) : null })); setPage(0); } }}
+                        className={`bg-gray-800 border border-gray-600/50 rounded-lg text-sm text-gray-200 px-3 py-2 focus:outline-none focus:border-teal-500/50 ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <option value="">Todas las zonas</option>
                         {uniqueZonas.map(z => <option key={z} value={z}>Zona {z}</option>)}
                       </select>
 
-                      {/* Movil select */}
-                      <select
-                        value={filters.movil ?? ''}
-                        onChange={(e) => { setFilters(f => ({ ...f, movil: e.target.value ? Number(e.target.value) : null })); setPage(0); }}
-                        className="bg-gray-800 border border-gray-600/50 rounded-lg text-sm text-gray-200 px-3 py-2 focus:outline-none focus:border-teal-500/50"
-                      >
-                        <option value="">Todos los móviles</option>
-                        {uniqueMoviles.map(m => <option key={m} value={m}>{getMovilName(m)}</option>)}
-                      </select>
+                      {/* Movil multi-select (Caso 5).
+                          colapsable mode: dropdown ↔ selectedMoviles (bidireccional
+                          con colapsable de móviles + mapa).
+                          otros openSource: dropdown ↔ filters.movil (filtro local
+                          que se snapshot/restore al cerrar). */}
+                      {(() => {
+                        const isColapsableMode = openSource === 'colapsable';
+                        const displayedMovilIds = isColapsableMode ? selectedMoviles : filters.movil;
+                        const isShowingInactivos = isColapsableMode && inactiveMovilesAvailable.length > 0;
+                        const handleToggle = (m: number, checked: boolean, isInactivo?: boolean) => {
+                          if (isColapsableMode && isInactivo) {
+                            onModalExtraSelectedMovilesChange?.(
+                              checked
+                                ? Array.from(new Set([...modalExtraSelectedMoviles, m]))
+                                : modalExtraSelectedMoviles.filter(id => id !== m)
+                            );
+                          } else if (isColapsableMode && onSelectedMovilesChange) {
+                            onSelectedMovilesChange(
+                              checked
+                                ? Array.from(new Set([...selectedMoviles, m]))
+                                : selectedMoviles.filter(id => id !== m)
+                            );
+                          } else {
+                            setFilters(f => ({
+                              ...f,
+                              movil: checked
+                                ? Array.from(new Set([...f.movil, m]))
+                                : f.movil.filter(id => id !== m),
+                            }));
+                          }
+                          setPage(0);
+                        };
+                        const handleClear = () => {
+                          if (isColapsableMode && onSelectedMovilesChange) {
+                            // "Todos" en colapsable mode = seleccionar todos los visibles del scope.
+                            onSelectedMovilesChange(activeMovilesForCombo);
+                          } else {
+                            setFilters(f => ({ ...f, movil: [] }));
+                          }
+                          setPage(0);
+                        };
+                        const label = isColapsableMode
+                          ? (displayedMovilIds.length === 0
+                              ? 'Ninguno'
+                              : displayedMovilIds.length === activeMovilesForCombo.length
+                              ? 'Todos los móviles'
+                              : displayedMovilIds.length === 1
+                              ? getMovilName(displayedMovilIds[0])
+                              : `${displayedMovilIds.length} móviles`)
+                          : (displayedMovilIds.length === 0
+                              ? 'Todos los móviles'
+                              : displayedMovilIds.length === 1
+                              ? getMovilName(displayedMovilIds[0])
+                              : `${displayedMovilIds.length} móviles`);
+                        const isActive = isColapsableMode
+                          ? displayedMovilIds.length > 0 && displayedMovilIds.length !== activeMovilesForCombo.length
+                          : displayedMovilIds.length > 0;
+                        return (
+                          <div className="relative" ref={movilDropdownRef}>
+                            <button
+                              ref={movilButtonRef}
+                              disabled={isFilterDisabled}
+                              onClick={() => {
+                                if (isFilterDisabled) return;
+                                if (!movilDropdownOpen && movilButtonRef.current) {
+                                  const r = movilButtonRef.current.getBoundingClientRect();
+                                  setMovilDropdownPos({ top: r.bottom + 4, left: r.left });
+                                }
+                                setMovilDropdownOpen(o => !o);
+                              }}
+                              className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all ${
+                                isActive
+                                  ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
+                                  : 'bg-gray-800 border-gray-600/50 text-gray-200 hover:border-teal-500/50'
+                              } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              <span>{label}</span>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                            {movilDropdownOpen && (
+                              <div
+                                className="fixed z-[10050] bg-gray-800 border border-gray-600/50 rounded-lg shadow-xl min-w-[200px] max-h-[320px] overflow-y-auto py-1"
+                                style={{ top: movilDropdownPos.top, left: movilDropdownPos.left }}
+                              >
+                                {isColapsableMode ? (
+                                  <div className="flex border-b border-gray-700/50">
+                                    <button
+                                      onClick={handleClear}
+                                      className="flex-1 text-center px-2 py-1.5 text-xs hover:bg-gray-700/50 text-teal-300"
+                                    >
+                                      Seleccionar todos
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (onSelectedMovilesChange) onSelectedMovilesChange([]);
+                                        setPage(0);
+                                      }}
+                                      className="flex-1 text-center px-2 py-1.5 text-xs hover:bg-gray-700/50 text-orange-300 border-l border-gray-700/50"
+                                    >
+                                      Ninguno
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={handleClear}
+                                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700/50 text-gray-400"
+                                  >
+                                    Todos
+                                  </button>
+                                )}
+                                {USE_MOVILES_DIA_COMBO && isColapsableMode ? (
+                                  // §4.3 flag ON: activos arriba por id, separador "Inactivos", inactivos abajo por id.
+                                  // Inactivos son seleccionables (a diferencia de la barra lateral que es inerte).
+                                  <>
+                                    {activosForCombo.map(m => (
+                                      <label key={m.id} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={displayedMovilIds.includes(m.id)}
+                                          onChange={(e) => handleToggle(m.id, e.target.checked, false)}
+                                          className="accent-teal-500"
+                                        />
+                                        {getMovilName(m.id)}
+                                      </label>
+                                    ))}
+                                    {inactivosForCombo.length > 0 && (
+                                      <>
+                                        <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-700/50 mt-1 pt-2 uppercase tracking-wider">
+                                          Inactivos
+                                        </div>
+                                        {inactivosForCombo.map(m => (
+                                          <label key={`inactivo-${m.id}`} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700/50 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={displayedMovilIds.includes(m.id)}
+                                              onChange={(e) => handleToggle(m.id, e.target.checked, false)}
+                                              className="accent-teal-500"
+                                            />
+                                            <span>{getMovilName(m.id)}</span>
+                                            <span className="ml-auto text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded-full">inactivo</span>
+                                          </label>
+                                        ))}
+                                      </>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {activeMovilesForCombo.map(m => (
+                                      <label key={m} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700/50 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={displayedMovilIds.includes(m)}
+                                          onChange={(e) => handleToggle(m, e.target.checked, false)}
+                                          className="accent-teal-500"
+                                        />
+                                        {getMovilName(m)}
+                                      </label>
+                                    ))}
+                                    {isShowingInactivos && inactiveMovilesAvailable.length > 0 && (
+                                      <>
+                                        <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-700/50 mt-1 pt-2 uppercase tracking-wider">
+                                          Inactivos relevantes
+                                        </div>
+                                        {inactiveMovilesAvailable.map(m => (
+                                          <label key={`inactivo-${m.id}`} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700/50 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={modalExtraSelectedMoviles.includes(m.id)}
+                                              onChange={(e) => handleToggle(m.id, e.target.checked, true)}
+                                              className="accent-gray-500"
+                                            />
+                                            <span>{m.nombre}</span>
+                                            <span className="ml-auto text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded-full">inactivo</span>
+                                          </label>
+                                        ))}
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Producto select */}
                       <select
+                        disabled={isFilterDisabled}
                         value={filters.producto ?? ''}
-                        onChange={(e) => { setFilters(f => ({ ...f, producto: e.target.value || null })); setPage(0); }}
-                        className="bg-gray-800 border border-gray-600/50 rounded-lg text-sm text-gray-200 px-3 py-2 focus:outline-none focus:border-teal-500/50 max-w-[180px]"
+                        onChange={(e) => { if (!isFilterDisabled) { setFilters(f => ({ ...f, producto: e.target.value || null })); setPage(0); } }}
+                        className={`bg-gray-800 border border-gray-600/50 rounded-lg text-sm text-gray-200 px-3 py-2 focus:outline-none focus:border-teal-500/50 max-w-[180px] ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <option value="">Todos los productos</option>
                         {uniqueProductos.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
 
-                      {/* Clear */}
-                      {hasActiveFilters && (
+                      {openSource === 'colapsable' && hasActiveFilters && (
                         <button
                           onClick={clearFilters}
                           className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
@@ -818,10 +1186,11 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                         return (
                           <button
                             key={opt.key}
-                            onClick={() => toggleAtraso(opt.key)}
+                            disabled={isFilterDisabled}
+                            onClick={() => { if (!isFilterDisabled) toggleAtraso(opt.key); }}
                             className={`px-2.5 py-1 text-xs rounded-full border transition-all ${
                               active ? opt.color : 'bg-gray-800 text-gray-500 border-gray-700 hover:border-gray-600'
-                            }`}
+                            } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
                             <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${active ? opt.dotColor : 'bg-gray-600'}`} />
                             {opt.label}
@@ -905,7 +1274,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                       return (
                       <tr
                         key={p.id}
-                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? (esEntregado ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : 'bg-red-500/10 hover:bg-red-500/20 border-l-red-500') : (!p.movil || Number(p.movil) === 0) ? 'bg-gray-400/10 hover:bg-gray-400/20 border-l-gray-400' : getRowBg(delayInfo)}`}
+                        className={`border-l-4 border-b border-gray-800/50 transition-colors cursor-pointer ${isFinalizados ? (esEntregado ? 'bg-green-500/10 hover:bg-green-500/20 border-l-green-500' : 'bg-red-500/10 hover:bg-red-500/20 border-l-red-500') : (!p.movil || Number(p.movil) === 0) ? 'bg-blue-500/10 hover:bg-blue-500/20 border-l-blue-500' : getRowBg(delayInfo)}`}
                       >
                         {/* Atraso badge */}
                         <td className="px-4 py-2.5" onClick={() => onPedidoClick?.(p.id)}>
@@ -1015,7 +1384,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                             const colorClass = esEntregado
                               ? 'bg-green-500/20 text-green-300'
                               : (isPendiente && sinMovil)
-                                ? 'bg-gray-500/20 text-gray-300'
+                                ? 'bg-blue-500/20 text-blue-300'
                                 : !isPendiente && !esEntregado
                                   ? 'bg-orange-500/20 text-orange-300'
                                   : 'bg-blue-500/20 text-blue-300';

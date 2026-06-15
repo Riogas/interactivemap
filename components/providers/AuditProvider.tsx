@@ -87,6 +87,16 @@ async function fetchAuditEnabled(): Promise<boolean> {
 }
 
 export function AuditProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  // Gate por user: si nadie está logueado (ej. /login), no montamos el provider
+  // activo y por lo tanto NO se inicializan los setInterval de flush ni de
+  // config-poll. Esto evita consumo de CPU/RAM antes de que tenga sentido
+  // auditar nada.
+  if (!user) return <>{children}</>;
+  return <AuditProviderActive>{children}</AuditProviderActive>;
+}
+
+function AuditProviderActive({ children }: { children: ReactNode }) {
   const { user: _user } = useAuth(); // solo para re-renderizar cuando cambie el user
   const bufferRef = useRef<AuditClientEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);

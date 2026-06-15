@@ -195,8 +195,13 @@ export async function GET(request: NextRequest) {
           `and(tipo.eq.privado,empresa_fletera_id.in.(${csv})),tipo.eq.publico,tipo.eq.osm`
         );
       }
+    } else if (scopeRole === 'root' || scopeRole === 'despacho' || scopeRole === 'dashboard' || scopeRole === 'supervisor') {
+      // Roles privilegiados (root, despacho, dashboard, supervisor): ven TODOS los POIs
+      // sin importar tipo (privado/publico/osm) ni empresa_fletera_id ni quién los creó.
+      // No agregamos filtro extra — la query ya tiene .eq('visible', true).
     } else {
-      // Root/despacho/sin scope: comportamiento legacy — privados del usuario + públicos.
+      // Sin scope_role o desconocido: fail-closed para privados ajenos —
+      // solo los del propio usuario + públicos (comportamiento legacy seguro).
       query = query.or(`usuario_email.eq.${usuario_email},tipo.eq.publico`);
     }
 

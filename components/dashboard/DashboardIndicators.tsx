@@ -77,13 +77,17 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       // Distribuidor: hideEntregadosSinMovil=true (no puede ver entregados huérfanos),
       // y los finalizados con móvil deben pertenecer a su scope (móvil + zona).
       finalizados = finalizados.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: true }));
-    } else if (selectedMoviles.length > 0) {
-      // Filtro estricto por móvil seleccionado: cuenta SOLO los pedidos
-      // cuyo movil esta en selectedMoviles. Pedidos huérfanos (sin movil)
-      // y de móviles ocultos-pero-operativos NO pasan — el indicador refleja
-      // exactamente lo que el usuario filtró.
-      finalizados = filterFinalizadosByMovil(finalizados, selectedMoviles);
     }
+    // NOTA (2026-05-19): el filtro por selectedMoviles ya NO se aplica a los
+    // contadores globales del navbar (Entregados, %Entregados). Decision del
+    // usuario: el contador debe reflejar TODOS los finalizados de las empresas
+    // fleteras seleccionadas en el header, independientemente de los moviles
+    // marcados en el sidebar. El filtro por movil es para vistas detalladas
+    // (modal de movil especifico), no para totales agregados.
+    // Si necesitas reactivarlo en algun caso, descomentar:
+    // else if (selectedMoviles.length > 0) {
+    //   finalizados = filterFinalizadosByMovil(finalizados, selectedMoviles);
+    // }
 
     // Filtro por empresa fletera seleccionada en la UI (aplica sobre sinAsignar y finalizados).
     // Pedidos sin empresa_fletera_id (null) no pasan cuando hay selección activa.
@@ -193,22 +197,43 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     loadZonasData();
     // Refrescar según el intervalo configurado en preferencias (mínimo 10s)
     const refreshMs = Math.max(10, zonasRefreshSeconds) * 1000;
-    const interval = setInterval(loadZonasData, refreshMs);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return; // Pestaña en background: skip
+      loadZonasData();
+    }, refreshMs);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escenarioIds, zonasRefreshSeconds, scopedEmpresasKey, scopedZonasKey]);
+
+  // Mapa de estados efectivo para zonasSinMoviles.
+  // Si allMovilEstados ya tiene data (path legacy), usarlo.
+  // Bajo USE_NEW: construir desde moviles[] que ya tienen estadoNro poblado.
+  // La key es String(movil.id) = String(moviles.nro) — coincide con moviles_zonas.movil_id (TEXT = nro::text).
+  const efectivoEstadosMap = useMemo(() => {
+    if (allMovilEstados && allMovilEstados.size > 0) return allMovilEstados;
+    const m = new Map<string, number>();
+    for (const movil of moviles) {
+      if (movil.estadoNro !== undefined && movil.estadoNro !== null) {
+        m.set(String(movil.id), movil.estadoNro);
+      }
+    }
+    return m;
+  }, [allMovilEstados, moviles]);
 
   // Zonas sin móviles: Match MovilesZonasLayer — filtrar por tipo de servicio activo + excluir no-activos y ocultos
   const zonasSinMoviles = useMemo(() => {
     if (zonasAllData.length === 0) return 0;
     const svcUpper = (zonasSinMovilServiceFilter || 'URGENTE').toUpperCase();
     let filtered = movilesZonasRecords.filter((mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === svcUpper);
-    // Excluir móviles no-activos (estado ≠ 0/1/2) y los ocultos-pero-operativos
-    if (allMovilEstados && allMovilEstados.size > 0) {
+    // Excluir móviles no-activos y los ocultos-pero-operativos.
+    // Si efectivoEstadosMap no está cargado aún (size=0) → no filtra (evita falsos "sin móvil" durante carga).
+    // Si el estado del móvil es undefined → se trata como activo (optimista).
+    // isMovilActiveForUI incluye BAJA MOMENTÁNEA (estado 4) como activo.
+    if (efectivoEstadosMap.size > 0) {
       filtered = filtered.filter((mz: any) => {
         const key = String(mz.movil_id);
         if (allHiddenMovilIds && allHiddenMovilIds.has(key)) return false;
-        const estado = allMovilEstados.get(key);
+        const estado = efectivoEstadosMap.get(key);
         return estado === undefined || isMovilActiveForUI(estado);
       });
     }
@@ -239,7 +264,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       const counts = zonaCounts.get(z.zona_id);
       return !counts || (counts.prioridad === 0 && counts.transito === 0);
     }).length;
-  }, [zonasAllData, movilesZonasRecords, allMovilEstados, allHiddenMovilIds, zonasSinMovilServiceFilter, demorasRecords]);
+  }, [zonasAllData, movilesZonasRecords, efectivoEstadosMap, allHiddenMovilIds, zonasSinMovilServiceFilter, demorasRecords]);
 
   // Zonas no activas: Match ZonasActivasLayer — iterar zonas visibles y buscar en demoras
   const zonasNoActivas = useMemo(() => {

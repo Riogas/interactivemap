@@ -22,6 +22,38 @@ interface TrackingModalProps {
    * Si es undefined no se aplica restricción (comportamiento original).
    */
   minDate?: string;
+  /** ID del escenario activo — requerido para la rama moviles_dia (flag NEXT_PUBLIC_USE_MOVILES_DIA). */
+  escenarioId?: number;
+  /** 'S' si el usuario es root — se usa para el header x-track-isroot en la rama moviles_dia. */
+  isRoot?: string;
+  /**
+   * Cuando true, el modal usa la prop `moviles` como fuente de verdad directa
+   * (sin fetch interno de actividad). Aplica cuando NEXT_PUBLIC_USE_MOVILES_DIA=true
+   * y la fecha seleccionada es hoy: el dashboard ya filtra moviles_dia (activos +
+   * inactivos del día) antes de pasarlos, por lo que re-fetchear es redundante y
+   * puede excluir móviles con pedidos/services pero sin GPS.
+   *
+   * Para fechas históricas (date != hoy), este flag debe ser false para que el
+   * modal siga usando /api/moviles-dia con la fecha correcta.
+   */
+  movilesDiaMode?: boolean;
+  /**
+   * Móviles inactivos del día que no están en la prop `moviles` (fueron excluidos por el
+   * filtro de empresa en movilesFiltered) pero que el colapsable sí muestra porque el
+   * dashboard los captura aparte. Se unen al universo del modal solo cuando
+   * movilesDiaMode && isToday para garantizar paridad con el colapsable (96 vs 91).
+   */
+  inactivosDelDia?: MovilData[];
+  /**
+   * Universo pre-calculado de moviles para HOY (activos + inactivos del dia),
+   * construido en el padre con la misma logica que el colapsable:
+   *   movilesFiltered.filter(activo===true) ++ movilesFiltered.filter(inactivoDelDia===true)
+   * Cuando esta prop esta presente y movilesDiaMode=true e isToday=true, el modal
+   * usa SOLO este universo sin aplicar filtros propios. Garantiza paridad estructural
+   * con el colapsable y elimina el riesgo de drift futuro.
+   * Para historico (isToday=false) se ignora y el modal usa su path original.
+   */
+  universoMoviles?: MovilData[];
 }
 
 export default function TrackingModal({
@@ -34,6 +66,11 @@ export default function TrackingModal({
   selectedMovil: preSelectedMovil,
   selectedEmpresas,
   minDate,
+  escenarioId,
+  isRoot,
+  movilesDiaMode = false,
+  inactivosDelDia,
+  universoMoviles,
 }: TrackingModalProps) {
   const [movilId, setMovilId] = useState<number | ''>(preSelectedMovil || '');
   const [date, setDate] = useState(selectedDate);
@@ -51,6 +88,13 @@ export default function TrackingModal({
   // R4: ¿La fecha seleccionada es hoy?
   const isToday = date === todayMontevideo();
 
+  // C: Sincronizar la fecha del dashboard → estado local cuando la prop cambia.
+  // Cubre el caso en que el usuario cambia la fecha en el dashboard mientras el modal está cerrado
+  // (y también si el modal está abierto y la prop se actualiza externamente).
+  useEffect(() => {
+    setDate(selectedDate);
+  }, [selectedDate]);
+
   // Reset cuando se abre el modal
   const handleOpen = () => {
     setMovilId(preSelectedMovil || '');
@@ -62,6 +106,48 @@ export default function TrackingModal({
   // R2: Fetch de móviles con actividad cada vez que cambia la fecha (o cuando abre el modal)
   useEffect(() => {
     if (!isOpen) return;
+
+    // movilesDiaMode + hoy: el prop `moviles` ya contiene el universo correcto
+    // (activos + inactivos del día) porque el dashboard lo construye desde moviles_dia.
+    // Criterio de inclusión — PARIDAD con el colapsable (activosNuevo + inactivosNuevo):
+    //   1. activo===true        → móvil activo ahora mismo (badge verde en colapsable)
+    //   2. inactivoDelDia===true → ya terminó, recompute lo marcó (badge gris en colapsable)
+    // NOTA: NO incluir por currentPosition!=null — eso amplía a toda la flota con GPS
+    // (potencialmente 215 vs 96 del colapsable). Commit 3d156a9 introdujo ese criterio
+    // creyendo resolver un delta de ~13 móviles, pero rompió la paridad al incluir
+    // móviles fuera del scope de empresa que igual tienen currentPosition cargada.
+    // Para fechas históricas (isToday=false), este branch NO se activa — el modal
+    // sigue usando /api/moviles-dia con la fecha correcta para reconstruir la lista.
+    if (movilesDiaMode && isToday) {
+      // universoMoviles: prop pre-calculada por el padre con la misma logica que el
+      // colapsable (activos + inactivos del dia de movilesFiltered). Cuando esta
+      // presente, se usa como fuente de verdad directa sin filtros adicionales.
+      // Esto garantiza paridad estructural con el colapsable eliminando riesgo de drift.
+      // Fallback (inactivosDelDia legacy): si universoMoviles no viene, se construye
+      // el set desde moviles prop + inactivosDelDia (comportamiento de a601708).
+      let ids: Set<number>;
+      if (universoMoviles) {
+        ids = new Set<number>(universoMoviles.map((m) => m.id));
+      } else {
+        ids = new Set<number>(
+          moviles
+            .filter((m) => m.activo === true || m.inactivoDelDia === true)
+            .map((m) => m.id)
+        );
+        if (inactivosDelDia && inactivosDelDia.length > 0) {
+          inactivosDelDia.forEach((m) => ids.add(m.id));
+        }
+      }
+      setActivityMovilIds(ids);
+      setActivityLoading(false);
+      setActivityError(false);
+      // Cancelar cualquier fetch previo si había quedado pendiente
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      return;
+    }
 
     // Cancelar fetch anterior si existe
     if (abortControllerRef.current) {
@@ -75,43 +161,114 @@ export default function TrackingModal({
     setActivityError(false);
     setActivityMovilIds(null);
 
-    const params = new URLSearchParams({ date });
-    if (selectedEmpresas && selectedEmpresas.length > 0) {
-      params.set('empresaIds', selectedEmpresas.join(','));
-    }
+    const useMovilesDia = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
 
-    fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
-      .then((res) => res.json())
-      .then((result: { success: boolean; data?: number[] }) => {
-        if (result.success && Array.isArray(result.data)) {
-          setActivityMovilIds(new Set(result.data));
-        } else {
-          // API respondió con error — fallback: mostrar todos
-          console.warn('[TrackingModal] moviles-with-activity respondió sin data:', result);
+    if (useMovilesDia && escenarioId) {
+      // Rama moviles_dia: leer filas de la fecha y extraer Set<id>
+      const params = new URLSearchParams({ escenario: String(escenarioId), fecha: date });
+      if (selectedEmpresas && selectedEmpresas.length > 0) {
+        params.set('empresas', selectedEmpresas.join(','));
+      }
+      fetch(`/api/moviles-dia?${params.toString()}`, {
+        signal: controller.signal,
+        headers: { 'x-track-isroot': isRoot ?? 'N' },
+      })
+        .then((res) => res.json())
+        .then((result: { data?: Array<{ id: number; activo?: boolean; inactivoDelDia?: boolean; currentPosition?: { coordX: number; coordY: number } | null }> }) => {
+          if (Array.isArray(result.data)) {
+            // Universo para histórico: TODOS los móviles devueltos por moviles_dia
+            // (en fechas pasadas el rebuild pone activo=false, inactivo_del_dia=true en todas).
+            // Para hoy: activos + inactivos del día — misma paridad que el colapsable.
+            // NOTA: NO incluir por currentPosition!=null (ver comentario del branch movilesDiaMode).
+            // Nota: isToday aquí refleja la fecha seleccionada en el modal (puede diferir
+            // de la fecha del dashboard si el usuario cambió la fecha dentro del modal).
+            const ids = new Set<number>(
+              isToday
+                ? result.data
+                    .filter((m) => m.activo === true || m.inactivoDelDia === true)
+                    .map((m) => m.id)
+                : result.data.map((m) => m.id) // fecha histórica: incluir todos sin filtrar por flags
+            );
+            setActivityMovilIds(ids);
+          } else {
+            console.warn('[TrackingModal] moviles-dia respondió sin data:', result);
+            setActivityError(true);
+            setActivityMovilIds(null);
+          }
+        })
+        .catch((err: Error) => {
+          if (err.name === 'AbortError') return;
+          console.error('[TrackingModal] Error al cargar moviles-dia:', err);
           setActivityError(true);
           setActivityMovilIds(null);
-        }
-      })
-      .catch((err: Error) => {
-        if (err.name === 'AbortError') return; // Fetch cancelado intencionalmente
-        console.error('[TrackingModal] Error al cargar móviles con actividad:', err);
-        setActivityError(true);
-        setActivityMovilIds(null); // Fallback: mostrar todos
-      })
-      .finally(() => {
-        setActivityLoading(false);
-      });
+        })
+        .finally(() => {
+          setActivityLoading(false);
+        });
+    } else {
+      // Rama original: /api/moviles-with-activity
+      const params = new URLSearchParams({ date });
+      if (selectedEmpresas && selectedEmpresas.length > 0) {
+        params.set('empresaIds', selectedEmpresas.join(','));
+      }
+      fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((result: { success: boolean; data?: number[] }) => {
+          if (result.success && Array.isArray(result.data)) {
+            setActivityMovilIds(new Set(result.data));
+          } else {
+            // API respondió con error — fallback: mostrar todos
+            console.warn('[TrackingModal] moviles-with-activity respondió sin data:', result);
+            setActivityError(true);
+            setActivityMovilIds(null);
+          }
+        })
+        .catch((err: Error) => {
+          if (err.name === 'AbortError') return; // Fetch cancelado intencionalmente
+          console.error('[TrackingModal] Error al cargar móviles con actividad:', err);
+          setActivityError(true);
+          setActivityMovilIds(null); // Fallback: mostrar todos
+        })
+        .finally(() => {
+          setActivityLoading(false);
+        });
+    }
 
     return () => {
       controller.abort();
     };
-  }, [isOpen, date, selectedEmpresas]);
+  }, [isOpen, date, selectedEmpresas, escenarioId, isRoot, movilesDiaMode, isToday, moviles, inactivosDelDia, universoMoviles]);
 
   // R2 + R3: Filtrar por actividad + ocultos + búsqueda, ordenar por nro (m.id)
   const filteredMoviles = useMemo(() => {
-    const base = hiddenMovilIds && hiddenMovilIds.size > 0
-      ? moviles.filter(m => !hiddenMovilIds.has(m.id))
-      : moviles;
+    // Universo base para la lista visual:
+    // 1. universoMoviles presente + movilesDiaMode + isToday: usar directamente (fuente de verdad
+    //    pre-calculada por el padre, misma logica que el colapsable). Sin merge adicional.
+    // 2. Fallback legacy (a601708): moviles prop + inactivosDelDia si hay.
+    // 3. Default: moviles prop tal cual (historico o modo viejo).
+    const usingCanonicalUniverse = !!(movilesDiaMode && isToday && universoMoviles);
+    const movilesBase = usingCanonicalUniverse
+      ? universoMoviles!
+      : movilesDiaMode && isToday && inactivosDelDia && inactivosDelDia.length > 0
+        ? (() => {
+            const inactivosIds = new Set(inactivosDelDia.map(m => m.id));
+            const deduplicated = moviles.filter(m => !inactivosIds.has(m.id));
+            return [...deduplicated, ...inactivosDelDia];
+          })()
+        : moviles;
+
+    // hiddenMovilIds (ocultos-pero-operativos) aplica solo cuando se ve HOY.
+    // En fechas históricas NO aplicar: un móvil inactivo que ese día tuvo pedidos
+    // debe ser seleccionable para ver su recorrido, independientemente de su estado actual.
+    // PARIDAD con el colapsable: cuando se usa universoMoviles (fuente de verdad
+    // pre-calculada = activos + inactivos del día, idéntica a activosNuevo+inactivosNuevo
+    // del MovilSelector), NO aplicar hiddenMovilIds. Los inactivos del día son por
+    // definición "ocultos-pero-operativos" (estado no-activo + tienen pedidos/services),
+    // por lo que hiddenMovilIds los contiene; aplicarlo descartaría justo esos móviles
+    // (p.ej. 100 → 93) rompiendo la paridad. El colapsable tampoco los filtra.
+    const base = !usingCanonicalUniverse && isToday && hiddenMovilIds && hiddenMovilIds.size > 0
+      ? movilesBase.filter(m => !hiddenMovilIds.has(m.id))
+      : movilesBase;
 
     // R2: Filtrar por actividad (solo si el fetch terminó con datos)
     // Si activityMovilIds === null (cargando o error), mostrar todos como fallback
@@ -119,27 +276,33 @@ export default function TrackingModal({
       ? base.filter(m => activityMovilIds.has(m.id))
       : base;
 
-    // Filtrar por búsqueda
+    // Filtrar por búsqueda — replica Fix B del colapsable:
+    // numérico puro → startsWith sobre id; con letras → includes sobre name/matricula
     const withSearch = !search.trim()
       ? withActivity
       : (() => {
-          const q = search.toLowerCase();
+          const q = search.trim();
+          const isNumeric = /^\d+$/.test(q);
+          if (isNumeric) {
+            return withActivity.filter(m => String(m.id).startsWith(q));
+          }
+          const lower = q.toLowerCase();
           return withActivity.filter(m =>
-            String(m.id).includes(q) ||
-            (m.name && m.name.toLowerCase().includes(q)) ||
-            (m.matricula && m.matricula.toLowerCase().includes(q))
+            (m.name && m.name.toLowerCase().includes(lower)) ||
+            (m.matricula && m.matricula.toLowerCase().includes(lower))
           );
         })();
 
     // R3: Ordenar por número de móvil ascendente
     return withSearch.slice().sort((a, b) => a.id - b.id);
-  }, [moviles, search, hiddenMovilIds, activityMovilIds]);
+  }, [moviles, search, hiddenMovilIds, activityMovilIds, isToday, inactivosDelDia, movilesDiaMode, universoMoviles]);
 
-  // Móvil seleccionado actualmente
+  // Movil seleccionado actualmente — buscar en universoMoviles (fuente de verdad) o fallback a moviles+inactivosDelDia
   const selectedMovilData = useMemo(() => {
     if (!movilId) return null;
-    return moviles.find(m => m.id === movilId) || null;
-  }, [moviles, movilId]);
+    const universo = universoMoviles ?? moviles;
+    return universo.find(m => m.id === movilId) || (inactivosDelDia ?? []).find(m => m.id === movilId) || null;
+  }, [moviles, movilId, inactivosDelDia, universoMoviles]);
 
   const handleConfirm = () => {
     if (!movilId) return;
@@ -197,18 +360,25 @@ export default function TrackingModal({
                   🚗 Móvil
                 </label>
 
-                {/* Búsqueda */}
-                <div className="relative mb-2">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar por ID, descripción o patente..."
-                    className="w-full pl-9 pr-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-purple-400 focus:outline-none transition-colors"
-                  />
+                {/* Búsqueda + contador */}
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="relative flex-1">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Buscar por ID, descripción o patente..."
+                      className="w-full pl-9 pr-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-purple-400 focus:outline-none transition-colors"
+                    />
+                  </div>
+                  {!activityLoading && (
+                    <span className="ml-2 text-xs text-gray-500 whitespace-nowrap">
+                      {filteredMoviles.length} móviles
+                    </span>
+                  )}
                 </div>
 
                 {/* Lista de móviles */}
@@ -233,21 +403,19 @@ export default function TrackingModal({
                         </div>
                       ) : (
                         filteredMoviles.map((m) => {
-                          // R4: Estilo del círculo y texto del estado según fecha
-                          // Si es hoy → usar estado real del móvil (isInactive)
-                          // Si es fecha pasada → gris/inactivo para todos
-                          const forceInactive = !isToday;
+                          // R4: Estilo del círculo y texto del estado según fecha.
+                          // HOY: verde si activo===true; gris si inactivoDelDia===true o GPS sin recompute.
+                          // FECHA ANTERIOR: todos gris (rebuild marca activo=false, inactivo_del_dia=true).
+                          const isActiveToday = isToday && m.activo === true;
                           const circleClass = movilId === m.id
                             ? 'bg-purple-500 text-white'
-                            : (forceInactive || m.isInactive)
-                              ? 'bg-gray-200 text-gray-500'
-                              : 'bg-green-100 text-green-700';
+                            : isActiveToday
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-200 text-gray-500';
 
-                          const statusText = forceInactive
-                            ? '⚪ Inactivo'
-                            : m.isInactive
-                              ? '⚠️ Sin reportar'
-                              : '🟢 Activo';
+                          const statusText = isActiveToday
+                            ? '🟢 Activo'
+                            : '⚪ Inactivo del día';
 
                           return (
                             <button

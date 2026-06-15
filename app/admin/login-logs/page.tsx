@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 
 type LoginAttempt = {
   id: number;
@@ -27,6 +28,7 @@ type LoginBlock = {
 export default function LoginLogsPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const canAccess = hasFuncionalidad(user?.roles, 'Query Inicios de sesion');
 
   const [attempts, setAttempts] = useState<LoginAttempt[]>([]);
   const [blocks, setBlocks] = useState<LoginBlock[]>([]);
@@ -45,13 +47,13 @@ export default function LoginLogsPage() {
       return;
     }
 
-    if (user.isRoot !== 'S') {
+    if (!canAccess) {
       router.push('/dashboard');
       return;
     }
 
     fetchData();
-  }, [user, router, usernameFilter, ipFilter, estadoFilter, limit]);
+  }, [user, router, canAccess, usernameFilter, ipFilter, estadoFilter, limit]);
 
   const fetchData = async () => {
     setLoading(true);

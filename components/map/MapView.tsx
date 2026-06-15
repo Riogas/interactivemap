@@ -1,15 +1,16 @@
-﻿'use client';
+'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { MapContainer, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { MovilData, PedidoServicio, PedidoSupabase, ServiceSupabase, CustomMarker } from '@/types';
 import { computeDelayMinutes, getDelayInfo } from '@/utils/pedidoDelay';
-import { isPedidoEntregado } from '@/utils/estadoPedido';
+import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { filterPuntosInteresByScope } from '@/lib/puntos-interes-scope';
-import { isRoot, isDespacho, getScopedEmpresas, isPrivilegedForZonaScope } from '@/lib/auth-scope';
+import { getScopedEmpresas, canSeeAllEmpresas } from '@/lib/auth-scope';
 import { authStorage } from '@/lib/auth-storage';
 import { MarkerShape } from '@/components/ui/PreferencesModal';
+import { ZonaPattern, getPatternDefs, getPatternFillUrl } from '@/lib/zona-patterns';
 import RouteAnimationControl from './RouteAnimationControl';
 import { MovilInfoPopup } from './MovilInfoPopup';
 import { PedidoInfoPopup } from './PedidoInfoPopup';
@@ -18,30 +19,33 @@ import PedidoServicioPopup from './PedidoServicioPopup';
 import LayersControl from './LayersControl';
 import CustomMarkerModal from './CustomMarkerModal';
 import { OptimizedMarker, OptimizedPolyline, optimizePath, getCachedIcon } from './MapOptimizations';
+import { useViewportCullingWithAlwaysVisible } from './ViewportCulling';
 import { registerTileCacheServiceWorker } from './TileCacheConfig';
 import ZonasMapLayer, { ZonaMapData } from './ZonasMapLayer';
 import DataViewControl, { DataViewMode } from './DataViewControl';
 import CenterMapControl from './CenterMapControl';
 import FullscreenControl from './FullscreenControl';
+import StreetSearchControl from './StreetSearchControl';
 import DemorasZonasLayer, { DemoraZonaData } from './DemorasZonasLayer';
-import PedidosZonasLayer, { PedidoZonaData, PedidosZonaFilter } from './PedidosZonasLayer';
+import PedidosZonasLayer, { PedidoZonaData, PedidosZonaFilter, ZonaLayerTipo } from './PedidosZonasLayer';
 import DistanceMeasurement from './DistanceMeasurement';
 import DistribucionZonasLayer from './DistribucionZonasLayer';
-import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter } from './MovilesZonasLayer';
+import MovilesZonasLayer, { MovilZonaRecord, MovilesZonasServiceFilter, MovilSubset } from './MovilesZonasLayer';
 import ZonasActivasLayer from './ZonasActivasLayer';
 import SaturacionZonasLayer, { SaturacionZonaData, SaturacionZonaStats } from './SaturacionZonasLayer';
 import dynamic from 'next/dynamic';
-import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { isVisibleByWindow } from '@/lib/sa-window-filter';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import './DataViewControl.css';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 import './MarkerCluster.css';
 import './MapAnimations.css';
 
-// 🚀 Lazy load del MarkerClusterGroup (solo se carga cuando se necesita)
+// ?? Lazy load del MarkerClusterGroup (solo se carga cuando se necesita)
 const MarkerClusterGroup = dynamic(() => import('./MarkerClusterGroup'), { ssr: false });
 
-// 🚀 Constantes para umbrales de rendimiento
+// ?? Constantes para umbrales de rendimiento
 const HIGH_DENSITY_THRESHOLD = 80; // Activar modo alta densidad con >80 marcadores totales
 const DISABLE_ANIMATIONS_THRESHOLD = 150; // Deshabilitar animaciones CSS con >150 marcadores
 
@@ -107,7 +111,7 @@ interface MapViewProps {
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
   pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
   onPedidosZonaFilterChange?: (f: PedidosZonaFilter) => void;
-  /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
+  /** Hora del servidor sincronizada  usada para el filtro de ventana SA. */
   serverNow?: Date;
   /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
   minutosAntesSa?: number | null;
@@ -115,7 +119,10 @@ interface MapViewProps {
   movilesZonasData?: MovilZonaRecord[]; // Datos crudos de moviles_zonas
   movilesZonasServiceFilter?: MovilesZonasServiceFilter; // Filtro por servicio_nombre
   onMovilesZonasServiceFilterChange?: (f: MovilesZonasServiceFilter) => void; // Callback cambio filtro
-  saturacionData?: Map<number, SaturacionZonaStats>; // Mapa zona_id → stats de saturación
+  /** Filtro del combo de la capa Cap. Entrega (saturacion): URGENTE/NOCTURNO/OTROS/SERVICE/TODOS. */
+  capServiceFilter?: string;
+  onCapServiceFilterChange?: (f: string) => void;
+  saturacionData?: Map<number, SaturacionZonaStats>; // Mapa zona_id ? stats de saturación
   tiposServicioDisponibles?: string[]; // Valores distintos de servicio_nombre
   allZonas?: ZonaMapData[]; // Todas las zonas (para vistas de datos, independiente del toggle)
   showDemoraLabels?: boolean; // Mostrar etiquetas de demora (minutos) en el mapa
@@ -131,17 +138,40 @@ interface MapViewProps {
   hiddenPoiIds?: Set<string>; // IDs individuales de POI ocultos
   poiMarkerSize?: number; // Tamaño del marcador POI: 1=chico, 2=mediano, 3=grande
   poiDefaultIcon?: string; // Emoji por defecto para POIs sin icono propio
+  poiCategoryIcons?: Record<string, string>; // Override de iconos por categoria de POI
   pedidosVista?: 'pendientes' | 'finalizados'; // Vista actual de pedidos
   servicesVista?: 'pendientes' | 'finalizados'; // Vista actual de services
   onZonaClick?: (zonaId: number) => void; // Callback al hacer click en una zona (moviles-zonas)
-  allMovilEstados?: Map<string, number>; // Mapa completo movil_nro → estadoNro (todos los moviles)
+  allMovilEstados?: Map<string, number>; // Mapa completo movil_nro ? estadoNro (todos los moviles)
   allHiddenMovilIds?: Set<string>; // IDs de móviles ocultos-pero-operativos (capa móviles-zonas los excluye)
-  /** Usuario autenticado — usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
-  user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>; allowedEmpresas?: number[] | null } | null;
+  /** Usuario autenticado  usado para derivar el gate de rol en capas con datos sensibles (ej. Cap. Entrega). */
+  user?: { isRoot?: string; roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string; funcionalidades?: Array<{ funcionalidadId: number; nombre: string }> }>; allowedEmpresas?: number[] | null; verTodasEmpresas?: boolean } | null;
   /** Callback invocado en moveend/zoomend para capturar el estado del mapa (view-state). */
   onMapStateChange?: (state: { center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }) => void;
-  /** IDs de empresas fleteras seleccionadas — se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
+  /** IDs de empresas fleteras seleccionadas  se pasan al RouteAnimationControl para filtrar actividad en la fecha. */
   selectedEmpresas?: number[];
+  movilHalo?: boolean;
+  pedidoHalo?: boolean;
+  serviceHalo?: boolean;
+  zonaPattern?: ZonaPattern;
+  /** Overrides de colores del usuario para las refs visuales Ref#1..Ref#26 */
+  visualRefs?: Record<string, string> | null;
+  /** ID del escenario activo — se pasa al RouteAnimationControl para la rama moviles_dia. */
+  escenarioId?: number;
+  /** 'S' si el usuario es root — se pasa al RouteAnimationControl para el header x-track-isroot. */
+  isRoot?: string;
+  /** Tipo de la capa de pedidos/zona: pedidos (default) o services */
+  zonaLayerTipo?: ZonaLayerTipo;
+  /** Callback para cambiar el tipo de la capa pedidos/zona */
+  onZonaLayerTipoChange?: (t: ZonaLayerTipo) => void;
+  /** Subconjunto de moviles a contar en la capa moviles-zonas */
+  movilesZonaMovilFilter?: MovilSubset;
+  /** Callback para cambiar el subconjunto de moviles */
+  onMovilesZonaMovilFilterChange?: (f: MovilSubset) => void;
+  /** Abre el buscador de calles (controlado desde la botonera de acciones rápidas). */
+  streetSearchOpen?: boolean;
+  /** Callback para cerrar el buscador de calles. */
+  onStreetSearchClose?: () => void;
 }
 
 
@@ -261,7 +291,7 @@ function MapUpdater({
     }
   }, [map, focusTrigger, focusedPedidoId, focusedServiceId, pedidos, services, allPedidos, allServices]);
 
-  // ✅ Efecto para centrar el mapa en un punto de interés y abrir su popup.
+  // ? Efecto para centrar el mapa en un punto de interés y abrir su popup.
   // Re-corre cuando focusedPuntoId cambia O cuando focusTrigger se incrementa
   // (permite re-abrir el mismo POI clickeando varias veces en la sidebar).
   useEffect(() => {
@@ -272,7 +302,7 @@ function MapUpdater({
     const sameId = focusedPuntoId === lastFocusedPuntoId.current;
     lastFocusedPuntoId.current = focusedPuntoId;
     // Si es el mismo id, solo re-disparamos cuando focusTrigger cambió
-    // (lastFocusTriggerPoi es exclusivo de este efecto — no comparte estado
+    // (lastFocusTriggerPoi es exclusivo de este efecto  no comparte estado
     // con el efecto de pedidos/services que mira otra ref).
     if (sameId && focusTrigger === lastFocusTriggerPoi.current) return;
     lastFocusTriggerPoi.current = focusTrigger ?? 0;
@@ -389,7 +419,7 @@ function MapUpdater({
       }
     }
   // Solo dep de selectionVersion. moviles/pedidos/customMarkers se leen al
-  // momento del fire (snapshot) — no debería re-disparar cuando llega data.
+  // momento del fire (snapshot)  no debería re-disparar cuando llega data.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, selectionVersion]);
 
@@ -401,7 +431,7 @@ function MapUpdater({
       if (focusedMovil && moviles.length > 0) {
         const movil = moviles.find(m => m.id === focusedMovil);
         if (movil?.currentPosition) {
-          console.log('📍 Centrando mapa en móvil enfocado:', movil.id);
+          if (process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1') console.log('Centrando mapa en móvil enfocado:', movil.id);
           map.setView([movil.currentPosition.coordX, movil.currentPosition.coordY], 15, {
             animate: true,
           });
@@ -419,7 +449,7 @@ function MapUpdater({
       if (selectedMovil && moviles.length > 0) {
         const movil = moviles.find(m => m.id === selectedMovil);
         if (movil?.currentPosition) {
-          console.log('📍 Centrando mapa en móvil para animación:', movil.id);
+          if (process.env.NEXT_PUBLIC_DEBUG_DASHBOARD === '1') console.log('Centrando mapa en móvil para animación:', movil.id);
           map.setView([movil.currentPosition.coordX, movil.currentPosition.coordY], 15, {
             animate: true,
           });
@@ -575,7 +605,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.focusedServiceId === next.focusedServiceId &&
     prev.focusTrigger === next.focusTrigger &&
     prev.focusedPuntoId === next.focusedPuntoId &&
-    // 🚀 Comparar pedidos por cantidad (evitar deep comparison costosa)
+    // ?? Comparar pedidos por cantidad (evitar deep comparison costosa)
     (prev.pedidos?.length ?? 0) === (next.pedidos?.length ?? 0) &&
     (prev.allPedidos?.length ?? 0) === (next.allPedidos?.length ?? 0) &&
     (prev.services?.length ?? 0) === (next.services?.length ?? 0) &&
@@ -596,6 +626,10 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.hideSinAsignarOption === next.hideSinAsignarOption &&
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
     prev.movilesZonasServiceFilter === next.movilesZonasServiceFilter &&
+    prev.capServiceFilter === next.capServiceFilter &&
+    prev.zonaLayerTipo === next.zonaLayerTipo &&
+    prev.streetSearchOpen === next.streetSearchOpen &&
+    prev.movilesZonaMovilFilter === next.movilesZonaMovilFilter &&
     prev.tiposServicioDisponibles?.length === next.tiposServicioDisponibles?.length &&
     prev.saturacionData?.size === next.saturacionData?.size &&
     prev.showDemoraLabels === next.showDemoraLabels &&
@@ -608,6 +642,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     prev.hiddenPoiIds?.size === next.hiddenPoiIds?.size &&
     prev.poiMarkerSize === next.poiMarkerSize &&
     prev.poiDefaultIcon === next.poiDefaultIcon &&
+    JSON.stringify(prev.poiCategoryIcons) === JSON.stringify(next.poiCategoryIcons) &&
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
@@ -615,8 +650,494 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
   );
 };
 
-const MapView = memo(function MapView({ 
-  moviles, 
+// ---------------------------------------------------------------------------
+// ZonaPatternDefs: injects SVG pattern <defs> into the Leaflet SVG overlay
+// ---------------------------------------------------------------------------
+function ZonaPatternDefs() {
+  useEffect(() => {
+    // Inyectar <defs> en un SVG oculto a nivel document.body.
+    // SVG url(#id) funciona desde cualquier SVG del documento cuando el <defs>
+    // esta en el mismo documento  incluso si Leaflet usa Canvas para otros layers.
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const DEFS_ID = 'zona-pattern-defs-root';
+    let svgEl = document.getElementById(DEFS_ID) as SVGSVGElement | null;
+    if (!svgEl) {
+      svgEl = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+      svgEl.setAttribute('id', DEFS_ID);
+      svgEl.setAttribute('aria-hidden', 'true');
+      svgEl.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+      document.body.appendChild(svgEl);
+    }
+    let defsEl = svgEl.querySelector('defs');
+    if (!defsEl) {
+      defsEl = document.createElementNS(SVG_NS, 'defs');
+      svgEl.appendChild(defsEl);
+    }
+    defsEl.innerHTML = getPatternDefs();
+    return () => {
+      // Limpiar solo los patterns que inyectamos (otros pueden haberlos agregado)
+      if (defsEl) defsEl.innerHTML = '';
+    };
+  }, []);
+  return null;
+}
+
+
+// ---------------------------------------------------------------------------
+// Viewport-culled inner layer components
+// Each component lives inside MapContainer so it can call useMap() via
+// useViewportCullingWithAlwaysVisible. Props carry icon-creation callbacks
+// from the parent MapView to avoid duplicating logic.
+// ---------------------------------------------------------------------------
+
+interface CulledMovilesLayerProps {
+  moviles: MovilData[];
+  popupMovilId: number | undefined;
+  focusedMovilId: number | undefined;
+  markerStyle: 'normal' | 'compact' | 'mini';
+  createCustomIcon: (color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => L.DivIcon;
+  createCompactIcon: (color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => L.DivIcon;
+  createMiniIcon: (color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => L.DivIcon;
+  getMovilColor: (movil: MovilData) => string;
+  onMovilClick: ((movilId: number | undefined) => void) | undefined;
+  onPedidoServicioClose: () => void;
+}
+
+// Cache module-level de datos de sesion (chofer/telefono) por movil_id.
+// Compartido entre todos los tooltips; evita refetch al re-hoverear el mismo movil.
+const movilSessionCache = new Map<number, { chofer: string | null; telefono: string | null }>();
+
+/**
+ * Contenido del tooltip hover de un movil. Se monta cuando react-leaflet abre el
+ * Tooltip (es decir, al pasar el mouse), por lo que el fetch a /api/movil-session
+ * — la MISMA API que usa la ficha del movil — ocurre on-demand y no al cargar el mapa.
+ * Mantiene su propio estado local, asi no depende de que el Marker (memoizado) re-renderice.
+ */
+function MovilHoverTooltipContent({ movilId, movilName }: { movilId: number; movilName: string }) {
+  const [data, setData] = useState<{ chofer: string | null; telefono: string | null } | null>(
+    movilSessionCache.get(movilId) ?? null,
+  );
+  const [loading, setLoading] = useState(!movilSessionCache.has(movilId));
+
+  useEffect(() => {
+    if (movilSessionCache.has(movilId)) {
+      setData(movilSessionCache.get(movilId)!);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    // El endpoint usa la fecha de hoy por default (igual que la ficha).
+    fetch(`/api/movil-session/${movilId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        const val = res
+          ? { chofer: res.chofer ?? null, telefono: res.telefono ?? null }
+          : { chofer: null, telefono: null };
+        movilSessionCache.set(movilId, val);
+        if (!cancelled) { setData(val); setLoading(false); }
+      })
+      .catch(() => {
+        if (!cancelled) { setData({ chofer: null, telefono: null }); setLoading(false); }
+      });
+    return () => { cancelled = true; };
+  }, [movilId]);
+
+  return (
+    <div className="text-xs leading-snug">
+      <div className="font-bold text-gray-900">{movilName}</div>
+      <div><span className="text-gray-500">Nro:</span> {movilId}</div>
+      <div><span className="text-gray-500">Chofer:</span> {loading ? '…' : (data?.chofer || '—')}</div>
+      <div><span className="text-gray-500">Celular:</span> {loading ? '…' : (data?.telefono || '—')}</div>
+    </div>
+  );
+}
+
+// perf: React.memo evita re-render cuando las props no cambian por referencia.
+// Los callbacks (createCustomIcon, etc.) vienen memoizados desde MapView.
+const CulledMovilesLayer = React.memo(function CulledMovilesLayer({
+  moviles,
+  popupMovilId,
+  focusedMovilId,
+  markerStyle,
+  createCustomIcon,
+  createCompactIcon,
+  createMiniIcon,
+  getMovilColor,
+  onMovilClick,
+  onPedidoServicioClose,
+}: CulledMovilesLayerProps) {
+  const alwaysVisibleIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    if (popupMovilId !== undefined) ids.add(popupMovilId);
+    if (focusedMovilId !== undefined) ids.add(focusedMovilId);
+    return ids;
+  }, [popupMovilId, focusedMovilId]);
+
+  const getId = useCallback((m: MovilData) => m.id, []);
+  const getCoords = useCallback((m: MovilData) => {
+    if (!m.currentPosition) return null;
+    return { lat: m.currentPosition.coordX, lng: m.currentPosition.coordY };
+  }, []);
+
+  const visibleMoviles = useViewportCullingWithAlwaysVisible(moviles, getCoords, getId, alwaysVisibleIds);
+
+  return (
+    <>
+      {visibleMoviles.map((movil) => {
+        if (!movil.currentPosition) return null;
+        return (
+          <OptimizedMarker
+            key={movil.id}
+            position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
+            icon={
+              markerStyle === 'mini'
+                ? createMiniIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+                : markerStyle === 'compact'
+                ? createCompactIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+                : createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
+            }
+            eventHandlers={{
+              click: () => {
+                onPedidoServicioClose();
+                if (onMovilClick) onMovilClick(movil.id);
+              },
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+              <MovilHoverTooltipContent movilId={movil.id} movilName={movil.name} />
+            </Tooltip>
+          </OptimizedMarker>
+        );
+      })}
+    </>
+  );
+});
+
+// Helper: devuelve los colores efectivos para un icono, forzando azul cuando el item
+// está sin asignar (en lugar del gris por default de getDelayInfo cuando no hay fecha).
+function effectiveDelayInfo(fchHora: string | null, isSinAsignar: boolean) {
+  if (isSinAsignar) {
+    return {
+      label: 'sin-asignar',
+      color: '#2563EB',
+      lightColor: '#60A5FA',
+      shadowColor: 'rgba(37, 99, 235, 0.3)',
+      badgeText: '',
+    };
+  }
+  const delayMinutes = computeDelayMinutes(fchHora);
+  return getDelayInfo(delayMinutes);
+}
+
+interface CulledPedidosLayerProps {
+  pedidosFiltrados: PedidoSupabase[];
+  popupPedidoId: number | undefined;
+  pedidosVista: 'pendientes' | 'finalizados';
+  getPedidoIcon: (fchHoraMaxEntComp: string | null, isSinAsignar?: boolean) => L.DivIcon;
+  getFinalizadoPedidoIcon: (entregado: boolean) => L.DivIcon;
+  onPedidoClick: ((pedidoId: number | undefined) => void) | undefined;
+  pedidosCluster: boolean;
+}
+
+const CulledPedidosLayer = React.memo(function CulledPedidosLayer({
+  pedidosFiltrados,
+  popupPedidoId,
+  pedidosVista,
+  getPedidoIcon,
+  getFinalizadoPedidoIcon,
+  onPedidoClick,
+  pedidosCluster,
+}: CulledPedidosLayerProps) {
+  const alwaysVisibleIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    if (popupPedidoId !== undefined) ids.add(popupPedidoId);
+    return ids;
+  }, [popupPedidoId]);
+
+  const getId = useCallback((p: PedidoSupabase) => p.id, []);
+  const getCoords = useCallback((p: PedidoSupabase) => {
+    if (!p.latitud || !p.longitud) return null;
+    return { lat: p.latitud, lng: p.longitud };
+  }, []);
+
+  const visiblePedidos = useViewportCullingWithAlwaysVisible(pedidosFiltrados, getCoords, getId, alwaysVisibleIds);
+
+  const markers = visiblePedidos.map(pedido => {
+    const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
+    const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
+    const delayInfo = getDelayInfo(delayMins);
+    const iconFchHora = isSinAsignar ? null : pedido.fch_hora_max_ent_comp;
+    const esEntregado = isPedidoEntregado(pedido);
+    return (
+      <OptimizedMarker
+        key={`pedido-tabla-${pedido.id}`}
+        position={[pedido.latitud!, pedido.longitud!]}
+        icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon(esEntregado) : getPedidoIcon(iconFchHora, isSinAsignar)}
+        eventHandlers={{
+          click: () => { onPedidoClick && onPedidoClick(pedido.id); }
+        }}
+      >
+        <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+          <div className="text-xs">
+            <div className="font-bold">Pedido #{pedido.id}</div>
+            {pedido.servicio_nombre && (
+              <div className="font-semibold uppercase">{pedido.servicio_nombre}</div>
+            )}
+            {pedido.producto_nom && (
+              <div className="text-gray-600">{pedido.producto_nom}</div>
+            )}
+            {pedido.cliente_tel && <div>Tel: {pedido.cliente_tel}</div>}
+            {isSinAsignar ? (
+              <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Sin asignar</div>
+            ) : (
+              <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Movil: {pedido.movil}</div>
+            )}
+            {pedidosVista === 'finalizados' ? (
+              <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
+                {esEntregado ? 'Entregado' : 'No Entregado'}
+              </div>
+            ) : (
+              <div style={{ color: isSinAsignar ? '#2563EB' : delayInfo.color, fontWeight: 'bold' }}>
+                {delayInfo.label}: {delayInfo.badgeText}
+              </div>
+            )}
+          </div>
+        </Tooltip>
+      </OptimizedMarker>
+    );
+  });
+
+  if (!markers.length) return null;
+  return pedidosCluster
+    ? <MarkerClusterGroup>{markers}</MarkerClusterGroup>
+    : <>{markers}</>;
+});
+
+interface CulledServicesLayerProps {
+  servicesFiltrados: ServiceSupabase[];
+  popupServiceId: number | undefined;
+  servicesVista: 'pendientes' | 'finalizados';
+  getServiceIcon: (fchHoraMaxEntComp: string | null, isSinAsignar?: boolean) => L.DivIcon;
+  getFinalizadoServiceIcon: (entregado: boolean) => L.DivIcon;
+  onServiceClick: ((serviceId: number | undefined) => void) | undefined;
+  pedidosCluster: boolean;
+}
+
+const CulledServicesLayer = React.memo(function CulledServicesLayer({
+  servicesFiltrados,
+  popupServiceId,
+  servicesVista,
+  getServiceIcon,
+  getFinalizadoServiceIcon,
+  onServiceClick,
+  pedidosCluster,
+}: CulledServicesLayerProps) {
+  const alwaysVisibleIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    if (popupServiceId !== undefined) ids.add(popupServiceId);
+    return ids;
+  }, [popupServiceId]);
+
+  const getId = useCallback((s: ServiceSupabase) => s.id, []);
+  const getCoords = useCallback((s: ServiceSupabase) => {
+    if (!s.latitud || !s.longitud) return null;
+    return { lat: s.latitud, lng: s.longitud };
+  }, []);
+
+  const visibleServices = useViewportCullingWithAlwaysVisible(servicesFiltrados, getCoords, getId, alwaysVisibleIds);
+
+  const markers = visibleServices.map(service => {
+    const isSinAsignar = !service.movil || Number(service.movil) === 0;
+    const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
+    const delayInfo = getDelayInfo(delayMins);
+    const iconFchHora = isSinAsignar ? null : service.fch_hora_max_ent_comp;
+    const esEntregado = isServiceEntregado(service);
+    return (
+      <OptimizedMarker
+        key={`service-tabla-${service.id}`}
+        position={[service.latitud!, service.longitud!]}
+        icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon(esEntregado) : getServiceIcon(iconFchHora, isSinAsignar)}
+        eventHandlers={{
+          click: () => { onServiceClick && onServiceClick(service.id); }
+        }}
+      >
+        <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+          <div className="text-xs">
+            <div className="font-bold">Service #{service.id}</div>
+            {service.servicio_nombre && (
+              <div className="font-semibold uppercase">{service.servicio_nombre}</div>
+            )}
+            {service.defecto && (
+              <div className="text-gray-600">{service.defecto}</div>
+            )}
+            {service.cliente_tel && <div>Tel: {service.cliente_tel}</div>}
+            {isSinAsignar ? (
+              <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Sin asignar</div>
+            ) : (
+              <div style={{ color: '#2563EB', fontWeight: 'bold' }}>Movil: {service.movil}</div>
+            )}
+            {servicesVista === 'finalizados' ? (
+              <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
+                {esEntregado ? 'Entregado' : 'No Entregado'}
+              </div>
+            ) : (
+              <div style={{ color: isSinAsignar ? '#2563EB' : delayInfo.color, fontWeight: 'bold' }}>
+                {delayInfo.label}: {delayInfo.badgeText}
+              </div>
+            )}
+          </div>
+        </Tooltip>
+      </OptimizedMarker>
+    );
+  });
+
+  if (!markers.length) return null;
+  return pedidosCluster
+    ? <MarkerClusterGroup>{markers}</MarkerClusterGroup>
+    : <>{markers}</>;
+});
+
+interface CulledPoisLayerProps {
+  customMarkers: CustomMarker[];
+  focusedPuntoId: string | undefined;
+  poisHidden: boolean;
+  hiddenPoiIds: Set<string>;
+  hiddenPoiCategories: Set<string>;
+  poiMarkerSize: number;
+  poiDefaultIcon: string;
+  poiCategoryIcons?: Record<string, string>;
+}
+
+const CulledPoisLayer = React.memo(function CulledPoisLayer({
+  customMarkers,
+  focusedPuntoId,
+  poisHidden,
+  hiddenPoiIds,
+  hiddenPoiCategories,
+  poiMarkerSize,
+  poiDefaultIcon,
+  poiCategoryIcons,
+}: CulledPoisLayerProps) {
+  const filteredMarkers = useMemo(() => {
+    if (poisHidden) return [];
+    return customMarkers.filter(m => {
+      if (!m.visible) return false;
+      if (hiddenPoiIds.size > 0 && hiddenPoiIds.has(m.id)) return false;
+      if (hiddenPoiCategories.size > 0) {
+        const cat = m.categoria || m.observacion?.match(/^\[([^\]]+)\]/)?.[1] || '';
+        if (cat && hiddenPoiCategories.has(cat)) return false;
+      }
+      return true;
+    });
+  }, [customMarkers, poisHidden, hiddenPoiIds, hiddenPoiCategories]);
+
+  const alwaysVisibleIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    if (focusedPuntoId) ids.add(focusedPuntoId);
+    return ids;
+  }, [focusedPuntoId]);
+
+  const getId = useCallback((m: CustomMarker) => m.id, []);
+  const getCoords = useCallback((m: CustomMarker) => {
+    if (!m.latitud || !m.longitud) return null;
+    return { lat: m.latitud, lng: m.longitud };
+  }, []);
+
+  const visiblePois = useViewportCullingWithAlwaysVisible(filteredMarkers, getCoords, getId, alwaysVisibleIds);
+
+  return (
+    <>
+      {visiblePois.map((marker) => {
+        const poiPx = poiMarkerSize === 1 ? 16 : poiMarkerSize === 3 ? 32 : 24;
+        const poiFontSize = poiMarkerSize === 1 ? 13 : poiMarkerSize === 3 ? 26 : 19;
+        const isPtoVenta = (marker.categoria || '').toLowerCase() === 'punto de venta';
+        const displayIcon = (poiCategoryIcons?.[marker.categoria ?? '']) || marker.icono || poiDefaultIcon;
+        const iconHtml = isPtoVenta
+          ? `<img src="/images/iconoptoventa.png" style="width:${poiPx}px;height:${poiPx}px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" />`
+          : `<div style="font-size:${poiFontSize}px;text-align:center;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">${displayIcon}</div>`;
+        // perf: cache de icons por key (size + tipo + icon) para no re-crear L.divIcon en cada render.
+        const cacheKey = `poi-${poiPx}-${isPtoVenta ? 'pv' : 'std'}-${displayIcon}`;
+        const customIcon = getCachedIcon(cacheKey, () => L.divIcon({
+          html: iconHtml,
+          className: 'custom-marker-icon',
+          iconSize: [poiPx, poiPx],
+          iconAnchor: [poiPx / 2, poiPx],
+          popupAnchor: [0, -poiPx],
+        }));
+
+        return (
+          <OptimizedMarker
+            key={marker.id}
+            position={[marker.latitud, marker.longitud]}
+            icon={customIcon}
+          >
+            <Tooltip direction="top" offset={[0, -poiPx]} opacity={0.95}>
+              <div className="text-xs">
+                <span className="font-bold">Nombre: </span>
+                <span>{marker.nombre}</span>
+                {marker.categoria && (
+                  <div className="text-gray-600">{marker.categoria}</div>
+                )}
+              </div>
+            </Tooltip>
+            <Popup minWidth={240} className="poi-popup">
+              <div style={{ margin: '-10px -14px', borderRadius: '8px', overflow: 'hidden', minWidth: '240px', fontFamily: 'inherit' }}>
+                <div style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '26px', lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
+                      {(marker.categoria || '').toLowerCase() === 'punto de venta'
+                        ? <img src="/images/iconoptoventa.png" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+                        : displayIcon
+                      }
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>
+                        {marker.nombre}
+                      </div>
+                      {marker.categoria && (
+                        <span style={{ display: 'inline-block', marginTop: '3px', background: 'rgba(255,255,255,0.22)', color: 'white', fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                          {marker.categoria}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ background: '#18181b', padding: '8px 12px 10px' }}>
+                  {marker.telefono && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                      <span style={{ fontSize: '13px' }}>📞</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#d1fae5', letterSpacing: '0.04em' }}>
+                        {String(marker.telefono)}
+                      </span>
+                    </div>
+                  )}
+                  {marker.observacion && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                      <span style={{ fontSize: '13px', marginTop: '1px' }}>🏠</span>
+                      <span style={{ fontSize: '12px', color: '#d1d5db', lineHeight: '1.4' }}>
+                        {marker.observacion}
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', paddingTop: '6px' }}>
+                    <span style={{ fontSize: '12px' }}>📌</span>
+                    <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', letterSpacing: '0.03em' }}>
+                      {Number(marker.latitud).toFixed(6)}, {Number(marker.longitud).toFixed(6)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </Popup>
+          </OptimizedMarker>
+        );
+      })}
+    </>
+  );
+});
+
+const MapView = memo(function MapView({
+  moviles,
   focusedMovil, 
   selectedMovil, 
   secondaryAnimMovil,
@@ -670,6 +1191,8 @@ const MapView = memo(function MapView({
   movilesZonasData = [],
   movilesZonasServiceFilter = 'all',
   onMovilesZonasServiceFilterChange,
+  capServiceFilter = 'TODOS',
+  onCapServiceFilterChange,
   tiposServicioDisponibles = [],
   saturacionData,
   allZonas = [],
@@ -685,7 +1208,8 @@ const MapView = memo(function MapView({
   hiddenPoiCategories = new Set(),
   hiddenPoiIds = new Set<string>(),
   poiMarkerSize = 2,
-  poiDefaultIcon = '🏢',
+  poiDefaultIcon = '??',
+  poiCategoryIcons,
   pedidosVista = 'pendientes',
   servicesVista = 'pendientes',
   onZonaClick,
@@ -696,6 +1220,19 @@ const MapView = memo(function MapView({
   minutosAntesSa = null,
   onMapStateChange,
   selectedEmpresas,
+  movilHalo = false,
+  pedidoHalo = false,
+  serviceHalo = false,
+  zonaPattern = 'liso',
+  visualRefs,
+  escenarioId,
+  isRoot,
+  zonaLayerTipo = "TODOS",
+  onZonaLayerTipoChange,
+  movilesZonaMovilFilter = "prio_transito",
+  onMovilesZonaMovilFilterChange,
+  streetSearchOpen,
+  onStreetSearchClose,
 }: MapViewProps) {
   // Default center (Montevideo, Uruguay)
   const defaultCenter: [number, number] = [-34.9011, -56.1645];
@@ -713,46 +1250,62 @@ const MapView = memo(function MapView({
     return m;
   }, [moviles, allMovilEstados]);
 
-  // �🔷 Generador de HTML para formas geométricas (compact/mini)
-  const getShapeHtml = useCallback((shape: MarkerShape, size: number, color: string, lightColor?: string) => {
+  // ??? Generador de HTML para formas geométricas (compact/mini)
+  const getShapeHtml = useCallback((shape: MarkerShape, size: number, color: string, lightColor?: string, halo = false) => {
     const half = size / 2;
     const border = size > 12 ? 1.5 : 1;
     const bg = lightColor ? `linear-gradient(135deg,${color} 0%,${lightColor} 100%)` : color;
+    // Borde blanco + sombra que SIGUE LA SILUETA del shape.
+    // - circle/square/pin (rectangulares): border CSS + box-shadow (respeta border-radius).
+    // - triangle/diamond/hexagon/star (clip-path): no admiten `border` siguiendo la
+    //   silueta. El contorno blanco con filter:drop-shadow quedaba demasiado fino y
+    //   tapado por la figura → casi invisible. Solución robusta: DOS capas apiladas —
+    //   una figura blanca de fondo (tamaño completo) y la figura de color encima,
+    //   inset por el grosor del borde, de modo que el blanco asome como borde uniforme.
+    const haloCss = halo ? '0 0 0 2px white,0 0 0 3.5px rgba(0,0,0,0.5),' : '';
+
+    // Polígonos clip-path por forma (triangle incluido para usar la misma técnica de 2 capas).
+    const CLIP: Partial<Record<MarkerShape, string>> = {
+      triangle: 'polygon(50% 0%,100% 100%,0% 100%)',
+      diamond: 'polygon(50% 0%,100% 50%,50% 100%,0% 50%)',
+      hexagon: 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)',
+      star: 'polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)',
+    };
+    const clip = CLIP[shape];
+    if (clip) {
+      const bw = halo ? Math.max(3, Math.round(size * 0.24)) : Math.max(1.5, Math.round(size * 0.12));
+      const innerSize = size - bw * 2;
+      const darkShadow = halo
+        ? 'drop-shadow(0 0 2px rgba(0,0,0,0.55))'
+        : 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))';
+      // Outer: figura blanca (borde) + sombra oscura. Inner: figura de color, inset por bw.
+      return (
+        `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;cursor:pointer;filter:${darkShadow};">` +
+          `<div style="position:absolute;inset:0;background:#fff;clip-path:${clip};"></div>` +
+          `<div style="position:absolute;left:${bw}px;top:${bw}px;width:${innerSize}px;height:${innerSize}px;background:${bg};clip-path:${clip};"></div>` +
+        `</div>`
+      );
+    }
+
     switch (shape) {
       case 'circle':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
       case 'square':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:${Math.round(size * 0.15)}px;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
-      case 'triangle': {
-        const bw = Math.round(half);
-        const bh = Math.round(size * 0.9);
-        return `<div style="width:0;height:0;position:absolute;left:-${bw}px;top:-${half}px;border-left:${bw}px solid transparent;border-right:${bw}px solid transparent;border-bottom:${bh}px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
-      }
-      case 'diamond': {
-        const inner = Math.round(size * 0.72);
-        const offset = Math.round(inner / 2);
-        return `<div style="width:${inner}px;height:${inner}px;position:absolute;left:-${offset}px;top:-${offset}px;background:${bg};border:${border}px solid white;transform:rotate(45deg);box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
-      }
-      case 'hexagon':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
-      case 'star':
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));cursor:pointer;"></div>`;
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:${Math.round(size * 0.15)}px;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
       default:
-        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
+        return `<div style="width:${size}px;height:${size}px;position:absolute;left:-${half}px;top:-${half}px;background:${bg};border:${border}px solid white;border-radius:50%;box-shadow:${haloCss}0 1px 3px rgba(0,0,0,0.35);cursor:pointer;"></div>`;
     }
   }, []);
 
-  // 🔧 DEBUG: Log services recibidos en MapView
-  useEffect(() => {
-    const conCoords = services.filter(s => s.latitud && s.longitud);
-    console.log(`🔧 MapView: ${services.length} services recibidos, ${conCoords.length} con coordenadas`);
-    if (conCoords.length > 0) {
-      console.log('🔧 Primer service con coords:', { id: conCoords[0].id, lat: conCoords[0].latitud, lng: conCoords[0].longitud, defecto: conCoords[0].defecto });
-    }
-    if (services.length > 0 && conCoords.length === 0) {
-      console.log('🔧 Services sin coordenadas - ejemplo:', { id: services[0].id, lat: services[0].latitud, lng: services[0].longitud, movil: services[0].movil, estado: services[0].estado_nro });
-    }
-  }, [services]);
+  // DEBUG eliminado: este useEffect corría en cada cambio de referencia del array
+  // services y generaba console.log en hot path. Causaba ruido en devtools y
+  // costo de CPU por filter() + JSON marshal a stdout en cada GPS/pedidos update.
+  // Reactivable poniendo NEXT_PUBLIC_DEBUG_MAPVIEW=true y descomentando el bloque.
+  // useEffect(() => {
+  //   if (process.env.NEXT_PUBLIC_DEBUG_MAPVIEW !== 'true') return;
+  //   const conCoords = services.filter(s => s.latitud && s.longitud);
+  //   console.log(`?? MapView: ${services.length} services recibidos, ${conCoords.length} con coordenadas`);
+  // }, [services]);
   
   // Estado para controlar la animación del recorrido
   const [isAnimating, setIsAnimating] = useState(false);
@@ -776,7 +1329,7 @@ const MapView = memo(function MapView({
   const animationStartTime = useRef<number>(0); // Timestamp de inicio de animación
   const lastProgressUpdate = useRef<number>(0); // Último progreso guardado
 
-  // 🚀 Registrar Service Worker para cache de tiles (reduce CPU y network)
+  // ?? Registrar Service Worker para cache de tiles (reduce CPU y network)
   useEffect(() => {
     registerTileCacheServiceWorker();
   }, []);
@@ -787,7 +1340,7 @@ const MapView = memo(function MapView({
       // Obtener email del usuario desde localStorage (trackmovil_user)
       const userStr = authStorage.getItem('trackmovil_user');
       if (!userStr) {
-        console.warn('⚠️ No hay usuario logueado, cargando desde localStorage');
+        console.warn('?? No hay usuario logueado, cargando desde localStorage');
         const savedMarkers = localStorage.getItem('customMarkers');
         if (savedMarkers) {
           setCustomMarkers(JSON.parse(savedMarkers));
@@ -801,7 +1354,7 @@ const MapView = memo(function MapView({
       try {
         user = JSON.parse(userStr);
       } catch {
-        console.warn('⚠️ trackmovil_user corrupto, limpiando marcadores');
+        console.warn('?? trackmovil_user corrupto, limpiando marcadores');
         setCustomMarkers([]);
         return;
       }
@@ -810,7 +1363,7 @@ const MapView = memo(function MapView({
         const usuario_email = user.email || user.username;
 
         if (!usuario_email) {
-          console.warn('⚠️ Usuario sin email, usando localStorage');
+          console.warn('?? Usuario sin email, usando localStorage');
           const savedMarkers = localStorage.getItem('customMarkers');
           if (savedMarkers) {
             const cachedMarkers: CustomMarker[] = JSON.parse(savedMarkers);
@@ -822,7 +1375,7 @@ const MapView = memo(function MapView({
         // Determinar scope para enviar al server (server-side filter primario).
         // Los 4 roles privilegiados (root/despacho/dashboard/supervisor) ven todos los POIs:
         // se envia scope_role='root' que el server interpreta como 'sin filtro de empresa'.
-        const privileged = isPrivilegedForZonaScope(user);
+        const privileged = canSeeAllEmpresas(user);
         const scopeRole: 'root' | 'distribuidor' = privileged ? 'root' : 'distribuidor';
         const scopeEmpresas = privileged
           ? []
@@ -836,7 +1389,7 @@ const MapView = memo(function MapView({
           params.set('scope_empresas', scopeEmpresas.join(','));
         }
 
-        console.log('📍 Cargando puntos para usuario:', usuario_email, 'scope:', scopeRole);
+        console.log('?? Cargando puntos para usuario:', usuario_email, 'scope:', scopeRole);
 
         // Cargar desde API
         const response = await fetch(`/api/puntos-interes?${params.toString()}`);
@@ -865,10 +1418,10 @@ const MapView = memo(function MapView({
           setCustomMarkers(scopedMarkers);
           // Guardar backup en localStorage
           localStorage.setItem('customMarkers', JSON.stringify(scopedMarkers));
-          console.log(`✅ ${scopedMarkers.length}/${markers.length} marcadores cargados (post-scope)`);
+          console.log(`? ${scopedMarkers.length}/${markers.length} marcadores cargados (post-scope)`);
         } else {
-          console.warn('⚠️ No se pudieron cargar los marcadores, usando modo offline');
-          toast.error('⚠️ No se pudieron cargar los puntos desde el servidor. Usando datos locales.');
+          console.warn('?? No se pudieron cargar los marcadores, usando modo offline');
+          toast.error('?? No se pudieron cargar los puntos desde el servidor. Usando datos locales.');
           // Fallback a localStorage si la API falla
           const savedMarkers = localStorage.getItem('customMarkers');
           if (savedMarkers) {
@@ -877,9 +1430,9 @@ const MapView = memo(function MapView({
           }
         }
       } catch (error) {
-        console.error('❌ Error al cargar marcadores:', error);
-        toast.error('❌ Error al cargar los puntos. Usando datos locales.');
-        // Fallback a localStorage — re-filtrar por scope para evitar leaks de POIs privados.
+        console.error('? Error al cargar marcadores:', error);
+        toast.error('? Error al cargar los puntos. Usando datos locales.');
+        // Fallback a localStorage  re-filtrar por scope para evitar leaks de POIs privados.
         const savedMarkers = localStorage.getItem('customMarkers');
         if (savedMarkers) {
           const cachedMarkers: CustomMarker[] = JSON.parse(savedMarkers);
@@ -891,11 +1444,11 @@ const MapView = memo(function MapView({
     loadMarkers();
   }, [reloadMarkersTrigger]);
 
-  // � DEBUG: Solo log mínimo en desarrollo
+  // ? DEBUG: Solo log mínimo en desarrollo
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && pedidos?.length > 0) {
       const conCoordenadas = pedidos.filter(p => p.latitud && p.longitud);
-      console.log(`📦 MapView: ${pedidos.length} pedidos (${conCoordenadas.length} con coords)`);
+      console.log(`?? MapView: ${pedidos.length} pedidos (${conCoordenadas.length} con coords)`);
     }
   }, [pedidos?.length]);
 
@@ -910,7 +1463,7 @@ const MapView = memo(function MapView({
   const handleSaveMarker = async (data: { nombre: string; observacion: string; icono: string }) => {
     if (!tempMarkerPosition) return;
 
-    const toastId = toast.loading('💾 Guardando punto...');
+    const toastId = toast.loading('?? Guardando punto...');
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
@@ -921,9 +1474,9 @@ const MapView = memo(function MapView({
         try {
           const user = JSON.parse(userStr);
           usuario_email = user.email || user.username || usuario_email;
-          console.log('👤 Usuario guardando marcador:', usuario_email);
+          console.log('?? Usuario guardando marcador:', usuario_email);
         } catch (e) {
-          console.warn('⚠️ Error parseando usuario, usando email por defecto');
+          console.warn('?? Error parseando usuario, usando email por defecto');
         }
       }
 
@@ -971,21 +1524,21 @@ const MapView = memo(function MapView({
       const updatedMarkers = [...customMarkers, newMarker];
       localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
       
-      console.log('✅ Marcador guardado exitosamente en Supabase');
-      toast.success('✅ Punto guardado correctamente', { id: toastId });
+      console.log('? Marcador guardado exitosamente en Supabase');
+      toast.success('? Punto guardado correctamente', { id: toastId });
       
       if (onPlacingMarkerChange) {
         onPlacingMarkerChange(false);
       }
     } catch (error) {
-      console.error('❌ Error al guardar marcador:', error);
-      toast.error('❌ Error al guardar el punto. Por favor intenta nuevamente.', { id: toastId });
+      console.error('? Error al guardar marcador:', error);
+      toast.error('? Error al guardar el punto. Por favor intenta nuevamente.', { id: toastId });
     }
   };
 
   // Eliminar marcador
   const handleDeleteMarker = async (markerId: string) => {
-    const toastId = toast.loading('🗑️ Eliminando punto...');
+    const toastId = toast.loading('??? Eliminando punto...');
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
@@ -997,7 +1550,7 @@ const MapView = memo(function MapView({
           const user = JSON.parse(userStr);
           usuario_email = user.email || user.username || usuario_email;
         } catch (e) {
-          console.warn('⚠️ Error parseando usuario');
+          console.warn('?? Error parseando usuario');
         }
       }
 
@@ -1018,11 +1571,11 @@ const MapView = memo(function MapView({
       const updatedMarkers = customMarkers.filter(m => m.id !== markerId);
       localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
       
-      console.log('✅ Marcador eliminado exitosamente');
-      toast.success('✅ Punto eliminado correctamente', { id: toastId });
+      console.log('? Marcador eliminado exitosamente');
+      toast.success('? Punto eliminado correctamente', { id: toastId });
     } catch (error) {
-      console.error('❌ Error al eliminar marcador:', error);
-      toast.error('❌ Error al eliminar el punto. Por favor intenta nuevamente.', { id: toastId });
+      console.error('? Error al eliminar marcador:', error);
+      toast.error('? Error al eliminar el punto. Por favor intenta nuevamente.', { id: toastId });
     }
   };
 
@@ -1030,7 +1583,7 @@ const MapView = memo(function MapView({
   const handleEditMarker = async (data: { nombre: string; observacion: string; icono: string }) => {
     if (!editingMarker) return;
 
-    const toastId = toast.loading('🔄 Actualizando punto...');
+    const toastId = toast.loading('?? Actualizando punto...');
 
     try {
       // Obtener email del usuario desde localStorage (trackmovil_user)
@@ -1042,7 +1595,7 @@ const MapView = memo(function MapView({
           const user = JSON.parse(userStr);
           usuario_email = user.email || user.username || usuario_email;
         } catch (e) {
-          console.warn('⚠️ Error parseando usuario');
+          console.warn('?? Error parseando usuario');
         }
       }
 
@@ -1093,13 +1646,13 @@ const MapView = memo(function MapView({
       );
       localStorage.setItem('customMarkers', JSON.stringify(updatedMarkers));
       
-      console.log('✅ Marcador actualizado exitosamente');
-      toast.success('✅ Punto actualizado correctamente', { id: toastId });
+      console.log('? Marcador actualizado exitosamente');
+      toast.success('? Punto actualizado correctamente', { id: toastId });
       
       setEditingMarker(null);
     } catch (error) {
-      console.error('❌ Error al actualizar marcador:', error);
-      toast.error('❌ Error al actualizar el punto. Por favor intenta nuevamente.', { id: toastId });
+      console.error('? Error al actualizar marcador:', error);
+      toast.error('? Error al actualizar el punto. Por favor intenta nuevamente.', { id: toastId });
     }
   };
 
@@ -1257,14 +1810,14 @@ const MapView = memo(function MapView({
   // No necesitamos filtrar aquí nuevamente
   const movilesToShow = moviles;
 
-  // 🎨 NUEVO: Calcular color del móvil basado en capacidad del lote
+  // ?? NUEVO: Calcular color del móvil basado en capacidad del lote
   const getMovilColor = useCallback((movil: MovilData) => {
-    // 🆕 Si el móvil NO está activo (estado_nro 3), color gris
+    // ?? Si el móvil NO está activo (estado_nro 3), color gris
     const estadoNro = movil.estadoNro;
     if (estadoNro === 3) {
       return '#9CA3AF'; // Gris (NO ACTIVO)
     }
-    // 🆕 Si el móvil está en BAJA MOMENTÁNEA (estado_nro 4), color naranja
+    // ?? Si el móvil está en BAJA MOMENTÁNEA (estado_nro 4), color naranja
     if (estadoNro === 4) {
       return '#8B5CF6'; // Violeta (BAJA MOMENTÁNEA)
     }
@@ -1293,12 +1846,13 @@ const MapView = memo(function MapView({
     return '#22C55E'; // Verde
   }, []);
 
-  // 🚀 OPTIMIZACIÓN: Usar useCallback para funciones de creación de iconos
+  // ?? OPTIMIZACIÓN: Usar useCallback para funciones de creación de iconos
   const createCustomIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
-    const cacheKey = `custom-${color}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}`;
+    const cacheKey = `custom-${color}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilHalo}`;
+    const normalHaloStyle = movilHalo ? 'box-shadow:0 0 0 2.5px white,0 0 0 4px rgba(0,0,0,0.45),0 4px 8px rgba(0,0,0,0.3);' : 'box-shadow: 0 4px 8px rgba(0,0,0,0.3);';
     
     return getCachedIcon(cacheKey, () => {
-      // 🆕 Si el móvil tiene BAJA MOMENTÁNEA (estado_nro 4), ícono naranja con pausa
+      // ?? Si el móvil tiene BAJA MOMENTÁNEA (estado_nro 4), ícono naranja con pausa
       if (isBajaMomentanea) {
         return L.divIcon({
           className: '',
@@ -1321,7 +1875,7 @@ const MapView = memo(function MapView({
                 background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
                 border: 3px solid white;
                 border-radius: 50%;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                ${normalHaloStyle}
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -1356,7 +1910,7 @@ const MapView = memo(function MapView({
         });
       }
 
-      // 🆕 Si el móvil tiene estado NO ACTIVO (estado_nro 3), ícono gris con X
+      // ?? Si el móvil tiene estado NO ACTIVO (estado_nro 3), ícono gris con X
       if (isNoActivo) {
         return L.divIcon({
           className: '',
@@ -1379,7 +1933,7 @@ const MapView = memo(function MapView({
                 background: linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%);
                 border: 3px solid white;
                 border-radius: 50%;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                ${normalHaloStyle}
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -1437,7 +1991,7 @@ const MapView = memo(function MapView({
                 background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
                 border: 3px solid white;
                 border-radius: 50%;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(239, 68, 68, 0.7);
+                ${normalHaloStyle}
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -1531,12 +2085,19 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // � COMPACTO: Punto pequeño (24px) con número
+  // ? COMPACTO: Punto pequeño (24px) con número
   const createCompactIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
     const borderStyle = isInactive ? '2px dashed rgba(255,255,255,0.8)' : '2px solid white';
     const opacity = isNoActivo ? '0.7' : '1';
-    const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}`;
+    const cacheKey = `compact-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}-${movilHalo}`;
+    // Halo siguiendo la silueta del shape:
+    // - rectangulares (circle/square): box-shadow con spread (geometría compatible).
+    // - no rectangulares (triangle/diamond/hexagon/star): filter:drop-shadow apilado en 4 direcciones cardinales (respeta clip-path, border-trick y transforms).
+    const haloBoxShadow = movilHalo ? '0 0 0 2px white,0 0 0 3.5px rgba(0,0,0,0.5),' : '';
+    const haloFilter = movilHalo
+      ? 'drop-shadow(1.5px 0 0 white) drop-shadow(-1.5px 0 0 white) drop-shadow(0 1.5px 0 white) drop-shadow(0 -1.5px 0 white) drop-shadow(0 0 1.5px rgba(0,0,0,0.6)) '
+      : '';
 
     // Generate inner shape HTML based on movilShape preference
     const shapeSize = 18;
@@ -1544,17 +2105,17 @@ const MapView = memo(function MapView({
       const anim = isInactive ? 'animation: alarm-pulse 1.5s infinite;' : '';
       switch (movilShape) {
         case 'square':
-          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:3px;box-shadow:${haloBoxShadow}0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
         case 'triangle':
-          return `<div style="width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:16px solid ${effectiveColor};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+          return `<div style="width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:16px solid ${effectiveColor};filter:${haloFilter}drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
         case 'diamond':
-          return `<div style="width:13px;height:13px;background:${effectiveColor};border:${borderStyle};transform:rotate(45deg);box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+          return `<div style="width:13px;height:13px;background:${effectiveColor};${movilHalo ? '' : `border:${borderStyle};`}transform:rotate(45deg);filter:${haloFilter}drop-shadow(0 2px 4px rgba(0,0,0,0.3));${anim}"></div>`;
         case 'hexagon':
-          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);filter:${haloFilter}drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
         case 'star':
-          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);filter:${haloFilter}drop-shadow(0 1px 2px rgba(0,0,0,0.3));${anim}"></div>`;
         default: // circle
-          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
+          return `<div style="width:${shapeSize}px;height:${shapeSize}px;background:${effectiveColor};border:${borderStyle};border-radius:50%;box-shadow:${haloBoxShadow}0 2px 4px rgba(0,0,0,0.3);${anim}"></div>`;
       }
     };
 
@@ -1596,23 +2157,23 @@ const MapView = memo(function MapView({
       iconSize: [28, 28],
       iconAnchor: [14, 14],
     }));
-  }, []);
+  }, [movilShape, movilHalo]);
 
-  // 🔹 MINI: Solo punto diminuto (14px), sin número
+  // ?? MINI: Solo punto diminuto (14px), sin número
   const createMiniIcon = useCallback((color: string, movilId?: number, isInactive?: boolean, isNoActivo?: boolean, isBajaMomentanea?: boolean) => {
     const effectiveColor = isBajaMomentanea ? '#8B5CF6' : isNoActivo ? '#9CA3AF' : isInactive ? '#EF4444' : color;
     const opacity = isNoActivo ? '0.6' : '1';
-    const cacheKey = `mini-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}`;
+    const cacheKey = `mini-${effectiveColor}-${movilId}-${isInactive}-${isNoActivo}-${isBajaMomentanea}-${movilShape}-${movilHalo}`;
 
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="opacity:${opacity};${isInactive ? 'animation:alarm-pulse 1.5s infinite;' : ''}">${getShapeHtml(movilShape, 14, effectiveColor)}</div>`,
+      html: `<div style="opacity:${opacity};${isInactive ? 'animation:alarm-pulse 1.5s infinite;' : ''}">${getShapeHtml(movilShape, 14, effectiveColor, undefined, movilHalo)}</div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [movilShape, getShapeHtml]);
+  }, [movilShape, movilHalo, getShapeHtml]);
 
-  // �🚀 OPTIMIZACIÓN: Iconos con cache
+  // ??? OPTIMIZACIÓN: Iconos con cache
   const createPedidoIcon = useCallback(() => {
     return getCachedIcon('pedido-legacy', () => L.divIcon({
       className: '',
@@ -1642,10 +2203,9 @@ const MapView = memo(function MapView({
     }));
   }, []);
 
-  // 🚀 OPTIMIZACIÓN: Iconos para pedidos desde tabla - por atraso/demora
-  const createPedidoIconByDelay = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
+  // ?? OPTIMIZACIÓN: Iconos para pedidos desde tabla - por atraso/demora
+  const createPedidoIconByDelay = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
     // Cache key basado en el rango de color (no en minutos exactos para reusar iconos)
     const cacheKey = `pedido-delay-${info.label}`;
     
@@ -1679,7 +2239,7 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // 🚀 OPTIMIZACIÓN: Iconos para servicios con cache
+  // ?? OPTIMIZACIÓN: Iconos para servicios con cache
   const createServicioIcon = useCallback(() => {
     return getCachedIcon('servicio-legacy', () => L.divIcon({
       className: '',
@@ -1709,10 +2269,9 @@ const MapView = memo(function MapView({
     }));
   }, []);
 
-  // � Iconos para services desde tabla - por atraso/demora (llavecita)
-  const createServiceIconByDelay = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
+  // ? Iconos para services desde tabla - por atraso/demora (llavecita)
+  const createServiceIconByDelay = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
     const cacheKey = `service-delay-${info.label}`;
     
     return getCachedIcon(cacheKey, () => {
@@ -1745,77 +2304,74 @@ const MapView = memo(function MapView({
     });
   }, []);
 
-  // 📦 Iconos COMPACTOS para pedidos (forma configurable con color de demora)
-  const createPedidoIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
-    const cacheKey = `pedido-delay-compact-${info.label}-${pedidoShape}`;
+  // ?? Iconos COMPACTOS para pedidos (forma configurable con color de demora)
+  const createPedidoIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
+    const cacheKey = `pedido-delay-compact-${info.label}-${pedidoShape}-${pedidoHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: getShapeHtml(pedidoShape, 14, info.color, info.lightColor),
+      html: getShapeHtml(pedidoShape, 14, info.color, info.lightColor, pedidoHalo),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [pedidoShape, getShapeHtml]);
+  }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
-  // 📦 Iconos MINI para pedidos (forma configurable mínima)
-  const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
-    const cacheKey = `pedido-delay-mini-${info.label}-${pedidoShape}`;
+  // ?? Iconos MINI para pedidos (forma configurable mínima)
+  const createPedidoIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
+    const cacheKey = `pedido-delay-mini-${info.label}-${pedidoShape}-${pedidoHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: getShapeHtml(pedidoShape, 10, info.color),
+      html: getShapeHtml(pedidoShape, 10, info.color, undefined, pedidoHalo),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, [pedidoShape, getShapeHtml]);
+  }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
-  // 🔧 Iconos COMPACTOS para services (forma configurable)
-  const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
-    const cacheKey = `service-delay-compact-${info.label}-${serviceShape}`;
+  // ?? Iconos COMPACTOS para services (forma configurable)
+  const createServiceIconByDelayCompact = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
+    const cacheKey = `service-delay-compact-${info.label}-${serviceShape}-${serviceHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: getShapeHtml(serviceShape, 14, info.color, info.lightColor),
+      html: getShapeHtml(serviceShape, 14, info.color, info.lightColor, serviceHalo),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [serviceShape, getShapeHtml]);
+  }, [serviceShape, serviceHalo, getShapeHtml]);
 
-  // 🔧 Iconos MINI para services (forma configurable mínima)
-  const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null) => {
-    const delayMinutes = computeDelayMinutes(fchHoraMaxEntComp);
-    const info = getDelayInfo(delayMinutes);
-    const cacheKey = `service-delay-mini-${info.label}-${serviceShape}`;
+  // ?? Iconos MINI para services (forma configurable mínima)
+  const createServiceIconByDelayMini = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    const info = effectiveDelayInfo(fchHoraMaxEntComp, isSinAsignar);
+    const cacheKey = `service-delay-mini-${info.label}-${serviceShape}-${serviceHalo}`;
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: getShapeHtml(serviceShape, 10, info.color),
+      html: getShapeHtml(serviceShape, 10, info.color, undefined, serviceHalo),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, [serviceShape, getShapeHtml]);
+  }, [serviceShape, serviceHalo, getShapeHtml]);
 
-  // 🚀 Funciones selectoras de icono por estilo de pedido
-  const getPedidoIcon = useCallback((fchHoraMaxEntComp: string | null) => {
-    if (pedidoMarkerStyle === 'mini') return createPedidoIconByDelayMini(fchHoraMaxEntComp);
-    if (pedidoMarkerStyle === 'compact') return createPedidoIconByDelayCompact(fchHoraMaxEntComp);
-    return createPedidoIconByDelay(fchHoraMaxEntComp);
+  // ?? Funciones selectoras de icono por estilo de pedido
+  const getPedidoIcon = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    if (pedidoMarkerStyle === 'mini') return createPedidoIconByDelayMini(fchHoraMaxEntComp, isSinAsignar);
+    if (pedidoMarkerStyle === 'compact') return createPedidoIconByDelayCompact(fchHoraMaxEntComp, isSinAsignar);
+    return createPedidoIconByDelay(fchHoraMaxEntComp, isSinAsignar);
   }, [pedidoMarkerStyle, createPedidoIconByDelay, createPedidoIconByDelayCompact, createPedidoIconByDelayMini]);
 
-  const getServiceIcon = useCallback((fchHoraMaxEntComp: string | null) => {
-    if (serviceMarkerStyle === 'mini') return createServiceIconByDelayMini(fchHoraMaxEntComp);
-    if (serviceMarkerStyle === 'compact') return createServiceIconByDelayCompact(fchHoraMaxEntComp);
-    return createServiceIconByDelay(fchHoraMaxEntComp);
+  const getServiceIcon = useCallback((fchHoraMaxEntComp: string | null, isSinAsignar: boolean = false) => {
+    if (serviceMarkerStyle === 'mini') return createServiceIconByDelayMini(fchHoraMaxEntComp, isSinAsignar);
+    if (serviceMarkerStyle === 'compact') return createServiceIconByDelayCompact(fchHoraMaxEntComp, isSinAsignar);
+    return createServiceIconByDelay(fchHoraMaxEntComp, isSinAsignar);
   }, [serviceMarkerStyle, createServiceIconByDelay, createServiceIconByDelayCompact, createServiceIconByDelayMini]);
 
-  // ✅ Iconos para PEDIDOS FINALIZADOS - verde (entregado) o rojo (no entregado)
+  // ✅ Iconos para PEDIDOS FINALIZADOS - verde (entregado) o rojo (no entregado).
+  // Estilo "normal": mismo emoji 📦 que los pendientes, solo cambia el color a
+  // verde/rojo segun entrega (sin check/cruz, para uniformidad con la forma).
   const createFinalizadoPedidoIcon = useCallback((entregado: boolean) => {
     const cacheKey = entregado ? 'pedido-finalizado-ok' : 'pedido-finalizado-no';
     const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
     const shadow = entregado ? 'rgba(22, 163, 74, 0.3)' : 'rgba(220, 38, 38, 0.3)';
-    const symbol = entregado ? '✓' : '✗';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `
@@ -1832,59 +2388,50 @@ const MapView = memo(function MapView({
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 12px;
+          font-size: 11px;
           cursor: pointer;
           transition: transform 0.2s;
-          color: white;
-          font-weight: bold;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">${symbol}</div>
+        onmouseout="this.style.transform='scale(1)'">📦</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // ✅ Iconos COMPACTOS para pedidos finalizados
+  // ✅ Iconos COMPACTOS para pedidos finalizados - respeta la forma elegida, color verde/rojo
   const createFinalizadoPedidoIconCompact = useCallback((entregado: boolean) => {
-    const cacheKey = `pedido-finalizado-compact-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
-    const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
-    const symbol = entregado ? '✓' : '✗';
+    const cacheKey = `pedido-finalizado-compact-${entregado ? 'ok' : 'no'}-${pedidoShape}-${pedidoHalo}`;
+    const color = entregado ? '#16a34a' : '#dc2626';
+    const lightColor = entregado ? '#4ade80' : '#f87171';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="
-        width: 14px; height: 14px; position: absolute; left: -7px; top: -7px;
-        background: ${bg};
-        border: 1.5px solid white; border-radius: 3px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 9px; color: white; font-weight: bold; cursor: pointer;
-      ">${symbol}</div>`,
+      html: getShapeHtml(pedidoShape, 14, color, lightColor, pedidoHalo),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [pedidoShape]);
+  }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
-  // ✅ Iconos MINI para pedidos finalizados
+  // ✅ Iconos MINI para pedidos finalizados - respeta la forma elegida, color verde/rojo
   const createFinalizadoPedidoIconMini = useCallback((entregado: boolean) => {
-    const cacheKey = `pedido-finalizado-mini-${entregado ? 'ok' : 'no'}-${pedidoShape}`;
+    const cacheKey = `pedido-finalizado-mini-${entregado ? 'ok' : 'no'}-${pedidoShape}-${pedidoHalo}`;
     const color = entregado ? '#16a34a' : '#dc2626';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="
-        width: 10px; height: 10px; position: absolute; left: -5px; top: -5px;
-        background: ${color}; border: 1px solid white; border-radius: 2px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.3); cursor: pointer;
-      "></div>`,
+      html: getShapeHtml(pedidoShape, 10, color, undefined, pedidoHalo),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, [pedidoShape]);
+  }, [pedidoShape, pedidoHalo, getShapeHtml]);
 
-  // 🔵 Iconos para SERVICES FINALIZADOS - azul con tick
-  const createFinalizadoServiceIcon = useCallback(() => {
-    return getCachedIcon('service-finalizado', () => L.divIcon({
+  // ✅ Iconos para SERVICES FINALIZADOS - verde (entregado) o rojo (no entregado).
+  // Estilo "normal": mismo emoji 🔧 que los pendientes, solo cambia el color.
+  const createFinalizadoServiceIcon = useCallback((entregado: boolean) => {
+    const cacheKey = entregado ? 'service-finalizado-ok' : 'service-finalizado-no';
+    const bg = entregado ? 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)' : 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)';
+    const shadow = entregado ? 'rgba(22, 163, 74, 0.3)' : 'rgba(220, 38, 38, 0.3)';
+    return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
       html: `
         <div style="
@@ -1893,79 +2440,69 @@ const MapView = memo(function MapView({
           position: absolute;
           left: -10px;
           top: -10px;
-          background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
+          background: ${bg};
           border: 2px solid white;
           border-radius: 5px;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px rgba(37, 99, 235, 0.3);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.35), 0 0 0 1px ${shadow};
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 12px;
+          font-size: 11px;
           cursor: pointer;
           transition: transform 0.2s;
-          color: white;
-          font-weight: bold;
         "
         onmouseover="this.style.transform='scale(1.15)'"
-        onmouseout="this.style.transform='scale(1)'">✓</div>
+        onmouseout="this.style.transform='scale(1)'">🔧</div>
       `,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     }));
   }, []);
 
-  // 🔵 Iconos COMPACTOS para services finalizados (azul con tick)
-  const createFinalizadoServiceIconCompact = useCallback(() => {
-    const cacheKey = `service-finalizado-compact-${serviceShape}`;
+  // ✅ Iconos COMPACTOS para services finalizados - respeta la forma elegida, color verde/rojo
+  const createFinalizadoServiceIconCompact = useCallback((entregado: boolean) => {
+    const cacheKey = `service-finalizado-compact-${entregado ? 'ok' : 'no'}-${serviceShape}-${serviceHalo}`;
+    const color = entregado ? '#16a34a' : '#dc2626';
+    const lightColor = entregado ? '#4ade80' : '#f87171';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="
-        width: 14px; height: 14px; position: absolute; left: -7px; top: -7px;
-        background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
-        border: 1.5px solid white; border-radius: 3px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 9px; color: white; font-weight: bold; cursor: pointer;
-      ">✓</div>`,
+      html: getShapeHtml(serviceShape, 14, color, lightColor, serviceHalo),
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     }));
-  }, [serviceShape]);
+  }, [serviceShape, serviceHalo, getShapeHtml]);
 
-  // 🔵 Iconos MINI para services finalizados (azul)
-  const createFinalizadoServiceIconMini = useCallback(() => {
-    const cacheKey = `service-finalizado-mini-${serviceShape}`;
+  // ✅ Iconos MINI para services finalizados - respeta la forma elegida, color verde/rojo
+  const createFinalizadoServiceIconMini = useCallback((entregado: boolean) => {
+    const cacheKey = `service-finalizado-mini-${entregado ? 'ok' : 'no'}-${serviceShape}-${serviceHalo}`;
+    const color = entregado ? '#16a34a' : '#dc2626';
     return getCachedIcon(cacheKey, () => L.divIcon({
       className: '',
-      html: `<div style="
-        width: 10px; height: 10px; position: absolute; left: -5px; top: -5px;
-        background: #2563eb; border: 1px solid white; border-radius: 2px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.3); cursor: pointer;
-      "></div>`,
+      html: getShapeHtml(serviceShape, 10, color, undefined, serviceHalo),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     }));
-  }, [serviceShape]);
+  }, [serviceShape, serviceHalo, getShapeHtml]);
 
-  // 🚀 Funciones selectoras de icono finalizado por estilo
+  // ?? Funciones selectoras de icono finalizado por estilo
   const getFinalizadoPedidoIcon = useCallback((entregado: boolean) => {
     if (pedidoMarkerStyle === 'mini') return createFinalizadoPedidoIconMini(entregado);
     if (pedidoMarkerStyle === 'compact') return createFinalizadoPedidoIconCompact(entregado);
     return createFinalizadoPedidoIcon(entregado);
   }, [pedidoMarkerStyle, createFinalizadoPedidoIcon, createFinalizadoPedidoIconCompact, createFinalizadoPedidoIconMini]);
 
-  const getFinalizadoServiceIcon = useCallback(() => {
-    if (serviceMarkerStyle === 'mini') return createFinalizadoServiceIconMini();
-    if (serviceMarkerStyle === 'compact') return createFinalizadoServiceIconCompact();
-    return createFinalizadoServiceIcon();
+  const getFinalizadoServiceIcon = useCallback((entregado: boolean) => {
+    if (serviceMarkerStyle === 'mini') return createFinalizadoServiceIconMini(entregado);
+    if (serviceMarkerStyle === 'compact') return createFinalizadoServiceIconCompact(entregado);
+    return createFinalizadoServiceIcon(entregado);
   }, [serviceMarkerStyle, createFinalizadoServiceIcon, createFinalizadoServiceIconCompact, createFinalizadoServiceIconMini]);
 
-  // 🚀 OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
+  // ?? OPTIMIZACIÓN: Iconos para pedidos/servicios COMPLETADOS con cache
   const createCompletadoIcon = useCallback((tipo: 'PEDIDO' | 'SERVICIO') => {
     const cacheKey = `completado-${tipo}`;
     
     return getCachedIcon(cacheKey, () => {
-      const emoji = tipo === 'PEDIDO' ? '✅' : '✔️';
+      const emoji = tipo === 'PEDIDO' ? '?' : '??';
       return L.divIcon({
         className: '',
         html: `
@@ -2043,7 +2580,7 @@ const MapView = memo(function MapView({
     });
   };
 
-  // 🕐 Rango de tiempo unificado para animación sincronizada de 2 móviles
+  // ?? Rango de tiempo unificado para animación sincronizada de 2 móviles
   // Recorre los historiales de ambos móviles y calcula el minTime/maxTime global
   const unifiedTimeRange = useMemo(() => {
     const animMovilIds = [selectedMovil, secondaryAnimMovil].filter(Boolean) as number[];
@@ -2147,7 +2684,7 @@ const MapView = memo(function MapView({
   }, [isAnimating, animationSpeed, moviles, selectedMovil, startTime, endTime]);
 
   // Resetear animación cuando cambia el móvil PRIMARIO seleccionado
-  // NO incluir secondaryAnimMovil — agregar un 2do no debe resetear la animación
+  // NO incluir secondaryAnimMovil  agregar un 2do no debe resetear la animación
   useEffect(() => {
     setIsAnimating(false);
     setAnimationProgress(0);
@@ -2155,7 +2692,7 @@ const MapView = memo(function MapView({
     animationStartTime.current = 0;
   }, [selectedMovil]);
 
-  // 🚀 OPTIMIZACIÓN: Calcular densidad total de marcadores para adaptar rendimiento
+  // ?? OPTIMIZACIÓN: Calcular densidad total de marcadores para adaptar rendimiento
   const totalMarkerCount = useMemo(() => {
     const movilesCount = moviles.filter(m => m.currentPosition).length;
     const pedidosCount = pedidos?.filter(p => p.latitud && p.longitud).length ?? 0;
@@ -2166,7 +2703,19 @@ const MapView = memo(function MapView({
   const isHighDensity = totalMarkerCount > HIGH_DENSITY_THRESHOLD;
   const shouldDisableAnimations = totalMarkerCount > DISABLE_ANIMATIONS_THRESHOLD;
 
-  // 🎯 getBounds para el botón de centrado — todos los puntos visibles (móviles + pedidos + zonas)
+  // Apagar animaciones de markers (alarm-pulse, etc.) cuando:
+  //  - alta densidad (>150 markers): perf
+  //  - modo histórico (fecha < hoy): no hay alarmas en vivo que mostrar
+  //  - prefers-reduced-motion del sistema: accesibilidad
+  // NOTA: en modo "hoy + visible" (incluido monitoreo/TV) las animaciones SIGUEN.
+  // La pausa por tab-oculto se maneja aparte (realtime). Esto se aplica via clase
+  // CSS en el contenedor: una regla con !important en hoja de estilos sobreescribe
+  // los `animation:` inline (sin !important) de los iconos — robusto y sin tocar
+  // los generadores de iconos cacheados.
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const disableMarkerAnimations = shouldDisableAnimations || !isToday || prefersReducedMotion;
+
+  // ?? getBounds para el botón de centrado  todos los puntos visibles (móviles + pedidos + zonas)
   const getMapBounds = useCallback((): [number, number][] | null => {
     const pts: [number, number][] = [];
     moviles.filter(m => m.currentPosition).forEach(m => {
@@ -2185,14 +2734,14 @@ const MapView = memo(function MapView({
   }, [moviles, pedidos, allZonas, zonas]);
 
   return (
-    <div className={`h-full w-full rounded-xl overflow-hidden shadow-2xl relative ${isHighDensity ? 'high-density-map' : ''}`}>
+    <div className={`h-full w-full rounded-xl overflow-hidden shadow-2xl relative ${isHighDensity ? 'high-density-map' : ''} ${disableMarkerAnimations ? 'no-marker-anim' : ''}`}>
       <MapContainer
         center={defaultCenter}
         zoom={13}
         maxZoom={19}
         className={`h-full w-full ${isPlacingMarker ? 'cursor-crosshair' : ''} ${isHighDensity ? 'high-density' : ''}`}
         zoomControl={true}
-        // 🚀 OPTIMIZACIONES DE PERFORMANCE
+        // ?? OPTIMIZACIONES DE PERFORMANCE
         preferCanvas={true}        // Usar Canvas en lugar de SVG (2-3x más rápido con muchos marcadores)
         zoomAnimation={!shouldDisableAnimations} // Deshabilitar animación de zoom en alta densidad
         fadeAnimation={false}      // Deshabilitar fade (ahorra GPU)
@@ -2204,49 +2753,58 @@ const MapView = memo(function MapView({
         {/* Control de capas base (calles, satélite, terreno, etc.) */}
         <LayersControl defaultLayer={defaultMapLayer} />
 
-        {/* 🔄 Recalcular tamaño del mapa cuando el contenedor cambia (sidebar collapse) */}
+        {/* ?? Recalcular tamaño del mapa cuando el contenedor cambia (sidebar collapse) */}
         <MapResizer />
 
-        {/* 🎯 Botón de centrado — fitBounds sobre todo el contenido visible */}
+        {/* ?? Botón de centrado  fitBounds sobre todo el contenido visible */}
         <CenterMapControl getBounds={getMapBounds} />
 
-        {/* ⛶ Botón de pantalla completa */}
+        {/* ? Botón de pantalla completa */}
         <FullscreenControl />
 
-        {/* 📊 Control de Capas de Información (Normal / Demoras / Móviles en Zonas) */}
+        {/* Buscador de calles (abre desde la botonera de acciones rápidas) */}
+        <StreetSearchControl
+          open={!!streetSearchOpen}
+          onClose={() => onStreetSearchClose?.()}
+        />
+
+        {/* ?? Control de Capas de Información (Normal / Demoras / Móviles en Zonas) */}
         {onDataViewChange && (
           <DataViewControl value={dataViewMode} onChange={onDataViewChange} isToday={isToday} hideCapEntrega={hideCapEntrega} />
         )}
 
-        {/* 🗺️ Capa de zonas (polígonos con tooltip hover) — solo en modo Normal */}
+        {/* ??? Capa de zonas (polígonos con tooltip hover)  solo en modo Normal */}
+        {/* SVG <defs> para patrones de zonas  solo cuando hay patron activo */}
+        {zonaPattern !== 'liso' && <ZonaPatternDefs />}
+
         {dataViewMode === 'normal' && zonas.length > 0 && <ZonasMapLayer zonas={zonas} zonaOpacity={zonaOpacity} demoras={demorasData} />}
 
-        {/* 🏘️ Capa de Distribución (polígonos con color de tabla + identificador de zona) */}
+        {/* ??? Capa de Distribución (polígonos con color de tabla + identificador de zona) */}
         {dataViewMode === 'distribucion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DistribucionZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} zonaOpacity={zonaOpacity} />
+          <DistribucionZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} />
         )}
 
-        {/* ⏱️ Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
+        {/* ?? Capa de Demoras (polígonos + etiquetas fijas con nro zona y minutos) */}
         {dataViewMode === 'demoras' && (allZonas.length > 0 || zonas.length > 0) && (
-          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} />
+          <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} tipo={zonaLayerTipo} onTipoChange={onZonaLayerTipoChange} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
-        {/* 🚛 Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
+        {/* ?? Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}
         {dataViewMode === 'moviles-zonas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} />
+          <MovilesZonasLayer zonas={allZonas.length > 0 ? allZonas : zonas} movilesZonasData={movilesZonasData} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} movilFilter={movilesZonaMovilFilter} onMovilFilterChange={onMovilesZonaMovilFilterChange} showCountLabels={showCountLabels} onShowCountLabelsChange={setShowCountLabels} tiposServicioDisponibles={tiposServicioDisponibles} zonaOpacity={zonaOpacity} movilEstados={movilEstadosMap} hiddenMovilIds={allHiddenMovilIds} onZonaClick={onZonaClick} demoras={demorasData} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
-        {/* ✅ Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}
+        {/* ? Capa de Zonas Activas (verde/rojo según campo activa de demoras) */}
         {dataViewMode === 'zonas-activas' && (allZonas.length > 0 || zonas.length > 0) && (
-          <ZonasActivasLayer zonas={allZonas.length > 0 ? allZonas : zonas} demoras={demorasData} zonaOpacity={zonaOpacity} />
+          <ZonasActivasLayer zonas={allZonas.length > 0 ? allZonas : zonas} demoras={demorasData} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
-        {/* 🟥 Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
+        {/* ?? Capa de Saturación (pedidos sin asignar vs capacidad prorat.) */}
         {dataViewMode === 'saturacion' && (allZonas.length > 0 || zonas.length > 0) && (
-          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={movilesZonasServiceFilter} onServiceFilterChange={onMovilesZonasServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} />
+          <SaturacionZonasLayer user={user} zonas={(allZonas.length > 0 ? allZonas : zonas) as SaturacionZonaData[]} saturacionData={saturacionData ?? new Map()} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} serviceFilter={capServiceFilter} onServiceFilterChange={onCapServiceFilterChange || (() => {})} demoras={demorasData} showLabels={showCapEntregaLabels} onToggleLabels={onToggleCapEntregaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
         
         {(selectedMovil || secondaryAnimMovil) ? (
@@ -2266,18 +2824,26 @@ const MapView = memo(function MapView({
                   ? (isPrimary ? '#2563eb' : '#ea580c')
                   : movil.color;
 
-                // Si no tiene posición actual, no renderizar nada
-                if (!movil.currentPosition) return null;
-                
-                // Filtrar historial por rango de tiempo
+                // Filtrar historial por rango de tiempo (antes del guard de posicion).
+                // Moviles inactivos pueden no tener currentPosition pero si history del dia.
                 const filteredHistory = movil.history ? filterHistoryByTime(movil.history) : [];
-                
-                // Si no hay historial, solo mostrar el marcador actual
+
+                // Posicion efectiva: currentPosition si existe; si no, el punto mas reciente
+                // del historial (filteredHistory[0] = mas reciente porque la API devuelve DESC).
+                // Si no hay ni posicion ni historial, no hay nada que mostrar.
+                const effectivePosition = movil.currentPosition
+                  ?? (filteredHistory.length > 0
+                    ? { coordX: filteredHistory[0].coordX, coordY: filteredHistory[0].coordY, auxIn2: filteredHistory[0].fechaInsLog }
+                    : null);
+
+                if (!effectivePosition) return null; // Sin posicion y sin historial: nada que renderizar
+
+                // Si no hay historial, solo mostrar el marcador en la posicion efectiva
                 if (filteredHistory.length === 0) {
                   return (
                     <OptimizedMarker
                       key={movil.id}
-                      position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
+                      position={[effectivePosition.coordX, effectivePosition.coordY]}
                       icon={createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)}
                     >
                       <Popup>
@@ -2285,11 +2851,13 @@ const MapView = memo(function MapView({
                           <h3 className="font-bold text-lg" style={{ color: getMovilColor(movil) }}>
                             {movil.name}
                           </h3>
+                          {movil.currentPosition && (
                           <p className="text-sm text-gray-600">
                             <strong>Estado:</strong> {movil.currentPosition.auxIn2}
                           </p>
+                          )}
                           <p className="text-sm text-yellow-600 font-semibold mt-2">
-                            ⚠️ Sin historial para esta fecha
+                            Sin recorrido para esta fecha
                           </p>
                         </div>
                       </Popup>
@@ -2300,7 +2868,7 @@ const MapView = memo(function MapView({
                 // Dibujar la línea del recorrido si tiene historial
                 const fullPathCoordinates = filteredHistory.map(coord => [coord.coordX, coord.coordY] as [number, number]);
 
-                // 🚀 OPTIMIZACIÓN: Simplificar el path completo para mejorar rendimiento
+                // ?? OPTIMIZACIÓN: Simplificar el path completo para mejorar rendimiento
                 const optimizedFullPath = fullPathCoordinates.length > 300
                   ? optimizePath(fullPathCoordinates, 200)
                   : fullPathCoordinates;
@@ -2482,7 +3050,7 @@ const MapView = memo(function MapView({
                       </>
                     )}
                     
-                    {/* Marcador animado EN RUTA — renderizado desde optimizedFullPath para sync con mapa */}
+                    {/* Marcador animado EN RUTA  renderizado desde optimizedFullPath para sync con mapa */}
                     {animatedCurrentCoord && (
                       <OptimizedMarker
                         key={`${movil.id}-animated-current`}
@@ -2529,7 +3097,7 @@ const MapView = memo(function MapView({
                                 box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                                 pointer-events: none;
                                 font-family: system-ui, -apple-system, sans-serif;
-                              ">🚗 #${movil.id}${animatedCurrentTimeStr ? ' - ' + animatedCurrentTimeStr : ''}</div>
+                              ">?? #${movil.id}${animatedCurrentTimeStr ? ' - ' + animatedCurrentTimeStr : ''}</div>
                             </div>
                           `,
                           iconSize: [18, 18],
@@ -2550,7 +3118,7 @@ const MapView = memo(function MapView({
                       const isLast = index === filteredHistory.length - 1; // Inicio del día
                       const totalPoints = filteredHistory.length;
                       
-                      // 🚀 OPTIMIZACIÓN: Mostrar solo puntos importantes o cada N puntos
+                      // ?? OPTIMIZACIÓN: Mostrar solo puntos importantes o cada N puntos
                       const skipInterval = totalPoints > 100 ? 15 : 10;
                       const shouldShow = isFirst || isLast || index % skipInterval === 0;
                       
@@ -2609,7 +3177,7 @@ const MapView = memo(function MapView({
                                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                                     pointer-events: none;
                                     font-family: system-ui, -apple-system, sans-serif;
-                                  ">${isFirst ? `🎯 #${movil.id} ACTUAL` : isLast ? `🏁 #${movil.id} INICIO` : `#${pointNumber}`}</div>
+                                  ">${isFirst ? `?? #${movil.id} ACTUAL` : isLast ? `?? #${movil.id} INICIO` : `#${pointNumber}`}</div>
                                 ` : ''}
                               </div>
                             `,
@@ -2626,21 +3194,21 @@ const MapView = memo(function MapView({
                                   isLast ? 'bg-yellow-500 text-white' : 
                                   'bg-gray-200 text-gray-700'
                                 }`}>
-                                  {isFirst ? '🎯 Posición Actual' : isLast ? '🏁 Inicio del Día' : `Punto #${pointNumber}`}
+                                  {isFirst ? '?? Posición Actual' : isLast ? '?? Inicio del Día' : `Punto #${pointNumber}`}
                                 </span>
                               </h3>
                               <div className="text-xs space-y-1 text-gray-700">
                                 <p>
-                                  <strong>� Hora:</strong> {new Date(coord.fechaInsLog).toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' })}
+                                  <strong>? Hora:</strong> {new Date(coord.fechaInsLog).toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' })}
                                 </p>
                                 <p>
-                                  <strong>📅 Fecha:</strong> {new Date(coord.fechaInsLog).toLocaleDateString('es-UY')}
+                                  <strong>?? Fecha:</strong> {new Date(coord.fechaInsLog).toLocaleDateString('es-UY')}
                                 </p>
                                 <p>
-                                  <strong>🔄 Estado:</strong> {coord.auxIn2}
+                                  <strong>?? Estado:</strong> {coord.auxIn2}
                                 </p>
                                 <p>
-                                  <strong>📍 Distancia:</strong> {coord.distRecorrida.toFixed(2)} km
+                                  <strong>?? Distancia:</strong> {coord.distRecorrida.toFixed(2)} km
                                 </p>
                                 <p className="text-xs text-gray-500 mt-2 pt-1 border-t border-gray-200">
                                   Punto {pointNumber} de {totalPoints} registros (cada ~3 min)
@@ -2676,7 +3244,7 @@ const MapView = memo(function MapView({
                           </p>
                           {movil.history && (
                             <p className="text-xs text-blue-600 mt-2 font-semibold">
-                              📍 {movil.history.length} coordenadas en el recorrido
+                              ?? {movil.history.length} coordenadas en el recorrido
                             </p>
                           )}
                         </div>
@@ -2780,9 +3348,9 @@ const MapView = memo(function MapView({
                 // Determinar el ícono según el estado
                 let icon;
                 if (estado === 'completado') {
-                  icon = createCompletadoIcon(item.tipo); // Verde ✅
+                  icon = createCompletadoIcon(item.tipo); // Verde ?
                 } else if (estado === 'en-ruta') {
-                  icon = item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon(); // Naranja 📦 o rojo 🔧
+                  icon = item.tipo === 'PEDIDO' ? createPedidoIcon() : createServicioIcon(); // Naranja ?? o rojo ??
                 } else {
                   return null;
                 }
@@ -2807,42 +3375,20 @@ const MapView = memo(function MapView({
               })
               .filter(marker => marker !== null)}
           </>
-        ) : (
-          // Mostrar móviles (todos o solo el enfocado)
-          <>
-            {movilesToShow.map((movil) => {
-              // Si no tiene posición GPS, no mostrar en el mapa
-              // TODO: Agregar panel lateral para móviles sin GPS
-              if (!movil.currentPosition) {
-                console.warn(`⚠️ Móvil ${movil.name} (ID: ${movil.id}) sin posición GPS para esta fecha`);
-                return null;
-              }
-              
-              return (
-                <OptimizedMarker
-                  key={movil.id}
-                  position={[movil.currentPosition.coordX, movil.currentPosition.coordY]}
-                  icon={
-                    markerStyle === 'mini'
-                      ? createMiniIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
-                      : markerStyle === 'compact'
-                      ? createCompactIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
-                      : createCustomIcon(getMovilColor(movil), movil.id, movil.isInactive, movil.estadoNro === 3, movil.estadoNro === 4)
-                  }
-                  eventHandlers={{
-                    click: () => {
-                      // Cerrar popup de pedido/servicio si está abierto
-                      setSelectedPedidoServicio(null);
-                      // Abrir popup del móvil
-                      if (onMovilClick) {
-                        onMovilClick(movil.id);
-                      }
-                    },
-                  }}
-                />
-              );
-            })}
-          </>
+        ) : movilesToShow.length === 0 ? null : (
+          // Mostrar móviles (todos o solo el enfocado)  viewport-culled
+          <CulledMovilesLayer
+            moviles={movilesToShow}
+            popupMovilId={popupMovil}
+            focusedMovilId={focusedMovil}
+            markerStyle={markerStyle}
+            createCustomIcon={createCustomIcon}
+            createCompactIcon={createCompactIcon}
+            createMiniIcon={createMiniIcon}
+            getMovilColor={getMovilColor}
+            onMovilClick={onMovilClick}
+            onPedidoServicioClose={() => setSelectedPedidoServicio(null)}
+          />
         )}
         
         {/* Marcadores de pedidos/servicios pendientes - solo si showPendientes está activo */}
@@ -2893,111 +3439,46 @@ const MapView = memo(function MapView({
           </>
         )}
         
-        {/* Marcadores de Pedidos desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
+        {/* Marcadores de Pedidos desde tabla  viewport-culled */}
         {(() => {
-          const pedidosFiltrados = pedidos && pedidos.filter(p => p.latitud && p.longitud).filter(p =>
-            (!p.movil || Number(p.movil) === 0)
-              ? isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)
-              : true
+          const pedidosFiltrados = (pedidos ?? []).filter(p => p.latitud && p.longitud).filter(p =>
+            // Finalizados (estado_nro=2) no se filtran por ventana SA: se ven siempre.
+            Number(p.estado_nro) === 2 ||
+            isVisibleByWindow(p.fch_hora_para, serverNow, minutosAntesSa, !!(p.movil && Number(p.movil) !== 0))
           );
-          if (!pedidosFiltrados?.length) return null;
-          
-          const pedidoMarkers = pedidosFiltrados.map(pedido => {
-            const isSinAsignar = !pedido.movil || Number(pedido.movil) === 0;
-            const delayMins = computeDelayMinutes(pedido.fch_hora_max_ent_comp);
-            const delayInfo = getDelayInfo(delayMins);
-            // Sin asignar: siempre gris (forzar null para obtener icono gris)
-            const iconFchHora = isSinAsignar ? null : pedido.fch_hora_max_ent_comp;
-            const esEntregado = isPedidoEntregado(pedido);
-            return (
-              <OptimizedMarker
-                key={`pedido-tabla-${pedido.id}`}
-                position={[pedido.latitud!, pedido.longitud!]}
-                icon={pedidosVista === 'finalizados' ? getFinalizadoPedidoIcon(esEntregado) : getPedidoIcon(iconFchHora)}
-                eventHandlers={{
-                  click: () => {
-                    onPedidoClick && onPedidoClick(pedido.id);
-                  }
-                }}
-              >
-                <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
-                  <div className="text-xs">
-                    <div className="font-bold">Pedido #{pedido.id}</div>
-                    <div>{pedido.cliente_nombre}</div>
-                    <div className="text-gray-600">{pedido.producto_nom}</div>
-                    {isSinAsignar && (
-                      <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
-                    )}
-                    {pedidosVista === 'finalizados' ? (
-                      <div style={{ color: esEntregado ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
-                        {esEntregado ? '✓ Entregado' : '✗ No Entregado'}
-                      </div>
-                    ) : (
-                      <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
-                        {delayInfo.label}: {delayInfo.badgeText}
-                      </div>
-                    )}
-                  </div>
-                </Tooltip>
-              </OptimizedMarker>
-            );
-          });
-          
-          return pedidosCluster 
-            ? <MarkerClusterGroup>{pedidoMarkers}</MarkerClusterGroup>
-            : <>{pedidoMarkers}</>;
+          if (!pedidosFiltrados.length) return null;
+          return (
+            <CulledPedidosLayer
+              pedidosFiltrados={pedidosFiltrados}
+              popupPedidoId={popupPedido}
+              pedidosVista={pedidosVista}
+              getPedidoIcon={getPedidoIcon}
+              getFinalizadoPedidoIcon={getFinalizadoPedidoIcon}
+              onPedidoClick={onPedidoClick}
+              pedidosCluster={pedidosCluster}
+            />
+          );
         })()}
 
-        {/* Marcadores de Services desde tabla - con coordenadas - CLUSTER CONDICIONAL */}
+        {/* Marcadores de Services desde tabla  viewport-culled */}
         {(() => {
-          const servicesFiltrados = services && services.filter(s => s.latitud && s.longitud).filter(s =>
-            (!s.movil || Number(s.movil) === 0)
-              ? isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)
-              : true
+          const servicesFiltrados = (services ?? []).filter(s => s.latitud && s.longitud).filter(s =>
+            // Finalizados (estado_nro=2) no se filtran por ventana SA: se ven siempre.
+            Number(s.estado_nro) === 2 ||
+            isVisibleByWindow(s.fch_hora_para, serverNow, minutosAntesSa, !!(s.movil && Number(s.movil) !== 0))
           );
-          if (!servicesFiltrados?.length) return null;
-          
-          const serviceMarkers = servicesFiltrados.map(service => {
-            const isSinAsignar = !service.movil || Number(service.movil) === 0;
-            const delayMins = computeDelayMinutes(service.fch_hora_max_ent_comp);
-            const delayInfo = getDelayInfo(delayMins);
-            // Sin asignar: forzar fchHora=null para obtener icono gris (mismo patron que pedidos)
-            const iconFchHora = isSinAsignar ? null : service.fch_hora_max_ent_comp;
-            return (
-              <OptimizedMarker
-                key={`service-tabla-${service.id}`}
-                position={[service.latitud!, service.longitud!]}
-                icon={servicesVista === 'finalizados' ? getFinalizadoServiceIcon() : getServiceIcon(iconFchHora)}
-                eventHandlers={{
-                  click: () => {
-                    onServiceClick && onServiceClick(service.id);
-                  }
-                }}
-              >
-                <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
-                  <div className="text-xs">
-                    <div className="font-bold">Service #{service.id}</div>
-                    <div>{service.cliente_nombre}</div>
-                    <div className="text-gray-600">{service.defecto}</div>
-                    {isSinAsignar && (
-                      <div style={{ color: '#9CA3AF', fontWeight: 'bold' }}>Sin asignar</div>
-                    )}
-                    {servicesVista === 'finalizados' ? (
-                      <div style={{ color: '#2563eb', fontWeight: 'bold' }}>✓ Finalizado</div>
-                    ) : (
-                      <div style={{ color: isSinAsignar ? '#9CA3AF' : delayInfo.color, fontWeight: 'bold' }}>
-                        {delayInfo.label}: {delayInfo.badgeText}
-                      </div>
-                    )}
-                  </div>
-                </Tooltip>
-              </OptimizedMarker>
-            );
-          });
-          
-          return pedidosCluster 
-            ? <MarkerClusterGroup>{serviceMarkers}</MarkerClusterGroup>
-            : <>{serviceMarkers}</>;
+          if (!servicesFiltrados.length) return null;
+          return (
+            <CulledServicesLayer
+              servicesFiltrados={servicesFiltrados}
+              popupServiceId={popupService}
+              servicesVista={servicesVista}
+              getServiceIcon={getServiceIcon}
+              getFinalizadoServiceIcon={getFinalizadoServiceIcon}
+              onServiceClick={onServiceClick}
+              pedidosCluster={pedidosCluster}
+            />
+          );
         })()}
         
         <MapUpdater
@@ -3036,99 +3517,17 @@ const MapView = memo(function MapView({
           }}
         />
 
-        {/* Renderizar marcadores personalizados (POIs) */}
-        {!poisHidden && customMarkers.filter(m => {
-          if (!m.visible) return false;
-          // Filtro individual por ID (selección de usuario)
-          if (hiddenPoiIds.size > 0 && hiddenPoiIds.has(m.id)) return false;
-          // Filtro por categoría
-          if (hiddenPoiCategories.size > 0) {
-            const cat = m.categoria || m.observacion?.match(/^\[([^\]]+)\]/)?.[1] || '';
-            if (cat && hiddenPoiCategories.has(cat)) return false;
-          }
-          return true;
-        }).map((marker) => {
-          // Crear icono, tamaño según poiMarkerSize: 1=chico(16), 2=mediano(24), 3=grande(32)
-          const poiPx = poiMarkerSize === 1 ? 16 : poiMarkerSize === 3 ? 32 : 24;
-          const poiFontSize = poiMarkerSize === 1 ? 13 : poiMarkerSize === 3 ? 26 : 19;
-          const isPtoVenta = (marker.categoria || '').toLowerCase() === 'punto de venta';
-          const displayIcon = marker.icono || poiDefaultIcon;
-          const iconHtml = isPtoVenta
-            ? `<img src="/images/iconoptoventa.png" style="width:${poiPx}px;height:${poiPx}px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" />`
-            : `<div style="font-size:${poiFontSize}px;text-align:center;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">${displayIcon}</div>`;
-          const customIcon = L.divIcon({
-            html: iconHtml,
-            className: 'custom-marker-icon',
-            iconSize: [poiPx, poiPx],
-            iconAnchor: [poiPx / 2, poiPx],
-            popupAnchor: [0, -poiPx],
-          });
-
-          return (
-            <OptimizedMarker
-              key={marker.id}
-              position={[marker.latitud, marker.longitud]}
-              icon={customIcon}
-            >
-              <Popup minWidth={240} className="poi-popup">
-                <div style={{ margin: '-10px -14px', borderRadius: '8px', overflow: 'hidden', minWidth: '240px', fontFamily: 'inherit' }}>
-                  {/* Header */}
-                  <div style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '26px', lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
-                        {(marker.categoria || '').toLowerCase() === 'punto de venta'
-                          ? <img src="/images/iconoptoventa.png" style={{ width: 26, height: 26, objectFit: 'contain' }} />
-                          : displayIcon
-                        }
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: 'white', fontWeight: 700, fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>
-                          {marker.nombre}
-                        </div>
-                        {marker.categoria && (
-                          <span style={{ display: 'inline-block', marginTop: '3px', background: 'rgba(255,255,255,0.22)', color: 'white', fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-                            {marker.categoria}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Body */}
-                  <div style={{ background: '#18181b', padding: '8px 12px 10px' }}>
-                    {/* Teléfono */}
-                    {marker.telefono && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                        <span style={{ fontSize: '13px' }}>📞</span>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#d1fae5', letterSpacing: '0.04em' }}>
-                          {String(marker.telefono)}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Descripción / Dirección */}
-                    {marker.observacion && (
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                        <span style={{ fontSize: '13px', marginTop: '1px' }}>🏠</span>
-                        <span style={{ fontSize: '12px', color: '#d1d5db', lineHeight: '1.4' }}>
-                          {marker.observacion}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Coordenadas */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', paddingTop: '6px' }}>
-                      <span style={{ fontSize: '12px' }}>📌</span>
-                      <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', letterSpacing: '0.03em' }}>
-                        {Number(marker.latitud).toFixed(6)}, {Number(marker.longitud).toFixed(6)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </Popup>
-            </OptimizedMarker>
-          );
-        })}
+        {/* Renderizar marcadores personalizados (POIs)  viewport-culled */}
+        <CulledPoisLayer
+          customMarkers={customMarkers}
+          focusedPuntoId={focusedPuntoId}
+          poisHidden={poisHidden}
+          hiddenPoiIds={hiddenPoiIds}
+          hiddenPoiCategories={hiddenPoiCategories}
+          poiMarkerSize={poiMarkerSize}
+          poiDefaultIcon={poiDefaultIcon}
+          poiCategoryIcons={poiCategoryIcons}
+        />
 
         {/* Herramienta de medición de distancia (clic derecho) */}
         <DistanceMeasurement />
@@ -3158,6 +3557,8 @@ const MapView = memo(function MapView({
           onMovilDateChange={onMovilDateChange}
           currentAnimTimeStr={currentAnimTimeStr}
           selectedEmpresas={selectedEmpresas}
+          escenarioId={escenarioId}
+          isRoot={isRoot}
         />
       )}
 

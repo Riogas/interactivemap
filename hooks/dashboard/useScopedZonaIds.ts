@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { getScopedEmpresas, isPrivilegedForZonaScope, parseZonasJsonb } from '@/lib/auth-scope';
+import { getScopedEmpresas, canSeeAllEmpresas, parseZonasJsonb } from '@/lib/auth-scope';
 
 interface ScopedUser {
   isRoot?: string;
-  roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string }>;
+  roles?: Array<{ RolId: string; RolNombre: string; RolTipo: string; funcionalidades?: Array<{ funcionalidadId: number; nombre: string }> }>;
   allowedEmpresas?: number[] | null;
+  verTodasEmpresas?: boolean;
 }
 
 interface UseScopedZonaIdsResult {
@@ -33,7 +34,7 @@ export function useScopedZonaIds(
   escenarioIds: number[],
   selectedEmpresas: number[] = [],
 ): UseScopedZonaIdsResult {
-  const isPrivileged = isPrivilegedForZonaScope(user);
+  const isPrivileged = canSeeAllEmpresas(user);
   // Para privilegiados: sin scope, sin fetch.
   // Para no privilegiados: empresas efectivas = selectedEmpresas ∩ allowedEmpresas.
   // Si selectedEmpresas está vacío (deselección total) → fail-closed (set vacío).

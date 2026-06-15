@@ -1,18 +1,35 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { isPrivilegedForZonaScope, isRoot } from '@/lib/auth-scope';
+import { canSeeAllEmpresas, isRoot } from '@/lib/auth-scope';
 import { useSearchParams } from 'next/navigation';
-import { computeDelayMinutes } from '@/utils/pedidoDelay';
+import {
+  computeDelayMinutes,
+  bucketAtrasoPendiente,
+  bucketAtrasoFinalizado,
+  BUCKETS_PENDIENTE_ORDEN,
+  BUCKETS_FINALIZADO_ORDEN,
+} from '@/utils/pedidoDelay';
+import type { BucketRow } from '@/components/stats/GraficosInlineSection';
+import { GraficosInlineSection } from '@/components/stats/GraficosInlineSection';
+import { BarChart, type StackRow } from '@/components/stats/Charts';
 import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { todayMontevideo } from '@/lib/date-utils';
+import { todayMontevideo, pendienteDateRangeCompact } from '@/lib/date-utils';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
-import { hasFuncionalidad } from '@/lib/role-funcionalidades';
+import { hasSaAcumulados, hasFuncionalidad } from '@/lib/role-funcionalidades';
+import {
+  exportCardPdf,
+  exportCardExcel,
+  sectionFromValuePct,
+  sectionFromStackRows,
+  sectionFromBucketRows,
+  type CardExportModel,
+} from '@/lib/stats-export';
 
 // ─── Tipos mínimos para este módulo ───────────────────────────────────────────
 interface Pedido {
@@ -30,6 +47,7 @@ interface Pedido {
   fch_hora_finalizacion?: string | null;
   pedido_hijo?: number | null;
   producto_cod?: string | null;
+  atraso_cump_mins?: number | null;
 }
 interface Service {
   service_id: number;
@@ -62,93 +80,15 @@ function formatDate(dateStr: string) {
   return `${d} ${months[parseInt(m) - 1]} ${y}`;
 }
 
-function BarChart({ data, colorClass = 'bg-blue-500' }: { data: { label: string; value: number; pct: number }[]; colorClass?: string }) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  return (
-    <div className="space-y-2">
-      {data.map((item) => {
-        const pctOfTotal = total > 0 ? Math.round((item.value / total) * 100) : 0;
-        return (
-          <div key={item.label}>
-            <div className="flex justify-between text-xs text-gray-400 mb-0.5">
-              <span className="truncate max-w-[60%]">{item.label}</span>
-              <span className="font-semibold text-white">
-                {item.value}
-                <span className="text-gray-500 font-normal ml-1">· {pctOfTotal}%</span>
-              </span>
-            </div>
-            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className={`h-full ${colorClass} rounded-full transition-all duration-700`}
-                style={{ width: `${Math.max(item.pct, item.value > 0 ? 2 : 0)}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+function formatTimeAgo(date: Date | null): string {
+  if (!date) return 'cargando…';
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 5) return 'recién';
+  if (diff < 60) return `${diff}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}min`;
+  return `${Math.floor(diff / 3600)}h`;
 }
 
-// ─── Stacked bar (Entregados / No Entregados / Pendientes) ──────────────────
-interface StackRow { label: string; entregados: number; noEntregados: number; pendientes: number; }
-function StackedBarChart({ data, expanded = false }: { data: StackRow[]; expanded?: boolean }) {
-  const maxTotal = Math.max(...data.map(r => r.entregados + r.noEntregados + r.pendientes), 1);
-  const barH = expanded ? 'h-7' : 'h-5';
-  const spacing = expanded ? 'space-y-5' : 'space-y-2.5';
-  return (
-    <div className={spacing}>
-      {/* Leyenda */}
-      <div className="flex gap-3 text-[10px] text-gray-400 mb-1">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Entregados</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />No entregados</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Pendientes</span>
-      </div>
-      {data.map(row => {
-        const total = row.entregados + row.noEntregados + row.pendientes;
-        const barWidth = Math.round((total / maxTotal) * 100);
-        const pEnt = total > 0 ? Math.round((row.entregados / total) * 100) : 0;
-        const pNoEnt = total > 0 ? Math.round((row.noEntregados / total) * 100) : 0;
-        const pPend = total > 0 ? 100 - pEnt - pNoEnt : 0;
-        return (
-          <div key={row.label}>
-            <div className={`flex justify-between ${expanded ? 'text-sm' : 'text-xs'} text-gray-300 mb-0.5`}>
-              <span className="truncate max-w-[70%] font-medium">{row.label}</span>
-              <span className="font-bold text-white">{total}</span>
-            </div>
-            <div className={`${barH} bg-white/10 rounded-full overflow-hidden`}>
-              <div className="h-full flex rounded-full overflow-hidden" style={{ width: `${Math.max(barWidth, total > 0 ? 2 : 0)}%` }}>
-                {row.entregados > 0 && (
-                  <div className="h-full bg-green-500 flex items-center justify-center overflow-hidden" style={{ width: `${pEnt}%` }}>
-                    {(expanded || pEnt >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pEnt}%</span>}
-                  </div>
-                )}
-                {row.noEntregados > 0 && (
-                  <div className="h-full bg-orange-400 flex items-center justify-center overflow-hidden" style={{ width: `${pNoEnt}%` }}>
-                    {(expanded || pNoEnt >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pNoEnt}%</span>}
-                  </div>
-                )}
-                {row.pendientes > 0 && (
-                  <div className="h-full bg-blue-400 flex items-center justify-center overflow-hidden" style={{ width: `${pPend}%` }}>
-                    {(expanded || pPend >= 12) && <span className={`${expanded ? 'text-[11px]' : 'text-[9px]'} font-black text-gray-900 leading-none`}>{pPend}%</span>}
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* Siempre visible en modo expandido: etiquetas de % debajo de la barra */}
-            {expanded && total > 0 && (
-              <div className="flex gap-4 mt-1.5">
-                {pEnt > 0 && <span className="text-[10px] text-green-400 font-semibold">{pEnt}% ent.</span>}
-                {pNoEnt > 0 && <span className="text-[10px] text-orange-400 font-semibold">{pNoEnt}% no ent.</span>}
-                {pPend > 0 && <span className="text-[10px] text-blue-400 font-semibold">{pPend}% pend.</span>}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function getEmpresaNombre(p: { movil?: unknown; empresa_fletera_id?: unknown }, movilEmpresa: Map<number, string>, empresas: Map<number, string>): string {
   const movilNro = p.movil != null ? Number(p.movil) : null;
@@ -158,27 +98,125 @@ function getEmpresaNombre(p: { movil?: unknown; empresa_fletera_id?: unknown }, 
   return empresas.has(empId) ? empresas.get(empId)! : `Empresa ${empId}`;
 }
 
+// Tonos KPI tokenizados — funcionan en light y dark via [data-theme].
+// Cada tono define superficie suave + borde + color de texto del numero.
+const KPI_TONES: Record<string, { surface: string; border: string; text: string }> = {
+  green:  { surface: 'bg-stats-success-soft dark:bg-stats-success/15',         border: 'border-stats-success/40',     text: 'text-stats-success' },
+  blue:   { surface: 'bg-stats-info-soft dark:bg-stats-info/15',               border: 'border-stats-info/40',        text: 'text-stats-info' },
+  orange: { surface: 'bg-stats-warning-soft dark:bg-stats-warning/15',         border: 'border-stats-warning/40',     text: 'text-stats-warning' },
+  red:    { surface: 'bg-stats-destructive-soft dark:bg-stats-destructive/15', border: 'border-stats-destructive/40', text: 'text-stats-destructive' },
+  purple: { surface: 'bg-stats-info-soft dark:bg-stats-info/10',               border: 'border-stats-info/30',        text: 'text-stats-info' },
+  gray:   { surface: 'bg-stats-neutral-soft dark:bg-white/5',                  border: 'border-stats-border dark:border-white/10', text: 'text-stats-foreground dark:text-white' },
+};
+
 function KpiCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
-  const bg: Record<string, string> = {
-    green: 'bg-green-500/20 border-green-400/30',
-    blue: 'bg-blue-500/20 border-blue-400/30',
-    orange: 'bg-orange-500/20 border-orange-400/30',
-    red: 'bg-red-500/20 border-red-400/30',
-    purple: 'bg-purple-500/20 border-purple-400/30',
-    gray: 'bg-gray-500/20 border-gray-400/30',
-  };
+  const t = KPI_TONES[color] ?? KPI_TONES.gray;
   return (
-    <div className={`rounded-xl border p-4 ${bg[color] ?? bg.gray} backdrop-blur-sm`}>
-      <p className="text-xs text-gray-400 mb-1">{label}</p>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+    <div
+      className={`relative rounded-xl border p-3.5 backdrop-blur-sm transition-colors hover:shadow-sm ${t.surface} ${t.border}`}
+    >
+      {/* Accent bar a la izquierda — refuerza la jerarquia de color sin saturar */}
+      <span aria-hidden className={`absolute left-0 top-3 bottom-3 w-0.5 rounded-r ${t.text.replace('text-', 'bg-')}`} />
+      <p className="text-[10px] uppercase tracking-wider text-stats-muted-fg dark:text-gray-400 mb-1 pl-1.5">{label}</p>
+      <p className={`text-2xl font-bold leading-none font-stats-mono tabular-nums pl-1.5 ${t.text}`}>{value}</p>
+      {sub && <p className="text-[11px] text-stats-muted-fg dark:text-gray-400 mt-1 pl-1.5">{sub}</p>}
+    </div>
+  );
+}
+
+// Skeleton para los KPI cards mientras carga. Mantiene la grilla "estable"
+// (no hay layout shift cuando termina la carga).
+function KpiSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-xl border border-stats-border dark:border-white/10 bg-stats-surface-2 dark:bg-white/5 p-3.5 animate-pulse"
+          aria-hidden
+        >
+          <div className="h-2.5 w-16 rounded bg-stats-border dark:bg-white/10 mb-3" />
+          <div className="h-6 w-12 rounded bg-stats-border dark:bg-white/15 mb-2" />
+          <div className="h-2 w-20 rounded bg-stats-border dark:bg-white/10" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Icono pequeno (16x16) por categoria de card. SVG inline para no agregar deps.
+// Familia: outline 1.5px stroke, lucide-style.
+const CARD_ICONS = {
+  clock: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></svg>,
+  grid: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>,
+  building: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="1" /><line x1="9" y1="6" x2="9" y2="6" /><line x1="15" y1="6" x2="15" y2="6" /><line x1="9" y1="10" x2="9" y2="10" /><line x1="15" y1="10" x2="15" y2="10" /><line x1="9" y1="14" x2="9" y2="14" /><line x1="15" y1="14" x2="15" y2="14" /><path d="M10 22V18h4v4" /></svg>,
+  truck: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M1 3h13v13H1z" /><polygon points="14 8 18 8 21 11 21 16 14 16 14 8" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="17.5" cy="18.5" r="2.5" /></svg>,
+  pin: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>,
+  alert: <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
+} as const;
+
+type CardIconName = keyof typeof CARD_ICONS;
+
+// ─── Botones de export (PDF / Excel) por card ────────────────────────────────
+function CardExportButtons({
+  getNode,
+  buildModel,
+  fechaLabel,
+}: {
+  getNode: () => HTMLElement | null;
+  buildModel: () => CardExportModel | null;
+  fechaLabel?: string;
+}) {
+  const [busy, setBusy] = useState<null | 'pdf' | 'xlsx'>(null);
+
+  const run = async (kind: 'pdf' | 'xlsx') => {
+    const node = getNode();
+    const model = buildModel();
+    if (!node || !model) return;
+    setBusy(kind);
+    try {
+      if (kind === 'pdf') await exportCardPdf(node, model, fechaLabel);
+      else await exportCardExcel(node, model, fechaLabel);
+    } catch (e) {
+      console.error('[stats-export] error exportando', kind, e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const btnBase =
+    'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold leading-none border transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info disabled:opacity-50 disabled:cursor-wait';
+  const pdfCls =
+    `${btnBase} text-red-600 border-red-300 bg-red-50 hover:bg-red-100 dark:text-red-300 dark:border-red-500/40 dark:bg-red-500/10 dark:hover:bg-red-500/20`;
+  const xlsCls =
+    `${btnBase} text-green-700 border-green-300 bg-green-50 hover:bg-green-100 dark:text-green-300 dark:border-green-500/40 dark:bg-green-500/10 dark:hover:bg-green-500/20`;
+
+  const fileIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button onClick={() => run('pdf')} disabled={busy !== null} className={pdfCls} title="Descargar PDF" aria-label="Descargar PDF">
+        {fileIcon}
+        <span>{busy === 'pdf' ? '...' : 'PDF'}</span>
+      </button>
+      <button onClick={() => run('xlsx')} disabled={busy !== null} className={xlsCls} title="Descargar Excel" aria-label="Descargar Excel">
+        {fileIcon}
+        <span>{busy === 'xlsx' ? '...' : 'Excel'}</span>
+      </button>
     </div>
   );
 }
 
 // ─── Tarjeta expandible ───────────────────────────────────────────────────────
-function ExpandableCard({ title, children, expandedChildren }: { title: string; children: React.ReactNode; expandedChildren?: React.ReactNode }) {
+function ExpandableCard({ title, icon, children, expandedChildren, exportModel, fechaLabel }: { title: string; icon?: CardIconName; children: React.ReactNode; expandedChildren?: React.ReactNode; exportModel?: () => CardExportModel | null; fechaLabel?: string }) {
   const [expanded, setExpanded] = useState(false);
+  const iconNode = icon ? CARD_ICONS[icon] : null;
+  const contentRef = useRef<HTMLDivElement>(null);
   return (
     <>
       {expanded && (
@@ -188,11 +226,15 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
         >
           <div className="w-full max-w-5xl stats-modal-content">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
+              <h3 className="text-xl font-bold tracking-tight text-stats-foreground dark:text-white flex items-center gap-2.5">
+                {iconNode && <span className="text-stats-muted-fg dark:text-gray-400">{iconNode}</span>}
+                {title}
+              </h3>
               <button
                 onClick={() => setExpanded(false)}
-                className="text-gray-400 hover:text-white transition-all duration-200 p-2 rounded-xl hover:bg-white/10 group"
+                className="p-2 rounded-xl transition-all duration-200 group text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
                 title="Cerrar"
+                aria-label="Cerrar tarjeta expandida"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -203,22 +245,79 @@ function ExpandableCard({ title, children, expandedChildren }: { title: string; 
           </div>
         </div>
       )}
-      <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+      <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 hover:-translate-y-px hover:shadow-md dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40 dark:hover:bg-white/[0.07]">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-300">{title}</h3>
-          <button
-            onClick={() => setExpanded(true)}
-            className="text-gray-500 hover:text-white transition-all duration-200 p-1 rounded-lg hover:bg-white/10 hover:scale-110 active:scale-95"
-            title="Expandir"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
-            </svg>
-          </button>
+          <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2">
+            {iconNode && <span className="text-stats-info">{iconNode}</span>}
+            {title}
+          </h3>
+          <div className="flex items-center gap-1">
+            {exportModel && (
+              <CardExportButtons getNode={() => contentRef.current} buildModel={exportModel} fechaLabel={fechaLabel} />
+            )}
+            <button
+              onClick={() => setExpanded(true)}
+              className="p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+              title="Expandir"
+              aria-label="Expandir tarjeta"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
         </div>
-        {children}
+        <div ref={contentRef}>{children}</div>
       </div>
     </>
+  );
+}
+
+// ─── Bloque revelado (móviles/zona/empresa) con export ────────────────────────
+function RevealChartBlock({
+  title,
+  icon,
+  stackedData,
+  pendientesData,
+  finalizadosData,
+  fechaLabel,
+  labelCol,
+}: {
+  title: string;
+  icon: CardIconName;
+  stackedData: StackRow[];
+  pendientesData: BucketRow[];
+  finalizadosData: BucketRow[];
+  fechaLabel?: string;
+  labelCol: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const buildModel = (): CardExportModel => ({
+    title,
+    subtitle: `${stackedData.length} ${labelCol.toLowerCase()}s con actividad`,
+    sections: [
+      sectionFromStackRows('Volumen (entregados / no entregados / pendientes)', labelCol, stackedData),
+      sectionFromBucketRows('Pendientes por atraso', labelCol, pendientesData, BUCKETS_PENDIENTE_ORDEN),
+      sectionFromBucketRows('Finalizados por atraso', labelCol, finalizadosData, BUCKETS_FINALIZADO_ORDEN),
+    ],
+  });
+  return (
+    <div className="col-span-full">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200 flex items-center gap-2">
+          <span className="text-stats-info">{CARD_ICONS[icon]}</span>
+          {title}
+        </h3>
+        <CardExportButtons getNode={() => ref.current} buildModel={buildModel} fechaLabel={fechaLabel} />
+      </div>
+      <div ref={ref}>
+        <GraficosInlineSection
+          stackedData={stackedData}
+          pendientesData={pendientesData}
+          finalizadosData={finalizadosData}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -229,8 +328,16 @@ function StatsContent() {
   const { user, escenarioId } = useAuth();
   // Gate: puede ver sin-asignar — controlado únicamente por la funcionalidad 'Ped s/asignar acumulados'.
   // Root siempre puede. El rol del usuario ya no condiciona esta visibilidad.
-  const canSeeUnassigned = isRoot(user) || hasFuncionalidad(user?.roles, 'Ped s/asignar acumulados');
-  const isPrivilegedScope = isPrivilegedForZonaScope(user);
+  const canSeeUnassigned = isRoot(user) || hasSaAcumulados(user?.roles);
+  const isPrivilegedScope = canSeeAllEmpresas(user);
+  // Gates por card de la fila 2 — SIN bypass de root (decisión: respetar la
+  // funcionalidad aunque el usuario sea root):
+  //   - 'Estadist.GlobalxMovil' → Top móviles por entregas
+  //   - 'Estadist.GlobalxZona'  → Pedidos por zona
+  //   - 'Estadist.GlobalxEF'    → Pedidos por empresa (EF = empresa fletera)
+  const canSeeStatsMovil = hasFuncionalidad(user?.roles, 'Estadist.GlobalxMovil');
+  const canSeeStatsZona = hasFuncionalidad(user?.roles, 'Estadist.GlobalxZona');
+  const canSeeStatsEmpresa = hasFuncionalidad(user?.roles, 'Estadist.GlobalxEF');
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
   const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;
@@ -251,15 +358,58 @@ function StatsContent() {
   const [refreshTick, setRefreshTick] = useState<number>(0);
   const [zonasNoActivasCount, setZonasNoActivasCount] = useState<number | null>(null);
   const [zonasSinMovilCount, setZonasSinMovilCount] = useState<number | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  // Theme dark/light. Default dark (era el unico valor antes). Persistencia
+  // en localStorage scoped a esta pantalla — toggle solo afecta /dashboard/stats.
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  // Modal states para las 3 tarjetas de porcentaje por entidad
+  const [showEmpresa, setShowEmpresa] = useState(false);
+  const [showMoviles, setShowMoviles] = useState(false);
+  const [showZona, setShowZona] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem('stats-theme');
+    if (saved === 'light' || saved === 'dark') setTheme(saved);
+  }, []);
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('stats-theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       setError(null);
       try {
+        // Auth scope para /api/pedidos y /api/services
+        // Ambos endpoints usan fail-closed server-side:
+        //   Si x-track-isroot != S y empresas_fleteras ausente devuelve [].
+        // Patron identico al de app/dashboard/page.tsx (fetchPedidos/fetchServices).
+        const isRootUser = isRoot(user);
+        // Header x-track-isroot efectivo: 'S' para acceso total no-root (rol Despacho o
+        // "Ver todas las empresas", señalados por allowedEmpresas == null). Sin esto, esos
+        // usuarios mandaban 'N' sin empresas y el server hacía fail-closed -> []. Mismo
+        // criterio que app/dashboard/page.tsx (isRootHeader).
+        const hasFullEmpresaAccess = !!user && (isRootUser || user.allowedEmpresas == null);
+        const isRootHeader: 'S' | 'N' = hasFullEmpresaAccess ? 'S' : 'N';
+        const authHeaders: Record<string, string> = {
+          'x-track-isroot': isRootHeader,
+          'x-track-funcs': (user?.roles ?? []).flatMap(r => (r.funcionalidades ?? []).map(f => f.nombre)).join(','),
+        };
+        const pedidosParams = new URLSearchParams({ fecha: date });
+        const servicesParams = new URLSearchParams({ fecha: date });
+        if (escenarioId != null) {
+          pedidosParams.set('escenario', String(escenarioId));
+          servicesParams.set('escenario', String(escenarioId));
+        }
+        if (!isRootUser && user?.allowedEmpresas && user.allowedEmpresas.length > 0) {
+          const empresasStr = user.allowedEmpresas.join(',');
+          pedidosParams.set('empresas_fleteras', empresasStr);
+          servicesParams.set('empresas_fleteras', empresasStr);
+        }
+
         const [pRes, sRes, eRes, mRes, gRes] = await Promise.all([
-          fetch(`/api/pedidos?fecha=${date}`),
-          fetch(`/api/services?fecha=${date}`),
+          fetch(`/api/pedidos?${pedidosParams.toString()}`, { headers: authHeaders }),
+          fetch(`/api/services?${servicesParams.toString()}`, { headers: authHeaders }),
           fetch(`/api/empresas`),
           fetch(`/api/moviles-extended`),
           fetch(`/api/all-positions`),
@@ -286,6 +436,7 @@ function StatsContent() {
         // Set de IDs con GPS vigente (equivalente al INNER JOIN gps_latest_positions)
         const gpsIds = new Set<string>((gData.data ?? []).map((g: { movilId: number }) => String(g.movilId)));
         setMovilesConGps(gpsIds);
+        setLastUpdatedAt(new Date());
       } catch (e) {
         setError('Error al cargar los datos');
       } finally {
@@ -293,7 +444,7 @@ function StatsContent() {
       }
     };
     load();
-  }, [date, refreshTick]);
+  }, [date, refreshTick, user, escenarioId]);
 
   // ─── Auto-refresh ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -363,10 +514,23 @@ function StatsContent() {
         if (zonasData.success && mzData.success) {
           const allZonas: { zona_id: number }[] = (zonasData.data || []).filter((z: any) => z.geojson);
 
-          // Filtrar moviles-zonas por tipo URGENTE
-          const movilesZonas = (mzData.data || []).filter(
-            (mz: any) => (mz.tipo_de_servicio || '').toUpperCase() === 'URGENTE'
-          );
+          // Mapa movil_id (string) → estadoNro, construido desde movilesRaw ya cargados.
+          // Criterio inclusivo: undefined = activo (optimista), isMovilActiveForUI incluye BAJA MOMENTÁNEA (4).
+          // Si movilesRaw está vacío → no se construye el map y no se filtra (evita falsos "sin móvil" durante carga).
+          const movilEstadosMap = new Map<string, number | null>();
+          for (const m of movilesRaw) {
+            movilEstadosMap.set(String(m.nro), m.estadoNro ?? null);
+          }
+
+          // Filtrar moviles-zonas por tipo URGENTE y por estado activo (inclusivo)
+          const movilesZonas = (mzData.data || []).filter((mz: any) => {
+            if ((mz.tipo_de_servicio || '').toUpperCase() !== 'URGENTE') return false;
+            if (movilEstadosMap.size === 0) return true; // estados aún no cargados → asumir activo
+            const key = String(mz.movil_id);
+            if (!movilEstadosMap.has(key)) return true; // estado desconocido → asumir activo
+            const estado = movilEstadosMap.get(key);
+            return estado === null || estado === undefined || isMovilActiveForUI(estado);
+          });
 
           // Conteos por zona
           const zonaCounts = new Map<number, { prioridad: number; transito: number }>();
@@ -391,7 +555,7 @@ function StatsContent() {
       }
     };
     loadZoneData();
-  }, [refreshTick, selectedEmpresa, isPrivilegedScope, user?.allowedEmpresas, empresas]);
+  }, [refreshTick, selectedEmpresa, isPrivilegedScope, user?.allowedEmpresas, empresas, movilesRaw]);
 
   // ─── Opciones de empresa (para el filtro) ──────────────────────────────────
   // Opciones del combo Empresa:
@@ -413,7 +577,27 @@ function StatsContent() {
   // ─── Pedidos filtrados por empresa y producto ─────────────────────────────
   // Distribuidores: cuando selectedEmpresa='Todas' solo ven sus allowedEmpresas.
   const filteredPedidos = useMemo(() => {
-    let result = pedidos;
+    // Filtro asimétrico de arrastre: alineado con pedidosCompletos en dashboard/page.tsx.
+    // Cuando es hoy: acepta fch_para=hoy (cualquier estado), fch_para=ayer solo si
+    // estado_nro===1 (pendiente arrastrado), o fch_hora_para que cae en hoy.
+    // Para días pasados: solo fch_para === fechaCompact.
+    // pendienteDateRangeCompact devuelve [hoy, ayer] si date===hoy, [date] si es pasado.
+    const dateRange = pendienteDateRangeCompact(date);
+    const fechaCompact = dateRange[0];   // siempre la fecha principal
+    const ayerCompact = dateRange[1];    // definido solo cuando date === hoy
+    const hasArrastre = dateRange.length === 2;
+    let result = pedidos.filter(p => {
+      const fchParaStr = p.fch_para != null ? String(p.fch_para).replace(/-/g, '') : null;
+      const fchHoraParaInDate = p.fch_hora_para
+        ? String(p.fch_hora_para).startsWith(date)
+        : false;
+      if (fchParaStr === fechaCompact) return true;
+      if (fchHoraParaInDate) return true;
+      if (hasArrastre && fchParaStr === ayerCompact && Number(p.estado_nro) === 1) return true;
+      // Si no tiene ninguno de los dos campos, incluir (consistente con dashboard)
+      if (!p.fch_para && !p.fch_hora_para) return true;
+      return false;
+    });
     if (selectedEmpresa !== 'Todas') {
       // Filtro por empresa seleccionada explícitamente
       result = result.filter(p => getEmpresaNombre(p, movilEmpresa, empresas) === selectedEmpresa);
@@ -436,7 +620,7 @@ function StatsContent() {
     if (!canSeeUnassigned)
       result = result.filter(p => !(Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0)));
     return result;
-  }, [pedidos, selectedEmpresa, selectedProducto, movilEmpresa, empresas, isPrivilegedScope, canSeeUnassigned, user?.allowedEmpresas]);
+  }, [pedidos, date, selectedEmpresa, selectedProducto, movilEmpresa, empresas, isPrivilegedScope, canSeeUnassigned, user?.allowedEmpresas]);
 
   // ─── Services filtrados por empresa ────────────────────────────────────────
   // Misma lógica de scope que filteredPedidos pero sin filtro de producto.
@@ -551,6 +735,7 @@ function StatsContent() {
     const max = Math.max(...sorted.map(e => e[1]), 1);
     return sorted.map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }));
   }, [filteredPedidos]);
+
 
   // ─── Pedidos por empresa (multi-serie) ────────────────────────────────────
   const pedidosPorEmpresa = useMemo(() => {
@@ -692,6 +877,24 @@ function StatsContent() {
     return { total, muyAtrasado, atrasado, limiteCercana, enHora, sinHora, pctAtraso };
   }, [filteredPedidos]);
 
+  // ─── Atrasos por pedidos entregados (rangos de cumplimiento) ─────────────────────────
+  const atrasosEntregadosStats = useMemo(() => {
+    const entregados = filteredPedidos.filter(p => isPedidoEntregado(p) && !p.pedido_hijo);
+    let rango1a15 = 0, rango15a30 = 0, rango30a60 = 0, rango60mas = 0, sinDato = 0;
+    entregados.forEach(p => {
+      const min = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+      if (min === null) { sinDato++; return; }
+      if (min <= 0) { sinDato++; return; } // en hora o anticipado: sin atraso
+      if (min <= 15) rango1a15++;
+      else if (min <= 30) rango15a30++;
+      else if (min <= 60) rango30a60++;
+      else rango60mas++;
+    });
+    const total = entregados.length;
+    const conAtraso = rango1a15 + rango15a30 + rango30a60 + rango60mas;
+    return { total, rango1a15, rango15a30, rango30a60, rango60mas, sinDato, conAtraso };
+  }, [filteredPedidos]);
+
   // ─── Móviles con más entregas ──────────────────────────────────────────────
   const movilesTop = useMemo((): StackRow[] => {
     const map: Record<string, { entregados: number; noEntregados: number; pendientes: number }> = {};
@@ -715,6 +918,147 @@ function StatsContent() {
         return b.entregados - a.entregados;
       });
   }, [filteredPedidos]);
+
+  // ─── Pendientes por atraso × móvil ────────────────────────────────────────
+  const pendientesPorMovil = useMemo<BucketRow[]>(() => {
+    const map = new Map<number, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (isPedidoEntregado(p)) continue;
+      if (Number(p.estado_nro) !== 1) continue;
+      const movilNum = p.movil ? Number(p.movil) : 0;
+      if (!movilNum) continue;
+      const mins = computeDelayMinutes(p.fch_hora_max_ent_comp ?? null);
+      const bucket = bucketAtrasoPendiente(mins);
+      if (!map.has(movilNum)) {
+        map.set(movilNum, {
+          label: `Móvil ${movilNum}`,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_PENDIENTE_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(movilNum)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos]);
+
+  // ─── Finalizados por atraso × móvil ───────────────────────────────────────
+  const finalizadosPorMovil = useMemo<BucketRow[]>(() => {
+    const map = new Map<number, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (!isPedidoEntregado(p)) continue;
+      const movilNum = p.movil ? Number(p.movil) : 0;
+      if (!movilNum) continue;
+      const mins = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+      const bucket = bucketAtrasoFinalizado(mins);
+      if (!map.has(movilNum)) {
+        map.set(movilNum, {
+          label: `Móvil ${movilNum}`,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_FINALIZADO_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(movilNum)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos]);
+
+  // ─── Pendientes por atraso × zona ─────────────────────────────────────────
+  const pendientesPorZona = useMemo<BucketRow[]>(() => {
+    const map = new Map<string, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (isPedidoEntregado(p)) continue;
+      if (Number(p.estado_nro) !== 1) continue;
+      if (!p.zona_nro) continue;
+      const key = `Zona ${p.zona_nro}`;
+      const mins = computeDelayMinutes(p.fch_hora_max_ent_comp ?? null);
+      const bucket = bucketAtrasoPendiente(mins);
+      if (!map.has(key)) {
+        map.set(key, {
+          label: key,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_PENDIENTE_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(key)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos]);
+
+  // ─── Finalizados por atraso × zona ────────────────────────────────────────
+  const finalizadosPorZona = useMemo<BucketRow[]>(() => {
+    const map = new Map<string, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (!isPedidoEntregado(p)) continue;
+      if (!p.zona_nro) continue;
+      const key = `Zona ${p.zona_nro}`;
+      const mins = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+      const bucket = bucketAtrasoFinalizado(mins);
+      if (!map.has(key)) {
+        map.set(key, {
+          label: key,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_FINALIZADO_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(key)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos]);
+
+  // ─── Pendientes por atraso × empresa ──────────────────────────────────────
+  const pendientesPorEmpresa = useMemo<BucketRow[]>(() => {
+    const map = new Map<string, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (isPedidoEntregado(p)) continue;
+      if (Number(p.estado_nro) !== 1) continue;
+      const key = getEmpresaNombre(p, movilEmpresa, empresas);
+      if (key === 'Sin empresa') continue;
+      const mins = computeDelayMinutes(p.fch_hora_max_ent_comp ?? null);
+      const bucket = bucketAtrasoPendiente(mins);
+      if (!map.has(key)) {
+        map.set(key, {
+          label: key,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_PENDIENTE_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(key)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos, movilEmpresa, empresas]);
+
+  // ─── Finalizados por atraso × empresa ─────────────────────────────────────
+  const finalizadosPorEmpresa = useMemo<BucketRow[]>(() => {
+    const map = new Map<string, BucketRow>();
+    for (const p of filteredPedidos) {
+      if (!isPedidoEntregado(p)) continue;
+      const key = getEmpresaNombre(p, movilEmpresa, empresas);
+      if (key === 'Sin empresa') continue;
+      const mins = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+      const bucket = bucketAtrasoFinalizado(mins);
+      if (!map.has(key)) {
+        map.set(key, {
+          label: key,
+          total: 0,
+          buckets: Object.fromEntries(BUCKETS_FINALIZADO_ORDEN.map(b => [b, 0])),
+        });
+      }
+      const row = map.get(key)!;
+      row.buckets[bucket] += 1;
+      row.total += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredPedidos, movilEmpresa, empresas]);
 
   // ─── Móviles stats (respeta filtro de empresa) ─────────────────────────────
   const movilesStats = useMemo(() => {
@@ -772,113 +1116,191 @@ function StatsContent() {
     return Math.round((enHora.length / conAmbas.length) * 100);
   }, [filteredPedidos]);
 
+  const isFiltered = selectedEmpresa !== 'Todas' || selectedProducto !== 'Todos';
+  const clearFilters = () => { setSelectedEmpresa('Todas'); setSelectedProducto('Todos'); };
+
   return (
-    <div className="h-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-y-auto">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-gray-900/80 backdrop-blur-md border-b border-white/10 px-4 py-3">
-        {/* Row 1: título + total pedidos centrado + cerrar */}
-        <div className="relative flex items-center justify-between mb-2">
-          <div>
-            <h1 className="text-lg font-bold text-white">Centro Estadístico</h1>
-            <p className="text-sm text-gray-400">{formatDate(date)}</p>
-          </div>
-          {/* Total pedidos + Total services centrado absolutamente */}
-          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-6">
-            <div className="text-center">
-              <p className="text-xs text-gray-400 leading-none mb-0.5">Total pedidos</p>
-              <p className="text-3xl font-bold text-white leading-none">{pedidosStats.total}</p>
-            </div>
-            <div className="w-px h-8 bg-white/20" />
-            <div className="text-center">
-              <p className="text-xs text-gray-400 leading-none mb-0.5">Total services</p>
-              <p className="text-3xl font-bold text-white leading-none">{servicesStats.total}</p>
-            </div>
-          </div>
-          <button
-            onClick={() => window.close()}
-            className="text-gray-400 hover:text-white transition-colors text-sm"
-          >
-            Cerrar
-          </button>
-        </div>
-        {/* Row 2: filtros + refresh */}
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Filtro empresa */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 whitespace-nowrap">Empresa:</label>
-            <select
-              value={selectedEmpresa}
-              onChange={e => setSelectedEmpresa(e.target.value)}
-              className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+    <div
+      data-theme={theme}
+      className="h-full overflow-y-auto font-stats-sans bg-stats-background text-stats-foreground dark:bg-gradient-to-br dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 dark:text-white"
+    >
+      {/* ─── Header compacto ─────────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-10 backdrop-blur-md border-b px-4 py-2 bg-white/85 border-stats-border dark:bg-gray-900/85 dark:border-white/10">
+        {/* Row 1: titulo + KPIs inline (desktop) + acciones */}
+        <div className="flex items-center justify-between gap-3 mb-1.5">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h1 className="text-base font-bold tracking-tight whitespace-nowrap">Centro Estadístico</h1>
+            <span className="text-xs text-stats-muted-fg dark:text-gray-400 whitespace-nowrap">{formatDate(date)}</span>
+            <span
+              className="text-[10px] text-stats-muted-fg/70 dark:text-gray-500 hidden md:inline whitespace-nowrap"
+              title={lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('es-UY') : ''}
             >
-              <option value="Todas" className="bg-gray-900">Todas</option>
-              {empresaOptions.map(emp => (
-                <option key={emp} value={emp} className="bg-gray-900">{emp}</option>
+              · act. {formatTimeAgo(lastUpdatedAt)}
+              {isLoading && <span className="ml-1 text-stats-info animate-pulse">●</span>}
+            </span>
+          </div>
+          {/* Acciones */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Combo refresh: 1m–30m en pasos de 1 minuto */}
+            <select
+              value={refreshSeconds}
+              onChange={(e) => setRefreshSeconds(Number(e.target.value))}
+              className="text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-stats-info cursor-pointer bg-white border border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              aria-label="Intervalo de refresh"
+              title="Intervalo de refresh"
+            >
+              {Array.from({ length: 30 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m * 60}>{m}m</option>
               ))}
             </select>
-          </div>
-          {/* Filtro producto */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 whitespace-nowrap">Producto:</label>
-            <select
-              value={selectedProducto}
-              onChange={e => setSelectedProducto(e.target.value)}
-              className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+            <button
+              onClick={() => setRefreshTick((t) => t + 1)}
+              title="Actualizar ahora"
+              aria-label="Actualizar ahora"
+              className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
             >
-              <option value="Todos" className="bg-gray-900">Todos</option>
-              <option value="1002013" className="bg-gray-900">GLP Envasado 13 Kg</option>
-            </select>
-          </div>
-          {/* Auto-refresh */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 whitespace-nowrap">
-              Refresh:{' '}
-              <span className="text-white font-semibold">
-                {refreshSeconds === 0 ? 'Manual' : `${refreshSeconds}s`}
-              </span>
-            </label>
-            <input
-              type="range"
-              min={0} max={100} step={5}
-              value={refreshSeconds}
-              onChange={e => setRefreshSeconds(Number(e.target.value))}
-              className="w-24 accent-blue-400 cursor-pointer"
-            />
-            {/* Botón de refresh manual cuando el slash está en 0 */}
-            {refreshSeconds === 0 && (
-              <button
-                onClick={() => setRefreshTick(t => t + 1)}
-                title="Actualizar ahora"
-                className="text-blue-400 hover:text-blue-300 transition-colors p-1 rounded hover:bg-white/10"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+              <svg className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              title={`Cambiar a tema ${theme === 'dark' ? 'claro' : 'oscuro'}`}
+              aria-label={`Cambiar a tema ${theme === 'dark' ? 'claro' : 'oscuro'}`}
+              className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+            >
+              {theme === 'dark' ? (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                 </svg>
+              ) : (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={() => window.close()}
+              title="Cerrar"
+              aria-label="Cerrar"
+              className="p-1.5 rounded-lg transition-colors text-stats-muted-fg hover:bg-stats-surface-2 dark:text-gray-400 dark:hover:bg-white/10"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: filter pills */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Pill: Empresa */}
+          <label className={`group flex items-center gap-1.5 text-xs rounded-full pl-2.5 pr-1 py-0.5 transition-colors border ${
+            selectedEmpresa !== 'Todas'
+              ? 'bg-stats-info-soft border-stats-info text-stats-info dark:bg-stats-info/15 dark:border-stats-info/40'
+              : 'bg-stats-surface-2 border-stats-border text-stats-muted-fg dark:bg-white/5 dark:border-white/10 dark:text-gray-300'
+          }`}>
+            <svg className="h-3 w-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" /></svg>
+            <span className="opacity-70">Empresa:</span>
+            <select
+              value={selectedEmpresa}
+              onChange={(e) => setSelectedEmpresa(e.target.value)}
+              className="bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer pr-1 py-0.5 font-medium"
+              aria-label="Filtrar por empresa"
+            >
+              <option value="Todas" className="bg-stats-surface dark:bg-gray-900 text-stats-foreground dark:text-white">Todas</option>
+              {empresaOptions.map((emp) => (
+                <option key={emp} value={emp} className="bg-stats-surface dark:bg-gray-900 text-stats-foreground dark:text-white">{emp}</option>
+              ))}
+            </select>
+            {selectedEmpresa !== 'Todas' && (
+              <button
+                onClick={() => setSelectedEmpresa('Todas')}
+                className="ml-0.5 p-0.5 rounded-full hover:bg-stats-info/20"
+                aria-label="Quitar filtro empresa"
+                title="Quitar filtro"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             )}
-          </div>
-          {isLoading && <span className="text-xs text-blue-400 animate-pulse">Actualizando…</span>}
+          </label>
+
+          {/* Pill: Producto */}
+          <label className={`group flex items-center gap-1.5 text-xs rounded-full pl-2.5 pr-1 py-0.5 transition-colors border ${
+            selectedProducto !== 'Todos'
+              ? 'bg-stats-info-soft border-stats-info text-stats-info dark:bg-stats-info/15 dark:border-stats-info/40'
+              : 'bg-stats-surface-2 border-stats-border text-stats-muted-fg dark:bg-white/5 dark:border-white/10 dark:text-gray-300'
+          }`}>
+            <svg className="h-3 w-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
+            <span className="opacity-70">Producto:</span>
+            <select
+              value={selectedProducto}
+              onChange={(e) => setSelectedProducto(e.target.value)}
+              className="bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer pr-1 py-0.5 font-medium"
+              aria-label="Filtrar por producto"
+            >
+              <option value="Todos" className="bg-stats-surface dark:bg-gray-900 text-stats-foreground dark:text-white">Todos</option>
+              <option value="1002013" className="bg-stats-surface dark:bg-gray-900 text-stats-foreground dark:text-white">GLP Envasado 13 Kg</option>
+            </select>
+            {selectedProducto !== 'Todos' && (
+              <button
+                onClick={() => setSelectedProducto('Todos')}
+                className="ml-0.5 p-0.5 rounded-full hover:bg-stats-info/20"
+                aria-label="Quitar filtro producto"
+                title="Quitar filtro"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            )}
+          </label>
+
+          {isFiltered && (
+            <button
+              onClick={clearFilters}
+              className="text-[11px] px-2 py-0.5 rounded-full text-stats-info hover:underline focus:outline-none focus:ring-2 focus:ring-stats-info"
+            >
+              Limpiar filtros
+            </button>
+          )}
+
         </div>
       </div>
 
-      {isLoading && (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+      {/* Skeleton durante carga inicial (no en refreshes — el indicador de
+          "act. Ns" + ● en el header avisa de las recargas posteriores). */}
+      {isLoading && !lastUpdatedAt && (
+        <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+          <section>
+            <div className="h-3 w-20 rounded bg-stats-border dark:bg-white/10 mb-3 animate-pulse" />
+            <KpiSkeleton count={6} />
+          </section>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-xl p-4 border bg-stats-info-soft/50 border-stats-info/20 dark:bg-stats-info/5 dark:border-stats-info/15">
+              <div className="h-3 w-32 rounded bg-stats-info/30 mb-3 animate-pulse" />
+              <KpiSkeleton count={3} />
+            </div>
+            <div className="rounded-xl p-4 border bg-stats-success-soft/50 border-stats-success/20 dark:bg-stats-success/5 dark:border-stats-success/15">
+              <div className="h-3 w-32 rounded bg-stats-success/30 mb-3 animate-pulse" />
+              <KpiSkeleton count={3} />
+            </div>
+          </section>
         </div>
       )}
 
       {error && (
-        <div className="m-6 p-4 bg-red-500/20 border border-red-400/30 rounded-xl text-red-300 text-sm">
+        <div className="m-6 p-4 rounded-xl text-sm border bg-stats-destructive-soft border-stats-destructive/40 text-stats-destructive dark:bg-stats-destructive/10 dark:border-stats-destructive/30 dark:text-stats-destructive-soft">
           {error}
         </div>
       )}
 
-      {!isLoading && !error && (
+      {/* Contenido: en la primer carga el skeleton arriba ocupa el lugar; los
+          refreshes posteriores mantienen los datos viejos visibles + indicador. */}
+      {(!isLoading || lastUpdatedAt) && !error && (
         <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
 
           {/* ── KPIs Móviles ── */}
-          <section>
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Móviles</h2>
+          <section className="stats-section-enter" style={{ animationDelay: '0ms' }}>
+            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-muted-fg dark:text-gray-500">Móviles</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
               <KpiCard
                 label="Móviles Activos"
@@ -919,11 +1341,11 @@ function StatsContent() {
           </section>
 
           {/* ── KPIs: Pedidos Pendientes / Finalizados ── */}
-          <section>
+          <section className="stats-section-enter" style={{ animationDelay: '60ms' }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {/* Columna Pedidos Pendientes */}
-              <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
-                <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Pedidos Pendientes</h2>
+              <div className="rounded-xl p-4 border bg-stats-info-soft border-stats-info/30 dark:bg-stats-info/5 dark:border-stats-info/20">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-info">Pedidos Pendientes</h2>
                 <div className={`grid gap-2 ${canSeeUnassigned ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   {canSeeUnassigned && (
                     <KpiCard
@@ -947,8 +1369,8 @@ function StatsContent() {
                 </div>
               </div>
               {/* Columna Pedidos Finalizados */}
-              <div className="rounded-xl border border-green-400/20 bg-green-500/5 p-4">
-                <h2 className="text-xs font-semibold text-green-300 uppercase tracking-wider mb-3">Pedidos Finalizados</h2>
+              <div className="rounded-xl p-4 border bg-stats-success-soft border-stats-success/30 dark:bg-stats-success/5 dark:border-stats-success/20">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-success">Pedidos Finalizados</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <KpiCard
                     label="Entregados"
@@ -974,11 +1396,11 @@ function StatsContent() {
           </section>
 
           {/* ── KPIs Services ── */}
-          <section>
+          <section className="stats-section-enter" style={{ animationDelay: '120ms' }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Columna Services Pendientes */}
-              <div className="rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
-                <h2 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Services Pendientes</h2>
+              <div className="rounded-xl p-4 border bg-stats-info-soft border-stats-info/30 dark:bg-stats-info/5 dark:border-stats-info/20">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-info">Services Pendientes</h2>
                 <div className={`grid gap-2 ${canSeeUnassigned ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   {canSeeUnassigned && (
                     <KpiCard
@@ -1002,8 +1424,8 @@ function StatsContent() {
                 </div>
               </div>
               {/* Columna Services Finalizados */}
-              <div className="rounded-xl border border-green-400/20 bg-green-500/5 p-4">
-                <h2 className="text-xs font-semibold text-green-300 uppercase tracking-wider mb-3">Services Finalizados</h2>
+              <div className="rounded-xl p-4 border bg-stats-success-soft border-stats-success/30 dark:bg-stats-success/5 dark:border-stats-success/20">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-success">Services Finalizados</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <KpiCard
                     label="Realizados"
@@ -1028,152 +1450,330 @@ function StatsContent() {
           </section>
 
           {/* ── Gráficos ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stats-section-enter" style={{ animationDelay: '180ms' }}>
 
-            {/* Pedidos por hora */}
+            {/* Atrasos de pedidos pendientes — primera tarjeta, fila 1 */}
+            <ExpandableCard
+              title="Atrasos de pedidos pendientes"
+              icon="alert"
+              fechaLabel={`Datos del ${formatDate(date)}`}
+              exportModel={() => ({
+                title: 'Atrasos de pedidos pendientes',
+                subtitle: `${atrasosStats.total} pendientes en total · ${atrasosStats.pctAtraso}% con atraso`,
+                sections: [
+                  {
+                    heading: 'Pendientes por categoría',
+                    columns: ['Categoría', 'Cantidad', '%'],
+                    rows: [
+                      ['Muy Atrasado', atrasosStats.muyAtrasado, atrasosStats.total > 0 ? `${Math.round((atrasosStats.muyAtrasado / atrasosStats.total) * 100)}%` : '0%'],
+                      ['Atrasado', atrasosStats.atrasado, atrasosStats.total > 0 ? `${Math.round((atrasosStats.atrasado / atrasosStats.total) * 100)}%` : '0%'],
+                      ['Límite Cercana', atrasosStats.limiteCercana, atrasosStats.total > 0 ? `${Math.round((atrasosStats.limiteCercana / atrasosStats.total) * 100)}%` : '0%'],
+                      ['En Hora', atrasosStats.enHora, atrasosStats.total > 0 ? `${Math.round((atrasosStats.enHora / atrasosStats.total) * 100)}%` : '0%'],
+                      ['Sin Hora', atrasosStats.sinHora, atrasosStats.total > 0 ? `${Math.round((atrasosStats.sinHora / atrasosStats.total) * 100)}%` : '0%'],
+                    ],
+                  },
+                  {
+                    heading: `Atrasos por entregados (${atrasosEntregadosStats.total} entregados · ${atrasosEntregadosStats.conAtraso} con atraso)`,
+                    columns: ['Rango', 'Cantidad'],
+                    rows: [
+                      ['1 a 15 min', atrasosEntregadosStats.rango1a15],
+                      ['15 a 30 min', atrasosEntregadosStats.rango15a30],
+                      ['30 a 60 min', atrasosEntregadosStats.rango30a60],
+                      ['60+ min', atrasosEntregadosStats.rango60mas],
+                    ],
+                  },
+                ],
+              })}
+            >
+              <p className="text-xs mb-4 text-stats-muted-fg dark:text-gray-500">{atrasosStats.total} pendientes en total</p>
+
+              {/* % general con atraso */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-stats-muted-fg dark:text-gray-400">Con atraso</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold tabular-nums font-stats-mono" style={{ color: atrasosStats.pctAtraso >= 50 ? 'var(--color-stats-destructive)' : atrasosStats.pctAtraso >= 20 ? 'var(--color-stats-warning)' : 'var(--color-stats-success)' }}>
+                    {atrasosStats.pctAtraso}%
+                  </span>
+                  <span className="text-xs tabular-nums text-stats-muted-fg/80 dark:text-gray-500">({atrasosStats.muyAtrasado + atrasosStats.atrasado})</span>
+                </div>
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden mb-4 bg-stats-surface-2 dark:bg-white/10">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${atrasosStats.pctAtraso}%`,
+                    background: atrasosStats.pctAtraso >= 50 ? 'var(--color-stats-destructive)' : atrasosStats.pctAtraso >= 20 ? 'var(--color-stats-warning)' : 'var(--color-stats-success)',
+                  }}
+                />
+              </div>
+
+              {/* Categorías pendientes */}
+              <div className="space-y-2.5 text-xs">
+                {[
+                  { label: 'Muy Atrasado', value: atrasosStats.muyAtrasado, cssVar: 'var(--color-stats-destructive)', dot: 'bg-stats-destructive' },
+                  { label: 'Atrasado', value: atrasosStats.atrasado, cssVar: '#f472b6', dot: 'bg-pink-400' },
+                  { label: 'Límite Cercana', value: atrasosStats.limiteCercana, cssVar: 'var(--color-stats-warning)', dot: 'bg-stats-warning' },
+                  { label: 'En Hora', value: atrasosStats.enHora, cssVar: 'var(--color-stats-success)', dot: 'bg-stats-success' },
+                  { label: 'Sin Hora', value: atrasosStats.sinHora, cssVar: 'var(--color-stats-neutral)', dot: 'bg-stats-neutral' },
+                ].map(cat => (
+                  <div key={cat.label} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cat.dot}`} />
+                      <span className="text-stats-foreground/85 dark:text-gray-300">{cat.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: atrasosStats.total > 0 ? `${Math.round((cat.value / atrasosStats.total) * 100)}%` : '0%',
+                            background: cat.cssVar,
+                          }}
+                        />
+                      </div>
+                      <span className="font-semibold tabular-nums font-stats-mono w-6 text-right text-stats-foreground dark:text-white">{cat.value}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Sub-sección: Atrasos por pedidos entregados */}
+              <div className="mt-5 pt-4 border-t border-stats-border dark:border-white/10">
+                <h4 className="text-xs font-semibold uppercase tracking-wider mb-3 text-stats-muted-fg dark:text-gray-400">
+                  Atrasos por pedidos entregados
+                </h4>
+                {atrasosEntregadosStats.conAtraso === 0 ? (
+                  <p className="text-xs text-stats-muted-fg dark:text-gray-500 italic">Sin atrasos registrados en entregados</p>
+                ) : (
+                  <div className="space-y-2.5 text-xs">
+                    {[
+                      { label: '1 a 15 min', value: atrasosEntregadosStats.rango1a15, cssVar: 'var(--color-stats-warning)', dot: 'bg-stats-warning' },
+                      { label: '15 a 30 min', value: atrasosEntregadosStats.rango15a30, cssVar: '#f97316', dot: 'bg-orange-400' },
+                      { label: '30 a 60 min', value: atrasosEntregadosStats.rango30a60, cssVar: '#f472b6', dot: 'bg-pink-400' },
+                      { label: '60+ min', value: atrasosEntregadosStats.rango60mas, cssVar: 'var(--color-stats-destructive)', dot: 'bg-stats-destructive' },
+                    ].map(rango => (
+                      <div key={rango.label} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${rango.dot}`} />
+                          <span className="text-stats-foreground/85 dark:text-gray-300">{rango.label}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-1 rounded-full overflow-hidden bg-stats-surface-2 dark:bg-white/10">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: atrasosEntregadosStats.conAtraso > 0 ? `${Math.round((rango.value / atrasosEntregadosStats.conAtraso) * 100)}%` : '0%',
+                                background: rango.cssVar,
+                              }}
+                            />
+                          </div>
+                          <span className="font-semibold tabular-nums font-stats-mono w-6 text-right text-stats-foreground dark:text-white">{rango.value}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-stats-muted-fg/60 dark:text-gray-600 mt-2">
+                  {atrasosEntregadosStats.total} entregados totales · {atrasosEntregadosStats.conAtraso} con atraso registrado
+                </p>
+              </div>
+            </ExpandableCard>
+
+            {/* Pedidos por hora — fila 1, segunda tarjeta */}
             {pedidosPorHora.length > 0 && (
-              <ExpandableCard title="Pedidos por hora">
-                <BarChart data={pedidosPorHora} colorClass="bg-blue-500" />
+              <ExpandableCard
+                title="Pedidos por hora"
+                icon="clock"
+                fechaLabel={`Datos del ${formatDate(date)}`}
+                exportModel={() => ({
+                  title: 'Pedidos por hora',
+                  subtitle: `${pedidosPorHora.length} franjas horarias`,
+                  sections: [sectionFromValuePct(undefined, 'Hora', pedidosPorHora)],
+                })}
+              >
+                <BarChart data={pedidosPorHora} colorClass="bg-stats-info" />
               </ExpandableCard>
             )}
 
-            {/* Estados de pedidos */}
+            {/* Estados de pedidos — fila 1, tercera tarjeta */}
             {estadosPedidos.length > 0 && (
-              <ExpandableCard title="Pedidos por estado">
+              <ExpandableCard
+                title="Pedidos por estado"
+                icon="grid"
+                fechaLabel={`Datos del ${formatDate(date)}`}
+                exportModel={() => ({
+                  title: 'Pedidos por estado',
+                  subtitle: `${estadosPedidos.reduce((s, e) => s + e.value, 0)} pedidos en total`,
+                  sections: [
+                    {
+                      heading: 'Por estado',
+                      columns: ['Estado', 'Cantidad', '%'],
+                      rows: estadosPedidos.map((e) => [e.label, e.value, `${e.pct}%`]),
+                    },
+                    ...estadosPedidos
+                      .filter((e) => e.subEstados.length > 0)
+                      .map((e) => ({
+                        heading: `${e.label} — detalle`,
+                        columns: ['Sub-estado', 'Cantidad', '%'],
+                        rows: e.subEstados.map((s) => [s.label, s.value, `${s.pct}%`]),
+                      })),
+                  ],
+                })}
+              >
                 <div className="space-y-4">
-                  {estadosPedidos.map(estado => (
+                  {estadosPedidos.map(estado => {
+                    const labelUpper = (estado.label || '').toUpperCase();
+                    const estadoBarColor =
+                      labelUpper.includes('FINALIZ') || labelUpper.includes('ENTREGA') ? 'var(--color-stats-success)' :
+                      labelUpper.includes('PENDIENT') || labelUpper.includes('PROCESO') ? 'var(--color-stats-info)' :
+                      labelUpper.includes('CANCEL') || labelUpper.includes('ANUL') || labelUpper.includes('RECHAZ') ? 'var(--color-stats-destructive)' :
+                      'var(--color-stats-neutral)';
+                    return (
                     <div key={estado.label}>
-                      {/* Barra principal de estado */}
-                      <div className="flex justify-between text-xs mb-0.5">
-                        <span className="font-semibold text-gray-200">{estado.label}</span>
-                        <span className="font-bold text-white">
-                          {estado.value}
-                          <span className="text-gray-500 font-normal ml-1">· {estado.pct}%</span>
+                      <div className="flex justify-between items-baseline gap-2 text-xs mb-0.5">
+                        <span className="font-semibold text-stats-foreground/90 dark:text-gray-200">{estado.label}</span>
+                        <span className="font-bold tabular-nums font-stats-mono text-stats-foreground dark:text-white flex items-baseline gap-1">
+                          <span className="text-right min-w-[3ch]">{estado.value}</span>
+                          <span className="text-stats-muted-fg/70 dark:text-gray-500 font-normal text-right min-w-[3.5ch]">· {estado.pct}%</span>
                         </span>
                       </div>
-                      <div className="h-3 bg-white/10 rounded-full overflow-hidden mb-2">
+                      <div className="h-3 rounded-full overflow-hidden mb-2 bg-stats-surface-2 dark:bg-white/10">
                         <div
-                          className="h-full bg-purple-500 rounded-full transition-all duration-700"
-                          style={{ width: `${Math.max(estado.barPct, estado.value > 0 ? 2 : 0)}%` }}
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{
+                            width: `${Math.max(estado.barPct, estado.value > 0 ? 6 : 0)}%`,
+                            background: estadoBarColor,
+                          }}
                         />
                       </div>
-                      {/* Sub-estados desglosados */}
-                      <div className="pl-3 border-l border-white/10 space-y-1.5">
+                      <div className="pl-3 border-l border-stats-border dark:border-white/10 space-y-1.5">
                         {estado.subEstados.map(sub => (
                           <div key={sub.label}>
-                            <div className="flex justify-between text-[10px] mb-0.5">
-                              <span className="text-gray-400 truncate max-w-[65%]">{sub.label}</span>
-                              <span className="text-gray-300 font-semibold">
-                                {sub.value}
-                                <span className="text-gray-600 font-normal ml-1">· {sub.pct}%</span>
+                            <div className="flex justify-between items-baseline gap-2 text-[10px] mb-0.5">
+                              <span className="text-stats-muted-fg dark:text-gray-400 truncate max-w-[60%]">{sub.label}</span>
+                              <span className="font-semibold tabular-nums font-stats-mono text-stats-foreground/90 dark:text-gray-300 flex items-baseline gap-1">
+                                <span className="text-right min-w-[3ch]">{sub.value}</span>
+                                <span className="text-stats-muted-fg/60 dark:text-gray-600 font-normal text-right min-w-[3.5ch]">· {sub.pct}%</span>
                               </span>
                             </div>
-                            <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+                            <div className="h-3 rounded-full overflow-hidden bg-stats-surface-2/60 dark:bg-white/5">
                               <div
                                 className={`h-full rounded-full transition-all duration-500 ${
-                                  sub.isEntregado ? 'bg-green-400' :
-                                  estado.label === 'Pendiente' ? 'bg-blue-400' : 'bg-orange-400'
+                                  sub.isEntregado ? 'bg-stats-success' :
+                                  estado.label === 'Pendiente' ? 'bg-stats-info' : 'bg-stats-warning'
                                 }`}
-                                style={{ width: `${Math.max(sub.pct, sub.value > 0 ? 2 : 0)}%` }}
+                                style={{ width: `${Math.max(sub.pct, sub.value > 0 ? 6 : 0)}%` }}
                               />
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </ExpandableCard>
             )}
 
-            {/* Pedidos por empresa */}
-            {pedidosPorEmpresa.length > 0 && (
-              <ExpandableCard
-                title="Pedidos por empresa"
-                expandedChildren={<StackedBarChart data={pedidosPorEmpresa} expanded />}
+            {/* Top móviles por entregas — fila 2, botón lazy */}
+            {canSeeStatsMovil && (
+            <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-stats-info">{CARD_ICONS.truck}</span>
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200">Top móviles por entregas</h3>
+              </div>
+              <p className="text-xs text-stats-muted-fg dark:text-gray-400 mb-4">
+                {movilesTop.length} móviles con actividad. El gráfico se carga al solicitarlo.
+              </p>
+              <button
+                onClick={() => setShowMoviles((v) => !v)}
+                aria-expanded={showMoviles}
+                className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
               >
-                <StackedBarChart data={pedidosPorEmpresa.slice(0, 10)} />
-              </ExpandableCard>
+                {showMoviles ? 'Ocultar gráficos por móvil' : 'Mostrar gráficos por móvil'}
+              </button>
+            </div>
             )}
 
-            {/* Top móviles */}
-            {movilesTop.length > 0 && (
-              <ExpandableCard
+            {/* Pedidos por zona — fila 2, botón lazy */}
+            {canSeeStatsZona && (
+            <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-stats-info">{CARD_ICONS.pin}</span>
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200">Pedidos por zona</h3>
+              </div>
+              <p className="text-xs text-stats-muted-fg dark:text-gray-400 mb-4">
+                {pedidosPorZona.length} zonas con actividad. El gráfico se carga al solicitarlo.
+              </p>
+              <button
+                onClick={() => setShowZona((v) => !v)}
+                aria-expanded={showZona}
+                className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+              >
+                {showZona ? 'Ocultar gráficos por zona' : 'Mostrar gráficos por zona'}
+              </button>
+            </div>
+            )}
+
+            {/* Pedidos por empresa — fila 2, botón lazy */}
+            {canSeeStatsEmpresa && (
+            <div className="rounded-xl p-4 border transition-all duration-200 bg-stats-surface border-stats-border hover:border-stats-info/40 dark:bg-white/5 dark:border-white/10 dark:hover:border-stats-info/40">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-stats-info">{CARD_ICONS.building}</span>
+                <h3 className="text-sm font-semibold text-stats-foreground dark:text-gray-200">Pedidos por empresa</h3>
+              </div>
+              <p className="text-xs text-stats-muted-fg dark:text-gray-400 mb-4">
+                {pedidosPorEmpresa.length} empresas con actividad. El gráfico se carga al solicitarlo.
+              </p>
+              <button
+                onClick={() => setShowEmpresa((v) => !v)}
+                aria-expanded={showEmpresa}
+                className="w-full py-2 px-4 rounded-lg border border-stats-info/40 text-stats-info text-sm font-medium hover:bg-stats-info/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+              >
+                {showEmpresa ? 'Ocultar gráficos por empresa' : 'Mostrar gráficos por empresa'}
+              </button>
+            </div>
+            )}
+
+            {/* Reveals — siempre debajo de los 3 botones para mantenerlos apilados */}
+            {canSeeStatsMovil && showMoviles && (
+              <RevealChartBlock
                 title="Top móviles por entregas"
-                expandedChildren={<StackedBarChart data={movilesTop} expanded />}
-              >
-                <StackedBarChart data={movilesTop.slice(0, 10)} />
-              </ExpandableCard>
+                icon="truck"
+                labelCol="Móvil"
+                stackedData={movilesTop}
+                pendientesData={pendientesPorMovil}
+                finalizadosData={finalizadosPorMovil}
+                fechaLabel={`Datos del ${formatDate(date)}`}
+              />
             )}
-
-            {/* Pedidos por zona */}
-            {pedidosPorZona.length > 0 && (
-              <ExpandableCard
+            {canSeeStatsZona && showZona && (
+              <RevealChartBlock
                 title="Pedidos por zona"
-                expandedChildren={<StackedBarChart data={pedidosPorZona} expanded />}
-              >
-                <StackedBarChart data={pedidosPorZona.slice(0, 12)} />
-              </ExpandableCard>
+                icon="pin"
+                labelCol="Zona"
+                stackedData={pedidosPorZona}
+                pendientesData={pendientesPorZona}
+                finalizadosData={finalizadosPorZona}
+                fechaLabel={`Datos del ${formatDate(date)}`}
+              />
+            )}
+            {canSeeStatsEmpresa && showEmpresa && (
+              <RevealChartBlock
+                title="Pedidos por empresa"
+                icon="building"
+                labelCol="Empresa"
+                stackedData={pedidosPorEmpresa}
+                pendientesData={pendientesPorEmpresa}
+                finalizadosData={finalizadosPorEmpresa}
+                fechaLabel={`Datos del ${formatDate(date)}`}
+              />
             )}
 
-            {/* Atrasos de pedidos */}
-            <ExpandableCard title="Atrasos de pedidos pendientes">
-              <p className="text-xs text-gray-500 mb-4">{atrasosStats.total} pendientes en total</p>
-
-              {/* % general con atraso */}
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-gray-400">Con atraso</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold" style={{ color: atrasosStats.pctAtraso >= 50 ? '#ef4444' : atrasosStats.pctAtraso >= 20 ? '#f97316' : '#22c55e' }}>
-                    {atrasosStats.pctAtraso}%
-                  </span>
-                  <span className="text-xs text-gray-500">({atrasosStats.muyAtrasado + atrasosStats.atrasado})</span>
-                </div>
-              </div>
-              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-4">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{
-                    width: `${atrasosStats.pctAtraso}%`,
-                    background: atrasosStats.pctAtraso >= 50 ? '#ef4444' : atrasosStats.pctAtraso >= 20 ? '#f97316' : '#22c55e',
-                  }}
-                />
-              </div>
-
-              {/* Categorías */}
-              <div className="space-y-2.5 text-xs">
-                {[
-                  { label: 'Muy Atrasado', value: atrasosStats.muyAtrasado, color: '#ef4444', dot: 'bg-red-500' },
-                  { label: 'Atrasado', value: atrasosStats.atrasado, color: '#f472b6', dot: 'bg-pink-400' },
-                  { label: 'Límite Cercana', value: atrasosStats.limiteCercana, color: '#facc15', dot: 'bg-yellow-400' },
-                  { label: 'En Hora', value: atrasosStats.enHora, color: '#22c55e', dot: 'bg-green-500' },
-                  { label: 'Sin Hora', value: atrasosStats.sinHora, color: '#6b7280', dot: 'bg-gray-500' },
-                ].map(cat => (
-                  <div key={cat.label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cat.dot}`} />
-                      <span className="text-gray-300">{cat.label}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-1 bg-white/10 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: atrasosStats.total > 0 ? `${Math.round((cat.value / atrasosStats.total) * 100)}%` : '0%',
-                            background: cat.color,
-                          }}
-                        />
-                      </div>
-                      <span className="font-semibold text-white w-6 text-right">{cat.value}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ExpandableCard>
           </div>
 
           {/* Footer */}
-          <p className="text-center text-xs text-gray-600 pb-4">
+          <p className="text-center text-xs pb-4 text-stats-muted-fg/60 dark:text-gray-600">
             Datos del {formatDate(date)} · RiogasTracking
           </p>
         </div>
@@ -1187,8 +1787,8 @@ export default function StatsPage() {
   return (
     <ProtectedRoute>
       <Suspense fallback={
-        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+        <div className="min-h-screen flex items-center justify-center bg-stats-background dark:bg-gray-900">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-stats-info" />
         </div>
       }>
         <StatsContent />

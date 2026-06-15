@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import type {
   GPSTrackingSupabase,
@@ -15,6 +15,11 @@ import { recordRealtimeFailure } from '@/lib/realtime-health';
 // Activar solo en desarrollo para no serializar objetos en cada update de GPS
 const DEBUG_REALTIME = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_REALTIME === '1';
 const dbg = (...args: any[]) => { if (DEBUG_REALTIME) console.log(...args); };
+
+// perf-round-3: tiempo de debounce para coalescer eventos de pedidos/services.
+// 250ms es imperceptible para el usuario y reduce actualizaciones de state ~10x
+// cuando llegan ráfagas de eventos (ej. importación masiva, cambio de turno).
+const PEDIDOS_DEBOUNCE_MS = 250;
 
 /**
  * Programa una reconexión del canal Realtime respetando la visibilidad del
@@ -65,12 +70,21 @@ function scheduleReconnect(
  * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
  *   El consumidor debe usarlo para hacer refetch del estado completo, ya que los
  *   eventos perdidos durante la desconexión no se reenvían.
+ * @param empresaIds - Array de IDs de empresa_fletera para filtrado server-side (opcional).
+ *   Si se provee, aplica filter en el canal Realtime de gps_latest_positions.
+ *   Requiere que la columna empresa_fletera_id exista en gps_latest_positions
+ *   (migration: docs/sqls/2026-05-18-gps-latest-empresa-fletera.sql).
+ *   Si es null/undefined (root o sin restricción): NO se aplica filtro server-side.
+ * @param enabled - Si false, no se crea ningún channel y se limpian los existentes.
+ *   Usado por el modo histórico para pausar Realtime sin desmontar el hook.
  */
 export function useGPSTracking(
   escenarioId: number = 1,
   movilIds?: string[],
   onUpdate?: (position: GPSTrackingSupabase) => void,
-  onReconnect?: () => void
+  onReconnect?: () => void,
+  empresaIds?: number[],
+  enabled: boolean = true
 ) {
   const [positions, setPositions] = useState<Map<string, GPSTrackingSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -85,11 +99,38 @@ export function useGPSTracking(
   onReconnectRef.current = onReconnect;
 
   useEffect(() => {
+    // Modo histórico: no crear channels, marcar como desconectado.
+    if (!enabled) {
+      console.log('🔌 Realtime GPS pausado (modo histórico)');
+      setIsConnected(false);
+      return () => {};
+    }
+
     console.log('🔄 Iniciando suscripción GPS Tracking...');
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
+
+    // Construir el filtro server-side para el canal Realtime.
+    // Replica el patrón de useMoviles (perf-round-2, commit 2391a4f):
+    //   - 1 empresa: 'empresa_fletera_id=eq.X'
+    //   - N empresas: 'empresa_fletera_id=in.(X,Y,Z)'
+    //   - null/undefined (root): sin filtro adicional (comportamiento original)
+    // NOTA: el filtro server-side reduce el tráfico de red, pero el filtrado
+    // client-side por movilIds se mantiene como segunda defensa.
+    const buildGpsFilter = (): string => {
+      if (empresaIds && empresaIds.length === 1) {
+        return `empresa_fletera_id=eq.${empresaIds[0]}`;
+      }
+      if (empresaIds && empresaIds.length > 1) {
+        return `empresa_fletera_id=in.(${empresaIds.join(',')})`;
+      }
+      // Root/sin restricción: filtrar solo por escenario
+      return `escenario_id=eq.${escenarioId}`;
+    };
+
+    const gpsFilter = buildGpsFilter();
 
     const setupChannel = () => {
       // Limpiar canal anterior si existe
@@ -117,7 +158,7 @@ export function useGPSTracking(
             event: 'INSERT',
             schema: 'public',
             table: 'gps_latest_positions',
-            filter: `escenario_id=eq.${escenarioId}`,
+            filter: gpsFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
@@ -125,7 +166,7 @@ export function useGPSTracking(
             dbg('📍 GPS INSERT:', (payload.new as any)?.movil_id);
             const newPosition = payload.new as GPSTrackingSupabase;
 
-            // Filtrar por móvil si se especifica
+            // Filtrar por móvil si se especifica (segunda defensa client-side)
             if (!movilIds || movilIds.includes(newPosition.movil_id)) {
               setPositions(prev => {
                 const updated = new Map(prev);
@@ -145,7 +186,7 @@ export function useGPSTracking(
             event: 'UPDATE',
             schema: 'public',
             table: 'gps_latest_positions',
-            filter: `escenario_id=eq.${escenarioId}`,
+            filter: gpsFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
@@ -153,6 +194,7 @@ export function useGPSTracking(
             dbg('📍 GPS UPDATE:', (payload.new as any)?.movil_id);
             const updatedPosition = payload.new as GPSTrackingSupabase;
 
+            // Filtrar por móvil si se especifica (segunda defensa client-side)
             if (!movilIds || movilIds.includes(updatedPosition.movil_id)) {
               setPositions(prev => {
                 const updated = new Map(prev);
@@ -221,7 +263,9 @@ export function useGPSTracking(
         supabase.removeChannel(channel);
       }
     };
-  }, [escenarioId, movilIds?.join(',')]); // Re-suscribir si cambian los filtros
+  // Re-suscribir si cambian los filtros (escenario, moviles, empresas, o enabled)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escenarioId, movilIds?.join(','), empresaIds?.join(','), enabled]);
 
   return { positions, isConnected, error };
 }
@@ -233,12 +277,14 @@ export function useGPSTracking(
  * @param onUpdate - Callback cuando se recibe una actualización de móvil
  * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
  *   El consumidor debe usarlo para hacer refetch del estado completo.
+ * @param enabled - Si false, no se crea ningún channel. Usado en modo histórico.
  */
 export function useMoviles(
   escenarioId: number = 1,
   empresaIds?: number[],
   onUpdate?: (movil: MovilSupabase) => void,
-  onReconnect?: () => void
+  onReconnect?: () => void,
+  enabled: boolean = true
 ) {
   const [moviles, setMoviles] = useState<MovilSupabase[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -250,6 +296,13 @@ export function useMoviles(
   onReconnectRef.current = onReconnect;
 
   useEffect(() => {
+    // Modo histórico: no crear channels, marcar como desconectado.
+    if (!enabled) {
+      console.log('🔌 Realtime Móviles pausado (modo histórico)');
+      setIsConnected(false);
+      return () => {};
+    }
+
     console.log('🔄 Iniciando suscripción a móviles...');
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
@@ -277,6 +330,18 @@ export function useMoviles(
             event: '*', // INSERT, UPDATE, DELETE
             schema: 'public',
             table: 'moviles',
+            // Fix 3 perf-round-2: server-side filter por empresa.
+            // Supabase Realtime postgres_changes soporta filter con sintaxis PostgREST.
+            // Si empresaIds tiene exactamente 1 empresa: 'empresa_fletera_id=eq.X'
+            // Si tiene 2+: 'empresa_fletera_id=in.(1,2,3)'
+            // Si es null/undefined (root/sin restriccion): sin filter (comportamiento actual).
+            // IMPORTANTE: el filtro server-side reduce el trafico de red pero el
+            // filtrado client-side en el callback se mantiene como segunda defensa.
+            ...(empresaIds && empresaIds.length === 1
+              ? { filter: `empresa_fletera_id=eq.${empresaIds[0]}` }
+              : empresaIds && empresaIds.length > 1
+              ? { filter: `empresa_fletera_id=in.(${empresaIds.join(',')})` }
+              : {}),
           },
           (payload) => {
             if (!isComponentMounted) return;
@@ -344,7 +409,7 @@ export function useMoviles(
       if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
     };
-  }, [escenarioId, empresaIds?.join(',')]);
+  }, [escenarioId, empresaIds?.join(','), enabled]);
 
   return { moviles, isConnected };
 }
@@ -470,16 +535,31 @@ export function useEmpresasFleteras(
 }
 
 /**
- * Hook para suscribirse a cambios en tiempo real de pedidos pendientes
+ * Hook para escuchar cambios en tiempo real de pedidos pendientes.
+ *
+ * perf-round-3: los eventos Supabase Realtime se coalescen en un buffer debounced
+ * (PEDIDOS_DEBOUNCE_MS). Cuando llegan múltiples eventos en ráfaga (ej. asignación
+ * masiva), solo se emite UNA actualización del Map de state. Esto evita que el
+ * dashboard dispare N renders consecutivos con N setMoviles().
+ *
  * @param escenarioId - ID del escenario a monitorear
  * @param movilIds - Array de IDs de móviles a filtrar (opcional)
  * @param onUpdate - Callback cuando se recibe una actualización de pedido
+ * @param onReconnect - Callback invocado cuando el canal reconecta tras una caída.
+ * @param enabled - Si false, no se crea ningún channel y se limpian los existentes.
+ *   Usado en modo histórico para pausar Realtime sin desmontar el hook.
+ * @param empresaIds - Array de IDs de empresa_fletera para filtrado server-side (opcional).
+ *   Si se provee (supervisor): el canal Realtime filtra por empresa_fletera_id en lugar
+ *   de escenario, reduciendo el tráfico WS al scope del usuario.
+ *   Si es null/undefined (root): filtra por escenario (comportamiento original).
  */
 export function usePedidosRealtime(
   escenarioId: number = 1,
   movilIds?: number[],
   onUpdate?: (pedido: PedidoSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
-  onReconnect?: () => void
+  onReconnect?: () => void,
+  enabled: boolean = true,
+  empresaIds?: number[]
 ) {
   const [pedidos, setPedidos] = useState<Map<number, PedidoSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -491,18 +571,91 @@ export function usePedidosRealtime(
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
 
+  // perf-round-3 Fix 1: buffer debounced para coalescer eventos de pedidos.
+  // En lugar de llamar setPedidos en cada evento (que dispara el useEffect del
+  // dashboard que hace setMoviles), acumulamos cambios y los aplicamos juntos.
+  // El flushRef guarda la función de flush actualizada (por closure) sin recrear el timer.
+  const pendingPatchesRef = useRef<Array<{ type: 'upsert' | 'delete'; pedido: PedidoSupabase }>>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    // Modo histórico: no crear channels, limpiar estado pendiente.
+    if (!enabled) {
+      console.log('🔌 Realtime Pedidos pausado (modo histórico)');
+      setIsConnected(false);
+      if (flushTimerRef.current != null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      pendingPatchesRef.current = [];
+      return () => {};
+    }
+
     console.log('🔄 Suscripción pedidos realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
 
+    // Función de flush: aplica todos los patches pendientes al Map y llama setPedidos UNA vez.
+    const flushPending = () => {
+      flushTimerRef.current = null;
+      if (!isComponentMounted) return;
+      const patches = pendingPatchesRef.current;
+      if (patches.length === 0) return;
+      pendingPatchesRef.current = [];
+
+      setPedidos(prev => {
+        const updated = new Map(prev);
+        let changed = false;
+        for (const patch of patches) {
+          if (patch.type === 'upsert') {
+            const existing = updated.get(patch.pedido.id);
+            // Bail-out: si el objeto es idéntico (misma referencia o mismos campos clave),
+            // no reemplazar para evitar invalidar el useMemo downstream.
+            if (existing !== patch.pedido) {
+              updated.set(patch.pedido.id, patch.pedido);
+              changed = true;
+            }
+          } else {
+            if (updated.has(patch.pedido.id)) {
+              updated.delete(patch.pedido.id);
+              changed = true;
+            }
+          }
+        }
+        // Fix 3 shallow merge: si ningún patch cambió nada, devolver la referencia anterior.
+        return changed ? updated : prev;
+      });
+      setLastEventAt(Date.now());
+    };
+
+    // Encolar un patch y armar el timer de flush (si no existe ya).
+    const enqueuePatch = (type: 'upsert' | 'delete', pedido: PedidoSupabase) => {
+      pendingPatchesRef.current.push({ type, pedido });
+      if (flushTimerRef.current == null) {
+        flushTimerRef.current = setTimeout(flushPending, PEDIDOS_DEBOUNCE_MS);
+      }
+      // Si ya hay timer pendiente, solo actualizamos el buffer — el timer existente
+      // flusheará todos los patches acumulados al expirar.
+    };
+
     const setupChannel = () => {
       if (channel) {
         supabase.removeChannel(channel);
         channel = null;
       }
+
+      // perf-round-4: si empresaIds está definido (usuario con scope de empresa),
+      // filtrar por empresa_fletera_id en lugar de escenario. Esto reduce el tráfico
+      // del WS para supervisores/distribuidores al scope de sus empresas, eliminando
+      // la carga progresiva (1, 4, 6... pedidos) causada por eventos de todo el escenario.
+      // Root/despacho (sin empresaIds) mantiene el filtro original por escenario.
+      const realtimeFilter = empresaIds && empresaIds.length > 0
+        ? (empresaIds.length === 1
+            ? `empresa_fletera_id=eq.${empresaIds[0]}`
+            : `empresa_fletera_id=in.(${empresaIds.join(',')})`)
+        : `escenario=eq.${escenarioId}`;
+      console.log(`🔄 Pedidos Realtime filter: ${realtimeFilter}`);
 
       const channelName = `pedidos-realtime-${escenarioId}-${Date.now()}`;
 
@@ -519,19 +672,16 @@ export function usePedidosRealtime(
             event: 'INSERT',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const newPedido = payload.new as PedidoSupabase;
 
+            // Segunda defensa client-side: empresa (solo cuando empresaIds definido)
+            if (empresaIds && empresaIds.length > 0 && newPedido.empresa_fletera_id != null && !empresaIds.includes(Number(newPedido.empresa_fletera_id))) return;
             if (!movilIds || movilIds.length === 0 || (newPedido.movil && movilIds.includes(newPedido.movil))) {
-              setPedidos(prev => {
-                const updated = new Map(prev);
-                updated.set(newPedido.id, newPedido);
-                return updated;
-              });
-              setLastEventAt(Date.now());
+              enqueuePatch('upsert', newPedido);
               if (onUpdate) onUpdate(newPedido, 'INSERT');
             }
           }
@@ -542,19 +692,16 @@ export function usePedidosRealtime(
             event: 'UPDATE',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const updatedPedido = payload.new as PedidoSupabase;
 
+            // Segunda defensa client-side: empresa
+            if (empresaIds && empresaIds.length > 0 && updatedPedido.empresa_fletera_id != null && !empresaIds.includes(Number(updatedPedido.empresa_fletera_id))) return;
             if (!movilIds || movilIds.length === 0 || (updatedPedido.movil && movilIds.includes(updatedPedido.movil))) {
-              setPedidos(prev => {
-                const updated = new Map(prev);
-                updated.set(updatedPedido.id, updatedPedido);
-                return updated;
-              });
-              setLastEventAt(Date.now());
+              enqueuePatch('upsert', updatedPedido);
               if (onUpdate) onUpdate(updatedPedido, 'UPDATE');
             }
           }
@@ -565,18 +712,12 @@ export function usePedidosRealtime(
             event: 'DELETE',
             schema: 'public',
             table: 'pedidos',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const deletedPedido = payload.old as PedidoSupabase;
-
-            setPedidos(prev => {
-              const updated = new Map(prev);
-              updated.delete(deletedPedido.id);
-              return updated;
-            });
-            setLastEventAt(Date.now());
+            enqueuePatch('delete', deletedPedido);
             if (onUpdate) onUpdate(deletedPedido, 'DELETE');
           }
         )
@@ -622,11 +763,22 @@ export function usePedidosRealtime(
       isComponentMounted = false;
       if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
+      // Cancelar el timer de flush pendiente para evitar setState tras unmount
+      if (flushTimerRef.current != null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      pendingPatchesRef.current = [];
     };
-  }, [escenarioId, movilIds?.join(',')]); // Recrear si cambian los móviles
+  }, [escenarioId, movilIds?.join(','), enabled, empresaIds?.join(',')]); // Recrear si cambian móviles, enabled o empresas
+
+  // perf: memoizar el array para que la referencia no cambie si el Map no cambió.
+  // Sin esto, cada render del hook (por any state) crea un nuevo array → downstream
+  // useMemos que dependen de pedidosCompletos se invalidan innecesariamente.
+  const pedidosArray = useMemo(() => Array.from(pedidos.values()), [pedidos]);
 
   return {
-    pedidos: Array.from(pedidos.values()),
+    pedidos: pedidosArray,
     isConnected,
     error,
     lastEventAt,
@@ -634,36 +786,106 @@ export function usePedidosRealtime(
 }
 
 /**
- * Hook para escuchar cambios en services en tiempo real via Supabase Realtime
+ * Hook para escuchar cambios en services en tiempo real via Supabase Realtime.
+ *
+ * perf-round-3: misma estrategia de debounce que usePedidosRealtime — los eventos
+ * se coalescen en PEDIDOS_DEBOUNCE_MS antes de actualizar el state.
+ *
+ * @param enabled - Si false, no se crea ningún channel. Usado en modo histórico.
+ * @param empresaIds - Array de IDs de empresa_fletera para filtrado server-side (opcional).
+ *   Si se provee: el canal Realtime filtra por empresa_fletera_id para reducir tráfico WS.
+ *   Si es null/undefined (root): filtra por escenario (comportamiento original).
  */
 export function useServicesRealtime(
   escenarioId: number = 1,
   movilIds?: number[],
   onUpdate?: (service: ServiceSupabase, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
-  onReconnect?: () => void
+  onReconnect?: () => void,
+  enabled: boolean = true,
+  empresaIds?: number[]
 ) {
   const [services, setServices] = useState<Map<number, ServiceSupabase>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // lastEventAt: ms de epoch de la última novedad recibida por el WS.
-  // El dashboard lo usa para detectar "silencio" del canal (feature admin).
   const [lastEventAt, setLastEventAt] = useState<number>(Date.now());
   const wasConnectedRef = useRef(false);
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
 
+  // perf-round-3 Fix 1: buffer debounced para coalescer eventos de services.
+  const pendingPatchesRef = useRef<Array<{ type: 'upsert' | 'delete'; service: ServiceSupabase }>>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
+    // Modo histórico: no crear channels, limpiar estado pendiente.
+    if (!enabled) {
+      console.log('🔌 Realtime Services pausado (modo histórico)');
+      setIsConnected(false);
+      if (flushTimerRef.current != null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      pendingPatchesRef.current = [];
+      return () => {};
+    }
+
     console.log('🔄 Suscripción services realtime - escenario:', escenarioId);
     let channel: RealtimeChannel | null = null;
     let reconnectHandle: { cancel: () => void } | null = null;
     let isComponentMounted = true;
     const RETRY_DELAY = 5000;
 
+    const flushPending = () => {
+      flushTimerRef.current = null;
+      if (!isComponentMounted) return;
+      const patches = pendingPatchesRef.current;
+      if (patches.length === 0) return;
+      pendingPatchesRef.current = [];
+
+      setServices(prev => {
+        const updated = new Map(prev);
+        let changed = false;
+        for (const patch of patches) {
+          if (patch.type === 'upsert') {
+            const existing = updated.get(patch.service.id);
+            if (existing !== patch.service) {
+              updated.set(patch.service.id, patch.service);
+              changed = true;
+            }
+          } else {
+            if (updated.has(patch.service.id)) {
+              updated.delete(patch.service.id);
+              changed = true;
+            }
+          }
+        }
+        // Fix 3 shallow merge: devolver referencia anterior si nada cambió.
+        return changed ? updated : prev;
+      });
+      setLastEventAt(Date.now());
+    };
+
+    const enqueuePatch = (type: 'upsert' | 'delete', service: ServiceSupabase) => {
+      pendingPatchesRef.current.push({ type, service });
+      if (flushTimerRef.current == null) {
+        flushTimerRef.current = setTimeout(flushPending, PEDIDOS_DEBOUNCE_MS);
+      }
+    };
+
     const setupChannel = () => {
       if (channel) {
         supabase.removeChannel(channel);
         channel = null;
       }
+      // perf-round-4: filtro por empresa_fletera_id si el usuario tiene scope (análogo a Pedidos).
+      const realtimeFilter = empresaIds && empresaIds.length > 0
+        ? (empresaIds.length === 1
+            ? `empresa_fletera_id=eq.${empresaIds[0]}`
+            : `empresa_fletera_id=in.(${empresaIds.join(',')})`)
+        : `escenario=eq.${escenarioId}`;
+      console.log(`🔄 Services Realtime filter: ${realtimeFilter}`);
+
       const channelName = `services-realtime-${escenarioId}-${Date.now()}`;
 
       channel = supabase
@@ -679,18 +901,15 @@ export function useServicesRealtime(
             event: 'INSERT',
             schema: 'public',
             table: 'services',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const newService = payload.new as ServiceSupabase;
+            // Segunda defensa client-side: empresa
+            if (empresaIds && empresaIds.length > 0 && newService.empresa_fletera_id != null && !empresaIds.includes(Number(newService.empresa_fletera_id))) return;
             if (!movilIds || movilIds.length === 0 || (newService.movil && movilIds.includes(newService.movil))) {
-              setServices(prev => {
-                const updated = new Map(prev);
-                updated.set(newService.id, newService);
-                return updated;
-              });
-              setLastEventAt(Date.now());
+              enqueuePatch('upsert', newService);
               if (onUpdate) onUpdate(newService, 'INSERT');
             }
           }
@@ -701,18 +920,15 @@ export function useServicesRealtime(
             event: 'UPDATE',
             schema: 'public',
             table: 'services',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const updatedService = payload.new as ServiceSupabase;
+            // Segunda defensa client-side: empresa
+            if (empresaIds && empresaIds.length > 0 && updatedService.empresa_fletera_id != null && !empresaIds.includes(Number(updatedService.empresa_fletera_id))) return;
             if (!movilIds || movilIds.length === 0 || (updatedService.movil && movilIds.includes(updatedService.movil))) {
-              setServices(prev => {
-                const updated = new Map(prev);
-                updated.set(updatedService.id, updatedService);
-                return updated;
-              });
-              setLastEventAt(Date.now());
+              enqueuePatch('upsert', updatedService);
               if (onUpdate) onUpdate(updatedService, 'UPDATE');
             }
           }
@@ -723,17 +939,12 @@ export function useServicesRealtime(
             event: 'DELETE',
             schema: 'public',
             table: 'services',
-            filter: `escenario=eq.${escenarioId}`,
+            filter: realtimeFilter,
           },
           (payload) => {
             if (!isComponentMounted) return;
             const deletedService = payload.old as ServiceSupabase;
-            setServices(prev => {
-              const updated = new Map(prev);
-              updated.delete(deletedService.id);
-              return updated;
-            });
-            setLastEventAt(Date.now());
+            enqueuePatch('delete', deletedService);
             if (onUpdate) onUpdate(deletedService, 'DELETE');
           }
         )
@@ -775,11 +986,20 @@ export function useServicesRealtime(
       isComponentMounted = false;
       if (reconnectHandle) reconnectHandle.cancel();
       if (channel) supabase.removeChannel(channel);
+      // Cancelar el timer de flush pendiente para evitar setState tras unmount
+      if (flushTimerRef.current != null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      pendingPatchesRef.current = [];
     };
-  }, [escenarioId, movilIds?.join(',')]);
+  }, [escenarioId, movilIds?.join(','), enabled, empresaIds?.join(',')]);
+
+  // perf: memoizar el array para que la referencia no cambie si el Map no cambió.
+  const servicesArray = useMemo(() => Array.from(services.values()), [services]);
 
   return {
-    services: Array.from(services.values()),
+    services: servicesArray,
     isConnected,
     error,
     lastEventAt,

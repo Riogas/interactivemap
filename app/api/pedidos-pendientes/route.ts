@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
-import { todayMontevideo } from '@/lib/date-utils';
+import { todayMontevideo, pendienteDateRangeCompact } from '@/lib/date-utils';
 
 const VERBOSE = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
 const rlog = (...args: unknown[]) => { if (VERBOSE) console.log(...args); };
 
 export async function GET(request: NextRequest) {
-  // 🔒 AUTENTICACIÓN REQUERIDA
+  // AUTENTICACION REQUERIDA
   const authResult = await requireAuth(request);
   if (authResult instanceof NextResponse) return authResult;
 
@@ -17,9 +17,14 @@ export async function GET(request: NextRequest) {
     const escenarioId = parseInt(searchParams.get('escenarioId') || '1000');
     const fecha = searchParams.get('fecha') || todayMontevideo();
 
-    rlog(`📦 Obteniendo TODOS los pedidos pendientes del día ${fecha}`);
+    rlog(`Obteniendo TODOS los pedidos pendientes del día ${fecha}`);
 
-    // Consultar TODOS los pedidos pendientes filtrando por fecha exacta
+    // Arrastre (feature 2026-05-29): cuando fecha === hoy (Montevideo), incluir
+    // también fch_para = ayer en el filtro de pendientes.
+    // fch_para se almacena como YYYYMMDD (sin guiones) en la BD.
+    const rangoCompact = pendienteDateRangeCompact(fecha); // ['YYYYMMDD'] o ['YYYYMMDD', 'YYYYMMDD_ayer']
+
+    // Consultar TODOS los pedidos pendientes filtrando por rango de fecha
     const { data: pedidos, error } = await supabase
       .from('pedidos')
       .select(`
@@ -53,7 +58,7 @@ export async function GET(request: NextRequest) {
         prodsadicionales
       `)
       .eq('escenario', escenarioId)
-      .eq('fch_para', fecha) // ✅ FILTRAR POR FECHA EXACTA
+      .in('fch_para', rangoCompact) // arrastre: [hoy] o [hoy, ayer] segun la fecha
       .in('estado_nro', [1, 2]) // Solo pedidos pendientes (Asignado y En camino)
       .eq('sub_estado_desc', '5') // Solo pedidos asignados (sub_estado_desc=5)
       .not('latitud', 'is', null) // Solo pedidos con coordenadas
@@ -62,14 +67,14 @@ export async function GET(request: NextRequest) {
       .order('fch_hora_para', { ascending: true});
 
     if (error) {
-      console.error('❌ Error al obtener todos los pedidos pendientes:', error);
+      console.error('Error al obtener todos los pedidos pendientes:', error);
       return NextResponse.json(
         { error: 'Error al obtener pedidos pendientes' },
         { status: 500 }
       );
     }
 
-    rlog(`✅ Encontrados ${pedidos?.length || 0} pedidos pendientes para el día ${fecha}`);
+    rlog(`Encontrados ${pedidos?.length || 0} pedidos pendientes para el día ${fecha} (rango: ${rangoCompact.join(', ')})`);
 
     return NextResponse.json({
       escenarioId,
@@ -78,7 +83,7 @@ export async function GET(request: NextRequest) {
       total: pedidos?.length || 0,
     });
   } catch (error) {
-    console.error('❌ Error inesperado:', error);
+    console.error('Error inesperado:', error);
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }

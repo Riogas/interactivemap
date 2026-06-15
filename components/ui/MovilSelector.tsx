@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { MovilData, MovilFilters, ServiceFilters, PedidoFilters, PedidoSupabase, ServiceSupabase, CustomMarker, EmpresaFleteraSupabase } from '@/types';
@@ -7,19 +7,157 @@ import { getEstadoDescripcion, isPedidoEntregado, isServiceEntregado } from '@/u
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import clsx from 'clsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import FilterBar from './FilterBar';
 import { VirtualList } from './VirtualList';
 import MapGuideModal from './MapGuideModal';
 import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicator';
 import type { LastSyncState } from '@/lib/realtime-drift';
-import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { isVisibleByWindow } from '@/lib/sa-window-filter';
 import type { ScopeFilter } from '@/lib/scope-filter';
+
+
+// Lista de emojis predefinidos para categorias de mapa
+const POI_EMOJI_PRESETS = [
+  '🏢', '🏥', '🏦', '🏨', '🏫',
+  '🏙', '🏪', '🍽', '⛪', '🛒',
+  '⛽', '🅿', '🏭', '📍', '⚓',
+  '✈', '🚉', '🚏', '🌳', '💊',
+  '🔧', '🚒', '🚓', '🏡', '🎭',
+];
+
+interface EmojiPickerPopoverProps {
+  category: string;
+  currentIcon: string;
+  anchor: { x: number; y: number };
+  onSelect: (category: string, icon: string | null) => void;
+  onClose: () => void;
+}
+
+function EmojiPickerPopover({ category, currentIcon, anchor, onSelect, onClose }: EmojiPickerPopoverProps) {
+  const [inputValue, setInputValue] = useState(currentIcon);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar al hacer click fuera
+  useEffect(() => {
+    function handleMouseDown(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [onClose]);
+
+  const top = Math.min(anchor.y, (typeof window !== 'undefined' ? window.innerHeight : 800) - 290);
+  const left = Math.min(anchor.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 240);
+
+  const popoverStyle: React.CSSProperties = {
+    position: 'fixed',
+    top,
+    left,
+    zIndex: 9999,
+    background: 'white',
+    border: '1px solid #e5e7eb',
+    borderRadius: '8px',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+    padding: '10px',
+    width: '230px',
+  };
+
+  return createPortal(
+    <div ref={popoverRef} style={popoverStyle} onClick={(e) => e.stopPropagation()}>
+      <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 12, color: '#6b7280' }}>
+        Ícono para &quot;{category}&quot;
+      </div>
+      {/* Grid de emojis predefinidos */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 8 }}>
+        {POI_EMOJI_PRESETS.map((emoji) => (
+          <button
+            key={emoji}
+            onClick={() => { setInputValue(emoji); onSelect(category, emoji); }}
+            style={{
+              fontSize: 20,
+              padding: '4px',
+              borderRadius: 6,
+              border: inputValue === emoji ? '2px solid #8b5cf6' : '2px solid transparent',
+              background: inputValue === emoji ? '#f5f3ff' : 'transparent',
+              cursor: 'pointer',
+              lineHeight: 1,
+            }}
+            title={emoji}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+      {/* Input libre para pegar emoji personalizado */}
+      <div style={{ marginBottom: 8 }}>
+        <input
+          type="text"
+          maxLength={4}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          placeholder="Pegar emoji..."
+          style={{
+            width: '100%',
+            border: '1px solid #d1d5db',
+            borderRadius: 6,
+            padding: '4px 8px',
+            fontSize: 14,
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={() => { if (inputValue.trim()) onSelect(category, inputValue.trim()); else onClose(); }}
+          style={{
+            flex: 1,
+            padding: '5px 8px',
+            background: '#8b5cf6',
+            color: 'white',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Aplicar
+        </button>
+        <button
+          onClick={() => onSelect(category, null)}
+          style={{
+            flex: 1,
+            padding: '5px 8px',
+            background: '#f3f4f6',
+            color: '#6b7280',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+          title="Volver al icono original del POI"
+        >
+          Reset
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 interface MovilSelectorProps {
   moviles: MovilData[];
   /** IDs de móviles "ocultos-pero-operativos" — se excluyen del colapsable de
    *  móviles y contadores, pero sus pedidos/services siguen visibles. */
   hiddenMovilIds?: Set<number>;
+  /** Móviles inactivos que trabajaron en la fecha (al menos 1 pedido/service).
+   *  Se muestran debajo de un separador visual en el colapsable de móviles. */
+  inactivosDelDia?: MovilData[];
   selectedMoviles: number[];
   onToggleMovil: (movilId: number) => void;
   onSelectAll: () => void;
@@ -43,6 +181,8 @@ interface MovilSelectorProps {
   onTogglePoisHidden?: () => void; // Toggle visibilidad global de POIs
   hiddenPoiCategories?: Set<string>; // Categorías de POI ocultas
   onTogglePoiCategory?: (category: string) => void; // Toggle visibilidad de una categoría de POI
+  poiCategoryIcons?: Record<string, string>; // Override de iconos por categoría de POI
+  onSetPoiCategoryIcon?: (category: string, icon: string | null) => void; // null = reset al ícono original
   selectedPois?: Set<string>; // IDs de POIs seleccionados (visibles en mapa)
   onTogglePoi?: (id: string) => void; // Toggle individual de un POI
   onSelectCategoryPois?: (ids: string[]) => void; // Seleccionar todos los POIs de una categoría
@@ -54,6 +194,9 @@ interface MovilSelectorProps {
   tiposServicio?: string[]; // Tipos de servicio dinámicos desde moviles_zonas
   onOpenRanking?: () => void; // Abrir modal de ranking de móviles
   onOpenTracking?: () => void; // Abrir modal de ver recorrido de un móvil
+  /** §4.1: true cuando la fecha seleccionada es hoy (realtime ON). Solo relevante con
+   *  NEXT_PUBLIC_USE_MOVILES_DIA=true; ignorado en el camino viejo. */
+  isToday?: boolean;
   // Empresa fletera props
   empresas?: EmpresaFleteraSupabase[];
   selectedEmpresas?: number[];
@@ -77,8 +220,8 @@ interface MovilSelectorProps {
    *  "Ped s/asignar unitarios" (o es root). Habilita la visibilidad de
    *  pedidos/services sin movil en el colapsable. */
   canVerSinAsignarUnitario?: boolean;
-  /** Instrumentacion de drift: true si user?.isRoot === 'S'. Gating estricto — comparacion literal. */
-  isRootUser?: boolean;
+  /** Instrumentacion de drift: true si el usuario tiene la funcionalidad 'Ver indicador de drift realtime'. */
+  canSeeDriftIndicator?: boolean;
   /** Estado del ultimo sync de posiciones (null si nunca sincronizo). Solo visible si isRootUser. */
   lastSync?: LastSyncState | null;
   /** Callback para el boton Resync ahora (llama fetchPositions directamente). */
@@ -93,6 +236,11 @@ interface MovilSelectorProps {
    *  Si scope.isRestricted y scope.scopedZonaIds, los sin-asignar del colapsable
    *  se filtran igual que en el mapa. */
   scope?: ScopeFilter;
+  /** Gate funcional: true si el usuario tiene la funcionalidad 'Mantenimiento P.Interes'.
+   *  Muestra el botón de edición centralizada de iconos de categorías POI. */
+  canMantenimientoPoi?: boolean;
+  /** Callback para abrir el modal centralizado de iconos de categorías POI. */
+  onOpenPoiIconsModal?: () => void;
 }
 
 // Definir las categorías del árbol
@@ -108,6 +256,7 @@ interface Category {
 export default function MovilSelector({
   moviles,
   hiddenMovilIds,
+  inactivosDelDia = [],
   selectedMoviles,
   onToggleMovil,
   onSelectAll,
@@ -131,6 +280,8 @@ export default function MovilSelector({
   onTogglePoisHidden,
   hiddenPoiCategories = new Set(),
   onTogglePoiCategory,
+  poiCategoryIcons = {},
+  onSetPoiCategoryIcon,
   selectedPois,
   onTogglePoi,
   onSelectCategoryPois,
@@ -142,6 +293,7 @@ export default function MovilSelector({
   tiposServicio = [],
   onOpenRanking,
   onOpenTracking,
+  isToday = true,
   empresas = [],
   selectedEmpresas = [],
   onEmpresasChange,
@@ -150,20 +302,22 @@ export default function MovilSelector({
   isRestrictedUser = false,
   privilegedUser = false,
   canVerSinAsignarUnitario = false,
-  isRootUser = false,
+  canSeeDriftIndicator = false,
   lastSync = null,
   onResync,
   serverNow = new Date(),
   minutosAntesSa = null,
   pollingSeconds = 60,
   scope,
+  canMantenimientoPoi = false,
+  onOpenPoiIconsModal,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
-  
-  // Ref para calcular altura del contenedor virtual  
+
+  // Ref para calcular altura del contenedor virtual
   const listContainerRef = useRef<HTMLDivElement>(null);
-  
+
   // Estados de búsqueda por categoría
   const [movilesSearch, setMovilesSearch] = useState('');
   const [pedidosSearch, setPedidosSearch] = useState('');
@@ -172,6 +326,27 @@ export default function MovilSelector({
 
   // Estado para sub-categorías expandidas dentro de POIs
   const [expandedPoiCategories, setExpandedPoiCategories] = useState<Set<string>>(new Set());
+
+  // Estado para el picker de íconos de categoría POI
+  const [iconPickerCategory, setIconPickerCategory] = useState<string | null>(null);
+  const [iconPickerAnchor, setIconPickerAnchor] = useState<{ x: number; y: number } | null>(null);
+  const openIconPicker = useCallback((category: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setIconPickerAnchor({ x: rect.left, y: rect.bottom + 4 });
+    setIconPickerCategory(category);
+  }, []);
+
+  const closeIconPicker = useCallback(() => {
+    setIconPickerCategory(null);
+    setIconPickerAnchor(null);
+  }, []);
+
+  const applyIcon = useCallback((category: string, icon: string | null) => {
+    onSetPoiCategoryIcon?.(category, icon);
+    closeIconPicker();
+  }, [onSetPoiCategoryIcon, closeIconPicker]);
+
 
   // Agrupar POIs por campo categoria (con fallback a prefijo [Label] en observacion)
   const poiByCategory = useMemo(() => {
@@ -204,22 +379,22 @@ export default function MovilSelector({
       return next;
     });
   }, []);
-  
+
   // Estados de filtros por categoría
-  const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({ 
+  const [movilesFilters, setMovilesFilters] = useState<MovilFilters>({
     capacidad: 'all',
     estado: [], // Inicialmente ningún filtro de estado activo
     actividad: 'activo', // Por defecto mostrar solo activos
   });
   // Filtros de pedidos/services: usar props si vienen del padre, si no estado local (fallback)
-  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false });
-  const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({ 
-    atraso: [], 
+  const [localServicesFilters, setLocalServicesFilters] = useState<ServiceFilters>({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: [], defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false });
+  const [localPedidosFilters, setLocalPedidosFilters] = useState<PedidoFilters>({
+    atraso: [],
     tipoServicio: [],
     vista: 'pendientes',
     search: '',
     zona: null,
-    movil: null,
+    movil: [],
     producto: null,
     asignacion: 'todos',
     entrega: 'todos',
@@ -245,20 +420,107 @@ export default function MovilSelector({
     }
   }, [movilesFilters, onFiltersChange]);
 
+  // §4.1 (NEXT_PUBLIC_USE_MOVILES_DIA): listas derivadas para el nuevo comportamiento.
+  // Cuando el flag está ON: activos = m.activo===true; inactivos = m.inactivoDelDia===true.
+  // Cuando el flag está OFF: estas listas se ignoran y el camino viejo sigue.
+  // Fix #2: se aplica el mismo movilesSearch + filter chips que el camino viejo,
+  //         para que el buscador del colapsable funcione en este branch.
+  // Fix #3: inactivos filtrados por inactivoDelDia (móviles que hoy tuvieron op
+  //         y ya no están activos), no por !activo (que incluiría toda la flota inactiva).
+  const USE_MOVILES_DIA_SELECTOR = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
+
+  // Helper reutilizado: aplica movilesSearch + movilesFilters de capacidad y estado
+  // a una lista de MovilData para el branch USE_NEW.
+  const applyMovilesSearchAndChips = useCallback((list: MovilData[]) => {
+    let result = [...list];
+
+    const search = movilesSearch.trim();
+    if (search.length > 0) {
+      const isNumeric = /^\d+$/.test(search);
+      if (isNumeric) {
+        result = result.filter(m => String(m.id).startsWith(search));
+      } else {
+        const lower = search.toLowerCase();
+        result = result.filter(m =>
+          m.name.toLowerCase().includes(lower) ||
+          (m.matricula && m.matricula.toLowerCase().includes(lower))
+        );
+      }
+    }
+
+    if (movilesFilters.capacidad !== 'all') {
+      result = result.filter(m => {
+        const cap = m.tamanoLote || 0;
+        switch (movilesFilters.capacidad) {
+          case '1-3': return cap >= 1 && cap <= 3;
+          case '4-6': return cap >= 4 && cap <= 6;
+          case '7-10': return cap >= 7 && cap <= 10;
+          case '10+': return cap > 10;
+          default: return true;
+        }
+      });
+    }
+
+    if (movilesFilters.estado.length > 0) {
+      result = result.filter(m => {
+        const tam = m.tamanoLote || 6;
+        const cap = m.capacidad ?? 0;
+        return movilesFilters.estado.some(estado => {
+          switch (estado) {
+            case 'no_reporta_gps': return !m.currentPosition || m.isInactive;
+            case 'baja_momentanea': return m.estadoNro === 4;
+            case 'con_capacidad': return tam > 0 && cap < tam;
+            case 'sin_capacidad': return (m.tamanoLote ?? 0) > 0 && (m.capacidad ?? 0) >= (m.tamanoLote ?? 0);
+            default: return true;
+          }
+        });
+      });
+    }
+
+    return result;
+  }, [movilesSearch, movilesFilters]);
+
+  const activosNuevo = useMemo(() => {
+    if (!USE_MOVILES_DIA_SELECTOR) return [];
+    if (!isToday) return [];  // past dates have no activos by spec
+    const base = moviles.filter(m => m.activo === true);
+    return applyMovilesSearchAndChips(base).sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_SELECTOR, isToday, moviles, applyMovilesSearchAndChips]);
+
+  const inactivosNuevo = useMemo(() => {
+    if (!USE_MOVILES_DIA_SELECTOR) return [];
+    // Fix histórico (USE_NEW): en fecha anterior a hoy, TODOS los móviles
+    // devueltos por moviles_dia son válidos por definición — la tabla es la
+    // fuente de verdad. No filtrar por inactivoDelDia (flag de realtime).
+    // Fix #3 (solo para HOY): solo móviles con inactivoDelDia===true.
+    const base = isToday
+      ? moviles.filter(m => m.inactivoDelDia === true)
+      : moviles; // histórico: incluir todos sin condición
+    return applyMovilesSearchAndChips(base).sort((a, b) => a.id - b.id);
+  }, [USE_MOVILES_DIA_SELECTOR, isToday, moviles, applyMovilesSearchAndChips]);
+
   // Filtrar y ordenar móviles
   const filteredMoviles = useMemo(() => {
     let result = [...moviles];
-    
+
+    // FIX historico: en modo historico (!isToday) todos los moviles del prop
+    // ya estan en inactivosDelDia (via page.tsx). La lista principal (filteredMoviles)
+    // debe estar vacia para evitar duplicados — todos se muestran en la sub-seccion.
+    if (!isToday) {
+      const inactivosIds = new Set((inactivosDelDia ?? []).map(m => m.id));
+      return result.filter(m => !inactivosIds.has(m.id)).sort((a, b) => a.id - b.id);
+    }
+
     // Filtrar por búsqueda
     if (movilesSearch.trim()) {
       const searchLower = movilesSearch.toLowerCase();
-      result = result.filter(movil => 
+      result = result.filter(movil =>
         movil.id.toString().includes(searchLower) ||
         movil.name.toLowerCase().includes(searchLower) ||
         (movil.matricula && movil.matricula.toLowerCase().includes(searchLower))
       );
     }
-    
+
     // 🔥 Filtrar por capacidad (tamano_lote)
     if (movilesFilters.capacidad !== 'all') {
       result = result.filter(movil => {
@@ -272,9 +534,13 @@ export default function MovilSelector({
         }
       });
     }
-    
-    // 🆕 Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3=NO ACTIVO)
-    {
+
+    // FIX historico (colapsable): en modo historico (!isToday) NO aplicar el filtro
+    // de actividad — todos los moviles devueltos ya trabajaron ese dia y deben
+    // aparecer en la seccion inactivosDelDia, no en la lista principal activos.
+    // En modo HOY, el filtro de actividad se aplica normalmente.
+    if (isToday) {
+      // Filtrar por actividad (estado_nro: 0,1,2=ACTIVO | 3=NO ACTIVO)
       result = result.filter(movil => {
         const estadoNro = movil.estadoNro;
         const esActivo = isMovilActiveForUI(estadoNro);
@@ -284,53 +550,62 @@ export default function MovilSelector({
       });
     }
 
-    // Excluir móviles "ocultos pero operativos" del colapsable de móviles
-    if (hiddenMovilIds && hiddenMovilIds.size > 0) {
+    // hiddenMovilIds (ocultos-pero-operativos) aplica solo en HOY.
+    // En historico, un movil inactivo que ese dia tuvo pedidos debe
+    // aparecer — misma razon que el fix de TrackingModal (commit 6f5180c).
+    if (isToday && hiddenMovilIds && hiddenMovilIds.size > 0) {
       result = result.filter(movil => !hiddenMovilIds.has(movil.id));
     }
-    
+
     // 🆕 Filtrar por estado (multi-selección)
     if (movilesFilters.estado.length > 0) {
       result = result.filter(movil => {
         const tamanoLote = movil.tamanoLote || 6;
         const capacidad = movil.capacidad ?? 0;
-        
+
         // Verificar cada estado seleccionado
         return movilesFilters.estado.some(estado => {
           switch (estado) {
             case 'no_reporta_gps':
               // Móviles sin posición o inactivos
               return !movil.currentPosition || movil.isInactive;
-            
+
             case 'baja_momentanea':
               // Móviles con baja momentánea (estado_nro 4)
               return movil.estadoNro === 4;
-            
+
             case 'con_capacidad':
               // Móviles con capacidad disponible (> 0%) — usa capacidad de la DB
               return tamanoLote > 0 && capacidad < tamanoLote;
-            
+
             case 'sin_capacidad':
               // Móviles sin capacidad: lote completo (4/4) o sobrepasado (6/4).
               // Mismo criterio que loteCompleto en el item del colapsable y el
               // color negro del marker en el mapa.
               return (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
-            
+
             default:
               return true;
           }
         });
       });
     }
-    
+
     // Ordenar por número de móvil (ascendente)
     return result.sort((a, b) => a.id - b.id);
-  }, [moviles, movilesSearch, movilesFilters, hiddenMovilIds]);
+  }, [moviles, movilesSearch, movilesFilters, hiddenMovilIds, isToday, inactivosDelDia]);
 
   // allSelected (alcance "colapsable"): se usa para el botón "Seleccionar/
   // Deseleccionar todos" del panel y refleja si todos los visibles del filtro
   // local (search + filtros del colapsable) están marcados.
-  const allSelected = filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
+  // §4.1 (USE_NEW): el set visible es activosNuevo + inactivosNuevo (ya filtrados
+  // por search + chips). El camino viejo queda exactamente igual (filteredMoviles).
+  // FIX historico: en modo !isToday (historico), el camino viejo usa inactivosDelDia
+  // como universo visible (filteredMoviles esta vacio en ese modo).
+  const allVisibles = USE_MOVILES_DIA_SELECTOR
+    ? [...activosNuevo, ...inactivosNuevo]
+    : (!isToday ? (inactivosDelDia ?? []) : filteredMoviles);
+  const allSelected = allVisibles.length > 0 && allVisibles.every(m => selectedMoviles.includes(m.id));
 
   // allEmpresasSelected: true cuando el usuario tiene seleccionadas todas las
   // empresas disponibles (o cuando no tiene multi-empresa selector — caso
@@ -342,37 +617,46 @@ export default function MovilSelector({
     || empresas.length === 0
     || (selectedEmpresas?.length ?? 0) === empresas.length;
 
-  // allMovilesSelected (semántica estricta — guard de canSeeUnassigned y huérfanos):
+  // allMovilesSelected (guard de canSeeUnassigned y huérfanos):
   // true SOLO cuando (a) todas las empresas del universo están seleccionadas Y
-  // (b) todos los móviles operativos están en selectedMoviles. Si hay filtro parcial
-  // de empresa, retorna false aun cuando el usuario haya tildado todo lo visible —
-  // porque los huérfanos podrían corresponder a empresas excluidas y no se deben mostrar.
-  // Usado para: canSeeUnassigned (filteredPedidos + filteredServices).
+  // (b) todos los móviles VISIBLES bajo el filtro de actividad están en
+  // selectedMoviles. Si hay filtro parcial de empresa, retorna false aun cuando
+  // el usuario haya tildado todo lo visible — porque los huérfanos podrían
+  // corresponder a empresas excluidas y no se deben mostrar.
+  //
+  // Considera activity filter (no search/capacidad/estado): si el usuario tiene
+  // activity='activo' (default), los no_activos NO cuentan — un selectAll de
+  // los visibles equivale a "modo Todos" desde la perspectiva del usuario, y
+  // habilita los sin-asignar / huérfanos. Las otras dimensiones de filtro
+  // (search, capacidad, estado) son refinamientos del usuario y NO afectan
+  // el universo de referencia.
   const allMovilesSelected = useMemo(() => {
     if (!allEmpresasSelected) return false;
+    const visibles = moviles.filter(m => {
+      const estadoNro = m.estadoNro;
+      if (movilesFilters.actividad === 'activo') return isMovilActiveForUI(estadoNro);
+      if (movilesFilters.actividad === 'no_activo') return estadoNro === 3;
+      return true; // 'todos' / 'baja_momentanea' u otro: contar todos
+    });
     const operativos = hiddenMovilIds && hiddenMovilIds.size > 0
-      ? moviles.filter(m => !hiddenMovilIds.has(m.id))
-      : moviles;
+      ? visibles.filter(m => !hiddenMovilIds.has(m.id))
+      : visibles;
     return operativos.length > 0 && operativos.every(m => selectedMoviles.includes(m.id));
-  }, [moviles, selectedMoviles, hiddenMovilIds, allEmpresasSelected]);
+  }, [moviles, selectedMoviles, hiddenMovilIds, allEmpresasSelected, movilesFilters.actividad]);
 
-  // allVisibleOperativosSelected (semántica relajada — label del badge):
-  // true cuando todos los móviles operativos VISIBLES (post filtro de empresa) están
-  // en selectedMoviles. Usado SOLO para el label "Móviles: Todos" del badge — refleja
-  // lo que el usuario ve y operó. NO tiene impacto en canSeeUnassigned ni en visibilidad
-  // de huérfanos. No depende de allEmpresasSelected.
-  const allVisibleOperativosSelected = useMemo(() => {
-    // Usar filteredMoviles (lista visible del colapsable, post activity+capacity+
-    // advanced filters + hidden) en vez de moviles raw. Esto asegura que "Todos"
-    // refleje SOLO los items visibles, no inactivos/filtrados-out que el usuario
-    // no ve.
-    return filteredMoviles.length > 0 && filteredMoviles.every(m => selectedMoviles.includes(m.id));
-  }, [filteredMoviles, selectedMoviles]);
+  // Badge de móviles: ver sección de badges más abajo — usa allActivosSelected calculado inline.
+
+  // Cantidad de móviles inactivos del día que están seleccionados manualmente.
+  // Se usa para mostrar el chip secundario "+N inactivos" en el header del colapsable.
+  const inactivosSeleccionados = useMemo(() => {
+    const inactivosIds = new Set(inactivosDelDia?.map(m => m.id) ?? []);
+    return selectedMoviles.filter(id => inactivosIds.has(id)).length;
+  }, [selectedMoviles, inactivosDelDia]);
 
   // Filtrar y ordenar pedidos (pendientes o finalizados según vista)
   const filteredPedidos = useMemo(() => {
     let result = [...pedidos];
-    
+
     // Filtrar según vista: pendientes (estado 1, asignados + sin asignar), finalizados (estado 2)
     if (pedidosFilters.vista === 'finalizados') {
       result = result.filter(pedido => Number(pedido.estado_nro) === 2);
@@ -380,21 +664,17 @@ export default function MovilSelector({
       // pendientes: todos estado 1
       result = result.filter(pedido => Number(pedido.estado_nro) === 1);
     }
-    
-    // Usar el flag que baja del parent. Incluye (a) user no-root con restricción
-    // de empresas y (b) filtro manual parcial de empresas.
-    const isPartialEmpresa = hideUnassigned;
 
-    // Los sin asignar y los de móviles ocultos-pero-operativos solo son
-    // visibles para usuarios privilegiados cuando TODOS los móviles operativos
-    // del universo están seleccionados Y todas las empresas están seleccionadas
-    // (alcance global, no del colapsable). Si el usuario filtró a un subset de
-    // empresas, los sin asignar no aplican porque podrían corresponder a
-    // empresas excluidas.
-    // Nuevo: canSeeUnassigned se basa en el gate funcional "Ped s/asignar unitarios".
-    // privilegedUser ya no controla la visibilidad de sin-asignar en el colapsable —
-    // eso queda solo en canVerSinAsignarUnitario (root bypass incluido en la prop).
-    const canSeeUnassigned = canVerSinAsignarUnitario;
+
+    // Caso 6: en vista pendientes los sin-asignar también pasan cuando el
+    // usuario filtra explícitamente por asignacion='sin_movil' (gate funcional
+    // requerido). En finalizados queda el gate estricto (solo allMovilesSelected).
+    // allMovilesSelected ya incluye allEmpresasSelected + todos los móviles
+    // operativos visibles seleccionados.
+    const isPendientesView = pedidosFilters.vista !== 'finalizados';
+    const canSeeUnassigned = isPendientesView
+      ? canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil')
+      : canVerSinAsignarUnitario && allMovilesSelected;
 
     // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
     if (selectedMoviles.length > 0) {
@@ -415,26 +695,12 @@ export default function MovilSelector({
         if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
-    } else if (privilegedUser && canVerSinAsignarUnitario && !isPartialEmpresa) {
-      // Privilegiado SIN móviles seleccionados (handleClearAll) y empresas
-      // completas: vista "solo sin asignar". Mostramos exclusivamente pedidos
-      // sin móvil — los asignados quedan ocultos hasta que el usuario seleccione.
-      // Gate funcional: requiere canVerSinAsignarUnitario ademas de privilegio rol.
+    } else if (canVerSinAsignarUnitario) {
+      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios" activa:
+      // mostrar exclusivamente pedidos sin móvil (sin asignar) del scope.
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados,
+      // y sin importar si tiene scope parcial o completo de empresa.
       result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
-    } else if (isPartialEmpresa && !privilegedUser) {
-      // Sin móviles seleccionados pero empresa parcial: ocultar sin asignar
-      // y también los pedidos (incl. entregados) que NO pertenezcan a los
-      // móviles de las empresas del usuario. `moviles` ya viene filtrado
-      // por empresa desde el dashboard. Incluir también los IDs ocultos-pero-
-      // operativos: sus pedidos igual se ven.
-      // Nota: usuarios privilegiados (root/despacho/supervisor/dashboards) omiten
-      // este bloque y ven todos los pedidos incluyendo sin asignar.
-      const validMovilIds = new Set(moviles.map(m => Number(m.id)));
-      if (hiddenMovilIds) hiddenMovilIds.forEach(id => validMovilIds.add(id));
-      result = result.filter(pedido => {
-        if (!pedido.movil || Number(pedido.movil) === 0) return false;
-        return validMovilIds.has(Number(pedido.movil));
-      });
     } else {
       // Fallthrough: sin móviles seleccionados y sin branch específico que
       // aplique (ej. privilegiado + empresa parcial). El usuario eligió
@@ -446,20 +712,20 @@ export default function MovilSelector({
     // Filtrar por búsqueda
     if (pedidosSearch.trim()) {
       const searchLower = pedidosSearch.toLowerCase();
-      result = result.filter(pedido => 
+      result = result.filter(pedido =>
         pedido.id.toString().includes(searchLower) ||
         (pedido.servicio_nombre && pedido.servicio_nombre.toLowerCase().includes(searchLower)) ||
         (pedido.cliente_tel && pedido.cliente_tel.includes(searchLower))
       );
     }
-    
+
     // Filtrar por tipo de servicio (solo para pendientes y sin_asignar)
     if (pedidosFilters.vista !== 'finalizados' && pedidosFilters.tipoServicio.length > 0) {
       result = result.filter(pedido =>
         pedido.servicio_nombre && pedidosFilters.tipoServicio.includes(pedido.servicio_nombre)
       );
     }
-    
+
     // Filtrar por atraso (solo para pendientes y sin_asignar)
     if (pedidosFilters.vista !== 'finalizados' && pedidosFilters.atraso.length > 0) {
       result = result.filter(pedido => {
@@ -481,8 +747,8 @@ export default function MovilSelector({
     if (pedidosFilters.zona !== null) {
       result = result.filter(pedido => pedido.zona_nro === pedidosFilters.zona);
     }
-    if (pedidosFilters.movil !== null) {
-      result = result.filter(pedido => Number(pedido.movil) === pedidosFilters.movil);
+    if (pedidosFilters.movil.length > 0) {
+      result = result.filter(pedido => pedidosFilters.movil.includes(Number(pedido.movil)));
     }
     if (pedidosFilters.producto !== null) {
       result = result.filter(pedido => pedido.producto_nom === pedidosFilters.producto);
@@ -508,12 +774,11 @@ export default function MovilSelector({
         (pedido.cliente_tel && pedido.cliente_tel.includes(sq))
       );
     }
-    
+
     // Aplicar ventana temporal SA (solo para pendientes, no finalizados)
     if (pedidosFilters.vista !== "finalizados") {
       result = result.filter(p =>
-        (p.movil && Number(p.movil) !== 0) ||
-        isWithinSaWindow(p.fch_hora_para, serverNow, minutosAntesSa)
+        isVisibleByWindow(p.fch_hora_para, serverNow, minutosAntesSa, !!(p.movil && Number(p.movil) !== 0))
       );
     }
 
@@ -542,12 +807,12 @@ export default function MovilSelector({
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa, scope]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, allMovilesSelected, serverNow, minutosAntesSa, scope]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
     let result = [...services];
-    
+
     // Filtrar según vista: pendientes (estado 1, asignados + sin asignar), finalizados (estado 2)
     if (servicesFilters.vista === 'finalizados') {
       result = result.filter(service => Number(service.estado_nro) === 2);
@@ -555,17 +820,14 @@ export default function MovilSelector({
       // pendientes: todos estado 1
       result = result.filter(service => Number(service.estado_nro) === 1);
     }
-    
-    // Si el filtro de empresa es parcial (no todas y no ninguna), ocultar sin asignar
-    // Mismo criterio que para pedidos: el parent calcula y baja el flag.
-    const isPartialEmpresaSvc = hideUnassigned;
 
-    // Sin asignar y de móviles ocultos solo visibles para privilegiados cuando
-    // todas las empresas + todos los móviles están seleccionados. Mismo
-    // criterio que en filteredPedidos: usa allMovilesSelected (incluye gating
-    // por empresa).
-    // Mismo criterio que canSeeUnassigned para pedidos: basado en gate funcional.
-    const canSeeUnassignedSvc = canVerSinAsignarUnitario;
+
+    // Caso 6 (idem filteredPedidos): en vista pendientes acepta asignacion=
+    // 'sin_movil' como bypass del gate "Todos". En finalizados queda estricto.
+    const isPendientesSvcView = servicesFilters.vista !== 'finalizados';
+    const canSeeUnassignedSvc = isPendientesSvcView
+      ? canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil')
+      : canVerSinAsignarUnitario && allMovilesSelected;
 
     if (selectedMoviles.length > 0) {
       result = result.filter(service => {
@@ -583,22 +845,12 @@ export default function MovilSelector({
         if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
-    } else if (privilegedUser && canVerSinAsignarUnitario && !isPartialEmpresaSvc) {
-      // Privilegiado SIN móviles seleccionados y empresas completas: vista
-      // "solo sin asignar". Mostramos exclusivamente services sin móvil.
-      // Gate funcional: requiere canVerSinAsignarUnitario ademas de privilegio rol.
+    } else if (canVerSinAsignarUnitario) {
+      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios" activa:
+      // mostrar exclusivamente services sin móvil (sin asignar) del scope.
+      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados,
+      // y sin importar si tiene scope parcial o completo de empresa.
       result = result.filter(service => !service.movil || Number(service.movil) === 0);
-    } else if (isPartialEmpresaSvc && !privilegedUser) {
-      // Sin móviles seleccionados pero empresa parcial: restringir también a los
-      // services (incl. finalizados) cuyos móviles estén dentro del set del user.
-      // Incluir también los IDs ocultos-pero-operativos.
-      // Nota: usuarios privilegiados omiten este bloque.
-      const validMovilIds = new Set(moviles.map(m => Number(m.id)));
-      if (hiddenMovilIds) hiddenMovilIds.forEach(id => validMovilIds.add(id));
-      result = result.filter(service => {
-        if (!service.movil || Number(service.movil) === 0) return false;
-        return validMovilIds.has(Number(service.movil));
-      });
     } else {
       // Fallthrough: sin móviles seleccionados y sin branch específico que
       // aplique (ej. privilegiado + empresa parcial). Mismo criterio que
@@ -609,22 +861,22 @@ export default function MovilSelector({
     // Filtrar por búsqueda
     if (servicesSearch.trim()) {
       const searchLower = servicesSearch.toLowerCase();
-      result = result.filter(service => 
+      result = result.filter(service =>
         service.id.toString().includes(searchLower) ||
         (service.defecto && service.defecto.toLowerCase().includes(searchLower)) ||
         (service.cliente_nombre && service.cliente_nombre.toLowerCase().includes(searchLower)) ||
         (service.cliente_tel && service.cliente_tel.includes(searchLower))
       );
     }
-    
+
     // Filtrar por tipo de servicio (solo para pendientes y sin_asignar)
     if (servicesFilters.vista !== 'finalizados' && servicesFilters.tipoServicio && servicesFilters.tipoServicio !== 'all') {
       const tipoUpper = servicesFilters.tipoServicio.toUpperCase();
-      result = result.filter(service => 
+      result = result.filter(service =>
         service.servicio_nombre && service.servicio_nombre.toUpperCase() === tipoUpper
       );
     }
-    
+
     // Filtrar por atraso (solo para pendientes y sin_asignar)
     if (servicesFilters.vista !== 'finalizados' && servicesFilters.atraso.length > 0) {
       result = result.filter(service => {
@@ -646,8 +898,8 @@ export default function MovilSelector({
     if (servicesFilters.zona !== null) {
       result = result.filter(service => service.zona_nro === servicesFilters.zona);
     }
-    if (servicesFilters.movil !== null) {
-      result = result.filter(service => Number(service.movil) === servicesFilters.movil);
+    if (servicesFilters.movil.length > 0) {
+      result = result.filter(service => servicesFilters.movil.includes(Number(service.movil)));
     }
     if (servicesFilters.defecto !== null) {
       result = result.filter(service => service.defecto === servicesFilters.defecto);
@@ -674,12 +926,11 @@ export default function MovilSelector({
         (service.cliente_tel && service.cliente_tel.includes(sq))
       );
     }
-    
+
     // Aplicar ventana temporal SA (solo para pendientes, no finalizados)
     if (servicesFilters.vista !== "finalizados") {
       result = result.filter(s =>
-        (s.movil && Number(s.movil) !== 0) ||
-        isWithinSaWindow(s.fch_hora_para, serverNow, minutosAntesSa)
+        isVisibleByWindow(s.fch_hora_para, serverNow, minutosAntesSa, !!(s.movil && Number(s.movil) !== 0))
       );
     }
 
@@ -698,7 +949,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, hideUnassigned, privilegedUser, allMovilesSelected, serverNow, minutosAntesSa, scope]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, allMovilesSelected, serverNow, minutosAntesSa, scope]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');
@@ -708,10 +959,15 @@ export default function MovilSelector({
     return empresas.filter(e => e.nombre.toLowerCase().includes(q));
   }, [empresas, empresaSearch]);
 
+  // §4.1: título del colapsable de móviles — en el camino viejo solo "Móviles".
+  // Fix #4: en USE_NEW el título ya no embebe los contadores como texto; en cambio,
+  // el header del colapsable renderiza 3 "globitos" separados (ver más abajo).
+  const movilesCategoryTitle = 'Móviles';
+
   // Categorías disponibles
   const categories: Category[] = [
     ...(showEmpresaSelector ? [{ key: 'empresas' as CategoryKey, title: 'Empresa Fletera', icon: '🏢', count: selectedEmpresas.length }] : []),
-    { key: 'moviles', title: 'Móviles', icon: '🚗', count: filteredMoviles.length },
+    { key: 'moviles', title: movilesCategoryTitle, icon: '🚗', count: USE_MOVILES_DIA_SELECTOR ? moviles.length : allVisibles.length },
     { key: 'pedidos', title: 'Pedidos', icon: '📦', count: filteredPedidos.length },
     { key: 'services', title: 'Services', icon: '🔧', count: filteredServices.length },
     { key: 'pois', title: 'Puntos de Interés', icon: '📍', count: puntosInteres.length },
@@ -786,6 +1042,7 @@ export default function MovilSelector({
   const contextualFilters = getContextualFilters();
 
   return (
+    <>
     <div className="bg-white rounded-xl shadow-lg p-6 h-full flex flex-col">
 
       {/* Badges de filtros activos - siempre visibles */}
@@ -805,31 +1062,42 @@ export default function MovilSelector({
           });
         }
 
-        // Badge de móviles seleccionados.
-        // "Todos" cuando todos los móviles operativos VISIBLES están seleccionados —
-        // usa `allVisibleOperativosSelected` (semántica relajada: no requiere todas
-        // las empresas, solo refleja lo que el usuario ve en el colapsable).
-        // La lista de IDs mostrada y el contador +N se calculan SOLO sobre la
-        // intersección con `filteredMoviles` (lista visible del colapsable post
-        // activity/capacity/advanced/hidden filters). selectedMoviles puede
-        // contener IDs de móviles que se filtraron out (ej. inactivos cuando
-        // `actividad='activo'`, o móviles residuales de una empresa anterior) que
-        // el usuario no ve — esos no deben aparecer en el badge.
+        // Badge de móviles seleccionados: muestra IDs de activos seleccionados.
+        // Badge cuenta SOLO activos — los inactivos del día se pueden seleccionar
+        // pero no aparecen en el badge (por decisión de producto confirmada).
         {
-          const visibleSet = new Set(filteredMoviles.map(m => m.id));
-          const visibleSelectedIds = selectedMoviles.filter(id => visibleSet.has(id));
-          const noneSelected = visibleSelectedIds.length === 0;
+          // Fix #6: con USE_NEW + selección-inicial-todos, el check "todos seleccionados"
+          // debe considerar activos + inactivos del día; el camino viejo solo consideraba
+          // los activos del filtro local (filteredMoviles).
+          let badgeIds: number[];
+          let totalCount: number;
+          if (USE_MOVILES_DIA_SELECTOR) {
+            // Universo completo del branch nuevo: activos + inactivos del día.
+            const allNewIds = new Set([
+              ...activosNuevo.map(m => m.id),
+              ...inactivosNuevo.map(m => m.id),
+            ]);
+            totalCount = allNewIds.size;
+            badgeIds = selectedMoviles.filter(id => allNewIds.has(id));
+          } else {
+            const activosSet = new Set(filteredMoviles.filter(m => isMovilActiveForUI(m.estadoNro)).map(m => m.id));
+            totalCount = activosSet.size;
+            badgeIds = selectedMoviles.filter(id => activosSet.has(id));
+          }
+          const nSeleccionados = badgeIds.length;
+          const allBadgeSelected = totalCount > 0 && nSeleccionados === totalCount;
+          const noneSelected = nSeleccionados === 0;
           const VISIBLE_IDS = 5;
           badges.push({
-            label: allVisibleOperativosSelected
+            label: allBadgeSelected
               ? '🚗 Móviles: Todos'
               : noneSelected
               ? '🚗 Móviles: Ninguno'
-              : `🚗 Móviles: ${visibleSelectedIds.length <= VISIBLE_IDS
-                  ? visibleSelectedIds.join(', ')
-                  : `${visibleSelectedIds.slice(0, VISIBLE_IDS).join(', ')} +${visibleSelectedIds.length - VISIBLE_IDS}`}`,
+              : `🚗 Móviles: ${badgeIds.length <= VISIBLE_IDS
+                  ? badgeIds.join(', ')
+                  : `${badgeIds.slice(0, VISIBLE_IDS).join(', ')} +${badgeIds.length - VISIBLE_IDS}`}`,
             color: 'bg-indigo-100 text-indigo-700',
-            onClear: allVisibleOperativosSelected ? undefined : onSelectAll,
+            onClear: allBadgeSelected ? undefined : onSelectAll,
           });
         }
 
@@ -867,7 +1135,7 @@ export default function MovilSelector({
             });
           }
         }
-        
+
         // Badge de filtros activos en PEDIDOS
         {
           const pCount = (pedidosFilters.vista !== 'pendientes' ? 1 : 0)
@@ -875,7 +1143,7 @@ export default function MovilSelector({
             + pedidosFilters.atraso.length
             + (pedidosFilters.search ? 1 : 0)
             + (pedidosFilters.zona !== null ? 1 : 0)
-            + (pedidosFilters.movil !== null ? 1 : 0)
+            + (pedidosFilters.movil.length > 0 ? 1 : 0)
             + (pedidosFilters.producto !== null ? 1 : 0)
             + (pedidosFilters.asignacion !== 'todos' ? 1 : 0)
             + (pedidosFilters.entrega !== 'todos' ? 1 : 0)
@@ -883,7 +1151,7 @@ export default function MovilSelector({
           badges.push({
             label: pCount === 0 ? '📦 Pedidos: Todos' : `📦 Pedidos: ${pCount} Filtro${pCount !== 1 ? 's' : ''}`,
             color: pCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
-            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: [], vista: 'pendientes', search: '', zona: null, movil: null, producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
+            onClear: pCount > 0 ? () => setPedidosFilters({ atraso: [], tipoServicio: [], vista: 'pendientes', search: '', zona: null, movil: [], producto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
           });
         }
 
@@ -894,7 +1162,7 @@ export default function MovilSelector({
             + servicesFilters.atraso.length
             + (servicesFilters.search ? 1 : 0)
             + (servicesFilters.zona !== null ? 1 : 0)
-            + (servicesFilters.movil !== null ? 1 : 0)
+            + (servicesFilters.movil.length > 0 ? 1 : 0)
             + (servicesFilters.defecto !== null ? 1 : 0)
             + (servicesFilters.asignacion !== 'todos' ? 1 : 0)
             + (servicesFilters.entrega !== 'todos' ? 1 : 0)
@@ -902,15 +1170,15 @@ export default function MovilSelector({
           badges.push({
             label: sCount === 0 ? '🔧 Services: Todos' : `🔧 Services: ${sCount} Filtro${sCount !== 1 ? 's' : ''}`,
             color: sCount === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 animate-pulse',
-            onClear: sCount > 0 ? () => setServicesFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: null, defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
+            onClear: sCount > 0 ? () => setServicesFilters({ atraso: [], tipoServicio: 'all', vista: 'pendientes', search: '', zona: null, movil: [], defecto: null, asignacion: 'todos', entrega: 'todos', soloSinCoords: false }) : undefined,
           });
         }
 
         // Badge de filtros de atraso de pedidos (ya incluido arriba en el count)
         // Badge de filtros de atraso de services (ya incluido arriba en el count)
-        
+
         if (badges.length === 0) return null;
-        
+
         return (
           <div className="flex flex-wrap gap-1 mb-3">
             {badges.map((badge, i) => (
@@ -928,10 +1196,11 @@ export default function MovilSelector({
           </div>
         );
       })()}
-      
+
       {/* Buscador y Filtros Contextuales - Cambian según la categoría activa */}
+      {/* Fix #8b: la categoría 'empresas' tiene su propio buscador interno; no mostrar FilterBar aquí. */}
       <AnimatePresence mode="wait">
-        {expandedCategories.size > 0 && (
+        {expandedCategories.size > 0 && activeCategory !== 'empresas' && (
           <motion.div
             key={activeCategory}
             initial={{ height: 0, opacity: 0 }}
@@ -1015,7 +1284,7 @@ export default function MovilSelector({
                 ) : undefined
               }
             />
-            
+
             {activeCategory === 'moviles' && contextualFilters.searchValue && (
               <p className="text-xs text-gray-500 mt-2">
                 {filteredMoviles.length} móvil(es) encontrado(s)
@@ -1024,7 +1293,7 @@ export default function MovilSelector({
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Estructura de árbol con categorías colapsables */}
       <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
         <div className="space-y-2">
@@ -1038,13 +1307,55 @@ export default function MovilSelector({
                 <div className="flex items-center gap-2">
                   <span className="text-lg">{category.icon}</span>
                   <span className="font-semibold text-gray-700">{category.title}</span>
-                  {category.count > 0 && (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                      {category.count}
-                    </span>
+                  {/* Fix #4: cuando USE_NEW, mostrar 3 globitos separados en lugar del count único */}
+                  {category.key === 'moviles' && USE_MOVILES_DIA_SELECTOR ? (
+                    <>
+                      {/* Globito "Seleccionados": solo los visibles (activos + inactivos del día) */}
+                      {(() => {
+                        const visibleIds = new Set([...activosNuevo, ...inactivosNuevo].map(m => m.id));
+                        const seleccionadosVisibles = selectedMoviles.filter(id => visibleIds.has(id)).length;
+                        return (
+                          <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                            {seleccionadosVisibles}
+                          </span>
+                        );
+                      })()}
+                      {/* Globito "Activos" — oculto en fecha anterior (USE_NEW + !isToday: no hay activos) */}
+                      {(isToday) && (
+                        <>
+                          <span className="text-gray-300 text-xs">|</span>
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                            {activosNuevo.length}
+                          </span>
+                        </>
+                      )}
+                      {/* Globito "Inactivos" — solo si hay alguno */}
+                      {inactivosNuevo.length > 0 && (
+                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                          {inactivosNuevo.length}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {category.count > 0 && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                          {category.count}
+                        </span>
+                      )}
+                      {/* Chip secundario: inactivos del día seleccionados manualmente (camino viejo) */}
+                      {category.key === 'moviles' && inactivosSeleccionados > 0 && (
+                        <span
+                          className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full italic"
+                          title={`${inactivosSeleccionados} móvil${inactivosSeleccionados > 1 ? 'es' : ''} inactivo${inactivosSeleccionados > 1 ? 's' : ''} del día seleccionado${inactivosSeleccionados > 1 ? 's' : ''} manualmente`}
+                        >
+                          +{inactivosSeleccionados} inactivo{inactivosSeleccionados > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </>
                   )}
-                  {/* Indicador de drift de realtime — solo para usuarios root */}
-                  {category.key === 'moviles' && isRootUser && (
+                  {/* Indicador de drift de realtime — solo para usuarios root; oculto en fecha anterior (USE_NEW + !isToday: realtime está pausado) */}
+                  {category.key === 'moviles' && canSeeDriftIndicator && (isToday || !USE_MOVILES_DIA_SELECTOR) && (
                     <RealtimeDriftIndicator
                       lastSync={lastSync}
                       pollingSeconds={pollingSeconds}
@@ -1179,6 +1490,22 @@ export default function MovilSelector({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       )}
+                    </span>
+                  )}
+
+                  {/* Botón de edición centralizada de iconos de categorías POI */}
+                  {category.key === 'pois' && canMantenimientoPoi && onSetPoiCategoryIcon && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onOpenPoiIconsModal?.(); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenPoiIconsModal?.(); } }}
+                      className="p-1 rounded-full hover:bg-indigo-100 transition-colors group"
+                      title="Editar iconos por categoría"
+                    >
+                      <svg className="w-4 h-4 text-gray-400 group-hover:text-indigo-600 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                      </svg>
                     </span>
                   )}
 
@@ -1334,153 +1661,420 @@ export default function MovilSelector({
                             </span>
                           </button>
 
-                          {/* Lista de móviles */}
-                          {filteredMoviles.map((movil) => {
-                            const isSelected = selectedMoviles.includes(movil.id);
-                            const isInactive = movil.isInactive;
-                            const isNoActivo = movil.estadoNro === 3;
-                            const isBajaMomentanea = movil.estadoNro === 4;
-                            const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
-                            // 🎨 Mismo cálculo de color que getMovilColor en MapView
-                            const loteColor = (() => {
-                              if (loteCompleto) return '#1F2937'; // Negro — lote lleno
-                              const tam = movil.tamanoLote || 6;
-                              const ped = movil.capacidad || 0;
-                              const pct = ((tam - ped) / tam) * 100;
-                              if (pct < 50) return '#F59E0B'; // Amarillo — < 50%
-                              return movil.color; // Color fletera — >= 50%
-                            })();
-                            
-                            return (
-                              <motion.button
-                                key={movil.id}
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => onToggleMovil(movil.id)}
-                                className={clsx(
-                                  'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2',
-                                  isSelected
-                                    ? 'text-white shadow-md border-transparent'
-                                    : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
-                                  isInactive && !isSelected && 'bg-red-50 border-red-200',
-                                  isInactive && !isNoActivo && !isBajaMomentanea && 'animate-pulse-slow',
-                                  isNoActivo && !isSelected && 'bg-gray-50 border-gray-300 opacity-75',
-                                  isBajaMomentanea && !isSelected && 'bg-violet-50 border-violet-300 opacity-85'
-                                )}
-                                style={{
-                                  backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#8B5CF6' : loteColor) : undefined,
-                                }}
-                              >
-                                <span className="flex items-center justify-between">
-                                  <span className="flex items-center gap-2">
-                                    {/* Checkbox visual */}
-                                    <div className={clsx(
-                                      "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
-                                      isSelected 
-                                        ? "bg-white border-white" 
-                                        : "bg-white border-gray-300"
-                                    )}>
-                                      {isSelected && (
-                                        <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#7C3AED' : loteColor }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                      )}
-                                    </div>
-                                    
-                                    {isNoActivo ? (
-                                      <span className="relative inline-block">
-                                        <svg 
-                                          className="w-5 h-5 text-gray-400" 
-                                          fill="currentColor" 
-                                          viewBox="0 0 24 24"
-                                        >
-                                          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                                        </svg>
-                                      </span>
-                                    ) : isBajaMomentanea ? (
-                                      <span className="relative inline-block">
-                                        <svg 
-                                          className="w-5 h-5 text-violet-500" 
-                                          fill="currentColor" 
-                                          viewBox="0 0 24 24"
-                                        >
-                                          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                                        </svg>
-                                      </span>
-                                    ) : isInactive ? (
-                                      <span className="relative inline-block">
-                                        <svg 
-                                          className="w-5 h-5 text-red-600 animate-pulse" 
-                                          fill="currentColor" 
-                                          viewBox="0 0 24 24"
-                                        >
-                                          <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
-                                        </svg>
-                                        <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                        </span>
-                                      </span>
-                                    ) : (
-                                      <div
-                                        className="w-4 h-4 rounded-full"
-                                        style={{ backgroundColor: loteColor }}
-                                      />
+                          {/* §4.1 — Nuevo camino (NEXT_PUBLIC_USE_MOVILES_DIA) */}
+                          {USE_MOVILES_DIA_SELECTOR ? (
+                            <>
+                              {/* Activos: lista ordenada por ID, items interactivos normales */}
+                              {activosNuevo.map((movil) => {
+                                const isSelected = selectedMoviles.includes(movil.id);
+                                const isInactive = movil.isInactive;
+                                const isNoActivo = movil.estadoNro === 3;
+                                const isBajaMomentanea = movil.estadoNro === 4;
+                                const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
+                                const loteColor = loteCompleto
+                                  ? '#1F2937'
+                                  : (() => {
+                                      const tam = movil.tamanoLote || 6;
+                                      const ped = movil.capacidad || 0;
+                                      const pct = ((tam - ped) / tam) * 100;
+                                      return pct < 50 ? '#F59E0B' : movil.color;
+                                    })();
+                                return (
+                                  <button
+                                    key={movil.id}
+                                    onClick={() => onToggleMovil(movil.id)}
+                                    className={clsx(
+                                      'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2',
+                                      isSelected
+                                        ? 'text-white shadow-md border-transparent'
+                                        : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
+                                      isInactive && !isSelected && 'bg-red-50 border-red-200',
+                                      isInactive && !isNoActivo && !isBajaMomentanea && 'animate-pulse-slow',
+                                      isNoActivo && !isSelected && 'bg-gray-50 border-gray-300 opacity-75',
+                                      isBajaMomentanea && !isSelected && 'bg-violet-50 border-violet-300 opacity-85'
                                     )}
-                                    {/* 🔥 Formato compacto: NroMovil – PedAsignados/Capacidad */}
-                                    <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
-                                      {movil.id}
-                                      {' – '}
-                                      {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
-                                      {isNoActivo && (
-                                        <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
-                                          No activo
+                                    style={{
+                                      backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#8B5CF6' : loteColor) : undefined,
+                                    }}
+                                  >
+                                    <span className="flex items-center justify-between">
+                                      <span className="flex items-center gap-2">
+                                        <div className={clsx(
+                                          "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                          isSelected ? "bg-white border-white" : "bg-white border-gray-300"
+                                        )}>
+                                          {isSelected && (
+                                            <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#7C3AED' : loteColor }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                          )}
+                                        </div>
+                                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: loteColor }} />
+                                        <span className={clsx("text-sm font-medium leading-tight", !isSelected && (loteCompleto ? "text-gray-900 font-semibold" : ""))}>
+                                          {movil.id}
+                                          {isToday && (
+                                            <>{' – '}{movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}</>
+                                          )}
                                         </span>
-                                      )}
-                                      {isBajaMomentanea && (
-                                        <span className="ml-1.5 text-[9px] bg-violet-200 text-violet-700 px-1.5 py-0.5 rounded-full font-semibold uppercase">
-                                          Baja mom.
-                                        </span>
+                                      </span>
+                                      {isToday && movil.currentPosition && (
+                                        <div className="flex flex-col items-end">
+                                          <span className={clsx("text-[11px]", isSelected ? "opacity-90" : "text-gray-600")}>
+                                            {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-UY', {
+                                              timeZone: 'America/Montevideo',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                            })}
+                                          </span>
+                                          {(() => {
+                                            const now = Date.now();
+                                            const coordDate = new Date(movil.currentPosition!.fechaInsLog).getTime();
+                                            const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
+                                            if (minutesDiff < 1) {
+                                              return <span className={clsx("text-[10px] font-medium", isSelected ? "text-green-200" : "text-green-600")}>Ahora</span>;
+                                            } else if (minutesDiff < 5) {
+                                              return <span className={clsx("text-[10px]", isSelected ? "text-green-200" : "text-green-500")}>{minutesDiff}m</span>;
+                                            } else if (minutesDiff < 15) {
+                                              return <span className={clsx("text-[10px]", isSelected ? "text-yellow-200" : "text-yellow-600")}>{minutesDiff}m</span>;
+                                            } else if (minutesDiff < 30) {
+                                              return <span className={clsx("text-[10px]", isSelected ? "text-orange-200" : "text-orange-600")}>{minutesDiff}m</span>;
+                                            } else {
+                                              return <span className={clsx("text-[10px] font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m</span>;
+                                            }
+                                          })()}
+                                        </div>
                                       )}
                                     </span>
-                                  </span>
-                                  {movil.currentPosition && (
-                                    <div className="flex flex-col items-end">
-                                      <span className={clsx("text-[11px]", isInactive ? "text-red-100 font-semibold" : isSelected ? "opacity-90" : "text-gray-600")}>
-                                        {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-PY', {
-                                          hour: '2-digit',
-                                          minute: '2-digit',
-                                        })}
-                                      </span>
-                                      {(() => {
-                                        const now = Date.now();
-                                        const coordDate = new Date(movil.currentPosition.fechaInsLog).getTime();
-                                        const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
-                                        
-                                        if (minutesDiff < 1) {
-                                          return <span className={clsx("text-[10px] font-medium", isSelected ? "text-green-200" : "text-green-600")}>Ahora</span>;
-                                        } else if (minutesDiff < 5) {
-                                          return <span className={clsx("text-[10px]", isSelected ? "text-green-200" : "text-green-500")}>{minutesDiff}m</span>;
-                                        } else if (minutesDiff < 15) {
-                                          return <span className={clsx("text-[10px]", isSelected ? "text-yellow-200" : "text-yellow-600")}>{minutesDiff}m</span>;
-                                        } else if (minutesDiff < 30) {
-                                          return <span className={clsx("text-[10px]", isSelected ? "text-orange-200" : "text-orange-600")}>{minutesDiff}m</span>;
-                                        } else {
-                                          return <span className={clsx("text-[10px] font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m ⚠️</span>;
-                                        }
-                                      })()}
-                                    </div>
-                                  )}
-                                </span>
-                              </motion.button>
-                            );
-                          })}
+                                  </button>
+                                );
+                              })}
+
+                              {/* Fix #3: Inactivos del día — seleccionables (checkbox funciona),
+                                  pero sin foco de mapa al hacer click (no hay marker). */}
+                              {inactivosNuevo.length > 0 && (
+                                <>
+                                  <div className="my-2 border-t border-gray-200" />
+                                  <div className="text-xs font-medium text-gray-500 mb-1 px-2">
+                                    Inactivos del día ({inactivosNuevo.length})
+                                  </div>
+                                  {inactivosNuevo.map((movil) => {
+                                    const isSelected = selectedMoviles.includes(movil.id);
+                                    // Para fecha anterior: dot y estilos totalmente grises (neutro).
+                                    // Para hoy: dot rojo — señal de alarma ("algo salió mal").
+                                    const dotColor = isToday ? '#DC2626' : '#9CA3AF';
+                                    return (
+                                      <button
+                                        key={movil.id}
+                                        onClick={() => onToggleMovil(movil.id)}
+                                        className={clsx(
+                                          'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2',
+                                          isSelected
+                                            ? 'text-white shadow-md border-transparent'
+                                            : isToday
+                                              ? 'bg-red-50 border-red-200 hover:bg-red-100'
+                                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                        )}
+                                        style={{
+                                          backgroundColor: isSelected ? (isToday ? '#DC2626' : '#9CA3AF') : undefined,
+                                        }}
+                                      >
+                                        <span className="flex items-center justify-between">
+                                          <span className="flex items-center gap-2">
+                                            <div className={clsx(
+                                              "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                              isSelected ? "bg-white border-white" : "bg-white border-gray-300"
+                                            )}>
+                                              {isSelected && (
+                                                <svg className="w-3 h-3" style={{ color: isToday ? '#DC2626' : '#9CA3AF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                              )}
+                                            </div>
+                                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: dotColor }} />
+                                            <span className={clsx("text-sm font-medium leading-tight", isToday ? "text-gray-700" : "text-gray-700")}>
+                                              {movil.id}
+                                              {isToday && (
+                                                <>{' – '}{movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}</>
+                                              )}
+                                              {isToday ? (
+                                                <span className="ml-1.5 text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                  Inactivo
+                                                </span>
+                                              ) : (
+                                                <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                  Inactivo
+                                                </span>
+                                              )}
+                                            </span>
+                                          </span>
+                                          {/* En fecha anterior (USE_NEW + !isToday) no mostrar
+                                              indicador de frescura GPS — el concepto de realtime no aplica. */}
+                                          {isToday && movil.currentPosition?.fechaInsLog && (
+                                            <div className="flex flex-col items-end">
+                                              <span className={clsx("text-[11px]", isSelected ? "opacity-90" : "text-gray-600")}>
+                                                {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-UY', {
+                                                  timeZone: 'America/Montevideo',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                })}
+                                              </span>
+                                              {(() => {
+                                                const now = Date.now();
+                                                const coordDate = new Date(movil.currentPosition!.fechaInsLog).getTime();
+                                                const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
+                                                if (minutesDiff < 1) {
+                                                  return <span className={clsx("text-[10px] font-medium", isSelected ? "text-green-200" : "text-green-600")}>Ahora</span>;
+                                                } else if (minutesDiff < 5) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-green-200" : "text-green-500")}>{minutesDiff}m</span>;
+                                                } else if (minutesDiff < 15) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-yellow-200" : "text-yellow-600")}>{minutesDiff}m</span>;
+                                                } else if (minutesDiff < 30) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-orange-200" : "text-orange-600")}>{minutesDiff}m</span>;
+                                                } else {
+                                                  return <span className={clsx("text-[10px] font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m</span>;
+                                                }
+                                              })()}
+                                            </div>
+                                          )}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {/* Camino viejo: VirtualList de filteredMoviles + sub-sección inactivosDelDia */}
+                              {filteredMoviles.length === 0 ? null : (
+                                <VirtualList
+                                  items={filteredMoviles}
+                                  // itemHeight 55: button real ~54px (py-2 + border-2 + 2 lineas) + 1px gap.
+                                  height={Math.min(filteredMoviles.length * 55, Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 300))}
+                                  itemHeight={55}
+                                  overscanCount={5}
+                                  renderItem={(movil) => {
+                                    const isSelected = selectedMoviles.includes(movil.id);
+                                    const isInactive = movil.isInactive;
+                                    const isNoActivo = movil.estadoNro === 3;
+                                    const isBajaMomentanea = movil.estadoNro === 4;
+                                    const loteCompleto = !isNoActivo && !isBajaMomentanea && (movil.tamanoLote ?? 0) > 0 && (movil.capacidad ?? 0) >= (movil.tamanoLote ?? 0);
+                                    const loteColor = loteCompleto
+                                      ? '#1F2937'
+                                      : (() => {
+                                          const tam = movil.tamanoLote || 6;
+                                          const ped = movil.capacidad || 0;
+                                          const pct = ((tam - ped) / tam) * 100;
+                                          return pct < 50 ? '#F59E0B' : movil.color;
+                                        })();
+                                    return (
+                                      <button
+                                        key={movil.id}
+                                        onClick={() => onToggleMovil(movil.id)}
+                                        className={clsx(
+                                          'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2',
+                                          isSelected
+                                            ? 'text-white shadow-md border-transparent'
+                                            : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200',
+                                          isInactive && !isSelected && 'bg-red-50 border-red-200',
+                                          isInactive && !isNoActivo && !isBajaMomentanea && 'animate-pulse-slow',
+                                          isNoActivo && !isSelected && 'bg-gray-50 border-gray-300 opacity-75',
+                                          isBajaMomentanea && !isSelected && 'bg-violet-50 border-violet-300 opacity-85'
+                                        )}
+                                        style={{
+                                          backgroundColor: isSelected ? (isInactive ? '#DC2626' : isNoActivo ? '#9CA3AF' : isBajaMomentanea ? '#8B5CF6' : loteColor) : undefined,
+                                        }}
+                                      >
+                                        <span className="flex items-center justify-between">
+                                          <span className="flex items-center gap-2">
+                                            {/* Checkbox visual */}
+                                            <div className={clsx(
+                                              "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                              isSelected
+                                                ? "bg-white border-white"
+                                                : "bg-white border-gray-300"
+                                            )}>
+                                              {isSelected && (
+                                                <svg className="w-3 h-3" style={{ color: isInactive ? '#DC2626' : isNoActivo ? '#6B7280' : isBajaMomentanea ? '#7C3AED' : loteColor }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                              )}
+                                            </div>
+
+                                            {isNoActivo ? (
+                                              <span className="relative inline-block">
+                                                <svg
+                                                  className="w-5 h-5 text-gray-400"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                                </svg>
+                                              </span>
+                                            ) : isBajaMomentanea ? (
+                                              <span className="relative inline-block">
+                                                <svg
+                                                  className="w-5 h-5 text-violet-500"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                                                </svg>
+                                              </span>
+                                            ) : isInactive ? (
+                                              <span className="relative inline-block">
+                                                <svg
+                                                  className="w-5 h-5 text-red-600 animate-pulse"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                                                </svg>
+                                                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                </span>
+                                              </span>
+                                            ) : (
+                                              <div
+                                                className="w-4 h-4 rounded-full"
+                                                style={{ backgroundColor: loteColor }}
+                                              />
+                                            )}
+                                            {/* Formato compacto: NroMovil - PedAsignados/Capacidad */}
+                                            <span className={clsx("text-sm font-medium leading-tight", !isSelected && (isNoActivo ? "text-gray-400" : isBajaMomentanea ? "text-violet-600" : loteCompleto ? "text-gray-900 font-semibold" : ""))}>
+                                              {movil.id}
+                                              {' – '}
+                                              {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
+                                              {isNoActivo && (
+                                                <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                  No activo
+                                                </span>
+                                              )}
+                                              {isBajaMomentanea && (
+                                                <span className="ml-1.5 text-[9px] bg-violet-200 text-violet-700 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                                  Baja mom.
+                                                </span>
+                                              )}
+                                            </span>
+                                          </span>
+                                          {movil.currentPosition && (
+                                            <div className="flex flex-col items-end">
+                                              <span className={clsx("text-[11px]", isInactive ? "text-red-100 font-semibold" : isSelected ? "opacity-90" : "text-gray-600")}>
+                                                {new Date(movil.currentPosition.fechaInsLog).toLocaleTimeString('es-UY', {
+                                                  timeZone: 'America/Montevideo',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                })}
+                                              </span>
+                                              {(() => {
+                                                const now = Date.now();
+                                                const coordDate = new Date(movil.currentPosition!.fechaInsLog).getTime();
+                                                const minutesDiff = Math.floor((now - coordDate) / (1000 * 60));
+                                                if (minutesDiff < 1) {
+                                                  return <span className={clsx("text-[10px] font-medium", isSelected ? "text-green-200" : "text-green-600")}>Ahora</span>;
+                                                } else if (minutesDiff < 5) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-green-200" : "text-green-500")}>{minutesDiff}m</span>;
+                                                } else if (minutesDiff < 15) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-yellow-200" : "text-yellow-600")}>{minutesDiff}m</span>;
+                                                } else if (minutesDiff < 30) {
+                                                  return <span className={clsx("text-[10px]", isSelected ? "text-orange-200" : "text-orange-600")}>{minutesDiff}m</span>;
+                                                } else {
+                                                  return <span className={clsx("text-[10px] font-semibold", isSelected ? "text-red-200" : "text-red-600")}>{minutesDiff}m</span>;
+                                                }
+                                              })()}
+                                            </div>
+                                          )}
+                                        </span>
+                                      </button>
+                                    );
+                                  }}
+                                />
+                              )}
+
+                              {/* Sub-sección: inactivos del día */}
+                              {inactivosDelDia.length > 0 && (
+                                <>
+                                  <div className="my-2 border-t border-gray-200" />
+                                  <div className="text-xs font-medium text-gray-500 mb-1 px-2">
+                                    Inactivos del día ({inactivosDelDia.length})
+                                  </div>
+                                  {inactivosDelDia.map(movil => {
+                                    const isSelected = selectedMoviles.includes(movil.id);
+                                    return (
+                                      <button
+                                        key={movil.id}
+                                        onClick={() => onToggleMovil(movil.id)}
+                                        className={clsx(
+                                          'w-full py-2 px-3 rounded-lg font-medium transition-all duration-200 border-2 opacity-70',
+                                          isSelected
+                                            ? 'bg-gray-500 text-white shadow-md border-transparent'
+                                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border-gray-200 italic'
+                                        )}
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          <div className={clsx(
+                                            "w-5 h-5 rounded flex items-center justify-center border-2 transition-all",
+                                            isSelected ? "bg-white border-white" : "bg-white border-gray-300"
+                                          )}>
+                                            {isSelected && (
+                                              <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                              </svg>
+                                            )}
+                                          </div>
+                                          <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                          </svg>
+                                          <span className="text-sm font-medium leading-tight text-gray-400 italic">
+                                            {movil.id}
+                                            {' – '}
+                                            {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}
+                                            <span className="ml-1.5 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-semibold uppercase">
+                                              Inactivo
+                                            </span>
+                                          </span>
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </>
+                          )}
                         </div>
                       )}
 
-                      {/* Contenido de Pedidos - 🚀 VIRTUALIZADO para 600+ pedidos */}
+                      {/* Contenido de Pedidos */}
                       {category.key === 'pedidos' && (
                         <div ref={listContainerRef}>
+                          {/* Toggle Pendientes / Finalizados — oculto en fecha anterior (USE_NEW + !isToday: no hay pendientes) */}
+                          {(!USE_MOVILES_DIA_SELECTOR || isToday) && (
+                            <div className="flex gap-1 mb-2">
+                              <button
+                                onClick={() => setPedidosFilters(prev => ({ ...prev, vista: 'pendientes' }))}
+                                className={clsx(
+                                  'flex-1 text-xs py-1 rounded font-medium transition-colors',
+                                  pedidosFilters.vista !== 'finalizados'
+                                    ? 'bg-orange-500 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                )}
+                              >
+                                Pendientes
+                              </button>
+                              <button
+                                onClick={() => setPedidosFilters(prev => ({ ...prev, vista: 'finalizados' }))}
+                                className={clsx(
+                                  'flex-1 text-xs py-1 rounded font-medium transition-colors',
+                                  pedidosFilters.vista === 'finalizados'
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                )}
+                              >
+                                Finalizados
+                              </button>
+                            </div>
+                          )}
                           {filteredPedidos.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
                               <p>{pedidosFilters.vista === 'finalizados' ? '✅ Sin pedidos finalizados' : '📦 Sin pedidos'}</p>
@@ -1506,12 +2100,12 @@ export default function MovilSelector({
                                     onClick={() => onPedidoClick && onPedidoClick(pedido.id)}
                                     className={clsx(
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
-                                      isFinalizados 
+                                      isFinalizados
                                         ? esEntregado
                                           ? 'bg-green-50 border-green-200 hover:bg-green-100'
                                           : 'bg-red-50 border-red-200 hover:bg-red-100'
                                         : isSinAsignar
-                                          ? 'bg-gray-100 border-gray-300 hover:bg-gray-200'
+                                          ? 'bg-blue-50 border-blue-300 hover:bg-blue-100'
                                           : delayInfo?.bgClass
                                     )}
                                   >
@@ -1519,19 +2113,19 @@ export default function MovilSelector({
                                       <span className="font-bold text-gray-900">#{pedido.id}</span>
                                       {(!pedido.latitud || !pedido.longitud) && (
                                         <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
-                                          📍❌
+                                          Sin coords
                                         </span>
                                       )}
                                       {isSinAsignar ? (
-                                        <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Sin asignar</span>
+                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Sin asignar</span>
                                       ) : (
-                                        <span className="text-gray-700">🚗{pedido.movil}</span>
+                                        <span className="text-gray-700">{pedido.movil}</span>
                                       )}
                                       {pedido.servicio_nombre && (
-                                        <span className="text-gray-600 truncate flex-1">📋{pedido.servicio_nombre}</span>
+                                        <span className="text-gray-600 truncate flex-1">{pedido.servicio_nombre}</span>
                                       )}
                                       {isFinalizados ? (
-                                        <span 
+                                        <span
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
                                             esEntregado ? 'text-green-700' : 'text-red-700'
@@ -1539,18 +2133,18 @@ export default function MovilSelector({
                                           style={{ backgroundColor: esEntregado ? '#22c55e22' : '#ef444422' }}
                                           title={esEntregado ? 'Entregado' : 'No Entregado'}
                                         >
-                                          {esEntregado ? '✔ Entregado' : '✗ No Entregado'}
+                                          {esEntregado ? 'Entregado' : 'No Entregado'}
                                         </span>
                                       ) : (
-                                        <span 
+                                        <span
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
-                                            isSinAsignar ? 'text-gray-500' : delayInfo?.textColor
+                                            isSinAsignar ? 'text-blue-600' : delayInfo?.textColor
                                           )}
-                                          style={{ backgroundColor: isSinAsignar ? '#9CA3AF22' : `${delayInfo?.color}22` }}
+                                          style={{ backgroundColor: isSinAsignar ? '#2563EB22' : `${delayInfo?.color}22` }}
                                           title={isSinAsignar ? 'Sin asignar' : delayInfo?.label}
                                         >
-                                          ⏱{delayInfo?.badgeText}
+                                          {delayInfo?.badgeText}
                                         </span>
                                       )}
                                     </div>
@@ -1564,6 +2158,33 @@ export default function MovilSelector({
 
                       {category.key === 'services' && (
                         <div>
+                          {/* Toggle Pendientes / Finalizados — oculto en fecha anterior (USE_NEW + !isToday: no hay pendientes) */}
+                          {(!USE_MOVILES_DIA_SELECTOR || isToday) && (
+                            <div className="flex gap-1 mb-2">
+                              <button
+                                onClick={() => setServicesFilters(prev => ({ ...prev, vista: 'pendientes' }))}
+                                className={clsx(
+                                  'flex-1 text-xs py-1 rounded font-medium transition-colors',
+                                  servicesFilters.vista !== 'finalizados'
+                                    ? 'bg-violet-500 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                )}
+                              >
+                                Pendientes
+                              </button>
+                              <button
+                                onClick={() => setServicesFilters(prev => ({ ...prev, vista: 'finalizados' }))}
+                                className={clsx(
+                                  'flex-1 text-xs py-1 rounded font-medium transition-colors',
+                                  servicesFilters.vista === 'finalizados'
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                )}
+                              >
+                                Finalizados
+                              </button>
+                            </div>
+                          )}
                           {filteredServices.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
                               <p>{servicesFilters.vista === 'finalizados' ? '✅ Sin services finalizados' : '🔧 Sin services pendientes'}</p>
@@ -1581,6 +2202,7 @@ export default function MovilSelector({
                                 const isSinAsignar = !service.movil || Number(service.movil) === 0;
                                 const delayMins = !isFinalizados ? computeDelayMinutes(service.fch_hora_max_ent_comp) : null;
                                 const delayInfo = !isFinalizados ? getDelayInfo(delayMins) : null;
+                                const esEntregado = isFinalizados && isServiceEntregado(service);
 
                                 return (
                                   <button
@@ -1589,9 +2211,11 @@ export default function MovilSelector({
                                     className={clsx(
                                       'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors duration-100 border mb-1',
                                       isFinalizados
-                                        ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                                        ? esEntregado
+                                          ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                                          : 'bg-red-50 border-red-200 hover:bg-red-100'
                                         : isSinAsignar
-                                          ? 'bg-gray-100 border-gray-300 hover:bg-gray-200'
+                                          ? 'bg-blue-50 border-blue-300 hover:bg-blue-100'
                                           : delayInfo?.bgClass
                                     )}
                                   >
@@ -1599,35 +2223,38 @@ export default function MovilSelector({
                                       <span className="font-bold text-gray-900">#{service.id}</span>
                                       {(!service.latitud || !service.longitud) && (
                                         <span className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded" title="Sin coordenadas">
-                                          📍❌
+                                          Sin coords
                                         </span>
                                       )}
                                       {isSinAsignar ? (
-                                        <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">Sin asignar</span>
+                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Sin asignar</span>
                                       ) : (
-                                        <span className="text-gray-700">🚗{service.movil}</span>
+                                        <span className="text-gray-700">{service.movil}</span>
                                       )}
                                       {service.defecto && (
-                                        <span className="text-gray-600 truncate flex-1">🔧{service.defecto}</span>
+                                        <span className="text-gray-600 truncate flex-1">{service.defecto}</span>
                                       )}
                                       {isFinalizados ? (
                                         <span
-                                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-green-700"
-                                          style={{ backgroundColor: '#22c55e22' }}
-                                          title="Finalizado"
+                                          className={clsx(
+                                            'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
+                                            esEntregado ? 'text-green-700' : 'text-red-700'
+                                          )}
+                                          style={{ backgroundColor: esEntregado ? '#22c55e22' : '#ef444422' }}
+                                          title={esEntregado ? 'Entregado' : 'No Entregado'}
                                         >
-                                          ✔ Finalizado
+                                          {esEntregado ? 'Entregado' : 'No Entregado'}
                                         </span>
                                       ) : (
                                         <span
                                           className={clsx(
                                             'text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap',
-                                            isSinAsignar ? 'text-gray-500' : delayInfo?.textColor
+                                            isSinAsignar ? 'text-blue-600' : delayInfo?.textColor
                                           )}
-                                          style={{ backgroundColor: isSinAsignar ? '#9CA3AF22' : `${delayInfo?.color}22` }}
+                                          style={{ backgroundColor: isSinAsignar ? '#2563EB22' : `${delayInfo?.color}22` }}
                                           title={isSinAsignar ? 'Sin asignar' : delayInfo?.label}
                                         >
-                                          ⏱{delayInfo?.badgeText}
+                                          {delayInfo?.badgeText}
                                         </span>
                                       )}
                                     </div>
@@ -1643,11 +2270,10 @@ export default function MovilSelector({
                         <div className="space-y-1">
                           {puntosInteres.length === 0 ? (
                             <div className="text-center py-4 text-gray-500 text-sm">
-                              <p>📍 Sin puntos de interés</p>
-                              <p className="text-xs mt-1">Crea uno haciendo clic en el botón verde del header</p>
+                              <p>Sin puntos de interes</p>
+                              <p className="text-xs mt-1">Crea uno haciendo clic en el boton verde del header</p>
                             </div>
                           ) : poiByCategory.length === 0 ? (
-                            /* Sin categorías, mostrar lista plana */
                             puntosInteres.map((punto) => (
                               <motion.button
                                 key={punto.id}
@@ -1663,13 +2289,11 @@ export default function MovilSelector({
                               </motion.button>
                             ))
                           ) : (
-                            /* Categorías agrupadas con sub-collapsibles */
                             poiByCategory.map(([catKey, group]) => {
                               const isCatHidden = hiddenPoiCategories.has(group.label);
                               const isCatExpanded = expandedPoiCategories.has(catKey);
                               return (
                                 <div key={catKey} className="rounded-lg overflow-hidden border border-gray-200/50 dark:border-gray-600/50">
-                                  {/* Header de categoría */}
                                   <button
                                     onClick={() => togglePoiSubCategory(catKey)}
                                     className={clsx(
@@ -1679,7 +2303,6 @@ export default function MovilSelector({
                                         : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
                                     )}
                                   >
-                                    {/* Flecha expandir/colapsar */}
                                     <svg
                                       className={clsx('w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0', isCatExpanded && 'rotate-90')}
                                       fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -1689,7 +2312,7 @@ export default function MovilSelector({
                                     <span className="text-sm flex-shrink-0">
                                       {group.label.toLowerCase() === 'punto de venta'
                                         ? <img src="/images/iconoptoventa.png" style={{ width: 16, height: 16, objectFit: 'contain' }} alt="Punto de Venta" />
-                                        : group.icono}
+                                        : ((poiCategoryIcons as Record<string, string>)[group.label] || group.icono)}
                                     </span>
                                     <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate flex-1">
                                       {group.label}
@@ -1697,7 +2320,6 @@ export default function MovilSelector({
                                     <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono flex-shrink-0">
                                       {group.items.length}
                                     </span>
-                                    {/* Eye toggle por categoría */}
                                     {onTogglePoiCategory && (
                                       <span
                                         role="button"
@@ -1722,7 +2344,25 @@ export default function MovilSelector({
                                         )}
                                       </span>
                                     )}
-                                    {/* Seleccionar todos/ninguno por categoría */}
+                                    {onSetPoiCategoryIcon && group.label.toLowerCase() !== 'punto de venta' && (
+                                      <span
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={(e) => { e.stopPropagation(); openIconPicker(group.label, e); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); openIconPicker(group.label, e as any); } }}
+                                        className={clsx(
+                                          'p-0.5 rounded-full transition-colors flex-shrink-0',
+                                          (poiCategoryIcons as Record<string, string>)[group.label]
+                                            ? 'bg-purple-100 dark:bg-purple-900/40 hover:bg-purple-200'
+                                            : 'hover:bg-purple-100 dark:hover:bg-purple-900/30'
+                                        )}
+                                        title={'Cambiar icono de ' + group.label}
+                                      >
+                                        <svg className="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                        </svg>
+                                      </span>
+                                    )}
                                     {(onSelectCategoryPois || onClearCategoryPois) && (
                                       <span
                                         role="button"
@@ -1742,7 +2382,6 @@ export default function MovilSelector({
                                       </span>
                                     )}
                                   </button>
-                                  {/* Lista de POIs de esta categoría */}
                                   <AnimatePresence>
                                     {isCatExpanded && (
                                       <motion.div
@@ -1754,7 +2393,6 @@ export default function MovilSelector({
                                       >
                                         <div className="p-1 space-y-0.5 max-h-48 overflow-y-auto">
                                           {group.items.map((punto) => {
-                                            // Quitar prefijo [Category] de observacion para mostrar limpio
                                             const cleanObs = punto.observacion?.replace(/^\[[^\]]+\]\s*/, '') || '';
                                             const isPoiSelected = !selectedPois || selectedPois.has(punto.id);
                                             return (
@@ -1784,7 +2422,7 @@ export default function MovilSelector({
                                                     {isPoiSelected
                                                       ? ((punto.categoria || '').toLowerCase() === 'punto de venta'
                                                           ? <img src="/images/iconoptoventa.png" style={{ width: 16, height: 16, objectFit: 'contain' }} alt="PV" />
-                                                          : punto.icono)
+                                                          : ((poiCategoryIcons as Record<string, string>)[group.label] || punto.icono))
                                                       : (
                                                       <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
@@ -1824,12 +2462,23 @@ export default function MovilSelector({
         </div>
       </div>
 
-      {/* Modal de guía del mapa */}
+      {/* Modal de guia del mapa */}
       <MapGuideModal
         isOpen={guideCategory !== null}
         onClose={() => setGuideCategory(null)}
         category={guideCategory || 'moviles'}
       />
     </div>
+    {/* Popover selector de icono de categoria POI */}
+    {iconPickerCategory && iconPickerAnchor && (
+      <EmojiPickerPopover
+        category={iconPickerCategory}
+        currentIcon={(poiCategoryIcons as Record<string, string>)[iconPickerCategory] || ''}
+        anchor={iconPickerAnchor}
+        onSelect={applyIcon}
+        onClose={closeIconPicker}
+      />
+    )}
+    </>
   );
 }

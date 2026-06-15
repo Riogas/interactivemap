@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { API_BASE_URL } from '@/lib/api/config';
 import { requireAuth } from '@/lib/auth-middleware';
-import { todayMontevideo } from '@/lib/date-utils';
+import { todayMontevideo, ensureUtcIso } from '@/lib/date-utils';
 import https from 'https';
 
 export const dynamic = 'force-dynamic';
@@ -79,11 +79,11 @@ export async function GET(
       movilId,
       chofer: data.Chofer || null,
       telefono: data.Telefono || null,
-      fechaInicio: data.FechaInicio || null,
+      fechaInicio: ensureUtcIso(data.FechaInicio) || null,
       idTerminal: data.IdTerminal || data.idTerminal || null,
       historial: (data.Historial || []).map((h: { ChoferHistorico: string; InicioHistorico: string }) => ({
         chofer: h.ChoferHistorico,
-        inicio: h.InicioHistorico,
+        inicio: ensureUtcIso(h.InicioHistorico),
       })),
     });
   } catch (error) {

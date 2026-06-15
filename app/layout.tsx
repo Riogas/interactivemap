@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Fira_Sans, Fira_Code } from "next/font/google";
 import "./globals.css";
 import { RealtimeProvider } from "@/components/providers/RealtimeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -9,6 +9,22 @@ import { IncidentRecorderProvider } from "@/contexts/IncidentRecorderContext";
 import { Suspense } from "react";
 
 const inter = Inter({ subsets: ["latin"] });
+
+// Fonts del design system "Stats" (skill ui-ux-pro-max): Fira Sans para body
+// y Fira Code para tabulares (KPIs, charts, números que necesitan no "bailar").
+// Expuestos como CSS variables para que globals.css los consuma como font tokens.
+const firaSans = Fira_Sans({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-stats-sans-base",
+  display: "swap",
+});
+const firaCode = Fira_Code({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-stats-mono-base",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "TrackMovil - Rastreo en Tiempo Real",
@@ -21,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="h-full">
+    <html lang="es" className={`h-full ${firaSans.variable} ${firaCode.variable}`}>
       <body className={`${inter.className} h-full m-0 p-0 overflow-hidden`}>
         <AuthProvider>
           <Suspense>

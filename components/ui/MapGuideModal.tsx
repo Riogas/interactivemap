@@ -281,16 +281,16 @@ function PedidosGuide() {
             </div>
           </div>
 
-          {/* Sin móvil asignado - Gris */}
-          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 border border-gray-200">
+          {/* Sin móvil asignado - Azul */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-blue-50 border border-blue-200">
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #6B7280 0%, #D1D5DB 100%)', border: '2px solid white' }}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', border: '2px solid white' }}>
                 <span className="text-base">📦</span>
               </div>
             </div>
             <div>
-              <p className="font-semibold text-gray-800 text-sm">Gris — Sin Móvil Asignado</p>
-              <p className="text-xs text-gray-600">El pedido no tiene un móvil asignado para la entrega.</p>
+              <p className="font-semibold text-blue-800 text-sm">Azul — Sin Móvil Asignado</p>
+              <p className="text-xs text-blue-700">El pedido no tiene un móvil asignado para la entrega.</p>
             </div>
           </div>
         </div>
@@ -303,16 +303,29 @@ function PedidosGuide() {
           Completados
         </h4>
         <div className="space-y-2.5">
-          {/* Pedido completado */}
+          {/* Pedido entregado */}
           <div className="flex items-center gap-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)', border: '2px solid white' }}>
-                <span className="text-sm">📦</span>
+              <div className="w-10 h-10 rounded flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)', border: '2px solid white' }}>
+                <span className="text-sm font-bold text-white">&#10003;</span>
               </div>
             </div>
             <div>
-              <p className="font-semibold text-emerald-800 text-sm">Verde Circular — Pedido Completado</p>
-              <p className="text-xs text-emerald-700">Pedido entregado exitosamente. El ícono circular lo distingue de los pendientes.</p>
+              <p className="font-semibold text-emerald-800 text-sm">Verde Cuadrado — Pedido Entregado</p>
+              <p className="text-xs text-emerald-700">Pedido entregado exitosamente. El icono &apos;check&apos; lo distingue de los No Entregados.</p>
+            </div>
+          </div>
+
+          {/* Pedido no entregado */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-red-50 border border-red-200">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)', border: '2px solid white' }}>
+                <span className="text-sm font-bold text-white">&#10007;</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-red-800 text-sm">Rojo Cuadrado — Pedido No Entregado</p>
+              <p className="text-xs text-red-700">Pedido no entregado. El icono &apos;Cruz&apos; lo distingue de los Entregados.</p>
             </div>
           </div>
 
@@ -426,16 +439,16 @@ function ServicesGuide() {
             </div>
           </div>
 
-          {/* Sin hora - Gris */}
-          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 border border-gray-200">
+          {/* Sin móvil asignado - Azul */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-blue-50 border border-blue-200">
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #6B7280 0%, #D1D5DB 100%)', border: '2px solid white' }}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', border: '2px solid white' }}>
                 <span className="text-base">🔧</span>
               </div>
             </div>
             <div>
-              <p className="font-semibold text-gray-800 text-sm">Gris — Sin Hora Asignada</p>
-              <p className="text-xs text-gray-600">El service no tiene hora máxima de entrega definida.</p>
+              <p className="font-semibold text-blue-800 text-sm">Azul — Sin Móvil Asignado</p>
+              <p className="text-xs text-blue-700">El service no tiene un móvil asignado para la entrega.</p>
             </div>
           </div>
         </div>
@@ -448,15 +461,29 @@ function ServicesGuide() {
           Completados
         </h4>
         <div className="space-y-2.5">
+          {/* Service entregado */}
           <div className="flex items-center gap-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)', border: '2px solid white' }}>
-                <span className="text-sm">🔧</span>
+              <div className="w-10 h-10 rounded flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)', border: '2px solid white' }}>
+                <span className="text-sm font-bold text-white">&#10003;</span>
               </div>
             </div>
             <div>
-              <p className="font-semibold text-emerald-800 text-sm">Verde Circular — Service Completado</p>
-              <p className="text-xs text-emerald-700">Service finalizado exitosamente. El ícono circular lo distingue de los pendientes.</p>
+              <p className="font-semibold text-emerald-800 text-sm">Verde Cuadrado — Service Entregado</p>
+              <p className="text-xs text-emerald-700">Service finalizado exitosamente. El icono &apos;check&apos; lo distingue de los No Entregados.</p>
+            </div>
+          </div>
+
+          {/* Service no entregado */}
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-red-50 border border-red-200">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)', border: '2px solid white' }}>
+                <span className="text-sm font-bold text-white">&#10007;</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-red-800 text-sm">Rojo Cuadrado — Service No Entregado</p>
+              <p className="text-xs text-red-700">Service no entregado. El icono &apos;Cruz&apos; lo distingue de los Entregados.</p>
             </div>
           </div>
         </div>

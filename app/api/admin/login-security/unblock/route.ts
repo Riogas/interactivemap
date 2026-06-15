@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
+import { requireFuncionalidad } from '@/lib/api-auth-gates';
 
 /**
  * POST /api/admin/login-security/unblock — Desbloquear usuario o IP manualmente
@@ -8,22 +9,11 @@ import { getServerSupabaseClient } from '@/lib/supabase';
  * Efecto: soft-unblock en login_blocks (is_active=false, unblocked_at, unblocked_by)
  * Audit trail: registra quién hizo el unblock y cuándo.
  *
- * Gate: header x-track-isroot: 'S'
+ * Gate: funcionalidad 'Query Inicios de sesion'
  */
 
-function requireRoot(request: NextRequest): true | NextResponse {
-  const isRoot = request.headers.get('x-track-isroot');
-  if (isRoot !== 'S') {
-    return NextResponse.json(
-      { success: false, error: 'Acceso denegado', code: 'NOT_ROOT' },
-      { status: 403 }
-    );
-  }
-  return true;
-}
-
 export async function POST(request: NextRequest) {
-  const gate = requireRoot(request);
+  const gate = requireFuncionalidad(request, 'Query Inicios de sesion');
   if (gate !== true) return gate;
 
   let body: unknown;

@@ -12,11 +12,13 @@
  * en el dashboard — esos siguen filtrando solo por allowedMovilIds (legacy);
  * acá agregamos el segundo eje (zona) y la regla de "entregados sin móvil".
  *
- * Reglas (actualizadas tras refactor de gates por funcionalidad — commits
- * e44763f, 6937e0a):
+ * Reglas (actualizadas tras fix scope-filter-movil-del-user-pasa-siempre):
  *   - Sin scope (root/despacho) → todo pasa.
- *   - Pedido CON móvil: el móvil debe estar en allowedMovilIds Y la zona
- *     en scopedZonaIds.
+ *   - Pedido CON móvil del user (allowedMovilIds.has):
+ *       → PASA SIEMPRE, sin importar la zona. Cubre el caso de pedidos
+ *         pasados "a mano" a un móvil fuera de cobertura habitual de su empresa
+ *         (el móvil pertenece al user, por lo que el pedido es suyo).
+ *   - Pedido CON móvil de OTRO user: NO pasa (aunque la zona esté en scope).
  *   - Pedido SIN móvil (sin-asignar):
  *       · Si NO tiene zona → no pasa (no scopeable).
  *       · Si tiene zona → pasa si la zona está en scopedZonaIds.
@@ -28,7 +30,6 @@
  *     visibilidad de sin-asignar en la UI. La decisión de mostrar/ocultar
  *     sin-asignar a un distribuidor ahora pertenece al caller vía permisos,
  *     no al scope filter.
- *   - Pedido con móvil sin zona: NO pasa.
  *   - scopedZonaIds === null bajo isRestricted true es defensivo: tratado
  *     como "todo pasa".
  */
@@ -75,9 +76,12 @@ function isInScope(item: ScopeCheckable, scope: ScopeFilter, opts: ScopeFilterOp
     return scope.scopedZonaIds.has(zonaId);
   }
 
+  // Pedido CON móvil: si el móvil pertenece al user, pasa SIEMPRE.
+  // Esto cubre pedidos pasados "a mano" a un móvil fuera de cobertura habitual
+  // de su empresa (zona_nro no está en scopedZonaIds), como el caso real del
+  // pedido 16857536 asignado al móvil 491 en zona 79 (fix run 20260526-160734-frj).
   if (!scope.allowedMovilIds.has(movilId)) return false;
-  if (zonaId === null) return false;
-  return scope.scopedZonaIds.has(zonaId);
+  return true;
 }
 
 export function isPedidoInScope(p: ScopeCheckable, scope: ScopeFilter, opts: ScopeFilterOpts): boolean {

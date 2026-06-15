@@ -65,3 +65,30 @@ export function isWithinSaWindow(
   // fchHoraPara <= now + minutosAntes (incluye atrasados, en hora y futuros dentro de la ventana)
   return horaPara <= windowEnd;
 }
+
+/**
+ * Visibilidad temporal TRANSVERSAL para pedidos/services, considerando si tienen
+ * móvil asignado. Es la regla canónica de toda la aplicación:
+ *
+ *   - Con móvil asignado: visible SIEMPRE (incluso si arranca más adelante).
+ *   - Sin móvil (SA):      visible solo si cae dentro de la ventana SA
+ *                          (fch_hora_para <= now + minutosAntes). Los SA que
+ *                          arrancan más adelante "no existen" para el sistema.
+ *
+ * Centraliza el patrón `tieneMovil ? true : isWithinSaWindow(...)` que estaba
+ * replicado en mapa, tablas extendidas y selector de móviles.
+ *
+ * @param fchHoraPara  Fecha/hora "desde" del trabajo. null si no tiene hora.
+ * @param serverNow    Hora actual del SERVIDOR.
+ * @param minutosAntes Minutos de anticipación configurados. null o 0 = sin filtro.
+ * @param tieneMovil   true si el pedido/service tiene un móvil asignado (movil != null && != 0).
+ */
+export function isVisibleByWindow(
+  fchHoraPara: Date | string | null,
+  serverNow: Date,
+  minutosAntes: number | null,
+  tieneMovil: boolean,
+): boolean {
+  if (tieneMovil) return true;
+  return isWithinSaWindow(fchHoraPara, serverNow, minutosAntes);
+}

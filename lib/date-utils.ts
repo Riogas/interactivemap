@@ -11,6 +11,12 @@
  *
  * Reutiliza la misma lógica que `startOfDayMontevideoIso` en
  * `lib/import-helpers/gps-autocreate.ts`.
+ *
+ * REGLA CANONICAL DE TZ:
+ *   Storage:     UTC (Postgres guarda timestamptz siempre en UTC — no cambiar)
+ *   Display:     America/Montevideo (usar siempre timeZone: 'America/Montevideo')
+ *   Comparación SQL: AT TIME ZONE 'America/Montevideo'
+ *   Comparación JS:  timeZone: 'America/Montevideo' en Intl o toLocale*
  */
 
 const MONTEVIDEO_TZ = 'America/Montevideo';
@@ -34,6 +40,39 @@ const fmt = new Intl.DateTimeFormat('en-CA', {
  */
 export function todayMontevideo(now: Date = new Date()): string {
   return fmt.format(now);
+}
+
+/**
+ * Normaliza un timestamp "naive" (sin designador de zona horaria) tratándolo
+ * como UTC, que es la convención de storage del sistema.
+ *
+ * Las APIs externas (ej. /tracking/getSessionData de .NET) devuelven fechas en
+ * UTC pero SIN el sufijo `Z` (ej. "2026-06-10T16:10:00"). `new Date()` parsea
+ * ese string como hora LOCAL del runtime, lo que produce un instante incorrecto
+ * en browsers fuera de UTC. Esta función agrega `Z` cuando falta el designador
+ * de zona, de modo que el string se interprete como UTC.
+ *
+ * Es idempotente: si el valor ya tiene `Z` o un offset (`+hh:mm` / `-hh:mm`),
+ * se devuelve sin cambios.
+ *
+ * @param value - string de fecha/hora ISO (posiblemente sin zona).
+ * @returns el mismo string con `Z` agregado si era naive, o el valor original.
+ *
+ * @example
+ * ensureUtcIso('2026-06-10T16:10:00')   // → '2026-06-10T16:10:00Z'
+ * ensureUtcIso('2026-06-10T16:10:00Z')  // → '2026-06-10T16:10:00Z' (sin cambios)
+ * ensureUtcIso('2026-06-10T16:10:00-03:00') // → sin cambios
+ */
+export function ensureUtcIso(value: string | null | undefined): string | null {
+  if (value == null || value === '') return null;
+  const trimmed = value.trim();
+  // Ya tiene designador de zona (Z, +hh:mm, -hh:mm, +hhmm) tras la parte de hora.
+  if (/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(trimmed)) return trimmed;
+  // Solo normalizamos strings con componente de hora ("...THH:mm...").
+  if (/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(trimmed)) {
+    return `${trimmed.replace(' ', 'T')}Z`;
+  }
+  return trimmed;
 }
 
 /**
@@ -66,4 +105,209 @@ export function todayInTimezone(tz: string, now: Date = new Date()): string {
 export function daysAgoMontevideo(days: number, now: Date = new Date()): string {
   const past = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   return fmt.format(past);
+}
+
+/**
+ * Devuelve el rango de fechas (formato `YYYY-MM-DD`) que cuentan como "pendiente"
+ * para una fecha dada.
+ *
+ * Regla de arrastre (feature: pendientes del día anterior):
+ * - Si `fecha` es hoy (según hora Montevideo): devuelve `[hoy, ayer]`.
+ *   El arrastre incluye pedidos/services con `fch_para = ayer` que siguen pendientes.
+ * - En cualquier otra fecha (día pasado): devuelve `[fecha]` (comportamiento original).
+ *
+ * La activación del arrastre es estricta: solo `selectedDate === todayMontevideo()`.
+ * Los días pasados nunca muestran arrastre.
+ *
+ * @param fecha - Fecha seleccionada en formato `YYYY-MM-DD`.
+ * @param now - Opcional. Inyección de `Date` para tests (permite simular franja nocturna).
+ * @returns Array de fechas `YYYY-MM-DD`. Longitud 1 (fecha pasada) o 2 (hoy+ayer).
+ *
+ * @example
+ * // Hoy es 2026-05-29
+ * pendienteDateRange('2026-05-29') // → ['2026-05-29', '2026-05-28']
+ * pendienteDateRange('2026-05-28') // → ['2026-05-28']
+ *
+ * // Franja nocturna: 23:30 UY = 02:30 UTC del día siguiente
+ * pendienteDateRange('2026-05-29', new Date('2026-05-30T02:30:00Z'))
+ * // → ['2026-05-29', '2026-05-28']  (hoy UY sigue siendo '2026-05-29')
+ */
+export function pendienteDateRange(fecha: string, now: Date = new Date()): string[] {
+  const hoy = todayMontevideo(now);
+  if (fecha !== hoy) return [fecha];
+  const ayer = daysAgoMontevideo(1, now);
+  return [hoy, ayer];
+}
+
+/**
+ * Variante compacta de `pendienteDateRange`: devuelve las fechas en formato
+ * `YYYYMMDD` (sin guiones), para comparar directamente con `fch_para` en la BD
+ * (almacenada como YYYYMMDD).
+ *
+ * @param fecha - Fecha seleccionada en formato `YYYY-MM-DD`.
+ * @param now - Opcional. Inyección de `Date` para tests.
+ * @returns Array de fechas `YYYYMMDD`.
+ *
+ * @example
+ * pendienteDateRangeCompact('2026-05-29') // → ['20260529', '20260528']
+ * pendienteDateRangeCompact('2026-05-28') // → ['20260528']
+ */
+export function pendienteDateRangeCompact(fecha: string, now: Date = new Date()): string[] {
+  return pendienteDateRange(fecha, now).map(f => f.replace(/-/g, ''));
+}
+
+/**
+ * Ventana de fecha CANÓNICA (request 2026-06-12), transversal a toda la app.
+ *
+ * Devuelve los límites `fch_para` (formato `YYYY-MM-DD`, igual que la BD) que
+ * definen qué registros "existen" para la fecha seleccionada:
+ *
+ *  - Si `fecha` === hoy (Montevideo):  desde = ayer, hasta = hoy, isToday = true.
+ *      (la app debe traer: pendientes de ayer + pendientes de hoy + finalizados de hoy)
+ *  - Si `fecha` < hoy (día pasado):    desde = hasta = fecha, isToday = false.
+ *      (solo importan los registros de la fecha seleccionada, cualquier estado)
+ *
+ * El acoplamiento con `estado_nro` (estado=1 para el arrastre de ayer, estado=2
+ * para finalizados de hoy) lo aplica cada call site, porque varía según el uso
+ * (ej. el conteo de "sin asignar" solo considera estado=1).
+ *
+ * NOTA: la BD almacena `fch_para` como `YYYY-MM-DD` (con guiones) tanto en
+ * `pedidos` como en `services` — NO usar el formato compacto YYYYMMDD para
+ * comparar contra `fch_para`.
+ */
+export function dateWindowBounds(
+  fecha: string,
+  now: Date = new Date(),
+): { isToday: boolean; desde: string; hasta: string } {
+  const hoy = todayMontevideo(now);
+  if (fecha === hoy) {
+    return { isToday: true, desde: daysAgoMontevideo(1, now), hasta: hoy };
+  }
+  return { isToday: false, desde: fecha, hasta: fecha };
+}
+
+/**
+ * Cláusula PostgREST `.or(...)` que implementa la VENTANA DE FECHA canónica
+ * (request 2026-06-12) sobre `fch_para` (formato `YYYY-MM-DD`, igual que la BD).
+ *
+ *  - fecha === hoy:  `(fch_para entre ayer y hoy ∧ estado=1) ∨ (fch_para=hoy ∧ estado=2)`
+ *  - fecha < hoy:    `fch_para = fecha`  (cualquier estado)
+ *
+ * Uso: `query.or(buildFchParaWindowOr(fecha))`.
+ *
+ * IMPORTANTE: usa guiones (`2026-06-12`). NO usar el formato compacto YYYYMMDD
+ * (era el bug histórico: la comparación nunca matcheaba y el arrastre de
+ * pendientes de ayer quedaba inactivo).
+ */
+export function buildFchParaWindowOr(fecha: string, now: Date = new Date()): string {
+  const { isToday, desde, hasta } = dateWindowBounds(fecha, now);
+  if (isToday) {
+    return `and(fch_para.gte.${desde},fch_para.lte.${hasta},estado_nro.eq.1),and(fch_para.eq.${hasta},estado_nro.eq.2)`;
+  }
+  return `fch_para.eq.${fecha}`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Formatters de display — siempre con timeZone: 'America/Montevideo'
+//
+// IMPORTANTE: No usar date-fns `format()` para timestamps GPS/moviles
+// porque date-fns usa la TZ del proceso JS (UTC en Node SSR).
+// Usar estas funciones en su lugar.
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Formatea un timestamp a hora MVD en formato HH:mm:ss.
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "HH:mm:ss" en hora Montevideo.
+ *
+ * @example
+ * // GPS a las 23:59 UY (= 02:59 UTC del día siguiente)
+ * formatTimeMVD('2026-06-09T02:59:53Z') // → '23:59:53'
+ */
+export function formatTimeMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
+/**
+ * Formatea un timestamp a hora MVD en formato HH:mm (sin segundos).
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "HH:mm" en hora Montevideo.
+ */
+export function formatTimeShortMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
+/**
+ * Formatea un timestamp a fecha MVD en formato dd/MM/yyyy.
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "dd/MM/yyyy" en hora Montevideo.
+ */
+export function formatDateMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d);
+}
+
+/**
+ * Formatea un timestamp a fecha+hora MVD en formato dd/MM/yyyy HH:mm.
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "dd/MM/yyyy HH:mm" en hora Montevideo.
+ */
+export function formatDateTimeMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
+/**
+ * Formatea un timestamp a fecha+hora+segundos MVD en formato dd/MM/yyyy HH:mm:ss.
+ * Seguro para SSR y CSR.
+ *
+ * @param value - string ISO, Date, o timestamp numérico.
+ * @returns string "dd/MM/yyyy HH:mm:ss" en hora Montevideo.
+ */
+export function formatDateTimeSecsMVD(value: string | Date | number): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: MONTEVIDEO_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d);
 }

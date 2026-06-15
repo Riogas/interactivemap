@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Helpers para decidir qué móviles son visibles en la UI.
  *
  * Reglas del negocio:
@@ -131,4 +131,146 @@ export function getHiddenMovilIdsFromEstadosMap(
   for (const p of pedidos) addOrphan(p.movil);
   if (services) for (const s of services) addOrphan(s.movil);
   return hidden;
+}
+
+/**
+ * Devuelve el array de IDs únicos de móviles que tienen al menos un pedido
+ * o service con estado_nro === 2 (finalizado) dentro de las empresas indicadas.
+ *
+ * No filtra por si el móvil está activo o inactivo — es responsabilidad del
+ * llamador cruzar este resultado con los móviles inactivos si corresponde.
+ *
+ * Nota: los pedidos/services ya vienen pre-filtrados por fecha por el dashboard;
+ * no se necesita un parámetro de fecha aquí.
+ *
+ * @param empresaIds IDs de empresas fleteras seleccionadas. Si está vacío, se
+ *   considera todo el scope (comportamiento permisivo).
+ * @param pedidos Lista completa de pedidos del dashboard (pedidosCompletos).
+ * @param services Lista completa de services del dashboard (servicesCompletos). Opcional.
+ * @returns Array de IDs de móviles (number) con finalizados en la fecha.
+ */
+export function getMovilesConFinalizadosEnFecha(
+  empresaIds: number[],
+  pedidos: Array<{ movil?: number | string | null; estado_nro?: number | string | null; empresa_fletera_id?: number | null }>,
+  services?: Array<{ movil?: number | string | null; estado_nro?: number | string | null; empresa_fletera_id?: number | null }>,
+): number[] {
+  const ids = new Set<number>();
+
+  const matchesEmpresa = (item: { empresa_fletera_id?: number | null }): boolean => {
+    if (empresaIds.length === 0) return true;
+    return item.empresa_fletera_id != null && empresaIds.includes(item.empresa_fletera_id);
+  };
+
+  for (const p of pedidos) {
+    if (Number(p.estado_nro) === 2 && matchesEmpresa(p) && p.movil != null && Number(p.movil) !== 0) {
+      ids.add(Number(p.movil));
+    }
+  }
+
+  if (services) {
+    for (const s of services) {
+      if (Number(s.estado_nro) === 2 && matchesEmpresa(s) && s.movil != null && Number(s.movil) !== 0) {
+        ids.add(Number(s.movil));
+      }
+    }
+  }
+
+  return Array.from(ids);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper para el combo de moviles del modal extendido
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ItemWithMovilAndEmpresa = {
+  movil?: number | string | null;
+  empresa_fletera_id?: number | null;
+  estado_nro?: number | string | null;
+  sub_estado_nro?: number | null;
+};
+
+/**
+ * Devuelve los movil_id (numeros) que tienen al menos 1 pedido o service
+ * matching el predicate, en las empresas dadas.
+ *
+ * Se usa para construir el combo de moviles del modal extendido — incluye
+ * moviles inactivos que tienen pedidos relevantes segun la vista actual.
+ *
+ * @param empresaIds  IDs de empresas fleteras. Si esta vacio, scope permisivo.
+ * @param pedidos     Lista completa de pedidos del dashboard (pedidosCompletos).
+ * @param services    Lista completa de services del dashboard (servicesCompletos).
+ * @param predicate   Funcion que recibe un item y retorna true si matchea la
+ *                    vista+sub-filtros actuales (sin contar el filtro movil).
+ */
+export function getMovilesConPedidosMatching(
+  empresaIds: number[],
+  pedidos: Array<ItemWithMovilAndEmpresa>,
+  services: Array<ItemWithMovilAndEmpresa>,
+  predicate: (item: ItemWithMovilAndEmpresa) => boolean,
+): number[] {
+  const ids = new Set<number>();
+
+  const matchesEmpresa = (item: ItemWithMovilAndEmpresa): boolean => {
+    if (empresaIds.length === 0) return true;
+    return item.empresa_fletera_id != null && empresaIds.includes(item.empresa_fletera_id);
+  };
+
+  for (const p of pedidos) {
+    if (predicate(p) && matchesEmpresa(p) && p.movil != null && Number(p.movil) !== 0) {
+      ids.add(Number(p.movil));
+    }
+  }
+
+  for (const s of services) {
+    if (predicate(s) && matchesEmpresa(s) && s.movil != null && Number(s.movil) !== 0) {
+      ids.add(Number(s.movil));
+    }
+  }
+
+  return Array.from(ids);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper para colapsable con activos + inactivos que trabajaron en la fecha
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Devuelve Set<number> de movil_id que tienen AL MENOS 1 pedido o service
+ * en la fecha (cualquier estado). NO filtra por estado activo/inactivo del
+ * móvil — incluye tanto activos como inactivos.
+ *
+ * Usado por el colapsable para mostrar la sub-sección de móviles inactivos
+ * que trabajaron en la fecha seleccionada, incluso si hoy están inactivos.
+ *
+ * Nota: los pedidos/services ya vienen pre-filtrados por fecha por el dashboard;
+ * no se necesita un parámetro de fecha aquí.
+ *
+ * @param empresaIds IDs de empresas fleteras seleccionadas. Si está vacío, scope permisivo.
+ * @param pedidos    Lista completa de pedidos del dashboard (pedidosCompletos).
+ * @param services   Lista completa de services del dashboard (servicesCompletos).
+ */
+export function getMovilesConOperacionEnFecha(
+  empresaIds: number[],
+  pedidos: Array<{ movil?: number | string | null; empresa_fletera_id?: number | null }>,
+  services: Array<{ movil?: number | string | null; empresa_fletera_id?: number | null }>,
+): Set<number> {
+  const ids = new Set<number>();
+
+  const matchesEmpresa = (item: { empresa_fletera_id?: number | null }): boolean => {
+    if (empresaIds.length === 0) return true;
+    return item.empresa_fletera_id != null && empresaIds.includes(item.empresa_fletera_id);
+  };
+
+  for (const p of pedidos) {
+    if (matchesEmpresa(p) && p.movil != null && Number(p.movil) !== 0) {
+      ids.add(Number(p.movil));
+    }
+  }
+
+  for (const s of services) {
+    if (matchesEmpresa(s) && s.movil != null && Number(s.movil) !== 0) {
+      ids.add(Number(s.movil));
+    }
+  }
+
+  return ids;
 }

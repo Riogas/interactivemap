@@ -19,6 +19,9 @@ function createMockSupabaseClient() {
     eq: vi.fn().mockReturnThis(),
     gte: vi.fn().mockReturnThis(),
     lt: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
     insert: vi.fn().mockReturnThis(),
     upsert: vi.fn().mockReturnThis(),
     delete: vi.fn().mockReturnThis(),
@@ -46,8 +49,19 @@ vi.mock('./login-security-config', () => ({
   getLoginSecurityConfig: vi.fn().mockResolvedValue({
     maxIntentosUsuario: 3,
     maxIntentosIp: 5,
+    tiempoBloqueoUsuarioMinutos: 15,
+    tiempoBloqueoIpMinutos: 15,
+    ipWhitelistPatterns: [],
+    mensajeBloqueo: 'Bloqueado temporalmente.',
   }),
-  DEFAULT_LOGIN_SECURITY_CONFIG: { maxIntentosUsuario: 3, maxIntentosIp: 5 },
+  DEFAULT_LOGIN_SECURITY_CONFIG: {
+    maxIntentosUsuario: 3,
+    maxIntentosIp: 5,
+    tiempoBloqueoUsuarioMinutos: 15,
+    tiempoBloqueoIpMinutos: 15,
+    ipWhitelistPatterns: [],
+    mensajeBloqueo: 'Bloqueado temporalmente.',
+  },
 }));
 
 import { getServerSupabaseClient } from './supabase';
@@ -226,19 +240,15 @@ describe('Login Security', () => {
 
   describe('evaluateAndApplyBlocks', () => {
     it('debería bloquear usuario tras 3 fails en <10 min', async () => {
-      // Mock de count query (3 fails)
-      const selectMock = vi.fn().mockReturnThis();
-      const eqMock = vi.fn().mockReturnThis();
-      const gteMock = vi.fn().mockReturnThis();
-      mockSupabaseClient.__mockQuery.select = selectMock;
-      mockSupabaseClient.__mockQuery.eq = eqMock;
-      mockSupabaseClient.__mockQuery.gte = gteMock;
+      // maybeSingle → null para lastUserUnblock (sin historial de desbloqueos)
+      mockSupabaseClient.__mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
 
-      // Primera consulta: count de fails del usuario = 3
-      selectMock.mockReturnValueOnce({
-        eq: vi.fn().mockReturnThis(),
-        gte: vi.fn().mockResolvedValue({ count: 3, error: null }),
-      });
+      // La count query para usuario usa select().eq().eq().gte() → retorna { count: 3 }
+      // Mockear gte en el query global para retornar count=3 en la primera llamada
+      // y count=0 en la segunda (IP — aunque con 1.2.3.4 la IP no es whitelisted)
+      mockSupabaseClient.__mockQuery.gte = vi.fn()
+        .mockResolvedValueOnce({ count: 3, error: null })   // user fails
+        .mockResolvedValueOnce({ count: 0, error: null });  // ip fails (no llega a threshold)
 
       const upsertMock = vi.fn().mockResolvedValue({ error: null });
       mockSupabaseClient.__mockQuery.upsert = upsertMock;
@@ -277,22 +287,15 @@ describe('Login Security', () => {
 
     it('debería bloquear IP tras 5 intentos TOTALES (Opción A) incluso con el mismo username', async () => {
       // FIX (Issue 3 — Opción A): ahora se cuenta el total de intentos, no usernames distintos.
-      // Este test era 'NO debería bloquear IP si los fails son del MISMO username' — ahora SÍ debe bloquear.
-      const ip = '8.8.8.8';
+      const ip = '8.8.8.8'; // IP publica, no whitelisted
 
-      // Primera consulta: count de fails del usuario = 0 (para no bloquear usuario)
-      // Segunda consulta: count total de fails de IP = 5 (mismo usuario, debe bloquear IP)
-      const selectMock = vi.fn()
-        .mockReturnValueOnce({
-          eq: vi.fn().mockReturnThis(),
-          gte: vi.fn().mockResolvedValue({ count: 0, error: null }),
-        })
-        .mockReturnValueOnce({
-          eq: vi.fn().mockReturnThis(),
-          gte: vi.fn().mockResolvedValue({ count: 5, error: null }),  // 5 intentos totales
-        });
+      // maybeSingle → null para lastUserUnblock y lastIpUnblock (sin historial de desbloqueos)
+      mockSupabaseClient.__mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
 
-      mockSupabaseClient.__mockQuery.select = selectMock;
+      // count: user_fails=0, ip_fails=5
+      mockSupabaseClient.__mockQuery.gte = vi.fn()
+        .mockResolvedValueOnce({ count: 0, error: null })   // user fails (no bloquea user)
+        .mockResolvedValueOnce({ count: 5, error: null });  // ip fails (bloquea ip)
 
       const upsertMock = vi.fn().mockResolvedValue({ error: null });
       mockSupabaseClient.__mockQuery.upsert = upsertMock;
@@ -314,21 +317,15 @@ describe('Login Security', () => {
     });
 
     it('debería bloquear IP tras 5 intentos totales en <10 min (distintos usuarios)', async () => {
-      const ip = '9.9.9.9';
+      const ip = '9.9.9.9'; // IP publica, no whitelisted
 
-      // Primera consulta: count de fails del usuario = 0
-      // Segunda consulta: count total de fails de IP = 5 (distintos usuarios, también bloquea)
-      const selectMock = vi.fn()
-        .mockReturnValueOnce({
-          eq: vi.fn().mockReturnThis(),
-          gte: vi.fn().mockResolvedValue({ count: 0, error: null }),
-        })
-        .mockReturnValueOnce({
-          eq: vi.fn().mockReturnThis(),
-          gte: vi.fn().mockResolvedValue({ count: 5, error: null }),
-        });
+      // maybeSingle → null para lastUserUnblock y lastIpUnblock
+      mockSupabaseClient.__mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
 
-      mockSupabaseClient.__mockQuery.select = selectMock;
+      // count: user_fails=0, ip_fails=5
+      mockSupabaseClient.__mockQuery.gte = vi.fn()
+        .mockResolvedValueOnce({ count: 0, error: null })   // user fails
+        .mockResolvedValueOnce({ count: 5, error: null });  // ip fails
 
       const upsertMock = vi.fn().mockResolvedValue({ error: null });
       mockSupabaseClient.__mockQuery.upsert = upsertMock;
@@ -376,11 +373,14 @@ describe('Login Security', () => {
     it('debería setear is_active=true en el upsert para reactivar bloqueos previos', async () => {
       // FIX (Issue 4): si se desbloquea manualmente y el mismo user/IP vuelve a fallar,
       // el upsert debe setear is_active=true explícitamente para reactivar el bloqueo.
-      const selectMock = vi.fn().mockReturnValueOnce({
-        eq: vi.fn().mockReturnThis(),
-        gte: vi.fn().mockResolvedValue({ count: 3, error: null }),
-      });
-      mockSupabaseClient.__mockQuery.select = selectMock;
+
+      // maybeSingle → null para lastUserUnblock
+      mockSupabaseClient.__mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
+
+      // count: user_fails=3 (bloquea usuario)
+      mockSupabaseClient.__mockQuery.gte = vi.fn()
+        .mockResolvedValueOnce({ count: 3, error: null })   // user fails → bloquea
+        .mockResolvedValueOnce({ count: 0, error: null });  // ip fails → no bloquea
 
       const upsertMock = vi.fn().mockResolvedValue({ error: null });
       mockSupabaseClient.__mockQuery.upsert = upsertMock;

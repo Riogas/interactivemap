@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [escenarioId, setEscenarioId] = useState(1000);
@@ -35,11 +35,11 @@ export default function LoginPage() {
           try {
             sessionStorage.setItem('trackmovil:user_eq_pass_warning', '1');
           } catch {
-            // Si sessionStorage no está disponible, perdemos el warning visual
+            // Si sessionStorage no esta disponible, perdemos el warning visual
             // pero el login sigue funcionando. No interrumpir.
           }
         }
-        // Animación de éxito antes de redirigir
+        // Animacion de exito antes de redirigir
         await new Promise(resolve => setTimeout(resolve, 500));
         router.push('/dashboard');
       } else {
@@ -55,19 +55,21 @@ export default function LoginPage() {
         const message = errorResult.message || errorResult.error || '';
         const code = errorResult.code || '';
 
-        if (code === 'BLOCKED_USER') {
+        if (code === 'BLOCKED_USER' || code === 'BLOCKED_IP') {
+          // Usar el mensaje que viene del backend (configurado en DB).
+          // Si el mensaje del backend esta vacio, fallback a texto generico con minutos.
           const mins = errorResult.retryAfterSeconds ? Math.ceil(errorResult.retryAfterSeconds / 60) : 10;
-          setError(`Usuario bloqueado temporalmente. Intentá de nuevo en ${mins} minutos.`);
-        } else if (code === 'BLOCKED_IP') {
-          const mins = errorResult.retryAfterSeconds ? Math.ceil(errorResult.retryAfterSeconds / 60) : 15;
-          setError(`Demasiados intentos desde esta IP. Probá de nuevo en ${mins} minutos.`);
+          const fallback = code === 'BLOCKED_USER'
+            ? `Usuario bloqueado temporalmente. Intenta de nuevo en ${mins} minutos.`
+            : `Demasiados intentos desde esta IP. Proba de nuevo en ${mins} minutos.`;
+          setError(message || fallback);
         } else {
-          // Fallback: mensaje genérico o del backend
-          setError(message || 'Usuario o contraseña inválidos');
+          // Fallback: mensaje generico o del backend
+          setError(message || 'Usuario o contrasena invalidos');
         }
       }
-    } catch (err) {
-      setError('Error al iniciar sesión');
+    } catch {
+      setError('Error al iniciar sesion');
     } finally {
       setIsLoading(false);
     }
@@ -86,45 +88,14 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-black/30 backdrop-blur-sm"></div>
       </div>
 
-      {/* Elementos decorativos de fondo (ahora sutiles sobre la imagen) */}
+      {/* Elementos decorativos de fondo (estaticos — antes eran motion.div con
+          scale+rotate en loop infinito y blur-3xl, lo que mantenia la GPU/CPU
+          al palo durante todo el tiempo de espera del login. Ahora los blobs
+          siguen ahi visualmente pero no se animan. */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <motion.div
-          className="absolute -top-40 -right-40 w-80 h-80 bg-blue-400 rounded-full opacity-10 blur-3xl"
-          animate={{
-            scale: [1, 1.2, 1],
-            rotate: [0, 90, 0],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear"
-          }}
-        />
-        <motion.div
-          className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-400 rounded-full opacity-10 blur-3xl"
-          animate={{
-            scale: [1.2, 1, 1.2],
-            rotate: [0, -90, 0],
-          }}
-          transition={{
-            duration: 25,
-            repeat: Infinity,
-            ease: "linear"
-          }}
-        />
-        <motion.div
-          className="absolute top-1/2 left-1/2 w-96 h-96 bg-indigo-300 rounded-full opacity-5 blur-3xl"
-          animate={{
-            scale: [1, 1.3, 1],
-            x: [-20, 20, -20],
-            y: [-20, 20, -20],
-          }}
-          transition={{
-            duration: 15,
-            repeat: Infinity,
-            ease: "easeInOut"
-          }}
-        />
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-400 rounded-full opacity-10 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-400 rounded-full opacity-10 blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-indigo-300 rounded-full opacity-5 blur-3xl" />
       </div>
 
       {/* Contenedor principal del login */}
@@ -153,9 +124,9 @@ export default function LoginPage() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <img 
-                src="/images/logo.png" 
-                alt="TrackMovil Logo" 
+              <img
+                src="/images/logo.png"
+                alt="TrackMovil Logo"
                 className="h-40 w-auto"
               />
             </motion.div>
@@ -204,7 +175,7 @@ export default function LoginPage() {
               </div>
             </motion.div>
 
-            {/* Campo de contraseña */}
+            {/* Campo de contrasena */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -214,7 +185,7 @@ export default function LoginPage() {
                 htmlFor="password"
                 className="block text-sm font-semibold text-gray-700 mb-2"
               >
-                Contraseña
+                Contrasena
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -238,7 +209,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-12 pr-12 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:bg-white focus:outline-none transition-all duration-200 text-gray-800"
-                  placeholder="Ingrese su contraseña"
+                  placeholder="Ingrese su contrasena"
                   required
                   autoComplete="current-password"
                 />
@@ -315,7 +286,7 @@ export default function LoginPage() {
               )}
             </AnimatePresence>
 
-            {/* Botón de submit */}
+            {/* Boton de submit */}
             <motion.button
               type="submit"
               disabled={isLoading}
@@ -332,10 +303,10 @@ export default function LoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Iniciando sesión...
+                  Iniciando sesion...
                 </span>
               ) : (
-                'Iniciar Sesión'
+                'Iniciar Sesion'
               )}
             </motion.button>
           </form>
@@ -353,7 +324,7 @@ export default function LoginPage() {
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
             </svg>
-            Conexión segura y cifrada
+            Conexion segura y cifrada
           </p>
         </motion.div>
       </motion.div>

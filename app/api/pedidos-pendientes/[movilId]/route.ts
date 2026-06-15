@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
+import { pendienteDateRangeCompact } from '@/lib/date-utils';
 
 const VERBOSE = process.env.ENABLE_MIDDLEWARE_LOGGING === 'true';
 const rlog = (...args: unknown[]) => { if (VERBOSE) console.log(...args); };
@@ -9,7 +10,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ movilId: string }> }
 ) {
-  // 🔒 AUTENTICACIÓN REQUERIDA
+  // AUTENTICACION REQUERIDA
   const authResult = await requireAuth(request);
   if (authResult instanceof NextResponse) return authResult;
 
@@ -19,9 +20,9 @@ export async function GET(
     // Obtener parámetros de query
     const searchParams = request.nextUrl.searchParams;
     const escenarioId = parseInt(searchParams.get('escenarioId') || '1000');
-    const fecha = searchParams.get('fecha'); // ✅ NUEVO: Obtener fecha del query param
+    const fecha = searchParams.get('fecha'); // Obtener fecha del query param
 
-    // 🔧 RETRY LOGIC: Reintentar hasta 3 veces si falla por timeout
+    // RETRY LOGIC: Reintentar hasta 3 veces si falla por timeout
     let pedidos = null;
     let error = null;
     let attempt = 0;
@@ -29,10 +30,10 @@ export async function GET(
 
     while (attempt < maxRetries && !pedidos) {
       attempt++;
-      
+
       try {
-        rlog(`🔄 Intento ${attempt}/${maxRetries} - Obteniendo pedidos pendientes para móvil ${movilId}`);
-        
+        rlog(`Intento ${attempt}/${maxRetries} - Obteniendo pedidos pendientes para móvil ${movilId}`);
+
         // Construir query de pedidos pendientes del móvil
         let query = supabase
           .from('pedidos')
@@ -71,9 +72,13 @@ export async function GET(
           .not('latitud', 'is', null) // Solo pedidos con coordenadas
           .not('longitud', 'is', null);
 
-        // ✅ Filtrar por fecha si se proporciona
+        // Filtrar por fecha si se proporciona.
+        // Arrastre (feature 2026-05-29): si fecha === hoy (Montevideo), incluir
+        // tambien fch_para = ayer. fch_para se almacena como YYYYMMDD en la BD.
+        // Si no se proporciona fecha: sin filtro (comportamiento original).
         if (fecha) {
-          query = query.eq('fch_para', fecha);
+          const rangoCompact = pendienteDateRangeCompact(fecha);
+          query = query.in('fch_para', rangoCompact);
         }
 
         query = query
@@ -87,18 +92,18 @@ export async function GET(
         }
 
         pedidos = result.data;
-        rlog(`✅ Pedidos obtenidos exitosamente (${pedidos?.length || 0} registros)`);
-        
+        rlog(`Pedidos obtenidos exitosamente (${pedidos?.length || 0} registros)`);
+
       } catch (err: any) {
         error = err;
         const isTimeout = err.message?.includes('timeout') || err.message?.includes('Timeout') || err.message?.includes('fetch failed');
-        
+
         if (isTimeout && attempt < maxRetries) {
           const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
-          console.error(`❌ Timeout en intento ${attempt}/${maxRetries} - Reintentando en ${delay}ms...`);
+          console.error(`Timeout en intento ${attempt}/${maxRetries} - Reintentando en ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else if (attempt >= maxRetries) {
-          console.error(`❌ Error después de ${maxRetries} intentos:`, {
+          console.error(`Error después de ${maxRetries} intentos:`, {
             message: err.message,
             details: err.toString(),
             hint: err.hint || '',

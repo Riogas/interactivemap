@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
+import type { MovilData } from '@/types';
 
 interface ZonaItem {
   zona_id: number;
@@ -29,9 +30,11 @@ interface Props {
   scopedZonaIds?: Set<number> | null;
   /** Empresas permitidas para pasar al server (?empresaIds=). null = sin scope. */
   scopedEmpresas?: number[] | null;
+  /** Fallback bajo USE_NEW: array de móviles con estadoNro para construir el map de estados. */
+  moviles?: MovilData[];
 }
 
-export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allMovilEstados, allHiddenMovilIds, initialServiceFilter = 'URGENTE', scopedZonaIds = null, scopedEmpresas = null }: Props) {
+export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allMovilEstados, allHiddenMovilIds, initialServiceFilter = 'URGENTE', scopedZonaIds = null, scopedEmpresas = null, moviles }: Props) {
   const [loading, setLoading] = useState(false);
   const [zonas, setZonas] = useState<ZonaItem[]>([]);
   const [serviceFilter, setServiceFilter] = useState(initialServiceFilter.toUpperCase());
@@ -46,12 +49,26 @@ export default function ZonasSinMovilModal({ isOpen, onClose, escenarioIds, allM
   const scopedZonasKey = scopedZonaIds ? Array.from(scopedZonaIds).sort((a, b) => a - b).join(',') : '';
   const escenariosKey = escenarioIds.join(',');
 
+  // Bajo USE_NEW allMovilEstados llega vacío (path legacy no corre). En ese caso
+  // construir el map desde moviles[] que ya traen estadoNro pre-poblado.
+  // La key String(movil.id) = nro::text, que coincide con moviles_zonas.movil_id.
+  const efectivoEstadosMap = useMemo(() => {
+    if (allMovilEstados && allMovilEstados.size > 0) return allMovilEstados;
+    const m = new Map<string, number>();
+    for (const movil of (moviles ?? [])) {
+      if (movil.estadoNro !== undefined && movil.estadoNro !== null) {
+        m.set(String(movil.id), movil.estadoNro);
+      }
+    }
+    return m;
+  }, [allMovilEstados, moviles]);
+
   // Refs sincronizadas con los props "vivos". Permite leer el último valor en
   // el fetch sin disparar un re-fetch cada vez que cambian (lo que hacía que el
   // modal se recargara constantemente al llegar updates de realtime).
-  const allMovilEstadosRef = useRef(allMovilEstados);
+  const allMovilEstadosRef = useRef(efectivoEstadosMap);
   const allHiddenMovilIdsRef = useRef(allHiddenMovilIds);
-  allMovilEstadosRef.current = allMovilEstados;
+  allMovilEstadosRef.current = efectivoEstadosMap;
   allHiddenMovilIdsRef.current = allHiddenMovilIds;
 
   useEffect(() => {

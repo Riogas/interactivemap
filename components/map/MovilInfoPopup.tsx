@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ZonasMovilModal from '@/components/ui/ZonasMovilModal';
-import { todayMontevideo } from '@/lib/date-utils';
+import { todayMontevideo, formatTimeMVD, formatTimeShortMVD, formatDateMVD } from '@/lib/date-utils';
 
 interface SessionHistorial {
   chofer: string;
@@ -145,7 +145,10 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-sm">{movil.name} <span className="font-normal opacity-80">– {movil.capacidad ?? 0}/{movil.tamanoLote ?? 0}</span></h3>
-                  <p className="text-[10px] opacity-90">Móvil #{movil.id}</p>
+                  <p className="text-[10px] opacity-90">
+                    Móvil #{movil.id}
+                    {movil.empresaFleteraNom ? <span className="font-semibold"> · {movil.empresaFleteraNom}</span> : ''}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
@@ -319,10 +322,10 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                         </svg>
                         <span className="text-[9px] text-indigo-500">Inicio de sesión:</span>
                         <span className="text-[10px] font-bold text-indigo-800">
-                          {format(new Date(sessionData.fechaInicio), "HH:mm", { locale: es })}
+                          {formatTimeShortMVD(sessionData.fechaInicio)}
                         </span>
                         <span className="text-[9px] text-indigo-400">
-                          ({format(new Date(sessionData.fechaInicio), "dd/MM/yyyy", { locale: es })})
+                          ({formatDateMVD(sessionData.fechaInicio)})
                         </span>
                       </div>
                     )}
@@ -395,7 +398,7 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                                         )}
                                       </td>
                                       <td className="py-1.5 px-2.5 text-right font-mono text-gray-600">
-                                        {format(new Date(h.inicio), "HH:mm", { locale: es })}
+                                        {formatTimeShortMVD(h.inicio)}
                                       </td>
                                     </tr>
                                   ))}
@@ -455,14 +458,14 @@ export const MovilInfoPopup: React.FC<MovilInfoPopupProps> = ({
                   <div>
                     <div className="text-[9px] text-gray-500 font-semibold">Último envío de Coordenadas</div>
                     <div className="text-xs font-bold text-gray-900">
-                      {format(new Date(movil.currentPosition.fechaInsLog), "HH:mm:ss", { locale: es })}
+                      {formatTimeMVD(movil.currentPosition.fechaInsLog)}
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-[9px] text-gray-500">Fecha</div>
                   <div className="text-[10px] font-semibold text-gray-700">
-                    {format(new Date(movil.currentPosition.fechaInsLog), "dd/MM/yyyy", { locale: es })}
+                    {formatDateMVD(movil.currentPosition.fechaInsLog)}
                   </div>
                 </div>
               </div>

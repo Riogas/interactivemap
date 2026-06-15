@@ -125,3 +125,46 @@ export function getDelayInfo(delayMinutes: number | null): DelayInfo {
     badgeText: `${delayMinutes} min`,
   };
 }
+
+// ─── Bucket helpers para tabs de atraso en el modal de gráficos ────────────────
+
+export type BucketPendiente = 'En Hora' | 'Hora Limite Cercana' | 'Atrasado' | 'Muy Atrasado' | 'Sin Hora';
+export type BucketFinalizado = '1-15 min' | '15-30 min' | '30-60 min' | '60+ min' | 'Sin atraso';
+
+export const BUCKETS_PENDIENTE_ORDEN: BucketPendiente[] = [
+  'Muy Atrasado', 'Atrasado', 'Hora Limite Cercana', 'En Hora', 'Sin Hora',
+];
+export const BUCKETS_FINALIZADO_ORDEN: BucketFinalizado[] = [
+  '60+ min', '30-60 min', '15-30 min', '1-15 min', 'Sin atraso',
+];
+
+export const COLORS_BUCKETS_PENDIENTE: Record<BucketPendiente, string> = {
+  'Muy Atrasado':         'var(--color-stats-destructive)',
+  'Atrasado':             '#f472b6',
+  'Hora Limite Cercana':  'var(--color-stats-warning)',
+  'En Hora':              'var(--color-stats-success)',
+  'Sin Hora':             'var(--color-stats-neutral)',
+};
+export const COLORS_BUCKETS_FINALIZADO: Record<BucketFinalizado, string> = {
+  '60+ min':              'var(--color-stats-destructive)',
+  '30-60 min':            '#f472b6',
+  '15-30 min':            '#f97316',
+  '1-15 min':             'var(--color-stats-warning)',
+  'Sin atraso':           'var(--color-stats-neutral)',
+};
+
+export function bucketAtrasoPendiente(mins: number | null): BucketPendiente {
+  if (mins === null || Number.isNaN(mins)) return 'Sin Hora';
+  if (mins >= 10) return 'En Hora';
+  if (mins >= 0) return 'Hora Limite Cercana';
+  if (mins >= -10) return 'Atrasado';
+  return 'Muy Atrasado';
+}
+
+export function bucketAtrasoFinalizado(mins: number | null): BucketFinalizado {
+  if (mins === null || Number.isNaN(mins) || mins <= 0) return 'Sin atraso';
+  if (mins <= 15) return '1-15 min';
+  if (mins <= 30) return '15-30 min';
+  if (mins <= 60) return '30-60 min';
+  return '60+ min';
+}

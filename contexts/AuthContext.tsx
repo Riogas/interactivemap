@@ -23,6 +23,8 @@ interface User {
   token: string;
   allowedEmpresas: number[] | null; // null = root/sin restricción, array = IDs permitidos
   allowedEscenarios: number[] | null; // null = root/sin restricción, array = IDs permitidos
+  /** True si EmpFletera = {"TODAS":"*"} → ve todas las empresas (reemplaza el hardcodeo de roles). */
+  verTodasEmpresas: boolean;
 }
 
 type PreferenciaEntry = { nombre: string; valor: number };
@@ -62,6 +64,35 @@ function parsePreferencia(
   } catch (e) {
     console.warn(`⚠️ Error parseando preferencia "${atributo}":`, e);
     return [];
+  }
+}
+
+/**
+ * Detecta si el usuario tiene acceso a TODAS las empresas vía el atributo
+ * `EmpFletera` con el valor especial {"TODAS":"*"} (o "*").
+ *
+ * Reemplaza el hardcodeo de roles privilegiados (48/49/50). Cualquier usuario
+ * con este valor en EmpFletera ve todas las empresas, sin importar su rol.
+ */
+function tieneVerTodasEmpresas(
+  prefs: Array<{ atributo: string; valor: string }> | undefined,
+): boolean {
+  if (!Array.isArray(prefs)) return false;
+  const p = prefs.find((x) => x.atributo === 'EmpFletera');
+  if (!p?.valor) return false;
+  try {
+    const parsed = JSON.parse(p.valor);
+    if (parsed === '*') return true;
+    if (parsed && typeof parsed === 'object') {
+      // Acepta { "TODAS": "*" } (clave canónica) o cualquier valor "*".
+      if (String((parsed as Record<string, unknown>).TODAS ?? '').trim() === '*') return true;
+      return Object.values(parsed as Record<string, unknown>).some(
+        (v) => String(v ?? '').trim() === '*',
+      );
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -301,25 +332,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let allowedEmpresas: number[] | null = null;
         let allowedEscenarios: number[] | null = null;
 
-        // Rol Despacho: trato igual a root (acceso completo, sin restricción de
-        // escenarios ni empresas). El rol viene de SecuritySuite via el flag
-        // isDespacho del LDAP/AS400, materializado en response.roles cuando se
-        // ejecuta el upsert correspondiente en PG.
-        //
-        // Detección robusta: chequea rolId === 49 (DESPACHO_ROL_ID por convención)
-        // OR que el nombre contenga 'despacho' (matchea 'Despacho', 'DESPACHO',
-        // 'Despacho Móvil', etc.). lib/auth-scope.ts usa el mismo criterio.
-        const tieneRolDespacho = (response.roles || []).some((r) => {
-          if (Number(r.rolId) === 49) return true;
-          const nombre = String(r.rolNombre || '').trim().toLowerCase();
-          return nombre.includes('despacho');
-        });
+        // Acceso total a empresas/escenarios: data-driven vía EmpFletera {"TODAS":"*"}.
+        // Reemplaza el hardcodeo de roles privilegiados (48/49/50). Un usuario con
+        // este atributo se trata igual que root para el scope (empresas + escenarios).
+        const verTodasEmpresas = tieneVerTodasEmpresas(response.preferencias);
 
-        if (isRoot || tieneRolDespacho) {
+        // 🚪 Gate de perfil completo: un usuario no-root DEBE tener el atributo
+        // EmpFletera cargado (sea TODAS:* o un listado de empresas). Si no tiene
+        // nada, su perfil está incompleto y no puede operar (todo el scope depende
+        // de EmpFletera). Root queda exento (bypassa el scope).
+        if (!isRoot && !verTodasEmpresas && empFleteras.length === 0) {
+          console.log('❌ Login bloqueado: usuario sin atributo EmpFletera (perfil incompleto)');
+          return {
+            success: false,
+            error: 'Perfil de usuario incompleto',
+          };
+        }
+
+        if (isRoot || verTodasEmpresas) {
           console.log(
             isRoot
               ? '👑 Usuario root - acceso a todas las empresas y escenarios'
-              : '🚪 Rol Despacho - acceso completo (mismo trato que root)',
+              : '🌐 EmpFletera TODAS:* - acceso completo a empresas y escenarios',
           );
           authStorage.removeItem('trackmovil_allowed_empresas');
           authStorage.removeItem('trackmovil_allowed_escenarios');
@@ -372,6 +406,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           token: response.token,
           allowedEmpresas,
           allowedEscenarios,
+          verTodasEmpresas,
         };
 
         // Guardar en localStorage el newUser completo (incluye loginTime para validar expiración en F5)
@@ -435,6 +470,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Limpiar fecha seleccionada de sessionStorage — al relogi debe arrancar en hoy.
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('trackmovil:selectedDate');
+      // Limpiar selecciones de móviles por fecha (trackmovil:selectedMoviles:<fecha>)
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith('trackmovil:selectedMoviles:')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => sessionStorage.removeItem(key));
     }
     setEscenarioId(1000);
     console.log('✅ Sesión cerrada completamente');

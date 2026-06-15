@@ -28,6 +28,10 @@ interface RouteAnimationControlProps {
   currentAnimTimeStr?: string; // Hora actual de la animación (modo timeline unificado)
   /** IDs de empresas fleteras seleccionadas — se pasan al endpoint para filtrar actividad. */
   selectedEmpresas?: number[];
+  /** ID del escenario activo — requerido para la rama moviles_dia (flag NEXT_PUBLIC_USE_MOVILES_DIA). */
+  escenarioId?: number;
+  /** 'S' si el usuario es root — se usa para el header x-track-isroot en la rama moviles_dia. */
+  isRoot?: string;
 }
 
 const SPEED_OPTIONS = [
@@ -61,6 +65,8 @@ export default function RouteAnimationControl({
   onMovilDateChange,
   currentAnimTimeStr = '',
   selectedEmpresas,
+  escenarioId,
+  isRoot,
 }: RouteAnimationControlProps) {
   const [movilSearch, setMovilSearch] = useState('');
   const [isMovilDropdownOpen, setIsMovilDropdownOpen] = useState(false);
@@ -95,69 +101,114 @@ export default function RouteAnimationControl({
     setActivityError(false);
     setActivityMovilIds(null);
 
-    const params = new URLSearchParams({ date: selectedDate });
-    if (selectedEmpresas && selectedEmpresas.length > 0) {
-      params.set('empresaIds', selectedEmpresas.join(','));
-    }
+    const useMovilesDia = process.env.NEXT_PUBLIC_USE_MOVILES_DIA === 'true';
 
-    fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
-      .then((res) => res.json())
-      .then((result: { success: boolean; data?: number[] }) => {
-        if (result.success && Array.isArray(result.data)) {
-          setActivityMovilIds(new Set(result.data));
-        } else {
-          console.warn('[RouteAnimationControl] moviles-with-activity respondió sin data:', result);
+    if (useMovilesDia && escenarioId) {
+      // Rama moviles_dia: leer filas de la fecha y extraer Set<id>
+      const params = new URLSearchParams({ escenario: String(escenarioId), fecha: selectedDate });
+      if (selectedEmpresas && selectedEmpresas.length > 0) {
+        params.set('empresas', selectedEmpresas.join(','));
+      }
+      fetch(`/api/moviles-dia?${params.toString()}`, {
+        signal: controller.signal,
+        headers: { 'x-track-isroot': isRoot ?? 'N' },
+      })
+        .then((res) => res.json())
+        .then((result: { data?: Array<{ id: number; activo?: boolean; inactivoDelDia?: boolean }> }) => {
+          if (Array.isArray(result.data)) {
+            // Universo: activos del día + inactivos del día (igual que el colapsable)
+            const ids = new Set<number>(
+              result.data.filter((m) => m.activo === true || m.inactivoDelDia === true).map((m) => m.id)
+            );
+            setActivityMovilIds(ids);
+          } else {
+            console.warn('[RouteAnimationControl] moviles-dia respondió sin data:', result);
+            setActivityError(true);
+            setActivityMovilIds(null);
+          }
+        })
+        .catch((err: Error) => {
+          if (err.name === 'AbortError') return;
+          console.error('[RouteAnimationControl] Error al cargar moviles-dia:', err);
           setActivityError(true);
           setActivityMovilIds(null);
-        }
-      })
-      .catch((err: Error) => {
-        if (err.name === 'AbortError') return;
-        console.error('[RouteAnimationControl] Error al cargar móviles con actividad:', err);
-        setActivityError(true);
-        setActivityMovilIds(null); // Fallback: mostrar todos
-      })
-      .finally(() => {
-        setActivityLoading(false);
-      });
+        })
+        .finally(() => {
+          setActivityLoading(false);
+        });
+    } else {
+      // Rama original: /api/moviles-with-activity
+      const params = new URLSearchParams({ date: selectedDate });
+      if (selectedEmpresas && selectedEmpresas.length > 0) {
+        params.set('empresaIds', selectedEmpresas.join(','));
+      }
+      fetch(`/api/moviles-with-activity?${params.toString()}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((result: { success: boolean; data?: number[] }) => {
+          if (result.success && Array.isArray(result.data)) {
+            setActivityMovilIds(new Set(result.data));
+          } else {
+            console.warn('[RouteAnimationControl] moviles-with-activity respondió sin data:', result);
+            setActivityError(true);
+            setActivityMovilIds(null);
+          }
+        })
+        .catch((err: Error) => {
+          if (err.name === 'AbortError') return;
+          console.error('[RouteAnimationControl] Error al cargar móviles con actividad:', err);
+          setActivityError(true);
+          setActivityMovilIds(null); // Fallback: mostrar todos
+        })
+        .finally(() => {
+          setActivityLoading(false);
+        });
+    }
 
     return () => {
       controller.abort();
     };
-  }, [selectedDate, selectedEmpresas]);
+  }, [selectedDate, selectedEmpresas, escenarioId, isRoot]);
 
   // Filtrar por actividad + búsqueda para el dropdown primario
   // (excluir el secundario si está seleccionado)
+  // Buscador: numérico puro → startsWith sobre id; con letras → includes sobre name/matricula
   const filteredMoviles = useMemo(() => {
     const base = activityMovilIds !== null
       ? allMoviles.filter(m => activityMovilIds.has(m.id))
       : allMoviles;
-    if (!movilSearch.trim()) return base;
-    const q = movilSearch.toLowerCase();
+    if (!movilSearch.trim()) return base.slice().sort((a, b) => a.id - b.id);
+    const q = movilSearch.trim();
+    const isNumeric = /^\d+$/.test(q);
+    if (isNumeric) {
+      return base.filter(m => String(m.id).startsWith(q)).sort((a, b) => a.id - b.id);
+    }
+    const lower = q.toLowerCase();
     return base.filter(m =>
-      String(m.id).includes(q) ||
-      (m.name && m.name.toLowerCase().includes(q)) ||
-      (m.matricula && m.matricula.toLowerCase().includes(q))
-    );
+      (m.name && m.name.toLowerCase().includes(lower)) ||
+      (m.matricula && m.matricula.toLowerCase().includes(lower))
+    ).sort((a, b) => a.id - b.id);
   }, [allMoviles, movilSearch, activityMovilIds]);
 
   const currentMovil = allMoviles.find(m => m.id === selectedMovilId);
   const secondaryMovil = allMoviles.find(m => m.id === secondaryMovilId);
 
-  // Filtrar móviles para el dropdown secundario (excluir el primario, filtrar por actividad)
+  // Filtrar móviles para el dropdown secundario (excluir el primario).
+  // Usa el mismo base filtrado por actividad que el primario; aplica búsqueda sobre ese resultado.
   const filteredSecondaryMoviles = useMemo(() => {
-    const base = activityMovilIds !== null
-      ? allMoviles.filter(m => activityMovilIds.has(m.id))
-      : allMoviles;
-    const available = base.filter(m => m.id !== selectedMovilId);
+    const available = filteredMoviles.filter(m => m.id !== selectedMovilId);
     if (!secondarySearch.trim()) return available;
-    const q = secondarySearch.toLowerCase();
+    const q = secondarySearch.trim();
+    const isNumeric = /^\d+$/.test(q);
+    if (isNumeric) {
+      return available.filter(m => String(m.id).startsWith(q));
+    }
+    const lower = q.toLowerCase();
     return available.filter(m =>
-      String(m.id).includes(q) ||
-      (m.name && m.name.toLowerCase().includes(q)) ||
-      (m.matricula && m.matricula.toLowerCase().includes(q))
+      (m.name && m.name.toLowerCase().includes(lower)) ||
+      (m.matricula && m.matricula.toLowerCase().includes(lower))
     );
-  }, [allMoviles, selectedMovilId, secondarySearch, activityMovilIds]);
+  }, [filteredMoviles, selectedMovilId, secondarySearch]);
+
 
   return (
     <motion.div
@@ -301,13 +352,13 @@ export default function RouteAnimationControl({
                       )}
                       <div className="overflow-y-auto max-h-[200px]">
                         {filteredMoviles.map(m => {
-                          // Badge: si es hoy → estado real, si pasado → gris
-                          const forceInactive = !isToday;
+                          // Badge: verde si activo===true y es hoy; gris en cualquier otro caso
+                          const isActiveToday = isToday && m.activo === true;
                           const circleClass = m.id === selectedMovilId
                             ? 'bg-purple-500 text-white'
-                            : (forceInactive || m.isInactive)
-                              ? 'bg-gray-200 text-gray-600'
-                              : 'bg-green-100 text-green-700';
+                            : isActiveToday
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-200 text-gray-600';
                           return (
                             <button
                               key={m.id}
@@ -408,11 +459,11 @@ export default function RouteAnimationControl({
                         )}
                         <div className="overflow-y-auto max-h-[200px]">
                           {filteredSecondaryMoviles.map(m => {
-                            // Badge: si es hoy → estado real, si pasado → gris
-                            const forceInactive = !isToday;
-                            const circleClass = (forceInactive || m.isInactive)
-                              ? 'bg-gray-200 text-gray-600'
-                              : 'bg-teal-100 text-teal-700';
+                          // Badge: verde si activo===true y es hoy; gris en cualquier otro caso
+                            const isActiveToday = isToday && m.activo === true;
+                            const circleClass = isActiveToday
+                              ? 'bg-teal-100 text-teal-700'
+                              : 'bg-gray-200 text-gray-600';
                             return (
                               <button
                                 key={m.id}

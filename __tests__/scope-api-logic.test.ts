@@ -269,13 +269,16 @@ describe('computePedidosZona — cliente-side scope', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AC1/AC2 — Despacho y root no tienen scope (shouldScopeByEmpresa = false)
+// AC1/AC2 — Usuarios con verTodasEmpresas y root no tienen scope
+// (Despacho/Dashboard/Supervisor obtienen el acceso vía EmpFletera {"TODAS":"*"},
+//  ya no por hardcodeo de RolId 48/49/50).
 // ─────────────────────────────────────────────────────────────────────────────
-describe('despacho y root no aplican scope', () => {
-  it('despacho (RolId 49) → shouldScopeByEmpresa=false → getScopedEmpresas=null', () => {
+describe('verTodasEmpresas y root no aplican scope', () => {
+  it('despacho con verTodasEmpresas → shouldScopeByEmpresa=false → getScopedEmpresas=null', () => {
     const user = {
       isRoot: 'N' as string,
       roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+      verTodasEmpresas: true,
       allowedEmpresas: [5],
     };
     expect(shouldScopeByEmpresa(user)).toBe(false);
@@ -288,13 +291,24 @@ describe('despacho y root no aplican scope', () => {
     expect(getScopedEmpresas(user)).toBeNull();
   });
 
-  it('despacho con allowedEmpresas=[X] → getScopedEmpresas=null (despacho wins)', () => {
+  it('verTodasEmpresas con allowedEmpresas=[X] → getScopedEmpresas=null (flag gana)', () => {
     const user = {
       isRoot: 'N' as string,
       roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+      verTodasEmpresas: true,
       allowedEmpresas: [99],
     };
     expect(getScopedEmpresas(user)).toBeNull();
+  });
+
+  it('despacho SIN verTodasEmpresas → ahora SÍ aplica scope (sin hardcodeo de rol)', () => {
+    const user = {
+      isRoot: 'N' as string,
+      roles: [{ RolId: '49', RolNombre: 'Despacho', RolTipo: '' }],
+      allowedEmpresas: [5],
+    };
+    expect(shouldScopeByEmpresa(user)).toBe(true);
+    expect(getScopedEmpresas(user)).toEqual([5]);
   });
 });
 

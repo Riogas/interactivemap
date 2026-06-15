@@ -18,6 +18,7 @@ export interface MovilData {
   name: string;
   color: string;
   empresaFleteraId?: number; // ID de la empresa fletera a la que pertenece
+  empresaFleteraNom?: string; // Nombre de la empresa fletera (desde tabla moviles)
   currentPosition?: MovilCoordinate;
   history?: MovilCoordinate[];
   pedidosPendientes?: number;
@@ -34,6 +35,10 @@ export interface MovilData {
   estadoDesc?: string;        // Descripción del estado (ACTIVO, INACTIVO, etc.)
   estadoNro?: number;         // Número de estado (0,1,2=ACTIVO | 3=NO ACTIVO | 4=BAJA MOMENTÁNEA)
   terminalId?: string;        // ID de la terminal del móvil (ej: abbc5d30f70f8cc4)
+  // 🔥 NUEVO: Flags pre-computados del read model moviles_dia
+  activo?: boolean;           // El móvil está activo en el escenario
+  ocultoOperativo?: boolean;  // Oculto de la vista operativa
+  inactivoDelDia?: boolean;   // Marcado como inactivo para el día corriente
 }
 
 export interface EmpresaFletera {
@@ -287,7 +292,7 @@ export interface ServiceFilters {
   // Inner table filters (synced to map + collapsible)
   search: string;
   zona: number | null;
-  movil: number | null;
+  movil: number[];              // Caso 5: multi-select bidireccional con selectedMoviles cuando openSource=colapsable
   defecto: string | null;       // "producto" for services
   asignacion: 'todos' | 'con_movil' | 'sin_movil';
   entrega: 'todos' | 'entregados' | 'no_entregados';
@@ -302,9 +307,16 @@ export interface PedidoFilters {
   // Inner table filters (synced to map + collapsible)
   search: string;
   zona: number | null;
-  movil: number | null;
+  movil: number[];        // Caso 5: multi-select bidireccional con selectedMoviles cuando openSource=colapsable
   producto: string | null;
   asignacion: 'todos' | 'con_movil' | 'sin_movil';
   entrega: 'todos' | 'entregados' | 'no_entregados';
   soloSinCoords: boolean;
+}
+
+// Opción de móvil para el combo del modal (activos + inactivos relevantes)
+export interface MovilOption {
+  id: number;
+  nombre: string;
+  activa: boolean;
 }

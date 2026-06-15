@@ -39,7 +39,10 @@ export default function RealtimeDriftIndicator({
 
   // Tick cada 10s para recomputar el color (no se muestra el contador en seg).
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 10_000);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return; // Pestaña en background: skip
+      setNow(Date.now());
+    }, 10_000);
     return () => clearInterval(interval);
   }, []);
 
