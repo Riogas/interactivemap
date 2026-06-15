@@ -44,6 +44,7 @@ export default function PreferenciasGlobalesModal({
   const [manualInfo, setManualInfo] = useState<{ url: string; updated_at: string | null; updated_by: string | null } | null>(null);
   const [uploadingManual, setUploadingManual] = useState(false);
   const [uploadManualResult, setUploadManualResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [resettingManual, setResettingManual] = useState(false);
 
   // ===== Estado para Reconstruir móviles_dia =====
   const today = new Date().toISOString().slice(0, 10);
@@ -357,6 +358,55 @@ export default function PreferenciasGlobalesModal({
       setUploadManualResult({ ok: false, msg: `Error al subir: ${err.message}` });
     } finally {
       setUploadingManual(false);
+    }
+  }, [trackFuncs]);
+
+  // Repunta el manual al PDF estático del sistema (public/manual/...), limpiando
+  // cualquier override en la base. Útil cuando el manual viaja con el deploy y se
+  // quiere evitar la subida a Storage (límite de tamaño del proxy).
+  const handleResetManual = useCallback(async () => {
+    setResettingManual(true);
+    setUploadManualResult(null);
+    try {
+      let token = '';
+      let isRootHeader = 'N';
+      let username = '';
+      if (typeof window !== 'undefined') {
+        token = authStorage.getItem('trackmovil_token') ?? '';
+        try {
+          const raw = authStorage.getItem('trackmovil_user');
+          if (raw) {
+            const u = JSON.parse(raw) as { isRoot?: string; username?: string; email?: string };
+            isRootHeader = u.isRoot ?? 'N';
+            username = u.username ?? u.email ?? '';
+          }
+        } catch { /* silencioso */ }
+      }
+
+      const res = await fetch('/api/admin/reset-manual', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + token,
+          'x-track-isroot': isRootHeader,
+          'x-track-funcs': trackFuncs,
+          'x-track-user': username,
+        },
+      });
+
+      const rawText = await res.text();
+      let json: { success?: boolean; url?: string; uploadedAt?: string; uploadedBy?: string; error?: string } | null = null;
+      try { json = rawText ? JSON.parse(rawText) : null; } catch { json = null; }
+
+      if (json?.success && json.url) {
+        setManualInfo({ url: json.url, updated_at: json.uploadedAt ?? null, updated_by: json.uploadedBy ?? null });
+        setUploadManualResult({ ok: true, msg: 'Manual restablecido al PDF del sistema' });
+      } else {
+        setUploadManualResult({ ok: false, msg: json?.error ?? `No se pudo restablecer (HTTP ${res.status})` });
+      }
+    } catch (err: any) {
+      setUploadManualResult({ ok: false, msg: `Error al restablecer: ${err.message}` });
+    } finally {
+      setResettingManual(false);
     }
   }, [trackFuncs]);
 
@@ -983,6 +1033,24 @@ export default function PreferenciasGlobalesModal({
                         disabled={uploadingManual}
                       />
                     </div>
+
+                    {/* Acción: restablecer al PDF estático del sistema (sin subir archivo).
+                        Repunta el override de la base al manual que viaja con el deploy.
+                        Evita el límite de tamaño del proxy en la subida de PDFs grandes. */}
+                    <button
+                      type="button"
+                      disabled={resettingManual || uploadingManual}
+                      onClick={() => void handleResetManual()}
+                      className={[
+                        'w-full px-4 py-2 text-sm font-medium rounded-lg border transition-all',
+                        resettingManual || uploadingManual
+                          ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                          : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50 hover:border-indigo-300',
+                      ].join(' ')}
+                      title="Hace que el botón ? descargue el manual incluido con el sistema (public/manual)"
+                    >
+                      {resettingManual ? 'Restableciendo...' : 'Restablecer al manual del sistema'}
+                    </button>
 
                     {uploadManualResult && (
                       <div

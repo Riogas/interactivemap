@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { hasFuncionalidad } from '@/lib/role-funcionalidades';
+import { isRoot } from '@/lib/auth-scope';
 import { authStorage } from '@/lib/auth-storage';
 import type { Notificacion, NotificacionUserState, NotificacionWithStats } from '@/types/supabase';
 
@@ -531,7 +532,10 @@ function LecturasModal({ notifId, notifTitulo, onClose }: LecturasModalProps) {
 export default function NotificacionesAdminPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const canAccess = hasFuncionalidad(user?.roles, 'Administrar notificaciones');
+  // Acceso a la página: root o funcionalidad 'Administrar notificaciones'.
+  // Debe coincidir con el gate del botón en FloatingToolbar para no abrir la
+  // pestaña y rebotar a /dashboard.
+  const canAccess = isRoot(user) || hasFuncionalidad(user?.roles, 'Administrar notificaciones');
 
   const [notificaciones, setNotificaciones] = useState<NotificacionWithStats[]>([]);
   const [loading, setLoading] = useState(true);
