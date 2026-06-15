@@ -2667,10 +2667,11 @@ function DashboardContent() {
   );
 
   // Gating del FAB "Buscar calle en el mapa":
-  // - root siempre lo ve.
-  // - resto: solo si algun rol tiene la funcionalidad "Buscador de Calles".
+  // Controlado ÚNICAMENTE por la funcionalidad "Buscador de Calles" — SIN bypass
+  // de root (decisión explícita: el buscador debe respetarse aunque el usuario sea
+  // root, ya que pega a servicios externos Overpass/Nominatim que se quieren acotar).
   const canVerBuscadorCalles = useMemo(
-    () => isRoot(user) || hasFuncionalidad(user?.roles, 'Buscador de Calles'),
+    () => hasFuncionalidad(user?.roles, 'Buscador de Calles'),
     [user],
   );
 

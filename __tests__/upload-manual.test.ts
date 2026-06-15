@@ -30,12 +30,15 @@ function makeUploadRequest(opts: {
   isRoot?: string;
   file?: { name: string; type: string; size: number; content?: string };
   username?: string;
+  funcs?: string;
 }): NextRequest {
-  const { isRoot = 'S', file, username = 'admin' } = opts;
+  const { isRoot = 'S', file, username = 'admin', funcs = 'Subir manuales de usuario' } = opts;
   const headers: Record<string, string> = {
     'x-track-isroot': isRoot,
     'x-track-user': username,
   };
+  // El route usa requireFuncionalidad('Subir manuales de usuario') → lee x-track-funcs.
+  if (funcs) headers['x-track-funcs'] = funcs;
 
   const formData = new FormData();
   if (file) {
@@ -134,24 +137,24 @@ describe('POST /api/admin/upload-manual', () => {
     expect(json.uploadedAt).toBeDefined();
   });
 
-  it('AC2 — sin permiso (isRoot≠S) devuelve 403', async () => {
-    const req = makeUploadRequest({ isRoot: 'N', file: { name: 'manual.pdf', type: 'application/pdf', size: 100 } });
+  it('AC2 — sin la funcionalidad "Subir manuales de usuario" devuelve 403', async () => {
+    const req = makeUploadRequest({ funcs: '', file: { name: 'manual.pdf', type: 'application/pdf', size: 100 } });
     const res = await POST(req);
     const json = await res.json();
 
     expect(res.status).toBe(403);
     expect(json.success).toBe(false);
-    expect(json.code).toBe('NOT_ROOT');
+    expect(json.code).toBe('NO_FUNCIONALIDAD');
   });
 
   it('AC3 — sin archivo devuelve 400', async () => {
     const mock = makeSupabaseMock({});
     (getServerSupabaseClient as any).mockReturnValue(mock);
 
-    // Request sin file en formData
+    // Request sin file en formData (con la funcionalidad para pasar el gate)
     const req = new NextRequest('http://localhost/api/admin/upload-manual', {
       method: 'POST',
-      headers: { 'x-track-isroot': 'S' },
+      headers: { 'x-track-isroot': 'S', 'x-track-funcs': 'Subir manuales de usuario' },
       body: new FormData(),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);

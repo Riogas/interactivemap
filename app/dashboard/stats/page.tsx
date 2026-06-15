@@ -330,13 +330,14 @@ function StatsContent() {
   // Root siempre puede. El rol del usuario ya no condiciona esta visibilidad.
   const canSeeUnassigned = isRoot(user) || hasSaAcumulados(user?.roles);
   const isPrivilegedScope = canSeeAllEmpresas(user);
-  // Gates por card de la fila 2 (root siempre pasa):
+  // Gates por card de la fila 2 — SIN bypass de root (decisión: respetar la
+  // funcionalidad aunque el usuario sea root):
   //   - 'Estadist.GlobalxMovil' → Top móviles por entregas
   //   - 'Estadist.GlobalxZona'  → Pedidos por zona
   //   - 'Estadist.GlobalxEF'    → Pedidos por empresa (EF = empresa fletera)
-  const canSeeStatsMovil = isRoot(user) || hasFuncionalidad(user?.roles, 'Estadist.GlobalxMovil');
-  const canSeeStatsZona = isRoot(user) || hasFuncionalidad(user?.roles, 'Estadist.GlobalxZona');
-  const canSeeStatsEmpresa = isRoot(user) || hasFuncionalidad(user?.roles, 'Estadist.GlobalxEF');
+  const canSeeStatsMovil = hasFuncionalidad(user?.roles, 'Estadist.GlobalxMovil');
+  const canSeeStatsZona = hasFuncionalidad(user?.roles, 'Estadist.GlobalxZona');
+  const canSeeStatsEmpresa = hasFuncionalidad(user?.roles, 'Estadist.GlobalxEF');
   const { serverNow } = useServerTime();
   const { settings: escenarioSettings } = useEscenarioSettings(escenarioId);
   const minutosAntesSa = escenarioSettings?.pedidosSaMinutosAntes ?? null;

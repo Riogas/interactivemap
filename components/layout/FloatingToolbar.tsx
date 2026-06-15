@@ -77,7 +77,11 @@ export default function FloatingToolbar({
   const canVerPreferenciasGlobales = isRoot(user) || hasFuncionalidad(user?.roles, 'Preferencias Globales');
   const canVerLogs = isRoot(user) || hasFuncionalidad(user?.roles, 'Query Logs/Auditoria');
   const canVerLoginBlocks = isRoot(user) || hasFuncionalidad(user?.roles, 'Query Inicios de sesion');
-  const canVerNotificaciones = isRoot(user) || hasFuncionalidad(user?.roles, 'Notificacion de novedades');
+  // El botón "Notificaciones de novedades" abre /admin/notificaciones, que está
+  // gateada por 'Administrar notificaciones'. Usar la MISMA funcionalidad evita
+  // que un usuario vea el botón y luego sea redirigido al dashboard por falta de
+  // permiso en la página destino.
+  const canVerNotificaciones = isRoot(user) || hasFuncionalidad(user?.roles, 'Administrar notificaciones');
 
   const hasAnyAdminPerm = canVerIncidentes || canVerConfigEscenario || canVerPreferenciasGlobales || canVerLogs || canVerLoginBlocks || canVerNotificaciones;
 

@@ -322,7 +322,26 @@ export default function PreferenciasGlobalesModal({
         },
         body: fd,
       });
-      const json = await res.json() as { success: boolean; url?: string; uploadedAt?: string; uploadedBy?: string; error?: string };
+
+      // Parseo defensivo: si el servidor/proxy devuelve HTML (ej. 413 Request
+      // Entity Too Large, timeout, error 500 no-JSON), evitamos el críptico
+      // "JSON.parse: unexpected character" y mostramos un mensaje accionable.
+      const rawText = await res.text();
+      let json: { success?: boolean; url?: string; uploadedAt?: string; uploadedBy?: string; error?: string } | null = null;
+      try {
+        json = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        json = null;
+      }
+
+      if (!json) {
+        const snippet = rawText.trim().slice(0, 120);
+        const hint = res.status === 413
+          ? 'El archivo es demasiado grande para el servidor (revisar límite del proxy/nginx).'
+          : `Respuesta no válida del servidor (HTTP ${res.status}).`;
+        setUploadManualResult({ ok: false, msg: snippet ? `${hint} ${snippet}` : hint });
+        return;
+      }
 
       if (json.success && json.url) {
         setManualInfo({
@@ -332,14 +351,14 @@ export default function PreferenciasGlobalesModal({
         });
         setUploadManualResult({ ok: true, msg: 'Manual actualizado correctamente' });
       } else {
-        setUploadManualResult({ ok: false, msg: json.error ?? 'Error al subir el manual' });
+        setUploadManualResult({ ok: false, msg: json.error ?? `Error al subir el manual (HTTP ${res.status})` });
       }
     } catch (err: any) {
       setUploadManualResult({ ok: false, msg: `Error al subir: ${err.message}` });
     } finally {
       setUploadingManual(false);
     }
-  }, []);
+  }, [trackFuncs]);
 
   const rebuildRangeDays = (() => {
     const d0 = new Date(rebuildDesde);
