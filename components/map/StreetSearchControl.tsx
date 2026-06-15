@@ -123,6 +123,10 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
   const [error, setError] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [hasHighlight, setHasHighlight] = useState(false);
+  // Selección de una calle en curso: Overpass puede demorar varios segundos.
+  // Mientras dura, mostramos un overlay bloqueante para que el usuario no
+  // dispare otra búsqueda ni interactúe con el mapa.
+  const [selecting, setSelecting] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -199,7 +203,14 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
 
   const handleSelect = useCallback(
     async (r: NominatimResult) => {
+      if (selecting) return; // evitar selecciones concurrentes
       clearHighlight();
+      // Cerrar el dropdown y reflejar la calle elegida de inmediato; el pintado
+      // (Overpass) puede demorar y se cubre con el overlay de carga.
+      const streetNameImmediate = streetNameOf(r);
+      setQuery(streetNameImmediate || r.display_name.split(',').slice(0, 2).join(', '));
+      setShowResults(false);
+      setSelecting(true);
 
       const lat = parseFloat(r.lat);
       const lon = parseFloat(r.lon);
@@ -226,61 +237,62 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
         }
       };
 
-      // Nombre de la calle: preferir address.road (exacto), si no la 1ª parte del display_name.
-      const streetName = streetNameOf(r);
-      const city = (r.address?.city || r.address?.town || r.address?.village || r.address?.state || '').trim();
-      const isStreet = (r.category === 'highway') || (r.type && /^(residential|primary|secondary|tertiary|unclassified|living_street|trunk|road|street)$/.test(r.type)) || !!r.address?.road;
+      try {
+        // Nombre de la calle: preferir address.road (exacto), si no la 1ª parte del display_name.
+        const streetName = streetNameImmediate;
+        const city = (r.address?.city || r.address?.town || r.address?.village || r.address?.state || '').trim();
+        const isStreet = (r.category === 'highway') || (r.type && /^(residential|primary|secondary|tertiary|unclassified|living_street|trunk|road|street)$/.test(r.type)) || !!r.address?.road;
 
-      let drawn = false;
+        let drawn = false;
 
-      // 1) Intentar pintar la CALLE COMPLETA via Overpass (todos los tramos por nombre).
-      //    Si conocemos la ciudad (ej. Montevideo) consultamos por área administrativa
-      //    para traer la calle de inicio a fin, no sólo los tramos del viewport. Si no
-      //    hay ciudad, acotamos por el bbox visible (evita homónimos de otras zonas).
-      if (isStreet && streetName) {
-        try {
-          const params = new URLSearchParams({ name: streetName });
-          if (city) {
-            params.set('city', city);
-          } else {
-            const b = map.getBounds();
-            params.set('bbox', `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`);
-          }
-          const res = await fetch(`/api/overpass?${params.toString()}`);
-          if (res.ok) {
-            const geom = await res.json();
-            if (geom?.type === 'MultiLineString' && Array.isArray(geom.coordinates) && geom.coordinates.length > 0) {
-              drawGeometry(geom as GeoJSON.GeoJsonObject);
-              drawn = true;
+        // 1) Intentar pintar la CALLE COMPLETA via Overpass (todos los tramos por nombre).
+        //    Si conocemos la ciudad (ej. Montevideo) consultamos por área administrativa
+        //    para traer la calle de inicio a fin, no sólo los tramos del viewport. Si no
+        //    hay ciudad, acotamos por el bbox visible (evita homónimos de otras zonas).
+        if (isStreet && streetName) {
+          try {
+            const params = new URLSearchParams({ name: streetName });
+            if (city) {
+              params.set('city', city);
+            } else {
+              const b = map.getBounds();
+              params.set('bbox', `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`);
             }
-          }
-        } catch { /* fallback abajo */ }
-      }
-
-      // 2) Fallback: geometría que devolvió Nominatim (segmento), o un punto.
-      if (!drawn) {
-        if (r.geojson) {
-          drawGeometry(r.geojson as GeoJSON.GeoJsonObject);
-        } else if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          drawGeometry({ type: 'Point', coordinates: [lon, lat] } as GeoJSON.Point);
+            const res = await fetch(`/api/overpass?${params.toString()}`);
+            if (res.ok) {
+              const geom = await res.json();
+              if (geom?.type === 'MultiLineString' && Array.isArray(geom.coordinates) && geom.coordinates.length > 0) {
+                drawGeometry(geom as GeoJSON.GeoJsonObject);
+                drawn = true;
+              }
+            }
+          } catch { /* fallback abajo */ }
         }
-      }
 
-      // Mostrar el nombre de la calle elegida y cerrar el dropdown.
-      setQuery(streetName || r.display_name.split(',').slice(0, 2).join(', '));
-      setShowResults(false);
+        // 2) Fallback: geometría que devolvió Nominatim (segmento), o un punto.
+        if (!drawn) {
+          if (r.geojson) {
+            drawGeometry(r.geojson as GeoJSON.GeoJsonObject);
+          } else if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            drawGeometry({ type: 'Point', coordinates: [lon, lat] } as GeoJSON.Point);
+          }
+        }
+      } finally {
+        setSelecting(false);
+      }
     },
-    [map, clearHighlight],
+    [map, clearHighlight, selecting],
   );
 
   const handleClose = useCallback(() => {
+    if (selecting) return; // no cerrar mientras se está pintando la calle
     clearHighlight();
     setQuery('');
     setResults([]);
     setError(null);
     setShowResults(false);
     onClose();
-  }, [clearHighlight, onClose]);
+  }, [clearHighlight, onClose, selecting]);
 
   // Limpiar la geometría al desmontar.
   useEffect(() => () => clearHighlight(), [clearHighlight]);
@@ -290,11 +302,28 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
   const container = map.getContainer();
 
   return createPortal(
-    <div
-      ref={panelRef}
-      className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] w-[min(92vw,420px)]"
-      style={{ pointerEvents: 'auto' }}
-    >
+    <>
+      {selecting && (
+        <div
+          className="absolute inset-0 z-[1500] flex items-center justify-center"
+          style={{ background: 'rgba(255,255,255,0.35)', pointerEvents: 'auto', cursor: 'wait' }}
+          onClick={(e) => { e.stopPropagation(); }}
+          onWheelCapture={(e) => { e.stopPropagation(); }}
+        >
+          <div className="flex items-center gap-2 bg-white/95 rounded-xl shadow-2xl ring-1 ring-black/10 px-4 py-3">
+            <svg className="w-5 h-5 text-sky-500 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm font-medium text-gray-700">Cargando calle…</span>
+          </div>
+        </div>
+      )}
+      <div
+        ref={panelRef}
+        className="absolute top-3 left-1/2 -translate-x-1/2 z-[1600] w-[min(92vw,420px)]"
+        style={{ pointerEvents: 'auto' }}
+      >
       <div className="bg-white rounded-xl shadow-2xl ring-1 ring-black/10 overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2">
           <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -308,18 +337,19 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
             onFocus={() => results.length > 0 && setShowResults(true)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') handleClose();
-              if (e.key === 'Enter' && results.length > 0) handleSelect(results[0]);
+              if (e.key === 'Enter' && results.length > 0 && !selecting) handleSelect(results[0]);
             }}
+            disabled={selecting}
             placeholder="Buscar calle en el área visible…"
-            className="flex-1 text-sm text-gray-800 placeholder-gray-400 outline-none bg-transparent"
+            className="flex-1 text-sm text-gray-800 placeholder-gray-400 outline-none bg-transparent disabled:opacity-60"
           />
-          {loading && (
+          {(loading || selecting) && (
             <svg className="w-4 h-4 text-gray-400 animate-spin flex-shrink-0" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
           )}
-          {hasHighlight && !loading && (
+          {hasHighlight && !loading && !selecting && (
             <button
               onClick={() => { clearHighlight(); setShowResults(false); }}
               title="Limpiar resaltado"
@@ -332,8 +362,9 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
           )}
           <button
             onClick={handleClose}
+            disabled={selecting}
             title="Cerrar buscador"
-            className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+            className="text-gray-400 hover:text-gray-600 flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -341,7 +372,17 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
           </button>
         </div>
 
-        {showResults && (results.length > 0 || error || (query.trim().length >= 2 && !loading)) && (
+        {selecting && (
+          <div className="border-t border-gray-100 px-3 py-2.5 flex items-center gap-2 bg-sky-50">
+            <svg className="w-4 h-4 text-sky-500 animate-spin flex-shrink-0" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm text-sky-700">Cargando calle completa…</span>
+          </div>
+        )}
+
+        {!selecting && showResults && (results.length > 0 || error || (query.trim().length >= 2 && !loading)) && (
           <div className="border-t border-gray-100 max-h-72 overflow-y-auto">
             {error && <div className="px-3 py-2 text-sm text-red-500">{error}</div>}
             {!error && results.length === 0 && !loading && query.trim().length >= 2 && (
@@ -351,7 +392,8 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
               <button
                 key={r.place_id}
                 onClick={() => handleSelect(r)}
-                className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-start gap-2 border-b border-gray-50 last:border-0"
+                disabled={selecting}
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-start gap-2 border-b border-gray-50 last:border-0 disabled:opacity-60"
               >
                 <svg className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -368,7 +410,8 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
           </div>
         )}
       </div>
-    </div>,
+      </div>
+    </>,
     container,
   );
 }

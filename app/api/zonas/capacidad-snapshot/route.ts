@@ -461,6 +461,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         zonas_transito: zonasTransDe(m.movil),
       });
     }
+
+    // Clamp por móvil: un móvil sobre-asignado (lote excedido) aporta 0, nunca
+    // negativo. La sincronización (calcularPorciones) ya clampea con Math.max(0,…),
+    // pero defendemos en lectura contra filas negativas residuales/stale en
+    // zonas_cap_entrega. La capacidad de la zona se deriva de esta suma clampeada,
+    // NO del valor crudo de vw_zona_capacidad (que sí incluiría el negativo).
+    let capacidadTotalDedup = 0;
+    for (const m of movilDedupMap.values()) {
+      m.aporte_a_zona = Math.max(0, m.aporte_a_zona);
+      capacidadTotalDedup += m.aporte_a_zona;
+    }
     const movilesDetalle: MovilDetalleZona[] = Array.from(movilDedupMap.values());
 
     // Re-derivar moviles_prioridad/transito desde el detalle deduplicado para
@@ -474,7 +485,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const snapshot: ZonaCapSnapshot = {
       zona_id: zonaId,
-      capacidad_total: agg.capacidad_total,
+      capacidad_total: capacidadTotalDedup,
       pedidos_sin_asignar: hasCount ? (pedidosIndex.get(zonaId)?.length ?? 0) : 0,
       moviles_prioridad: movilesPrioridadDedup,
       moviles_transito: movilesTransitoDedup,

@@ -328,7 +328,49 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(movil101?.en_transito).toBe(true);
   });
 
-  // ─── AC-5: filtro tipoServicio ────────────────────────────────────────────
+  // Regresión (bug 2026-06-15): un móvil sobre-asignado (lote excedido) no debe
+  // aportar negativo a la zona. zonas_cap_entrega puede tener filas residuales
+  // negativas; el endpoint clampea el aporte por móvil a >=0 y deriva la
+  // capacidad de la zona de esa suma clampeada (no del valor crudo de la vista).
+  it('aporte_a_zona negativo por sobrecupo se clampea a 0 y no resta capacidad', async () => {
+    mockGetSupabase.mockReturnValue(
+      makeSupabaseMock({
+        // Vista con capacidad cruda negativa para zona 10 (la implementación la ignora).
+        vwRows: [
+          {
+            escenario: 1, zona: 10, emp_fletera_id: 70, tipo_servicio: 'URGENTE',
+            capacidad_total: -1, moviles_count: 2, moviles_prioridad: 1, moviles_transito: 1, last_sync: null,
+          },
+        ],
+        // Móvil 100 aporta +2 (positivo), móvil 101 aporta -1 (sobrecupo, debe clampear a 0).
+        zceRows: [
+          { zona: 10, movil: 100, lote_disponible: 2,  emp_fletera_id: 70, tipo_servicio: 'URGENTE' },
+          { zona: 10, movil: 101, lote_disponible: -1, emp_fletera_id: 70, tipo_servicio: 'URGENTE' },
+        ],
+        mzRows: [
+          { movil_id: '100', zona_id: 10, escenario_id: 1, prioridad_o_transito: 1, tipo_de_servicio: 'URGENTE' },
+          { movil_id: '101', zona_id: 10, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' },
+        ],
+        movilCapRows: [
+          { nro: 100, capacidad: 3, tamano_lote: 5, estado_nro: null },
+          { nro: 101, capacidad: 5, tamano_lote: 4, estado_nro: null }, // sobrecupo 5/4
+        ],
+      }) as unknown as ReturnType<typeof getServerSupabaseClient>,
+    );
+    const req = makeRequest({ escenario: '1', tipoServicio: 'URGENTE', isRoot: true });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const zona10 = body.data.find((z: { zona_id: number }) => z.zona_id === 10);
+    expect(zona10).toBeDefined();
+    const movil100 = zona10.moviles_detalle.find((m: { movil_id: number }) => m.movil_id === 100);
+    const movil101 = zona10.moviles_detalle.find((m: { movil_id: number }) => m.movil_id === 101);
+    // El móvil sobre-asignado aporta 0 (no -1).
+    expect(movil101.aporte_a_zona).toBe(0);
+    expect(movil100.aporte_a_zona).toBe(2);
+    // Capacidad de la zona = suma de aportes clampeados = 2 + 0 = 2 (no 1).
+    expect(zona10.capacidad_total).toBe(2);
+  });
 
   it('tipoServicio=SERVICE: devuelve zonas vacías cuando no hay datos de SERVICE', async () => {
     // Mock con 0 rows para SERVICE
