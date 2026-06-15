@@ -28,7 +28,11 @@ export async function GET(req: NextRequest) {
   const q = (searchParams.get('q') || '').trim();
   const bbox = (searchParams.get('bbox') || '').trim();
   const limitRaw = parseInt(searchParams.get('limit') || '8', 10);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 15) : 8;
+  // Se permite pedir bastantes candidatos crudos: el cliente deduplica los
+  // múltiples "tramos" que Nominatim devuelve para una misma calle y se queda
+  // con una entrada por calle, así que conviene traer suficientes para que tras
+  // deduplicar queden varias calles distintas.
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 50) : 8;
 
   if (q.length < 2) {
     return NextResponse.json([], { status: 200 });

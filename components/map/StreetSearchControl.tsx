@@ -45,6 +45,68 @@ interface StreetSearchControlProps {
   onClose: () => void;
 }
 
+// Normaliza el nombre de una calle para deduplicar tramos: minúsculas, sin
+// acentos y sin espacios redundantes. "Avenida Millán" y "avenida millan"
+// colapsan a la misma clave.
+function normalizeStreet(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// El nombre "canónico" de calle de un resultado de Nominatim: preferimos
+// address.road (exacto); si no, la 1ª parte del display_name.
+function streetNameOf(r: NominatimResult): string {
+  return (r.address?.road || r.display_name.split(',')[0] || '').trim();
+}
+
+// Contexto secundario (ciudad/depto/país) para mostrar bajo el nombre de calle,
+// omitiendo el barrio/tramo y los códigos postales que generan el ruido.
+function streetContextOf(r: NominatimResult): string {
+  const a = r.address;
+  if (a) {
+    const locality = a.city || a.town || a.village || a.state;
+    const parts = [locality, a.country].filter(Boolean) as string[];
+    if (parts.length) return parts.join(', ');
+  }
+  const segs = r.display_name
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s && !/^\d+$/.test(s));
+  return segs.slice(-2).join(', ');
+}
+
+/**
+ * Deduplica los resultados por nombre de calle. Nominatim devuelve una entrada
+ * por cada "tramo" (way) de OSM con el mismo nombre — p.ej. 90 filas de
+ * "Avenida Millán" repartidas por barrio. Acá nos quedamos con UNA por calle;
+ * al seleccionarla, Overpass pinta todos los tramos de inicio a fin.
+ *
+ * Se conserva como representante el primer tramo que sea efectivamente una
+ * calle (tiene address.road), para que la selección dispare el pintado completo.
+ */
+function dedupeStreets(list: NominatimResult[]): NominatimResult[] {
+  const byKey = new Map<string, NominatimResult>();
+  const order: string[] = [];
+  for (const r of list) {
+    const name = streetNameOf(r);
+    if (!name) continue;
+    const key = normalizeStreet(name);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, r);
+      order.push(key);
+    } else if (!existing.address?.road && r.address?.road) {
+      // Preferir un representante que sea una calle real (con address.road).
+      byKey.set(key, r);
+    }
+  }
+  return order.map((k) => byKey.get(k)!);
+}
+
 const HIGHLIGHT_STYLE: L.PathOptions = {
   color: '#ff3b30',
   weight: 6,
@@ -110,12 +172,13 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
       try {
         const b = map.getBounds();
         const bbox = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
-        const url = `/api/geocode?q=${encodeURIComponent(q)}&bbox=${encodeURIComponent(bbox)}&limit=8`;
+        // Pedimos muchos candidatos crudos (tramos) y deduplicamos por calle.
+        const url = `/api/geocode?q=${encodeURIComponent(q)}&bbox=${encodeURIComponent(bbox)}&limit=40`;
         const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) throw new Error('geocode');
         const data = await res.json();
         if (Array.isArray(data)) {
-          setResults(data);
+          setResults(dedupeStreets(data).slice(0, 8));
           setShowResults(true);
         } else {
           setResults([]);
@@ -164,19 +227,25 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
       };
 
       // Nombre de la calle: preferir address.road (exacto), si no la 1ª parte del display_name.
-      const streetName = (r.address?.road || r.display_name.split(',')[0] || '').trim();
+      const streetName = streetNameOf(r);
       const city = (r.address?.city || r.address?.town || r.address?.village || r.address?.state || '').trim();
       const isStreet = (r.category === 'highway') || (r.type && /^(residential|primary|secondary|tertiary|unclassified|living_street|trunk|road|street)$/.test(r.type)) || !!r.address?.road;
 
       let drawn = false;
 
       // 1) Intentar pintar la CALLE COMPLETA via Overpass (todos los tramos por nombre).
+      //    Si conocemos la ciudad (ej. Montevideo) consultamos por área administrativa
+      //    para traer la calle de inicio a fin, no sólo los tramos del viewport. Si no
+      //    hay ciudad, acotamos por el bbox visible (evita homónimos de otras zonas).
       if (isStreet && streetName) {
         try {
-          const b = map.getBounds();
-          const bbox = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
-          const params = new URLSearchParams({ name: streetName, bbox });
-          if (city) params.set('city', city);
+          const params = new URLSearchParams({ name: streetName });
+          if (city) {
+            params.set('city', city);
+          } else {
+            const b = map.getBounds();
+            params.set('bbox', `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`);
+          }
           const res = await fetch(`/api/overpass?${params.toString()}`);
           if (res.ok) {
             const geom = await res.json();
@@ -197,8 +266,8 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
         }
       }
 
-      // Mostrar el nombre elegido y cerrar el dropdown.
-      setQuery(r.display_name.split(',').slice(0, 2).join(', '));
+      // Mostrar el nombre de la calle elegida y cerrar el dropdown.
+      setQuery(streetName || r.display_name.split(',').slice(0, 2).join(', '));
       setShowResults(false);
     },
     [map, clearHighlight],
@@ -288,7 +357,12 @@ export default function StreetSearchControl({ open, onClose }: StreetSearchContr
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <span className="text-sm text-gray-700 leading-tight">{r.display_name}</span>
+                <span className="min-w-0 leading-tight">
+                  <span className="block text-sm text-gray-800 font-medium truncate">{streetNameOf(r)}</span>
+                  {streetContextOf(r) && (
+                    <span className="block text-xs text-gray-400 truncate">{streetContextOf(r)}</span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
