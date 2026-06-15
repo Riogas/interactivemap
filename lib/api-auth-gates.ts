@@ -12,6 +12,14 @@ import { NextRequest, NextResponse } from 'next/server';
  *   pero tendría que hacerlo deliberadamente request por request.
  *   El acceso a los endpoints admin presupone red interna o sesión autenticada.
  *
+ * Bypass de root:
+ *   Si el header x-track-isroot === 'S', el usuario es superusuario y pasa
+ *   cualquier gate. Esto mantiene la consistencia con los guards de página, que
+ *   usan `isRoot(user) || hasFuncionalidad(...)`. Sin este bypass, un root sin la
+ *   funcionalidad puntual entraba a la página (guard con bypass) pero recibía 403
+ *   al llamar al endpoint (gate sin bypass) → "Acceso denegado".
+ *   Para gates que deban respetarse incluso para root, pasar allowRoot=false.
+ *
  * Uso:
  *   const gate = requireFuncionalidad(request, 'Nombre Canonico');
  *   if (gate !== true) return gate;
@@ -19,7 +27,11 @@ import { NextRequest, NextResponse } from 'next/server';
 export function requireFuncionalidad(
   request: NextRequest,
   nombre: string,
+  allowRoot: boolean = true,
 ): true | NextResponse {
+  if (allowRoot && (request.headers.get('x-track-isroot') ?? '').trim() === 'S') {
+    return true;
+  }
   const funcsHeader = request.headers.get('x-track-funcs') ?? '';
   const funcs = new Set(
     funcsHeader

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isWithinSaWindow } from '../lib/sa-window-filter';
+import { isWithinSaWindow, isVisibleByWindow } from '../lib/sa-window-filter';
 
 const now = new Date('2026-05-11T14:00:00.000Z');
 const minutosAntes = 30;
@@ -85,6 +85,28 @@ function filterSinAsignarList(
     // SA fuera de ventana temporal: excluir de TODO computo.
     (!serverNow || isWithinSaWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa)),
   );
+}
+
+/**
+ * Replica la logica de filtrado de pedidosZonaData en dashboard/page.tsx
+ * para el caso filter === 'pendientes' DESPUES del fix 2026-06-15:
+ * la ventana SA se aplica TRANSVERSALMENTE (isVisibleByWindow) — con móvil
+ * cuenta siempre; sin móvil (SA) solo si cae dentro de la ventana.
+ */
+function filterPedidosParaZonaPendientes(
+  pedidos: PedidoLike[],
+  serverNow: Date,
+  minutosAntesSa: number | null,
+): PedidoLike[] {
+  return pedidos.filter(p => {
+    const estado = Number(p.estado_nro);
+    const tieneMovil = p.movil != null && Number(p.movil) !== 0;
+    // Ventana SA transversal (canónica): con móvil siempre; SA solo dentro de ventana.
+    if (serverNow && !isVisibleByWindow(p.fch_hora_para ?? null, serverNow, minutosAntesSa, tieneMovil)) return false;
+    // pendientes = todos los estado 1 (con o sin movil)
+    if (estado !== 1) return false;
+    return true;
+  });
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -233,5 +255,40 @@ describe('dashboard sinAsignarList para SaturacionZonaModal con isWithinSaWindow
   it('pedido asignado: no se incluye (tiene movil)', () => {
     const result = filterSinAsignarList([pedidoAsignado], 5, now, minutosAntes);
     expect(result).toHaveLength(0);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 4. dashboard/page.tsx — pedidosZonaData (rama pendientes) — fix 2026-06-15
+//    La ventana SA ahora se aplica transversalmente también en 'pendientes'.
+//    Regresión del bug: la capa mostraba 9 (contaba un SA futuro fuera de ventana)
+//    mientras la tabla extendida mostraba 8.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('dashboard pedidosZonaData — capa pendientes con ventana SA transversal', () => {
+  it('SA en ventana: cuenta en pendientes', () => {
+    expect(filterPedidosParaZonaPendientes([saEnVentana], now, minutosAntes)).toHaveLength(1);
+  });
+
+  it('SA atrasado: cuenta en pendientes', () => {
+    expect(filterPedidosParaZonaPendientes([saAtrasado], now, minutosAntes)).toHaveLength(1);
+  });
+
+  it('SA futuro lejano (fuera de ventana): NO cuenta en pendientes (era el "noveno")', () => {
+    expect(filterPedidosParaZonaPendientes([saFuturoLejano], now, minutosAntes)).toHaveLength(0);
+  });
+
+  it('pedido asignado fuera de ventana: SÍ cuenta (con móvil siempre visible)', () => {
+    // pedidoAsignado tiene fch_hora_para pasado, pero la regla solo restringe SA.
+    expect(filterPedidosParaZonaPendientes([pedidoAsignado], now, minutosAntes)).toHaveLength(1);
+  });
+
+  it('SA con fch_hora_para null: cuenta (backwards-compat)', () => {
+    expect(filterPedidosParaZonaPendientes([saConHoraNula], now, minutosAntes)).toHaveLength(1);
+  });
+
+  it('mix realista: 1 asignado fuera de ventana + 1 SA futuro lejano → cuenta 1, no 2', () => {
+    const result = filterPedidosParaZonaPendientes([pedidoAsignado, saFuturoLejano], now, minutosAntes);
+    expect(result).toHaveLength(1);
   });
 });

@@ -137,8 +137,8 @@ describe('POST /api/admin/upload-manual', () => {
     expect(json.uploadedAt).toBeDefined();
   });
 
-  it('AC2 — sin la funcionalidad "Subir manuales de usuario" devuelve 403', async () => {
-    const req = makeUploadRequest({ funcs: '', file: { name: 'manual.pdf', type: 'application/pdf', size: 100 } });
+  it('AC2 — sin la funcionalidad "Subir manuales de usuario" (y no root) devuelve 403', async () => {
+    const req = makeUploadRequest({ isRoot: 'N', funcs: '', file: { name: 'manual.pdf', type: 'application/pdf', size: 100 } });
     const res = await POST(req);
     const json = await res.json();
 

@@ -54,7 +54,7 @@ import { getMaxRoleAttribute } from '@/lib/role-attributes';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { hasFuncionalidad, hasSaAcumulados, hasSaPorZona, hasSaUnitarios } from '@/lib/role-funcionalidades';
-import { isWithinSaWindow } from '@/lib/sa-window-filter';
+import { isVisibleByWindow } from '@/lib/sa-window-filter';
 import { reportDrift, LastSyncState } from '@/lib/realtime-drift';
 import type { ModalSnapshot } from '@/lib/view-state';
 import { useViewStateSync } from '@/hooks/dashboard/useViewStateSync';
@@ -2966,13 +2966,16 @@ function DashboardContent() {
       if (zonaLayerTipo === 'OTROS' && (sn === 'URGENTE' || sn === 'NOCTURNO')) return;
       // Gate B (funcionalidad): sin 'Ped s/asignar x zona', no contar pedidos sin movil en esta capa.
       if (!tieneMovil && !canVerSinAsigPorZona) return;
+      // Ventana SA TRANSVERSAL (regla canónica de toda la app): con móvil cuenta
+      // siempre; sin móvil (SA) solo si cae dentro de la ventana (fch_hora_para <=
+      // now + minutosAntes). Aplica a TODOS los filtros (pendientes/sin_asignar/
+      // atrasados) para que el conteo de la capa coincida con el mapa y la tabla
+      // extendida. perf: serverNowRef.current evita re-ejecutar cada 5s.
+      if (serverNowRef.current && !isVisibleByWindow(p.fch_hora_para ?? null, serverNowRef.current, minutosAntesSa, tieneMovil)) return;
       // pendientes totales = todos los estado 1 (con o sin movil)
       if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
       // sin asignar = estado 1 sin movil asignado
       if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
-      // SA fuera de ventana temporal: excluir de todo computo (no solo visibilidad).
-      // perf: usa serverNowRef.current en lugar de serverNow para no re-ejecutar cada 5s.
-      if (pedidosZonaFilter === 'sin_asignar' && serverNowRef.current && !isWithinSaWindow(p.fch_hora_para ?? null, serverNowRef.current, minutosAntesSa)) return;
       // atrasados = estado 1 con atraso confirmado (muy atrasado + atrasado)
       if (pedidosZonaFilter === 'atrasados') {
         if (estado !== 1) return;
@@ -2998,10 +3001,11 @@ function DashboardContent() {
       const estado = Number(s.estado_nro);
       const tieneMovil = s.movil != null && Number(s.movil) !== 0;
       if (!tieneMovil && !canVerSinAsigPorZona) return;
+      // Ventana SA TRANSVERSAL (regla canónica): con móvil siempre; sin móvil solo
+      // dentro de la ventana. Aplica a todos los filtros (coincide con mapa/tabla).
+      if (serverNowRef.current && !isVisibleByWindow(s.fch_hora_para ?? null, serverNowRef.current, minutosAntesSa, tieneMovil)) return;
       if (pedidosZonaFilter === 'pendientes'  && estado !== 1) return;
       if (pedidosZonaFilter === 'sin_asignar' && !(estado === 1 && !tieneMovil)) return;
-      // perf: usa serverNowRef.current en lugar de serverNow para no re-ejecutar cada 5s.
-      if (pedidosZonaFilter === 'sin_asignar' && serverNowRef.current && !isWithinSaWindow(s.fch_hora_para ?? null, serverNowRef.current, minutosAntesSa)) return;
       if (pedidosZonaFilter === 'atrasados') {
         if (estado !== 1) return;
         const diff = computeDelayMinutes(s.fch_hora_max_ent_comp ?? null);
