@@ -184,27 +184,29 @@ function CardExportButtons({
     }
   };
 
-  const btnCls =
-    'p-1 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 text-stats-muted-fg hover:text-stats-foreground hover:bg-stats-surface-2 dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info disabled:opacity-50 disabled:cursor-wait';
+  const btnBase =
+    'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold leading-none border transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info disabled:opacity-50 disabled:cursor-wait';
+  const pdfCls =
+    `${btnBase} text-red-600 border-red-300 bg-red-50 hover:bg-red-100 dark:text-red-300 dark:border-red-500/40 dark:bg-red-500/10 dark:hover:bg-red-500/20`;
+  const xlsCls =
+    `${btnBase} text-green-700 border-green-300 bg-green-50 hover:bg-green-100 dark:text-green-300 dark:border-green-500/40 dark:bg-green-500/10 dark:hover:bg-green-500/20`;
+
+  const fileIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
 
   return (
-    <div className="flex items-center gap-1">
-      <button onClick={() => run('pdf')} disabled={busy !== null} className={btnCls} title="Descargar PDF" aria-label="Descargar PDF">
-        {/* icono PDF */}
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <path d="M9 13h1.5a1.5 1.5 0 0 1 0 3H9v-3zm0 3v2" />
-          <path d="M14 13v5M14 13h2M14 15.5h1.5" />
-        </svg>
+    <div className="flex items-center gap-1.5">
+      <button onClick={() => run('pdf')} disabled={busy !== null} className={pdfCls} title="Descargar PDF" aria-label="Descargar PDF">
+        {fileIcon}
+        <span>{busy === 'pdf' ? '...' : 'PDF'}</span>
       </button>
-      <button onClick={() => run('xlsx')} disabled={busy !== null} className={btnCls} title="Descargar Excel" aria-label="Descargar Excel">
-        {/* icono Excel */}
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <path d="m9.5 12.5 5 5M14.5 12.5l-5 5" />
-        </svg>
+      <button onClick={() => run('xlsx')} disabled={busy !== null} className={xlsCls} title="Descargar Excel" aria-label="Descargar Excel">
+        {fileIcon}
+        <span>{busy === 'xlsx' ? '...' : 'Excel'}</span>
       </button>
     </div>
   );

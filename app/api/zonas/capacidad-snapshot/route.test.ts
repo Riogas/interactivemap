@@ -83,9 +83,9 @@ const ZCE_ROWS_EMP70 = [
 ];
 
 const MZ_ROWS = [
-  { movil_id: '100', zona_id: 10, escenario_id: 1, prioridad_o_transito: 1  }, // prioridad
-  { movil_id: '101', zona_id: 10, escenario_id: 1, prioridad_o_transito: 2  }, // tránsito
-  { movil_id: '102', zona_id: 11, escenario_id: 1, prioridad_o_transito: 1  }, // prioridad
+  { movil_id: '100', zona_id: 10, escenario_id: 1, prioridad_o_transito: 1, tipo_de_servicio: 'URGENTE' }, // prioridad
+  { movil_id: '101', zona_id: 10, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' }, // tránsito
+  { movil_id: '102', zona_id: 11, escenario_id: 1, prioridad_o_transito: 1, tipo_de_servicio: 'URGENTE' }, // prioridad
 ];
 
 // estado_nro: null = activo (sin estado especial)
@@ -130,12 +130,29 @@ function makeSupabaseMock(overrides: {
     return qb;
   };
 
+  // Query builder que honra el filtro .eq() sobre una columna concreta. Se usa
+  // para moviles_zonas, donde el filtro tipo_de_servicio es relevante: con TODOS
+  // el endpoint debe consultar el bucket URGENTE (no 'TODOS', que no existe).
+  const makeFilteringQb = (rows: Array<Record<string, unknown>>, filterCol: string) => {
+    let result = rows;
+    const qb: Record<string, unknown> = {};
+    qb.eq = (col: string, val: unknown) => {
+      if (col === filterCol) result = result.filter((r) => r[col] === val);
+      return qb;
+    };
+    for (const m of ['in', 'or', 'gte', 'lte']) qb[m] = () => qb;
+    qb.maybeSingle = () => Promise.resolve({ data: null, error: null });
+    qb.then = (resolve: (v: { data: unknown[]; error: null }) => void) =>
+      Promise.resolve({ data: result, error: null }).then(resolve);
+    return qb;
+  };
+
   return {
     from: (table: string) => ({
       select: (_: string) => {
         if (table === 'vw_zona_capacidad') return makeQb(vwRows);
         if (table === 'zonas_cap_entrega') return makeQb(zceRows);
-        if (table === 'moviles_zonas') return makeQb(mzRows);
+        if (table === 'moviles_zonas') return makeFilteringQb(mzRows as Array<Record<string, unknown>>, 'tipo_de_servicio');
         if (table === 'moviles') return makeQb(movilCapRows);
         if (table === 'pedidos') return makeQb(pedidosRows);
         if (table === 'escenario_settings') return makeQb([]);
@@ -284,6 +301,31 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     const movil101 = zona10.moviles_detalle.find((m: { movil_id: number }) => m.movil_id === 101);
     expect(movil100?.en_transito).toBe(false); // prioridad_o_transito = 1
     expect(movil101?.en_transito).toBe(true);  // prioridad_o_transito = 2
+  });
+
+  // Regресión: TODOS/OTROS no tienen bucket propio en moviles_zonas (sólo URGENTE,
+  // NOCTURNO, SERVICE). El endpoint debe consultar el bucket URGENTE para esos
+  // valores; de lo contrario el conteo zonas_prioridad/zonas_transito y en_transito
+  // quedan vacíos (bug reportado: con "Todos los pedidos" no se ven las zonas P|T).
+  it('tipoServicio=TODOS: usa el bucket URGENTE para zonas P|T y en_transito', async () => {
+    const req = makeRequest({
+      escenario: '1',
+      tipoServicio: 'TODOS',
+      isRoot: true,
+      funcionalidades: [],
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const zona10 = body.data.find((z: { zona_id: number }) => z.zona_id === 10);
+    // Si el filtro usara 'TODOS' literal, moviles_zonas devolvería 0 filas y estos
+    // counts serían 0 / en_transito false para todos.
+    expect(zona10.moviles_prioridad).toBe(1);
+    expect(zona10.moviles_transito).toBe(1);
+    const movil100 = zona10.moviles_detalle.find((m: { movil_id: number }) => m.movil_id === 100);
+    const movil101 = zona10.moviles_detalle.find((m: { movil_id: number }) => m.movil_id === 101);
+    expect(movil100?.zonas_prioridad).toBe(1);
+    expect(movil101?.en_transito).toBe(true);
   });
 
   // ─── AC-5: filtro tipoServicio ────────────────────────────────────────────

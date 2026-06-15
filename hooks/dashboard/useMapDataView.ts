@@ -120,7 +120,7 @@ export function useMapDataView({
   // Combo de la capa Cap. Entrega (saturacion). Estado PROPIO, independiente del
   // de moviles-zonas: admite 5 valores (URGENTE/NOCTURNO/OTROS/SERVICE/TODOS) y NO
   // está sujeto al reset por periodo horario (que sí aplica a moviles-zonas).
-  const [capServiceFilter, setCapServiceFilter] = useState<string>('URGENTE');
+  const [capServiceFilter, setCapServiceFilter] = useState<string>('TODOS');
 
   // Ref para trackear el ultimo periodo conocido sin causar re-renders.
   // Se inicializa con el mismo valor que el estado para consistencia.

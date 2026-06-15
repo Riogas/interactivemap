@@ -270,11 +270,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (movilIds.length > 0) {
     // Filtrar por el tipo de servicio activo: el detalle (en_transito) y el conteo
     // de zonas P|T deben reflejar SOLO las zonas del móvil en ese tipo de servicio.
+    // TODOS/OTROS no tienen bucket propio en moviles_zonas → reusan el de URGENTE
+    // (flota diurna), igual que la capacidad (zce). Usar capacityTipo evita que el
+    // filtro devuelva 0 filas y los conteos P|T queden vacíos.
     const mzQuery = db.from('moviles_zonas')
       .select('movil_id, zona_id, escenario_id, prioridad_o_transito')
       .in('movil_id', movilIds)
       .eq('escenario_id', escenario)
-      .eq('tipo_de_servicio', tipoServicio);
+      .eq('tipo_de_servicio', capacityTipo);
     mzResult = await (mzQuery as unknown as Promise<{ data: MovilZonaRow[] | null; error: { message: string } | null }>);
   }
 

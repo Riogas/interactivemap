@@ -1072,6 +1072,15 @@ const CulledPoisLayer = React.memo(function CulledPoisLayer({
             position={[marker.latitud, marker.longitud]}
             icon={customIcon}
           >
+            <Tooltip direction="top" offset={[0, -poiPx]} opacity={0.95}>
+              <div className="text-xs">
+                <span className="font-bold">Nombre: </span>
+                <span>{marker.nombre}</span>
+                {marker.categoria && (
+                  <div className="text-gray-600">{marker.categoria}</div>
+                )}
+              </div>
+            </Tooltip>
             <Popup minWidth={240} className="poi-popup">
               <div style={{ margin: '-10px -14px', borderRadius: '8px', overflow: 'hidden', minWidth: '240px', fontFamily: 'inherit' }}>
                 <div style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', padding: '10px 12px' }}>
@@ -1182,7 +1191,7 @@ const MapView = memo(function MapView({
   movilesZonasData = [],
   movilesZonasServiceFilter = 'all',
   onMovilesZonasServiceFilterChange,
-  capServiceFilter = 'URGENTE',
+  capServiceFilter = 'TODOS',
   onCapServiceFilterChange,
   tiposServicioDisponibles = [],
   saturacionData,

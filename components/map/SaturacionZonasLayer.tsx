@@ -209,7 +209,7 @@ function SaturacionFilterControl({ serviceFilter, onServiceFilterChange }: { ser
 const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
   zonas,
   saturacionData,
-  serviceFilter = 'URGENTE',
+  serviceFilter = 'TODOS',
   onServiceFilterChange,
   zonaOpacity = 50,
   onZonaClick,
