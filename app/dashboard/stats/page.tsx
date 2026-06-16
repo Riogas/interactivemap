@@ -610,6 +610,12 @@ function StatsContent() {
           .map(([, nombre]) => nombre)
       );
       result = result.filter(p => {
+        // Los SA (estado=1 sin móvil) tienen empresa=0 → getEmpresaNombre daría
+        // "Sin empresa" y quedarían fuera. Ya vienen zona-scoped del server, así
+        // que se dejan pasar (el gate canSeeUnassigned los recorta más abajo si
+        // el usuario no tiene la funcionalidad).
+        const esSA = Number(p.estado_nro) === 1 && (!p.movil || Number(p.movil) === 0);
+        if (esSA) return true;
         const nombre = getEmpresaNombre(p, movilEmpresa, empresas);
         return allowedNombres.has(nombre);
       });
@@ -644,6 +650,9 @@ function StatsContent() {
           .map(([, nombre]) => nombre)
       );
       return services.filter(s => {
+        // SA (estado=1 sin móvil, empresa=0) ya vienen zona-scoped del server.
+        const esSA = Number(s.estado_nro) === 1 && (!s.movil || Number(s.movil) === 0);
+        if (esSA) return true;
         const empId = s.empresa_fletera_id != null ? Number(s.empresa_fletera_id) : null;
         const movilNro = s.movil != null ? Number(s.movil) : null;
         const nombre = (movilNro && movilNro !== 0 && movilEmpresa.has(movilNro))
@@ -1469,7 +1478,6 @@ function StatsContent() {
                       ['Atrasado', atrasosStats.atrasado, atrasosStats.total > 0 ? `${Math.round((atrasosStats.atrasado / atrasosStats.total) * 100)}%` : '0%'],
                       ['Límite Cercana', atrasosStats.limiteCercana, atrasosStats.total > 0 ? `${Math.round((atrasosStats.limiteCercana / atrasosStats.total) * 100)}%` : '0%'],
                       ['En Hora', atrasosStats.enHora, atrasosStats.total > 0 ? `${Math.round((atrasosStats.enHora / atrasosStats.total) * 100)}%` : '0%'],
-                      ['Sin Hora', atrasosStats.sinHora, atrasosStats.total > 0 ? `${Math.round((atrasosStats.sinHora / atrasosStats.total) * 100)}%` : '0%'],
                     ],
                   },
                   {
@@ -1514,7 +1522,6 @@ function StatsContent() {
                   { label: 'Atrasado', value: atrasosStats.atrasado, cssVar: '#f472b6', dot: 'bg-pink-400' },
                   { label: 'Límite Cercana', value: atrasosStats.limiteCercana, cssVar: 'var(--color-stats-warning)', dot: 'bg-stats-warning' },
                   { label: 'En Hora', value: atrasosStats.enHora, cssVar: 'var(--color-stats-success)', dot: 'bg-stats-success' },
-                  { label: 'Sin Hora', value: atrasosStats.sinHora, cssVar: 'var(--color-stats-neutral)', dot: 'bg-stats-neutral' },
                 ].map(cat => (
                   <div key={cat.label} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">

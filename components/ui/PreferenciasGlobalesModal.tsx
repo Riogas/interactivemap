@@ -181,6 +181,7 @@ export default function PreferenciasGlobalesModal({
       const iLatitud     = idxExact('Latitud', 'lat') >= 0 ? idxExact('Latitud', 'lat') : idxIncludes('CoordX');
       const iLongitud    = idxExact('Longitud', 'lng', 'lon') >= 0 ? idxExact('Longitud', 'lng', 'lon') : idxIncludes('CoordY');
       const iTipo        = idxExact('tipo', 'Tipo');
+      const iIcono       = idxExact('icono', 'Icono', 'icon');
       const iVisible     = idxExact('Visible', 'visible');
       const iVisibilidad = idxIncludes('Visibilidad');
       const iCategoria   = idxExact('Categoria', 'Categoría', 'category');
@@ -224,6 +225,14 @@ export default function PreferenciasGlobalesModal({
           visible = true;
         }
 
+        // icono: opcional y NULLABLE. Si la celda está vacía → null (el mapa cae
+        // al icono por defecto de la categoría/escenario). No forzar un emoji.
+        let icono: string | null = null;
+        if (iIcono >= 0) {
+          const v = String(r[iIcono] ?? '').trim();
+          icono = v || null;
+        }
+
         return {
           id:                 Number(r[iId]),
           nombre:             String(r[iNombre] ?? '').trim(),
@@ -234,7 +243,7 @@ export default function PreferenciasGlobalesModal({
           descripcion:        descripcionFinal,
           visible,
           tipo,
-          icono:              '📍',
+          icono,
           usuario_email:      email,
           escenario_id:       iEscenario >= 0 && r[iEscenario] != null ? Number(r[iEscenario]) : null,
           empresa_fletera_id: iEmpresa >= 0 && r[iEmpresa] != null ? Number(r[iEmpresa]) : null,
@@ -827,7 +836,8 @@ export default function PreferenciasGlobalesModal({
                             { col: 'Descripcion',        tipo: 'texto',            req: false, ej: 'Gonzalo Ramírez 1290' },
                             { col: 'Latitud',            tipo: 'número',           req: true,  ej: '-34.9178' },
                             { col: 'Longitud',           tipo: 'número',           req: true,  ej: '-56.1745' },
-                            { col: 'tipo',               tipo: 'publico/privado',  req: false, ej: 'publico' },
+                            { col: 'tipo',               tipo: 'PUBLICO/PRIVADO',  req: false, ej: 'PUBLICO' },
+                            { col: 'icono',              tipo: 'texto (nullable)', req: false, ej: '🏥 (vacío = sin icono)' },
                             { col: 'Visible',            tipo: 'true/false',       req: false, ej: 'true' },
                             { col: 'Categoria',          tipo: 'texto',            req: false, ej: 'Cementerio' },
                             { col: 'Telefono',           tipo: 'número',           req: false, ej: '24001234' },
@@ -848,7 +858,7 @@ export default function PreferenciasGlobalesModal({
                           type="button"
                           className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all"
                           onClick={() => {
-                            const hdrs = ['ID','Nombre','Descripcion','Latitud','Longitud','tipo','Visible','Categoria','Telefono','escenario_id','empresa_fletera_id'];
+                            const hdrs = ['ID','Nombre','Descripcion','Latitud','Longitud','tipo','icono','Visible','Categoria','Telefono','escenario_id','empresa_fletera_id'];
                             const wb = XLSX.utils.book_new();
                             const ws = XLSX.utils.aoa_to_sheet([hdrs]);
                             XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
