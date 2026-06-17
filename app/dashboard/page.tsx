@@ -3022,6 +3022,27 @@ function DashboardContent() {
   // Seleccionar la fuente correcta segun zonaLayerTipo (SERVICE → tabla services).
   const zonaCountData = zonaLayerTipo === 'SERVICE' ? servicesZonaData : pedidosZonaData;
 
+  // Mapa zona_id → cantidad de SIN ASIGNAR (para el badge azul en la etiqueta del mapa).
+  // Solo se computa si el usuario tiene 'Ped s/asignar x zona' o 'Ped s/asignar unitarios'.
+  // Siempre usa el filtro 'pendientes' con SA (no el filtro activo de la capa) para que
+  // la indicación sea permanente independientemente del filtro seleccionado.
+  const sinAsignarZonaData = useMemo((): Map<number, number> => {
+    const map = new Map<number, number>();
+    if (!canVerSinAsigPorZona) return map;
+    const fuente = zonaLayerTipo === 'SERVICE' ? servicesCompletos : pedidosCompletos;
+    fuente.forEach((p: PedidoSupabase | ServiceSupabase) => {
+      if (Number((p as any).estado_nro) !== 1) return;
+      const tieneMovil = (p as any).movil != null && Number((p as any).movil) !== 0;
+      if (tieneMovil) return;
+      if (serverNowRef.current && !isVisibleByWindow((p as any).fch_hora_para ?? null, serverNowRef.current, minutosAntesSa, false)) return;
+      const zona = (p as any).zona_nro != null ? Number((p as any).zona_nro) : null;
+      if (!zona || zona === 0) return;
+      if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
+      map.set(zona, (map.get(zona) ?? 0) + 1);
+    });
+    return map;
+  }, [canVerSinAsigPorZona, zonaLayerTipo, pedidosCompletos, servicesCompletos, scopedZonaIds, minutosAntesSa]);
+
   // Si el filtro pedidos/zona quedo en 'sin_asignar' pero el usuario no tiene la funcionalidad,
   // forzarlo a 'pendientes' (ej. estado persistido entre sesiones).
   useEffect(() => {
@@ -4540,6 +4561,7 @@ function DashboardContent() {
                 pedidosZonaFilter={pedidosZonaFilter}
                 onPedidosZonaFilterChange={setPedidosZonaFilter}
                 hideSinAsignarOption={!canVerSinAsigPorZona}
+                sinAsignarZonaData={sinAsignarZonaData}
                 allMovilEstados={allMovilEstados}
                 allHiddenMovilIds={allHiddenMovilIds}
                 movilesZonasData={movilesZonasData}

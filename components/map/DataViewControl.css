@@ -157,6 +157,11 @@
   background: rgba(148, 163, 184, 0.85);
 }
 
+/* Badge azul: la zona tiene al menos 1 pedido SIN ASIGNAR visible para el usuario */
+.demora-label-time.demora-label-time--sa {
+  background: rgba(37, 99, 235, 0.92);
+}
+
 /* Zona con 0 minutos: relleno punteado via SVG pattern */
 .demora-zona-dotted {
   fill: url(#demora-dotted-pattern) !important;
