@@ -1,8 +1,15 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { authService, ParsedLoginResponse } from '@/lib/api/auth';
 import { authStorage } from '@/lib/auth-storage';
+import {
+  isIdleExpired,
+  resolveLastActivityMs,
+  ACTIVITY_PERSIST_THROTTLE_MS,
+  EXPIRY_CHECK_INTERVAL_MS,
+  LAST_ACTIVITY_KEY,
+} from '@/lib/session-expiry';
 
 interface User {
   id: string;
@@ -162,24 +169,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permisos, setPermisos] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
-  // ⏰ Duración máxima de sesión: 8 horas (en milisegundos)
-  const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
+  // ⏰ Sesión deslizante (rolling): expira tras 8h de INACTIVIDAD, no 8h desde el
+  // login. Cada interacción del usuario renueva la marca de actividad, así que un
+  // despachador activo nunca es expulsado a mitad de turno; una sesión abandonada
+  // igual se cierra a las 8h. La lógica pura vive en lib/session-expiry.ts.
+  // Throttle para no escribir la marca de actividad en cada evento (mousemove, etc).
+  const lastActivityPersistRef = useRef<number>(0);
 
-  /** Verificar si la sesión ha expirado por tiempo */
+  /** Verificar si la sesión expiró por inactividad (mira la última actividad persistida). */
   const isSessionExpired = (loginTime: string | undefined): boolean => {
-    if (!loginTime) return true;
-    const elapsed = Date.now() - new Date(loginTime).getTime();
-    return elapsed > SESSION_MAX_AGE_MS;
+    const lastActivityMs = resolveLastActivityMs(authStorage.getItem(LAST_ACTIVITY_KEY), loginTime);
+    return isIdleExpired(lastActivityMs);
   };
 
-  /** Limpiar sesión expirada de localStorage */
+  /** Registrar actividad del usuario (throttled), renovando la ventana de sesión. */
+  const markActivity = useCallback(() => {
+    const now = Date.now();
+    if (now - lastActivityPersistRef.current < ACTIVITY_PERSIST_THROTTLE_MS) return;
+    lastActivityPersistRef.current = now;
+    authStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+  }, []);
+
+  /** Limpiar sesión expirada de storage */
   const clearExpiredSession = () => {
-    console.log('⏰ Sesión expirada (>8h) — cerrando sesión automáticamente');
+    console.log('⏰ Sesión expirada por inactividad (>8h) — cerrando sesión automáticamente');
     authStorage.removeItem('trackmovil_user');
     authStorage.removeItem('trackmovil_token');
     authStorage.removeItem('trackmovil_allowed_empresas');
     authStorage.removeItem('trackmovil_allowed_escenarios');
     authStorage.removeItem('trackmovil_permisos');
+    authStorage.removeItem(LAST_ACTIVITY_KEY);
     setUser(null);
     setPermisos(new Set());
   };
@@ -278,7 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  // ⏰ Chequeo periódico: expirar sesión mientras la app está abierta
+  // ⏰ Chequeo periódico: expirar sesión por inactividad mientras la app está abierta
   useEffect(() => {
     if (!user?.loginTime) return;
 
@@ -288,10 +307,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // Verificar cada 5 minutos
-    const intervalId = setInterval(checkExpiration, 5 * 60 * 1000);
+    const intervalId = setInterval(checkExpiration, EXPIRY_CHECK_INTERVAL_MS);
     return () => clearInterval(intervalId);
   }, [user?.loginTime]);
+
+  // ⏰ Tracking de actividad: cada interacción del usuario renueva la ventana de
+  // sesión (sliding). Solo activo con sesión iniciada. Al montar/loguear se siembra
+  // la marca "ahora" para arrancar la ventana desde el momento de entrada. La
+  // escritura a storage está throttled (ACTIVITY_PERSIST_THROTTLE_MS) por markActivity.
+  useEffect(() => {
+    if (!user) return;
+
+    // Semilla inicial: la ventana de inactividad arranca ahora (login o reload).
+    const seed = Date.now();
+    lastActivityPersistRef.current = seed;
+    authStorage.setItem(LAST_ACTIVITY_KEY, String(seed));
+
+    const winEvents: Array<keyof WindowEventMap> = [
+      'pointerdown', 'keydown', 'mousemove', 'wheel', 'touchstart', 'scroll',
+    ];
+    winEvents.forEach((e) => window.addEventListener(e, markActivity, { passive: true }));
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') markActivity();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      winEvents.forEach((e) => window.removeEventListener(e, markActivity));
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user?.id, markActivity]);
 
   const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string }> => {
     try {
@@ -467,6 +513,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authStorage.removeItem('trackmovil_allowed_escenarios');
     authStorage.removeItem('trackmovil_escenario_id');
     authStorage.removeItem('trackmovil_permisos');
+    authStorage.removeItem(LAST_ACTIVITY_KEY);
     // Limpiar fecha seleccionada de sessionStorage — al relogi debe arrancar en hoy.
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('trackmovil:selectedDate');
