@@ -148,7 +148,8 @@ export default function SaturacionZonaModal({
   onClose,
   scopedZonaIds = null,
 }: SaturacionZonaModalProps) {
-  const [transitoExpanded, setTransitoExpanded] = useState(false);
+  // Móviles en tránsito: arrancan EXPANDIDOS (igual que prioridad), no colapsados.
+  const [transitoExpanded, setTransitoExpanded] = useState(true);
 
   const zonaInfo = zonas.find(z => z.zona_id === zonaId);
   const zonaNombre = zonaInfo?.nombre ?? `Zona ${zonaId}`;
