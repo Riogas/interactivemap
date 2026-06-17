@@ -254,8 +254,13 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       // Mostrar label siempre excepto para sin datos
       const showLabel = capEntrega !== -1000;
 
+      // Badge azul si la zona tiene SA. `s.sinAsignar` ya viene gateado por
+      // funcionalidad desde page.tsx (es 0 cuando el usuario no tiene
+      // 'Ped s/asignar x zona'/'unitarios'), así que respeta el permiso solo.
+      const hasSA = (s.sinAsignar ?? 0) > 0;
+
       // Hover eliminado (CapEntrega.docx): no se muestra tooltip al pasar el mouse.
-      return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity };
+      return { zona, positions, center, color, label: showLabel ? label : '', fillOpacity, hasSA };
     }).filter(Boolean) as Array<{
       zona: SaturacionZonaData;
       positions: LatLngExpression[];
@@ -263,6 +268,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       color: string;
       label: string;
       fillOpacity: number;
+      hasSA: boolean;
     }>;
   }, [zonas, saturacionData, visualRefs]);
 
@@ -274,7 +280,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
       {onServiceFilterChange && (
         <SaturacionFilterControl serviceFilter={serviceFilter} onServiceFilterChange={onServiceFilterChange} />
       )}
-      {items.map(({ zona, positions, center, color, label, fillOpacity }) => {
+      {items.map(({ zona, positions, center, color, label, fillOpacity, hasSA }) => {
         const isInactive = demoras?.get(zona.zona_id)?.activa === false;
         return (
         <React.Fragment key={zona.zona_id}>
@@ -313,7 +319,7 @@ const SaturacionZonasLayer = memo(function SaturacionZonasLayer({
               html: `
                 <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
-                  ${showLabels && label && !isInactive ? `<span class="demora-label-time" style="font-size:9px">${label}</span>` : ''}
+                  ${showLabels && label && !isInactive ? `<span class="demora-label-time${hasSA ? ' demora-label-time--sa' : ''}" style="font-size:9px">${label}</span>` : ''}
                 </div>
               `,
               iconSize: [64, 36],
