@@ -3093,6 +3093,8 @@ function DashboardContent() {
     isRoot: hasFullEmpresaAccess,
     empresasIds: user?.allowedEmpresas ?? [],
     funcionalidades: _userFuncionalidades,
+    // Realtime solo cuando la capa Cap. Entrega está activa o su modal abierto.
+    enabled: dataViewMode === 'saturacion' || saturacionModalZonaId !== null,
   });
 
   // Construir saturacionData: Map<zona_id, SaturacionZonaStats> desde el snapshot.
