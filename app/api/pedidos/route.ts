@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
 import { buildFchParaWindowOr } from '@/lib/date-utils';
+import { getScopedZonasForEmpresas } from '@/lib/scoped-zonas-server';
 
 /**
  * GET /api/pedidos
@@ -104,7 +105,20 @@ export async function GET(request: NextRequest) {
 
     // Filtro de empresa (scope server-side)
     if (scopeEmpresaIds !== null && scopeEmpresaIds.length > 0) {
-      if (scopeEmpresaIds.length === 1) {
+      // Los pedidos SIN ASIGNAR tienen empresa_fletera_id=0 → NO matchean el filtro
+      // de empresa. Para que el usuario no-root los cuente (chip navbar, /stats, capa
+      // por zona), se incluyen los SA (movil null/0) que caen en las ZONAS que
+      // trabajan sus empresas (fleteras_zonas). Mismo criterio que el snapshot de
+      // capacidad. Si no hay zonas en scope, se mantiene el filtro de empresa puro.
+      const escNum = escenario ? parseInt(escenario) : NaN;
+      const scopedZonas = await getScopedZonasForEmpresas(escNum, scopeEmpresaIds);
+      if (scopedZonas.length > 0) {
+        const empList = scopeEmpresaIds.join(',');
+        query = query.or(
+          `empresa_fletera_id.in.(${empList}),` +
+          `and(or(movil.is.null,movil.eq.0),zona_nro.in.(${scopedZonas.join(',')}))`
+        );
+      } else if (scopeEmpresaIds.length === 1) {
         query = query.eq('empresa_fletera_id', scopeEmpresaIds[0]);
       } else {
         query = query.in('empresa_fletera_id', scopeEmpresaIds);

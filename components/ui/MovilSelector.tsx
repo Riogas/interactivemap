@@ -14,6 +14,7 @@ import MapGuideModal from './MapGuideModal';
 import RealtimeDriftIndicator from '@/components/dashboard/RealtimeDriftIndicator';
 import type { LastSyncState } from '@/lib/realtime-drift';
 import { isVisibleByWindow } from '@/lib/sa-window-filter';
+import { isSaInZonaScope } from '@/lib/sa-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
 
 
@@ -236,6 +237,10 @@ interface MovilSelectorProps {
    *  Si scope.isRestricted y scope.scopedZonaIds, los sin-asignar del colapsable
    *  se filtran igual que en el mapa. */
   scope?: ScopeFilter;
+  /** Scope de zonas para SIN ASIGNAR (spec 2026-06-17). null = sin filtro de zona
+   *  (ve todos los SA); Set = solo SA cuya zona_nro esté en el set (zonas de las
+   *  EFL seleccionadas en el período actual). Independiente de la selección de móviles. */
+  saScopeZonaIds?: Set<number> | null;
   /** Gate funcional: true si el usuario tiene la funcionalidad 'Mantenimiento P.Interes'.
    *  Muestra el botón de edición centralizada de iconos de categorías POI. */
   canMantenimientoPoi?: boolean;
@@ -309,6 +314,7 @@ export default function MovilSelector({
   minutosAntesSa = null,
   pollingSeconds = 60,
   scope,
+  saScopeZonaIds = null,
   canMantenimientoPoi = false,
   onOpenPoiIconsModal,
 }: MovilSelectorProps) {
@@ -666,47 +672,50 @@ export default function MovilSelector({
     }
 
 
-    // Caso 6: en vista pendientes los sin-asignar también pasan cuando el
-    // usuario filtra explícitamente por asignacion='sin_movil' (gate funcional
-    // requerido). En finalizados queda el gate estricto (solo allMovilesSelected).
-    // allMovilesSelected ya incluye allEmpresasSelected + todos los móviles
-    // operativos visibles seleccionados.
     const isPendientesView = pedidosFilters.vista !== 'finalizados';
-    const canSeeUnassigned = isPendientesView
-      ? canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil')
-      : canVerSinAsignarUnitario && allMovilesSelected;
 
-    // FILTRO: Si hay móviles seleccionados, mostrar solo pedidos de esos móviles
-    if (selectedMoviles.length > 0) {
+    if (isPendientesView) {
+      // PENDIENTES (spec 2026-06-17):
+      //  - SA (sin móvil): visibilidad INDEPENDIENTE de la selección de móviles.
+      //    Gate = funcionalidad 'Ped s/asignar unitarios' + scope de zona
+      //    (saScopeZonaIds: null = sin filtro; Set = solo zonas de las EFL
+      //    seleccionadas en el período actual). La ventana SA se aplica más abajo.
+      //  - CON móvil: igual que antes (depende de selectedMoviles).
+      // El filtro asignacion (con/sin móvil) actúa como filtro de presentación
+      // más abajo, sin alterar la selección de móviles de la barra lateral.
+      const canSeeHiddenAssigned = canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil');
       result = result.filter(pedido => {
-        if (!pedido.movil || Number(pedido.movil) === 0) {
-          if (!canSeeUnassigned) return false;
-          // Distribuidor con scope: filtrar sin-asignar por zona, igual que el mapa.
-          // Root/despacho (scope.isRestricted=false) siempre pasan.
-          if (scope?.isRestricted && scope.scopedZonaIds) {
-            const zonaId = pedido.zona_nro != null ? Number(pedido.zona_nro) : null;
-            if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
-          }
-          return true;
+        const sinMovil = !pedido.movil || Number(pedido.movil) === 0;
+        if (sinMovil) {
+          if (!canVerSinAsignarUnitario) return false;
+          return isSaInZonaScope(pedido.zona_nro, saScopeZonaIds);
         }
-        // Cuando todos los móviles del colapsable están seleccionados y el usuario
-        // es privilegiado, también pasan los pedidos de móviles ocultos (no activos
-        // pero con operativa). Si solo hay un subset seleccionado, NO pasan.
-        if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
+        // CON móvil: solo si hay móviles seleccionados que lo incluyan.
+        if (selectedMoviles.length === 0) return false;
+        if (canSeeHiddenAssigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
       });
-    } else if (canVerSinAsignarUnitario) {
-      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios" activa:
-      // mostrar exclusivamente pedidos sin móvil (sin asignar) del scope.
-      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados,
-      // y sin importar si tiene scope parcial o completo de empresa.
-      result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
     } else {
-      // Fallthrough: sin móviles seleccionados y sin branch específico que
-      // aplique (ej. privilegiado + empresa parcial). El usuario eligió
-      // "Móviles: Ninguno" — no mostrar ningún pedido. Antes este caso caía
-      // sin filtro de móvil y mostraba todos, lo cual contradice el badge.
-      result = [];
+      // FINALIZADOS: comportamiento previo intacto (gate estricto allMovilesSelected).
+      const canSeeUnassigned = canVerSinAsignarUnitario && allMovilesSelected;
+      if (selectedMoviles.length > 0) {
+        result = result.filter(pedido => {
+          if (!pedido.movil || Number(pedido.movil) === 0) {
+            if (!canSeeUnassigned) return false;
+            if (scope?.isRestricted && scope.scopedZonaIds) {
+              const zonaId = pedido.zona_nro != null ? Number(pedido.zona_nro) : null;
+              if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+            }
+            return true;
+          }
+          if (canSeeUnassigned && hiddenMovilIds && hiddenMovilIds.has(Number(pedido.movil))) return true;
+          return selectedMoviles.some(id => Number(id) === Number(pedido.movil));
+        });
+      } else if (canVerSinAsignarUnitario) {
+        result = result.filter(pedido => !pedido.movil || Number(pedido.movil) === 0);
+      } else {
+        result = [];
+      }
     }
 
     // Filtrar por búsqueda
@@ -807,7 +816,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, allMovilesSelected, serverNow, minutosAntesSa, scope]);
+}, [pedidos, pedidosSearch, pedidosFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, allMovilesSelected, serverNow, minutosAntesSa, scope, saScopeZonaIds, canVerSinAsignarUnitario]);
 
   // Filtrar y ordenar services (pendientes o finalizados según vista)
   const filteredServices = useMemo(() => {
@@ -822,40 +831,44 @@ export default function MovilSelector({
     }
 
 
-    // Caso 6 (idem filteredPedidos): en vista pendientes acepta asignacion=
-    // 'sin_movil' como bypass del gate "Todos". En finalizados queda estricto.
     const isPendientesSvcView = servicesFilters.vista !== 'finalizados';
-    const canSeeUnassignedSvc = isPendientesSvcView
-      ? canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil')
-      : canVerSinAsignarUnitario && allMovilesSelected;
 
-    if (selectedMoviles.length > 0) {
+    if (isPendientesSvcView) {
+      // PENDIENTES (spec 2026-06-17): SA independiente de selectedMoviles.
+      // Gate = funcionalidad + scope de zona (saScopeZonaIds). CON móvil: igual
+      // que antes. Services usan las mismas zonas del período que los pedidos.
+      const canSeeHiddenAssignedSvc = canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil');
       result = result.filter(service => {
-        if (!service.movil || Number(service.movil) === 0) {
-          if (!canSeeUnassignedSvc) return false;
-          // Distribuidor con scope: filtrar sin-asignar por zona, igual que el mapa.
-          // Root/despacho (scope.isRestricted=false) siempre pasan.
-          if (scope?.isRestricted && scope.scopedZonaIds) {
-            const zonaId = service.zona_nro != null ? Number(service.zona_nro) : null;
-            if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
-          }
-          return true;
+        const sinMovil = !service.movil || Number(service.movil) === 0;
+        if (sinMovil) {
+          if (!canVerSinAsignarUnitario) return false;
+          return isSaInZonaScope(service.zona_nro, saScopeZonaIds);
         }
-        // Mismo criterio que pedidos: móviles ocultos pasan cuando todos seleccionados y usuario privilegiado
-        if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
+        if (selectedMoviles.length === 0) return false;
+        if (canSeeHiddenAssignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
         return selectedMoviles.some(id => Number(id) === Number(service.movil));
       });
-    } else if (canVerSinAsignarUnitario) {
-      // Badge "Ninguno" + funcionalidad "Ped s/asignar unitarios" activa:
-      // mostrar exclusivamente services sin móvil (sin asignar) del scope.
-      // Aplica a CUALQUIER usuario con la funcionalidad, no solo privilegiados,
-      // y sin importar si tiene scope parcial o completo de empresa.
-      result = result.filter(service => !service.movil || Number(service.movil) === 0);
     } else {
-      // Fallthrough: sin móviles seleccionados y sin branch específico que
-      // aplique (ej. privilegiado + empresa parcial). Mismo criterio que
-      // filteredPedidos: "Móviles: Ninguno" → no mostrar nada.
-      result = [];
+      // FINALIZADOS: comportamiento previo intacto.
+      const canSeeUnassignedSvc = canVerSinAsignarUnitario && allMovilesSelected;
+      if (selectedMoviles.length > 0) {
+        result = result.filter(service => {
+          if (!service.movil || Number(service.movil) === 0) {
+            if (!canSeeUnassignedSvc) return false;
+            if (scope?.isRestricted && scope.scopedZonaIds) {
+              const zonaId = service.zona_nro != null ? Number(service.zona_nro) : null;
+              if (zonaId === null || !scope.scopedZonaIds.has(zonaId)) return false;
+            }
+            return true;
+          }
+          if (canSeeUnassignedSvc && hiddenMovilIds && hiddenMovilIds.has(Number(service.movil))) return true;
+          return selectedMoviles.some(id => Number(id) === Number(service.movil));
+        });
+      } else if (canVerSinAsignarUnitario) {
+        result = result.filter(service => !service.movil || Number(service.movil) === 0);
+      } else {
+        result = [];
+      }
     }
 
     // Filtrar por búsqueda
@@ -949,7 +962,7 @@ export default function MovilSelector({
     }
 
     return result;
-}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, allMovilesSelected, serverNow, minutosAntesSa, scope]);
+}, [services, servicesSearch, servicesFilters, selectedMoviles, moviles, selectedEmpresas, empresas, hiddenMovilIds, allMovilesSelected, serverNow, minutosAntesSa, scope, saScopeZonaIds, canVerSinAsignarUnitario]);
 
   // Estado de búsqueda para empresas
   const [empresaSearch, setEmpresaSearch] = useState('');

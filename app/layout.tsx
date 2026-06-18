@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ToastProvider } from "@/components/providers/ToastProvider";
 import { AuditProvider } from "@/components/providers/AuditProvider";
 import { IncidentRecorderProvider } from "@/contexts/IncidentRecorderContext";
+import LegacyBrowserBanner from "@/components/ui/LegacyBrowserBanner";
 import { Suspense } from "react";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -39,6 +40,7 @@ export default function RootLayout({
   return (
     <html lang="es" className={`h-full ${firaSans.variable} ${firaCode.variable}`}>
       <body className={`${inter.className} h-full m-0 p-0 overflow-hidden`}>
+        <LegacyBrowserBanner />
         <AuthProvider>
           <Suspense>
             <AuditProvider>

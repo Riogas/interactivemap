@@ -28,6 +28,10 @@ interface PedidosZonasLayerProps {
   zonas: PedidoZonaData[];
   /** Map from zona_id → cantidad de pedidos o services */
   pedidosCount: Map<number, number>;
+  /** Map from zona_id → pedidos SIN ASIGNAR. Si tiene ≥1, la etiqueta es azul.
+   *  Solo se pasa cuando el usuario tiene 'Ped s/asignar x zona' o 'unitarios'.
+   *  Mapa vacío = sin indicación de SA (etiqueta roja como siempre). */
+  sinAsignarCount?: Map<number, number>;
   /** Filtro de estado activo (pendientes totales / sin asignar / atrasados) */
   filter: PedidosZonaFilter;
   /** Callback para cambiar el filtro de estado */
@@ -237,6 +241,7 @@ function PedidosZonasLegend({
 const PedidosZonasLayer = memo(function PedidosZonasLayer({
   zonas,
   pedidosCount,
+  sinAsignarCount = new Map(),
   filter,
   onFilterChange,
   tipo = 'TODOS',
@@ -278,10 +283,11 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({
       const positions: LatLngExpression[] = validGeo.map((p: any) => [p.lat, p.lng]);
       const center: [number, number] = polygonCentroid(validGeo);
       const count = pedidosCount.get(zona.zona_id) ?? 0;
+      const hasSA = (sinAsignarCount.get(zona.zona_id) ?? 0) > 0;
       const fillColor = getPedidosColor(count, visualRefs);
       const fillOpacity = getPedidosOpacity(count);
 
-      return { zona, positions, center, fillColor, fillOpacity, count };
+      return { zona, positions, center, fillColor, fillOpacity, count, hasSA };
     }).filter(Boolean) as Array<{
       zona: PedidoZonaData;
       positions: LatLngExpression[];
@@ -289,8 +295,9 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({
       fillColor: string;
       fillOpacity: number;
       count: number;
+      hasSA: boolean;
     }>;
-  }, [zonas, pedidosCount, visualRefs]);
+  }, [zonas, pedidosCount, sinAsignarCount, visualRefs]);
 
   if (items.length === 0) return null;
 
@@ -304,7 +311,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({
         hideSinAsignarOption={hideSinAsignarOption}
       />
       <PedidosZonasLegend filter={filter} showLabels={showLabels} onToggleLabels={onToggleLabels} visualRefs={visualRefs} />
-      {items.map(({ zona, positions, center, fillColor, fillOpacity, count }) => {
+      {items.map(({ zona, positions, center, fillColor, fillOpacity, count, hasSA }) => {
         const isInactive = demoras?.get(zona.zona_id)?.activa === false || zona.activa === false;
         return (
         <React.Fragment key={zona.zona_id}>
@@ -342,7 +349,7 @@ const PedidosZonasLayer = memo(function PedidosZonasLayer({
               html: `
                 <div class="demora-label-inner${onZonaClick ? ' demora-label-clickable' : ''}">
                   <span class="demora-label-zona">${zona.zona_id}</span>
-                  ${showLabels && count > 0 ? `<span class="demora-label-time">${count}</span>` : ''}
+                  ${showLabels && count > 0 ? `<span class="demora-label-time${hasSA ? ' demora-label-time--sa' : ''}">${count}</span>` : ''}
                 </div>
               `,
               iconSize: [60, 36],

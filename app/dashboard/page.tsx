@@ -29,6 +29,7 @@ import { useRealtimePauseOnHidden } from '@/hooks/dashboard/useRealtimePauseOnHi
 import { useDashboardModals } from '@/hooks/dashboard/useDashboardModals';
 import { useMapDataView } from '@/hooks/dashboard/useMapDataView';
 import { useScopedZonaIds } from '@/hooks/dashboard/useScopedZonaIds';
+import { useSaScopeZonaIds } from '@/hooks/dashboard/useSaScopeZonaIds';
 import { getScopedEmpresas, shouldScopeByEmpresa, canSeeAllEmpresas, isRoot } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConPedidosMatching, getMovilesConOperacionEnFecha } from '@/lib/moviles/visibility';
@@ -55,6 +56,7 @@ import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { hasFuncionalidad, hasSaAcumulados, hasSaPorZona, hasSaUnitarios } from '@/lib/role-funcionalidades';
 import { isVisibleByWindow } from '@/lib/sa-window-filter';
+import { isSaInZonaScope } from '@/lib/sa-scope';
 import { reportDrift, LastSyncState } from '@/lib/realtime-drift';
 import type { ModalSnapshot } from '@/lib/view-state';
 import { useViewStateSync } from '@/hooks/dashboard/useViewStateSync';
@@ -2727,6 +2729,24 @@ function DashboardContent() {
     [isScopeRestricted, scopedZonaIds, allowedMovilIds],
   );
 
+  // ── Scope de zonas para SIN ASIGNAR (spec 2026-06-17) ─────────────────────
+  // Determina en qué zonas se muestran los SA (estado=1, sin móvil) en sidebar,
+  // tabla extendida, mapa e indicadores. Independiente de la selección de móviles.
+  const { saScopeZonaIds: saScopeZonaIdsRaw } = useSaScopeZonaIds(
+    user, selectedEscenarioIds, selectedEmpresas, serverNow, aplicaNocturno,
+  );
+  // ¿El usuario tiene TODAS las EFL seleccionadas? (universo total = empresas).
+  const allEmpresasSelectedSA = useMemo(
+    () => empresas.length === 0 || selectedEmpresas.length === empresas.length,
+    [empresas.length, selectedEmpresas.length],
+  );
+  // Caso A: atributo "EFL TODAS (*)" + todas seleccionadas → null (sin filtro de
+  // zona, ve todos los SA dentro de ventana). Caso B: Set de zonas de las EFL.
+  const saScopeZonaIds = useMemo<Set<number> | null>(
+    () => (canSeeAllEmpresas(user) && allEmpresasSelectedSA) ? null : saScopeZonaIdsRaw,
+    [user, allEmpresasSelectedSA, saScopeZonaIdsRaw],
+  );
+
   const pedidosCompletos = useMemo(() => {
     const pedidosMap = new Map<number, PedidoSupabase>();
 
@@ -3022,6 +3042,27 @@ function DashboardContent() {
   // Seleccionar la fuente correcta segun zonaLayerTipo (SERVICE → tabla services).
   const zonaCountData = zonaLayerTipo === 'SERVICE' ? servicesZonaData : pedidosZonaData;
 
+  // Mapa zona_id → cantidad de SIN ASIGNAR (para el badge azul en la etiqueta del mapa).
+  // Solo se computa si el usuario tiene 'Ped s/asignar x zona' o 'Ped s/asignar unitarios'.
+  // Siempre usa el filtro 'pendientes' con SA (no el filtro activo de la capa) para que
+  // la indicación sea permanente independientemente del filtro seleccionado.
+  const sinAsignarZonaData = useMemo((): Map<number, number> => {
+    const map = new Map<number, number>();
+    if (!canVerSinAsigPorZona) return map;
+    const fuente = zonaLayerTipo === 'SERVICE' ? servicesCompletos : pedidosCompletos;
+    fuente.forEach((p: PedidoSupabase | ServiceSupabase) => {
+      if (Number((p as any).estado_nro) !== 1) return;
+      const tieneMovil = (p as any).movil != null && Number((p as any).movil) !== 0;
+      if (tieneMovil) return;
+      if (serverNowRef.current && !isVisibleByWindow((p as any).fch_hora_para ?? null, serverNowRef.current, minutosAntesSa, false)) return;
+      const zona = (p as any).zona_nro != null ? Number((p as any).zona_nro) : null;
+      if (!zona || zona === 0) return;
+      if (scopedZonaIds && !scopedZonaIds.has(zona)) return;
+      map.set(zona, (map.get(zona) ?? 0) + 1);
+    });
+    return map;
+  }, [canVerSinAsigPorZona, zonaLayerTipo, pedidosCompletos, servicesCompletos, scopedZonaIds, minutosAntesSa]);
+
   // Si el filtro pedidos/zona quedo en 'sin_asignar' pero el usuario no tiene la funcionalidad,
   // forzarlo a 'pendientes' (ej. estado persistido entre sesiones).
   useEffect(() => {
@@ -3072,6 +3113,8 @@ function DashboardContent() {
     isRoot: hasFullEmpresaAccess,
     empresasIds: user?.allowedEmpresas ?? [],
     funcionalidades: _userFuncionalidades,
+    // Realtime solo cuando la capa Cap. Entrega está activa o su modal abierto.
+    enabled: dataViewMode === 'saturacion' || saturacionModalZonaId !== null,
   });
 
   // Construir saturacionData: Map<zona_id, SaturacionZonaStats> desde el snapshot.
@@ -3232,14 +3275,15 @@ function DashboardContent() {
     let base = pedidosCompletos.filter(p => {
       if (Number(p.estado_nro) !== targetEstado) return false;
       if (!p.movil || Number(p.movil) === 0) {
-        // Caso 6: en pendientes pasa si está en modo "Todos" O si el filtro
-        // de asignacion es 'sin_movil' (bypass explícito), gateado por la
-        // funcionalidad SA. En FINALIZADOS los entregados/no-entregados sin
-        // móvil se ven SIEMPRE (sin gate de funcionalidad SA ni ventana),
-        // respetando solo empresa/scope y filtros de la vista.
-        const allowsUnassigned = isPendientes
-          ? canVerSinAsignarUnitario && (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil' || (isExplicitlyNone && !isEmpresaPartial))
-          : (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil' || (isExplicitlyNone && !isEmpresaPartial));
+        // SIN ASIGNAR. En PENDIENTES (spec 2026-06-17): visible si tiene la
+        // funcionalidad 'Ped s/asignar unitarios' + scope de zona (saScopeZonaIds),
+        // INDEPENDIENTE de la selección de móviles. En FINALIZADOS: comportamiento
+        // previo (entregados/no-entregados sin móvil según empresa/scope).
+        if (isPendientes) {
+          if (!canVerSinAsignarUnitario) return false;
+          return isSaInZonaScope(p.zona_nro, saScopeZonaIds);
+        }
+        const allowsUnassigned = (allMovilesSelected || pedidosFilters.asignacion === 'sin_movil' || (isExplicitlyNone && !isEmpresaPartial));
         if (!allowsUnassigned) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
           const zonaId = p.zona_nro != null ? Number(p.zona_nro) : null;
@@ -3276,7 +3320,7 @@ function DashboardContent() {
   }, [
     pedidosHidden, pedidosFilters, hideUnassigned, movilesFiltered, hiddenMovilIds,
     pedidosCompletos, selectedMoviles, allMovilesSelected, canVerSinAsignarUnitario,
-    scope, isPrivilegedUser, isInUruguay, filterByDelay, isPedidoEntregado,
+    scope, saScopeZonaIds, isPrivilegedUser, isInUruguay, filterByDelay, isPedidoEntregado,
   ]);
 
   // ?? Fix 1 perf-round-2: servicesForMap memoizado  evita invalidar React.memo del MapView en cada render
@@ -3292,12 +3336,13 @@ function DashboardContent() {
     let base = servicesCompletos.filter(s => {
       if (Number(s.estado_nro) !== targetEstado) return false;
       if (!s.movil || Number(s.movil) === 0) {
-        // Mismo gate que pedidosForMap: en FINALIZADOS los services sin móvil
-        // entregados/no-entregados se ven SIEMPRE (sin gate de funcionalidad SA
-        // ni ventana), respetando solo empresa/scope y filtros de la vista.
-        const allowsUnassigned = isPendientes
-          ? canVerSinAsignarUnitario && (allMovilesSelected || servicesFilters.asignacion === 'sin_movil' || (isExplicitlyNoneSvc && !isEmpresaPartial))
-          : (allMovilesSelected || servicesFilters.asignacion === 'sin_movil' || (isExplicitlyNoneSvc && !isEmpresaPartial));
+        // SIN ASIGNAR. PENDIENTES (spec 2026-06-17): funcionalidad + scope de zona,
+        // independiente de la selección de móviles. FINALIZADOS: comportamiento previo.
+        if (isPendientes) {
+          if (!canVerSinAsignarUnitario) return false;
+          return isSaInZonaScope(s.zona_nro, saScopeZonaIds);
+        }
+        const allowsUnassigned = (allMovilesSelected || servicesFilters.asignacion === 'sin_movil' || (isExplicitlyNoneSvc && !isEmpresaPartial));
         if (!allowsUnassigned) return false;
         if (scope?.isRestricted && scope.scopedZonaIds) {
           const zonaId = s.zona_nro != null ? Number(s.zona_nro) : null;
@@ -3333,7 +3378,7 @@ function DashboardContent() {
   }, [
     servicesHidden, servicesFilters, hideUnassigned, movilesFiltered, hiddenMovilIds,
     servicesCompletos, selectedMoviles, allMovilesSelected, canVerSinAsignarUnitario,
-    scope, isPrivilegedUser, isInUruguay, filterByDelay, filterByTipoServicio, isServiceEntregado,
+    scope, saScopeZonaIds, isPrivilegedUser, isInUruguay, filterByDelay, filterByTipoServicio, isServiceEntregado,
   ]);
 
   // ?? Fix 1 perf-round-2: callback estable para el 2do movil de animacion
@@ -3798,6 +3843,7 @@ function DashboardContent() {
             scopedZonaIds={scopedZonaIds}
             scopedEmpresas={scopedEmpresas}
             scope={scope}
+            saScopeZonaIds={saScopeZonaIds}
             canVerAcumulados={canVerAcumulados}
             onSinAsignarClick={onSinAsignarClick}
             onEntregadosClick={onEntregadosClick}
@@ -3863,8 +3909,10 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* FAB: Zonas por Empresa Fletera ? requiere permiso configzonaemp */}
-          {hasPermiso('configzonaemp') && (
+          {/* FAB: Zonas por Empresa Fletera — root siempre; resto por funcionalidad
+              "Configuraciones Emp. Fletera". Antes usaba hasPermiso('configzonaemp')
+              (sistema legacy de accesos) sin bypass de root, por lo que ni root lo veia. */}
+          {(isRoot(user) || hasFuncionalidad(user?.roles, 'Configuraciones Emp. Fletera')) && (
             <button
               id="tour-fab-fleteras-zonas"
               onClick={() => { setIsFleterasZonasOpen(true); setIsActionsExpanded(false); }}
@@ -4020,6 +4068,7 @@ function DashboardContent() {
         moviles={movilesFiltered}
         hiddenMovilIds={hiddenMovilIds}
         scope={scope}
+        saScopeZonaIds={saScopeZonaIds}
         onPedidoClick={handlePedidoClick}
         onMovilClick={handleMovilClick}
         vista={pedidosOpenSource === 'colapsable' ? pedidosFilters.vista : pedidosModalVista}
@@ -4071,6 +4120,7 @@ function DashboardContent() {
         moviles={movilesFiltered}
         hiddenMovilIds={hiddenMovilIds}
         scope={scope}
+        saScopeZonaIds={saScopeZonaIds}
         onServiceClick={handleServiceClick}
         onMovilClick={handleMovilClick}
         vista={servicesOpenSource === 'colapsable' ? servicesFilters.vista : servicesModalVista}
@@ -4439,6 +4489,7 @@ function DashboardContent() {
                   serverNow={serverNow}
                   minutosAntesSa={minutosAntesSa}
                   scope={scope}
+                  saScopeZonaIds={saScopeZonaIds}
                   isToday={isToday}
                   canMantenimientoPoi={canMantenimientoPoi}
                   onOpenPoiIconsModal={() => setIsPoiIconsOpen(true)}
@@ -4540,6 +4591,7 @@ function DashboardContent() {
                 pedidosZonaFilter={pedidosZonaFilter}
                 onPedidosZonaFilterChange={setPedidosZonaFilter}
                 hideSinAsignarOption={!canVerSinAsigPorZona}
+                sinAsignarZonaData={sinAsignarZonaData}
                 allMovilEstados={allMovilEstados}
                 allHiddenMovilIds={allHiddenMovilIds}
                 movilesZonasData={movilesZonasData}

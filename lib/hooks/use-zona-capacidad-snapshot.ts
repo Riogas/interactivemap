@@ -51,6 +51,12 @@ export interface UseZonaCapacidadSnapshotParams {
   empresasIds: number[];
   /** Nombres de funcionalidades del caller (para "Ped s/asignar x zona"). */
   funcionalidades: string[];
+  /**
+   * Si false, el hook NO refetchea por invalidaciones realtime (solo mantiene su
+   * último data). Útil para no agregar carga cuando la capa Cap. Entrega no está
+   * visible. Default true. Las invalidaciones SIEMPRE limpian el cache global.
+   */
+  enabled?: boolean;
 }
 
 export interface UseZonaCapacidadSnapshotResult {
@@ -76,6 +82,10 @@ const STALE_TIME_MS = 30_000;
 // Clave → CacheEntry
 const _cache = new Map<string, CacheEntry>();
 
+// Listeners de invalidación: los hooks montados se suscriben para refetchear
+// cuando algo invalida el cache (ej. llegan pedidos nuevos por realtime).
+const _invalidationListeners = new Set<() => void>();
+
 /** Construye la clave de cache a partir de los params. */
 function buildCacheKey(
   escenario: number,
@@ -87,12 +97,17 @@ function buildCacheKey(
 }
 
 /**
- * Invalida todas las entradas del cache de zona-capacidad-snapshot.
+ * Invalida todas las entradas del cache de zona-capacidad-snapshot Y notifica a
+ * los hooks montados para que refetcheen (logra actualización "realtime" de la
+ * capa Cap. Entrega cuando cambian pedidos por WebSocket).
  * Llamar tras asignar/desasignar pedidos, cambiar capacidad de móvil,
  * o cualquier evento que cambie la capacidad de las zonas.
  */
 export function invalidateZonaCapacidadSnapshot(): void {
   _cache.clear();
+  for (const listener of _invalidationListeners) {
+    try { listener(); } catch { /* no romper el resto de listeners */ }
+  }
 }
 
 // =============================================================================
@@ -179,6 +194,19 @@ export function useZonaCapacidadSnapshot(
     _cache.delete(key);
     setRefetchTrigger((n) => n + 1);
   }, [params.escenario, params.tipoServicio, zonasKey, params.fecha]);
+
+  // Suscribirse a invalidaciones globales: cuando algo invalida el cache (ej.
+  // llegan pedidos por realtime), refetcheamos para que la capa Cap. Entrega se
+  // actualice sin necesidad de cerrar/reabrir. El cache ya fue limpiado por
+  // invalidateZonaCapacidadSnapshot(), así que el refetch va directo al server.
+  // Solo se suscribe si enabled (la capa está visible) para no agregar carga.
+  const enabled = params.enabled ?? true;
+  useEffect(() => {
+    if (!enabled) return;
+    const onInvalidate = () => setRefetchTrigger((n) => n + 1);
+    _invalidationListeners.add(onInvalidate);
+    return () => { _invalidationListeners.delete(onInvalidate); };
+  }, [enabled]);
 
   useEffect(() => {
     if (params.escenario == null) {

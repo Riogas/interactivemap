@@ -90,32 +90,35 @@ export function getCapEntregaColor(
   // capEntrega puede ser decimal (prorrateo ponderado). Sin capping por rol.
   const capEntrega = capacidadDisponible - stats.sinAsignar;
 
-  // Sin moviles pero con pedidos pendientes → sin capacidad (cobertura 0)
+  // Sin moviles pero con pedidos pendientes → sin capacidad (cobertura 0).
+  // Caso límite no listado en la leyenda; se renderiza con el color de
+  // "Sobrecupo alto" (Ref#25) por ser la peor situación de capacidad.
   if (movilesEnZona === 0) {
-    return { color: getRefColor('Ref#21', visualRefs), label: 'Sin Cap.', capEntrega: -999 };
+    return { color: getRefColor('Ref#25', visualRefs), label: 'Sin Cap.', capEntrega: -999 };
   }
 
-  // Bandas por rango continuo (idénticas a las previas para valores enteros):
-  //   >= 4        verde         (holgura alta)
-  //   0 < x < 4   verde-amarillo (holgura baja)
-  //   == 0        amarillo      (capacidad exacta)
-  //   -4 < x < 0  naranja       (sobrecupo leve)
-  //   <= -4       rojo          (sobrecupo alto)
+  // Bandas por rango continuo (idénticas a las previas para valores enteros).
+  // Cada banda usa una ref editable (Ref#21..Ref#25) — ver visual-refs-catalog:
+  //   >= 4        Ref#21 verde          (holgura alta)
+  //   0 < x < 4   Ref#22 verde-amarillo (holgura baja)
+  //   == 0        Ref#23 amarillo       (capacidad exacta)
+  //   -4 < x < 0  Ref#24 naranja        (sobrecupo leve)
+  //   <= -4       Ref#25 rojo           (sobrecupo alto)
   // El label se muestra redondeado (away-from-zero); el color usa el decimal real.
   const label = formatCapEntregaLabel(capEntrega);
 
   if (capEntrega >= 4) {
-    return { color: '#22c55e', label, capEntrega };
+    return { color: getRefColor('Ref#21', visualRefs), label, capEntrega };
   }
   if (capEntrega > 0) {
-    return { color: '#84cc16', label, capEntrega };
+    return { color: getRefColor('Ref#22', visualRefs), label, capEntrega };
   }
   if (capEntrega === 0) {
-    return { color: '#eab308', label: '0', capEntrega };
+    return { color: getRefColor('Ref#23', visualRefs), label: '0', capEntrega };
   }
   if (capEntrega > -4) {
-    return { color: '#f97316', label, capEntrega };
+    return { color: getRefColor('Ref#24', visualRefs), label, capEntrega };
   }
   // capEntrega <= -4
-  return { color: '#ef4444', label, capEntrega };
+  return { color: getRefColor('Ref#25', visualRefs), label, capEntrega };
 }

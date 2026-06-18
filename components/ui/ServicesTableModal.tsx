@@ -3,14 +3,15 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ServiceSupabase, MovilData, MovilOption } from '@/types';
-import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
+import { computeDelayMinutes, getDelayInfo, DelayInfo, ATRASO_FINALIZADO_OPTIONS, atrasoFinalizadoKey, type AtrasoFinalizadoKey } from '@/utils/pedidoDelay';
 import { isServiceEntregado } from '@/utils/estadoPedido';
 import { matchesSearchService } from '@/utils/tableSearch';
 import { isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { isVisibleByWindow } from '@/lib/sa-window-filter';
+import { isSaInZonaScope } from '@/lib/sa-scope';
 
 // ========== Tipos internos ==========
-type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
+type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora' | AtrasoFinalizadoKey;
 type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'defecto' | 'direccion' | 'hora_max' | 'obs_service' | 'obs_cliente';
 type SortDir = 'asc' | 'desc';
 
@@ -95,7 +96,9 @@ interface ServicesTableModalProps {
   /** Ver PedidosTableModal.openSource. */
   openSource?: 'colapsable' | 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' | 'movil_individual';
   scope?: ScopeFilter;
-  /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
+  /** Scope de zonas para SIN ASIGNAR (spec 2026-06-17). null = sin filtro; Set =
+   *  solo SA cuya zona_nro esté en el set (zonas de las EFL seleccionadas). */
+  saScopeZonaIds?: Set<number> | null;
   serverNow?: Date;
   /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
   minutosAntesSa?: number | null;
@@ -131,7 +134,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, saScopeZonaIds = null, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const isFilterDisabled = openSource !== 'colapsable';
 
@@ -243,6 +246,14 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
           isVisibleByWindow(s.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null, !!(s.movil && Number(s.movil) !== 0))
         );
 
+      // Scope de zona para SIN ASIGNAR (spec 2026-06-17): los SA solo pasan si su
+      // zona está en saScopeZonaIds. null = sin filtro. Con-móvil no se toca.
+      result = result.filter(s => {
+        const sinMovil = !s.movil || Number(s.movil) === 0;
+        if (!sinMovil) return true;
+        return isSaInZonaScope(s.zona_nro, saScopeZonaIds);
+      });
+
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {
         result = result.filter(s => !s.movil || Number(s.movil) === 0);
@@ -275,7 +286,9 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
           if (isFinalizados) {
             return allMovilesSelected && privilegedUser;
           }
-          return canVerSinAsignarUnitario && allMovilesSelected && filters.asignacion !== 'con_movil';
+          // SA pendiente: independiente de allMovilesSelected (spec 2026-06-17).
+          // El scope de zona ya se aplicó arriba.
+          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
         }
         if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
         if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(s.movil))) return true;
@@ -313,7 +326,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource]);
+  }, [services, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource, saScopeZonaIds, serverNow, minutosAntesSa]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
   // Respetamos scope: un distribuidor solo ve sus móviles/zonas/defectos en los dropdowns.
@@ -406,11 +419,20 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
       result = result.filter(({ service: s }) => matchesSearchService(s, search));
     }
 
+    // Atraso filter — pendientes por franja de hora límite; finalizados por
+    // rangos de minutos de atraso al cumplir (atraso_cump_mins).
     if (filters.atraso.length > 0) {
-      result = result.filter(({ delayInfo }) => {
-        const key = DELAY_LABEL_TO_KEY[delayInfo.label];
-        return key && filters.atraso.includes(key);
-      });
+      if (isFinalizados) {
+        result = result.filter(({ service: s }) => {
+          const mins = s.atraso_cump_mins != null ? Number(s.atraso_cump_mins) : null;
+          return filters.atraso.includes(atrasoFinalizadoKey(mins));
+        });
+      } else {
+        result = result.filter(({ delayInfo }) => {
+          const key = DELAY_LABEL_TO_KEY[delayInfo.label];
+          return key && filters.atraso.includes(key);
+        });
+      }
     }
 
     if (filters.zona !== null) {
@@ -433,7 +455,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
 
     return result;
-  }, [servicesWithDelay, filters]);
+  }, [servicesWithDelay, filters, isFinalizados]);
 
   // ========== Sort ==========
   const sorted = useMemo(() => {
@@ -461,13 +483,22 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
 
   // ========== Stats ==========
   const stats = useMemo(() => {
-    const counts: Record<string, number> = { muy_atrasado: 0, atrasado: 0, limite_cercana: 0, en_hora: 0, sin_hora: 0 };
-    servicesWithDelay.forEach(({ delayInfo }) => {
-      const key = DELAY_LABEL_TO_KEY[delayInfo.label] || 'sin_hora';
-      counts[key]++;
-    });
+    const counts: Record<string, number> = {};
+    if (isFinalizados) {
+      ATRASO_FINALIZADO_OPTIONS.forEach(o => { counts[o.key] = 0; });
+      servicesWithDelay.forEach(({ service: s }) => {
+        const mins = s.atraso_cump_mins != null ? Number(s.atraso_cump_mins) : null;
+        counts[atrasoFinalizadoKey(mins)]++;
+      });
+    } else {
+      counts.muy_atrasado = 0; counts.atrasado = 0; counts.limite_cercana = 0; counts.en_hora = 0; counts.sin_hora = 0;
+      servicesWithDelay.forEach(({ delayInfo }) => {
+        const key = DELAY_LABEL_TO_KEY[delayInfo.label] || 'sin_hora';
+        counts[key]++;
+      });
+    }
     return counts;
-  }, [servicesWithDelay]);
+  }, [servicesWithDelay, isFinalizados]);
 
   // ========== Handlers ==========
   const handleSort = useCallback((key: SortKey) => {
@@ -563,7 +594,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
               <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5">
                 <button
                   disabled={isFilterDisabled}
-                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('pendientes'); setFilters(f => ({ ...f, entrega: 'todos' })); } }}
+                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('pendientes'); setFilters(f => ({ ...f, entrega: 'todos', atraso: [] })); } }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
                     vista === 'pendientes' ? 'bg-violet-500/30 text-violet-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
                   } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -572,7 +603,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
                 </button>
                 <button
                   disabled={isFilterDisabled}
-                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('finalizados'); setFilters(f => ({ ...f, asignacion: 'todos' })); } }}
+                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('finalizados'); setFilters(f => ({ ...f, asignacion: 'todos', atraso: [] })); } }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
                     isFinalizados ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
                   } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -932,7 +963,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
 
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-gray-500 mr-1">Atraso:</span>
-                      {ATRASO_OPTIONS.map(opt => {
+                      {(isFinalizados ? ATRASO_FINALIZADO_OPTIONS : ATRASO_OPTIONS).map(opt => {
                         const active = filters.atraso.includes(opt.key);
                         return (
                           <button

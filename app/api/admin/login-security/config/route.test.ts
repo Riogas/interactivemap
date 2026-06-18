@@ -44,6 +44,7 @@ const DEFAULT_CONFIG = {
   tiempoBloqueoIpMinutos: 15,
   ipWhitelistPatterns: [],
   mensajeBloqueo: 'Tu acceso esta bloqueado temporalmente.',
+  mensajeBloqueoIp: 'Bloqueado por IP.',
 };
 
 // ==============================================================================
@@ -72,6 +73,7 @@ function makeValidPutBody(overrides: Record<string, unknown> = {}) {
     tiempoBloqueoIpMinutos: 30,
     ipWhitelistPatterns: [],
     mensajeBloqueo: 'Bloqueado.',
+    mensajeBloqueoIp: 'Bloqueado por IP.',
     ...overrides,
   };
 }
@@ -129,13 +131,13 @@ describe('GET /api/admin/login-security/config', () => {
     expect(json.ipWhitelistPatterns).toEqual(['192.168.*.*', '10.0.0.*']);
   });
 
-  it('retorna 403 cuando isRoot != S', async () => {
+  it('retorna 403 cuando no es root y no tiene la funcionalidad', async () => {
     const req = makeRequest('GET', undefined, 'N');
     const res = await GET(req);
     const json = await res.json();
 
     expect(res.status).toBe(403);
-    expect(json.code).toBe('NOT_ROOT');
+    expect(json.code).toBe('NO_FUNCIONALIDAD');
   });
 
   it('retorna 403 cuando no hay header isRoot', async () => {
@@ -290,6 +292,13 @@ describe('PUT /api/admin/login-security/config', () => {
 
   it('retorna 400 para mensajeBloqueo vacio', async () => {
     const req = makeRequest('PUT', makeValidPutBody({ mensajeBloqueo: '   ' }));
+    const res = await PUT(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('retorna 400 para mensajeBloqueoIp vacio', async () => {
+    const req = makeRequest('PUT', makeValidPutBody({ mensajeBloqueoIp: '   ' }));
     const res = await PUT(req);
 
     expect(res.status).toBe(400);

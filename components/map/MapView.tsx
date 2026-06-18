@@ -109,6 +109,8 @@ interface MapViewProps {
   hideCapEntrega?: boolean;
   demorasData?: Map<number, { minutos: number; activa: boolean }>; // Demoras por zona_id
   pedidosZonaData?: Map<number, number>; // Pedidos por zona_id (para vista pedidos-zona)
+  /** Mapa zona_id → cantidad de SA (sin asignar). Controla el badge azul en la etiqueta. */
+  sinAsignarZonaData?: Map<number, number>;
   pedidosZonaFilter?: PedidosZonaFilter; // Filtro activo (pendientes/sin_asignar/atrasados)
   onPedidosZonaFilterChange?: (f: PedidosZonaFilter) => void;
   /** Hora del servidor sincronizada  usada para el filtro de ventana SA. */
@@ -622,6 +624,7 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     (prev.allZonas?.length ?? 0) === (next.allZonas?.length ?? 0) &&
     prev.demorasData?.size === next.demorasData?.size &&
     prev.pedidosZonaData === next.pedidosZonaData &&
+    prev.sinAsignarZonaData === next.sinAsignarZonaData &&
     prev.pedidosZonaFilter === next.pedidosZonaFilter &&
     prev.hideSinAsignarOption === next.hideSinAsignarOption &&
     prev.movilesZonasData?.length === next.movilesZonasData?.length &&
@@ -1185,6 +1188,7 @@ const MapView = memo(function MapView({
   hideCapEntrega = false,
   demorasData = new Map(),
   pedidosZonaData,
+  sinAsignarZonaData,
   pedidosZonaFilter = 'pendientes',
   onPedidosZonaFilterChange,
   hideSinAsignarOption = false,
@@ -2789,7 +2793,7 @@ const MapView = memo(function MapView({
           <DemorasZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as DemoraZonaData[]} demoras={demorasData} showLabels={showDemoraLabels} onToggleLabels={onToggleDemoraLabels} zonaOpacity={zonaOpacity} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
         {dataViewMode === 'pedidos-zona' && (allZonas.length > 0 || zonas.length > 0) && (
-          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} tipo={zonaLayerTipo} onTipoChange={onZonaLayerTipoChange} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
+          <PedidosZonasLayer zonas={(allZonas.length > 0 ? allZonas : zonas) as PedidoZonaData[]} pedidosCount={pedidosZonaData ?? new Map()} sinAsignarCount={sinAsignarZonaData ?? new Map()} filter={pedidosZonaFilter} onFilterChange={onPedidosZonaFilterChange ?? (() => {})} tipo={zonaLayerTipo} onTipoChange={onZonaLayerTipoChange} zonaOpacity={zonaOpacity} onZonaClick={onZonaClick} hideSinAsignarOption={hideSinAsignarOption} demoras={demorasData} showLabels={showPedidosZonaLabels} onToggleLabels={onTogglePedidosZonaLabels} zonaPattern={zonaPattern} visualRefs={visualRefs} />
         )}
 
         {/* ?? Capa de Cantidad de Móviles en Zonas (polígonos + etiquetas fijas con conteo) */}

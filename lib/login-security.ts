@@ -203,7 +203,7 @@ export async function checkLoginBlock(username: string, ip: string): Promise<Che
         type: 'ip',
         reason: ipBlock.reason || 'too_many_failed_attempts',
         retryAfterSeconds,
-        mensajeBloqueo: config.mensajeBloqueo,
+        mensajeBloqueo: config.mensajeBloqueoIp || config.mensajeBloqueo,
       };
     }
 

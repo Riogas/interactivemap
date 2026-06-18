@@ -45,12 +45,12 @@ export const VISUAL_REFS_CATALOG: VisualRefEntry[] = [
   { id: 'Ref#20', layer: 'Pedidos / Zona', label: '12+',   defaultColor: '#ef4444' },
 
   // ── Capa 5: Cap. Entrega ─────────────────────────────────────────────────
-  { id: 'Ref#21', layer: 'Cap. Entrega', label: 'Sin Cap. (< 0)',       defaultColor: '#92400e' },
-  { id: 'Ref#22', layer: 'Cap. Entrega', label: '0 (capacidad máx.)', defaultColor: '#ef4444' },
-  { id: 'Ref#23', layer: 'Cap. Entrega', label: '1',                    defaultColor: '#f97316' },
-  { id: 'Ref#24', layer: 'Cap. Entrega', label: '2 – 3',           defaultColor: '#eab308' },
-  { id: 'Ref#25', layer: 'Cap. Entrega', label: '> 3 (sobrante)',       defaultColor: '#86efac' },
-  { id: 'Ref#26', layer: 'Cap. Entrega', label: 'Sin datos',            defaultColor: '#d1d5db' },
+  { id: 'Ref#21', layer: 'Cap. Entrega', label: 'Holgura alta (≥ 4)',     defaultColor: '#22c55e' },
+  { id: 'Ref#22', layer: 'Cap. Entrega', label: 'Holgura baja (1 – 3)',   defaultColor: '#84cc16' },
+  { id: 'Ref#23', layer: 'Cap. Entrega', label: 'Capacidad exacta (0)',   defaultColor: '#eab308' },
+  { id: 'Ref#24', layer: 'Cap. Entrega', label: 'Sobrecupo leve (−1 a −3)', defaultColor: '#f97316' },
+  { id: 'Ref#25', layer: 'Cap. Entrega', label: 'Sobrecupo alto (≤ −4)',  defaultColor: '#ef4444' },
+  { id: 'Ref#26', layer: 'Cap. Entrega', label: 'Sin datos',              defaultColor: '#d1d5db' },
 ];
 
 /** Mapa indexado por refId para lookup O(1) */

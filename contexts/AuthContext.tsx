@@ -1,8 +1,16 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { authService, ParsedLoginResponse } from '@/lib/api/auth';
 import { authStorage } from '@/lib/auth-storage';
+import {
+  isIdleExpired,
+  resolveLastActivityMs,
+  resolveIdleTimeoutMs,
+  ACTIVITY_PERSIST_THROTTLE_MS,
+  EXPIRY_CHECK_INTERVAL_MS,
+  LAST_ACTIVITY_KEY,
+} from '@/lib/session-expiry';
 
 interface User {
   id: string;
@@ -162,24 +170,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permisos, setPermisos] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
-  // ⏰ Duración máxima de sesión: 8 horas (en milisegundos)
-  const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
+  // ⏰ Sesión deslizante (rolling): expira tras N minutos de INACTIVIDAD (no desde
+  // el login). N se resuelve así: atributo de rol 'TiempoInactividadMin' (override
+  // por usuario) > timeout global (realtime_settings.session_idle_timeout_minutes) >
+  // default 8h. Cada interacción renueva la marca; una sesión abandonada igual se
+  // cierra. La lógica pura vive en lib/session-expiry.ts.
+  // Throttle para no escribir la marca de actividad en cada evento (mousemove, etc).
+  const lastActivityPersistRef = useRef<number>(0);
+  // Timeout global de inactividad (minutos) leído de /api/realtime-config. null =
+  // aún no cargado → resolveIdleTimeoutMs cae al default (8h).
+  const globalIdleMinutesRef = useRef<number | null>(null);
 
-  /** Verificar si la sesión ha expirado por tiempo */
-  const isSessionExpired = (loginTime: string | undefined): boolean => {
-    if (!loginTime) return true;
-    const elapsed = Date.now() - new Date(loginTime).getTime();
-    return elapsed > SESSION_MAX_AGE_MS;
+  /** Atributos planos de todos los roles del usuario (para leer overrides como TiempoInactividadMin). */
+  const flattenAtributos = (
+    u: { roles?: Array<{ atributos?: Array<{ atributo: string; valor: string }> }> } | null | undefined,
+  ): Array<{ atributo: string; valor: string }> =>
+    (u?.roles ?? []).flatMap((r) => r.atributos ?? []);
+
+  /** Verificar si la sesión expiró por inactividad (mira la última actividad persistida). */
+  const isSessionExpired = (
+    loginTime: string | undefined,
+    atributos: Array<{ atributo: string; valor: string }> = [],
+  ): boolean => {
+    const lastActivityMs = resolveLastActivityMs(authStorage.getItem(LAST_ACTIVITY_KEY), loginTime);
+    const maxIdleMs = resolveIdleTimeoutMs(atributos, globalIdleMinutesRef.current);
+    return isIdleExpired(lastActivityMs, Date.now(), maxIdleMs);
   };
 
-  /** Limpiar sesión expirada de localStorage */
+  /** Registrar actividad del usuario (throttled), renovando la ventana de sesión. */
+  const markActivity = useCallback(() => {
+    const now = Date.now();
+    if (now - lastActivityPersistRef.current < ACTIVITY_PERSIST_THROTTLE_MS) return;
+    lastActivityPersistRef.current = now;
+    authStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+  }, []);
+
+  // Cargar el timeout global de inactividad desde la config global (GET público).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/realtime-config');
+        if (!res.ok) return;
+        const json = await res.json();
+        const min = json?.data?.sessionIdleTimeoutMinutes;
+        if (!cancelled && typeof min === 'number' && min > 0) {
+          globalIdleMinutesRef.current = min;
+        }
+      } catch {
+        // Sin config global → resolveIdleTimeoutMs usa el default (8h).
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  /** Limpiar sesión expirada de storage */
   const clearExpiredSession = () => {
-    console.log('⏰ Sesión expirada (>8h) — cerrando sesión automáticamente');
+    console.log('⏰ Sesión expirada por inactividad — cerrando sesión automáticamente');
     authStorage.removeItem('trackmovil_user');
     authStorage.removeItem('trackmovil_token');
     authStorage.removeItem('trackmovil_allowed_empresas');
     authStorage.removeItem('trackmovil_allowed_escenarios');
     authStorage.removeItem('trackmovil_permisos');
+    authStorage.removeItem(LAST_ACTIVITY_KEY);
     setUser(null);
     setPermisos(new Set());
   };
@@ -218,8 +271,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error('Invalid user data structure');
         }
 
-        // ⏰ Verificar expiración de sesión (8 horas)
-        if (isSessionExpired(parsedUser.loginTime)) {
+        // ⏰ Verificar expiración de sesión (inactividad, con override por atributo de rol)
+        if (isSessionExpired(parsedUser.loginTime, flattenAtributos(parsedUser))) {
           clearExpiredSession();
           setIsLoading(false);
           return;
@@ -278,20 +331,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  // ⏰ Chequeo periódico: expirar sesión mientras la app está abierta
+  // ⏰ Chequeo periódico: expirar sesión por inactividad mientras la app está abierta
   useEffect(() => {
     if (!user?.loginTime) return;
 
     const checkExpiration = () => {
-      if (isSessionExpired(user.loginTime)) {
+      if (isSessionExpired(user.loginTime, flattenAtributos(user))) {
         clearExpiredSession();
       }
     };
 
-    // Verificar cada 5 minutos
-    const intervalId = setInterval(checkExpiration, 5 * 60 * 1000);
+    const intervalId = setInterval(checkExpiration, EXPIRY_CHECK_INTERVAL_MS);
     return () => clearInterval(intervalId);
   }, [user?.loginTime]);
+
+  // ⏰ Tracking de actividad: cada interacción del usuario renueva la ventana de
+  // sesión (sliding). Solo activo con sesión iniciada. Al montar/loguear se siembra
+  // la marca "ahora" para arrancar la ventana desde el momento de entrada. La
+  // escritura a storage está throttled (ACTIVITY_PERSIST_THROTTLE_MS) por markActivity.
+  useEffect(() => {
+    if (!user) return;
+
+    // Semilla inicial: la ventana de inactividad arranca ahora (login o reload).
+    const seed = Date.now();
+    lastActivityPersistRef.current = seed;
+    authStorage.setItem(LAST_ACTIVITY_KEY, String(seed));
+
+    const winEvents: Array<keyof WindowEventMap> = [
+      'pointerdown', 'keydown', 'mousemove', 'wheel', 'touchstart', 'scroll',
+    ];
+    winEvents.forEach((e) => window.addEventListener(e, markActivity, { passive: true }));
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') markActivity();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      winEvents.forEach((e) => window.removeEventListener(e, markActivity));
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user?.id, markActivity]);
 
   const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string }> => {
     try {
@@ -467,6 +547,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authStorage.removeItem('trackmovil_allowed_escenarios');
     authStorage.removeItem('trackmovil_escenario_id');
     authStorage.removeItem('trackmovil_permisos');
+    authStorage.removeItem(LAST_ACTIVITY_KEY);
     // Limpiar fecha seleccionada de sessionStorage — al relogi debe arrancar en hoy.
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('trackmovil:selectedDate');

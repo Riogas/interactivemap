@@ -74,13 +74,13 @@ describe('POST /api/admin/login-security/unblock', () => {
   });
 
   describe('Gate de root', () => {
-    it('retorna 403 cuando isRoot != S', async () => {
+    it('retorna 403 cuando no es root y no tiene la funcionalidad', async () => {
       const req = makeRequest({ type: 'user', value: 'juan' }, 'N');
       const res = await POST(req);
       const json = await res.json();
 
       expect(res.status).toBe(403);
-      expect(json.code).toBe('NOT_ROOT');
+      expect(json.code).toBe('NO_FUNCIONALIDAD');
     });
 
     it('retorna 403 cuando no hay header isRoot', async () => {

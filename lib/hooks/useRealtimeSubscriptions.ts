@@ -578,15 +578,24 @@ export function usePedidosRealtime(
   const pendingPatchesRef = useRef<Array<{ type: 'upsert' | 'delete'; pedido: PedidoSupabase }>>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    // Modo histórico: no crear channels, limpiar estado pendiente.
+    // Deshabilitado (modo histórico o pausa por idle): no crear channels, limpiar
+    // estado pendiente Y el acumulador de eventos.
     if (!enabled) {
-      console.log('🔌 Realtime Pedidos pausado (modo histórico)');
+      console.log('🔌 Realtime Pedidos pausado (histórico o idle)');
       setIsConnected(false);
       if (flushTimerRef.current != null) {
         clearTimeout(flushTimerRef.current);
         flushTimerRef.current = null;
       }
       pendingPatchesRef.current = [];
+      // FIX (stale counts tras des-pausa): limpiar el Map acumulador. Si se
+      // conserva, los eventos recibidos ANTES de la pausa quedan congelados y, al
+      // re-habilitar, PISAN los datos frescos del fetch de recuperación en el
+      // merge de pedidosCompletos (realtime sobrescribe iniciales) → el conteo
+      // de pendientes/finalizados queda viejo hasta un F5. Vaciar el Map hace que
+      // el fetch de recuperación sea autoritativo y los eventos nuevos
+      // post-reconexión se acumulen desde cero sobre datos frescos.
+      setPedidos(prev => (prev.size > 0 ? new Map() : prev));
       return () => {};
     }
 
@@ -818,15 +827,19 @@ export function useServicesRealtime(
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Modo histórico: no crear channels, limpiar estado pendiente.
+    // Deshabilitado (modo histórico o pausa por idle): no crear channels, limpiar
+    // estado pendiente Y el acumulador de eventos.
     if (!enabled) {
-      console.log('🔌 Realtime Services pausado (modo histórico)');
+      console.log('🔌 Realtime Services pausado (histórico o idle)');
       setIsConnected(false);
       if (flushTimerRef.current != null) {
         clearTimeout(flushTimerRef.current);
         flushTimerRef.current = null;
       }
       pendingPatchesRef.current = [];
+      // FIX (stale counts tras des-pausa): ver comentario en usePedidosRealtime.
+      // Vaciar el Map evita que eventos viejos pisen el fetch de recuperación.
+      setServices(prev => (prev.size > 0 ? new Map() : prev));
       return () => {};
     }
 
