@@ -148,14 +148,11 @@ describe('reportDrift', () => {
     expect(sendAuditBatch).not.toHaveBeenCalled();
   });
 
-  it('muestra toast si isRoot === true y hay drift', () => {
+  it('NO muestra toast aunque isRoot === true (toast removido a pedido del usuario)', () => {
     reportDrift(baseParams);
-    expect(toast).toHaveBeenCalledOnce();
-    const [msg, opts] = (toast as any).mock.calls[0];
-    expect(msg).toContain('interval');
-    expect(msg).toContain('+2');
-    expect(msg).toContain('-1');
-    expect(opts.duration).toBe(3000);
+    expect(toast).not.toHaveBeenCalled();
+    // El audit_log se sigue emitiendo siempre
+    expect(sendAuditBatch).toHaveBeenCalledOnce();
   });
 
   it('NO muestra toast si isRoot === false, aunque haya drift', () => {
@@ -170,10 +167,12 @@ describe('reportDrift', () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
-  it('incluye el trigger correcto en el mensaje del toast', () => {
+  it('NO muestra toast independientemente del trigger (toast removido)', () => {
     reportDrift({ ...baseParams, trigger: 'silence' });
-    const [msg] = (toast as any).mock.calls[0];
-    expect(msg).toContain('silence');
+    expect(toast).not.toHaveBeenCalled();
+    // El audit_log conserva el trigger correcto
+    const [events] = (sendAuditBatch as any).mock.calls[0];
+    expect((events[0].extra as any).trigger).toBe('silence');
   });
 
   it('el evento de audit incluye selectedDate correctamente', () => {

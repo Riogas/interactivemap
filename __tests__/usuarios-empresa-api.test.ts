@@ -2,16 +2,27 @@
  * Tests para los endpoints de /api/admin/usuarios-empresa
  *
  * Cubre:
- * 1. GET /api/admin/usuarios-empresa — gating + proxy upstream
- * 2. POST /api/admin/usuarios-empresa/toggle — gating + mock response
+ * 1. GET /api/admin/usuarios-empresa — gating (requireFuncionalidad
+ *    'Gestion de Usuarios') + proxy al upstream del SecuritySuite.
+ * 2. POST /api/admin/usuarios-empresa/toggle — gating + proxy upstream.
  *
- * Estrategia: se mockea global.fetch para simular el upstream del SecuritySuite.
- * Los route handlers de Next.js se importan directamente y se les pasa un
- * NextRequest construido manualmente.
+ * Gating actual (refactor requireRoot/requireDistribuidorOrRoot →
+ * requireFuncionalidad): pasa si x-track-isroot === 'S' (bypass root) o si
+ * x-track-funcs incluye 'Gestion de Usuarios'. En caso contrario → 403
+ * con code 'NO_FUNCIONALIDAD'.
+ *
+ * Estrategia: se mockea global.fetch para simular el upstream del SecuritySuite,
+ * y @/lib/supabase para evitar el throw de variables de entorno al importar la
+ * route (la route solo usa supabase en ramas que estos tests no ejercitan).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+
+vi.mock('@/lib/supabase', () => ({
+  getServerSupabaseClient: vi.fn(),
+}));
+
 import { GET } from '../app/api/admin/usuarios-empresa/route';
 import { POST } from '../app/api/admin/usuarios-empresa/toggle/route';
 
@@ -25,8 +36,6 @@ function makeRequest(
   headers: Record<string, string> = {},
   body?: unknown,
 ): NextRequest {
-  // Usamos el constructor de Request base para evitar conflictos de tipos entre
-  // el RequestInit global y el de Next.js. NextRequest acepta Request nativo.
   const reqHeaders = new Headers({ 'Content-Type': 'application/json', ...headers });
   const req = new Request(url, {
     method,
@@ -36,6 +45,7 @@ function makeRequest(
   return new NextRequest(req);
 }
 
+/** Root → bypass del gate vía x-track-isroot. */
 function rootHeaders(): Record<string, string> {
   return {
     'x-track-isroot': 'S',
@@ -44,20 +54,22 @@ function rootHeaders(): Record<string, string> {
   };
 }
 
-function distribuidorHeaders(): Record<string, string> {
+/** Usuario no-root CON la funcionalidad 'Gestion de Usuarios'. */
+function funcHeaders(): Record<string, string> {
   return {
     'x-track-isroot': 'N',
-    'x-track-user': 'dist01',
-    'x-track-roles': JSON.stringify(['Distribuidor']),
-    Authorization: 'Bearer dist-token',
+    'x-track-user': 'gestor01',
+    'x-track-funcs': 'Gestion de Usuarios,Otra Funcionalidad',
+    Authorization: 'Bearer gestor-token',
   };
 }
 
-function noRoleHeaders(): Record<string, string> {
+/** Usuario no-root SIN la funcionalidad 'Gestion de Usuarios'. */
+function noFuncHeaders(): Record<string, string> {
   return {
     'x-track-isroot': 'N',
     'x-track-user': 'regular',
-    'x-track-roles': JSON.stringify(['Dashboard']),
+    'x-track-funcs': 'Dashboard',
     Authorization: 'Bearer regular-token',
   };
 }
@@ -71,23 +83,23 @@ describe('GET /api/admin/usuarios-empresa', () => {
     vi.restoreAllMocks();
   });
 
-  it('rechaza sin rol adecuado (403)', async () => {
+  it('rechaza sin la funcionalidad (403 NO_FUNCIONALIDAD)', async () => {
     const req = makeRequest(
       'GET',
       'http://localhost/api/admin/usuarios-empresa?empresas=FLETERA_1',
-      noRoleHeaders(),
+      noFuncHeaders(),
     );
     const res = await GET(req);
     expect(res.status).toBe(403);
     const body = await res.json();
-    expect(body.code).toBe('REQUIRES_DISTRIBUIDOR_OR_ROOT');
+    expect(body.code).toBe('NO_FUNCIONALIDAD');
   });
 
-  it('rechaza sin parámetro empresas (400)', async () => {
+  it('rechaza sin parámetro empresas (400 EMPRESAS_REQUIRED)', async () => {
     const req = makeRequest(
       'GET',
       'http://localhost/api/admin/usuarios-empresa',
-      rootHeaders(),
+      funcHeaders(),
     );
     const res = await GET(req);
     expect(res.status).toBe(400);
@@ -113,8 +125,8 @@ describe('GET /api/admin/usuarios-empresa', () => {
     expect(body[0].username).toBe('user1');
   });
 
-  it('permite acceso con rol Distribuidor', async () => {
-    const mockData = [{ username: 'dist_user', empresa: 'FLETERA_SUR', habilitado: false }];
+  it("permite acceso con la funcionalidad 'Gestion de Usuarios'", async () => {
+    const mockData = [{ username: 'gest_user', empresa: 'FLETERA_SUR', habilitado: false }];
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify(mockData), { status: 200 }),
     );
@@ -122,7 +134,7 @@ describe('GET /api/admin/usuarios-empresa', () => {
     const req = makeRequest(
       'GET',
       'http://localhost/api/admin/usuarios-empresa?empresas=FLETERA_SUR',
-      distribuidorHeaders(),
+      funcHeaders(),
     );
     const res = await GET(req);
     expect(res.status).toBe(200);
@@ -163,18 +175,24 @@ describe('GET /api/admin/usuarios-empresa', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('POST /api/admin/usuarios-empresa/toggle', () => {
-  it('rechaza sin rol adecuado (403)', async () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('rechaza sin la funcionalidad (403 NO_FUNCIONALIDAD)', async () => {
     const req = makeRequest(
       'POST',
       'http://localhost/api/admin/usuarios-empresa/toggle',
-      noRoleHeaders(),
-      { username: 'user1', enabled: true },
+      noFuncHeaders(),
+      { userId: 1, enabled: true },
     );
     const res = await POST(req);
     expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.code).toBe('NO_FUNCIONALIDAD');
   });
 
-  it('rechaza body sin username (400)', async () => {
+  it('rechaza body sin userId (400)', async () => {
     const req = makeRequest(
       'POST',
       'http://localhost/api/admin/usuarios-empresa/toggle',
@@ -185,42 +203,63 @@ describe('POST /api/admin/usuarios-empresa/toggle', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rechaza body sin enabled (400)', async () => {
+  it('rechaza userId inválido (<= 0) (400)', async () => {
     const req = makeRequest(
       'POST',
       'http://localhost/api/admin/usuarios-empresa/toggle',
       rootHeaders(),
-      { username: 'user1' },
+      { userId: 0, enabled: true },
     );
     const res = await POST(req);
     expect(res.status).toBe(400);
   });
 
-  it('devuelve { success: true, mock: true } para root con body válido', async () => {
+  it('proxya al upstream y devuelve 200 para root con body válido', async () => {
+    const mockResp = { success: true, usuarioId: 5, accion: 'grant', habilitado: true };
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(mockResp), { status: 200 }),
+    );
+
     const req = makeRequest(
       'POST',
       'http://localhost/api/admin/usuarios-empresa/toggle',
       rootHeaders(),
-      { username: 'user1', enabled: true },
+      { userId: 5, enabled: true },
     );
     const res = await POST(req);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.mock).toBe(true);
   });
 
-  it('devuelve { success: true, mock: true } para Distribuidor con body válido', async () => {
+  it("proxya al upstream para usuario con funcionalidad 'Gestion de Usuarios'", async () => {
+    const mockResp = { success: true, usuarioId: 7, accion: 'revoke', habilitado: false };
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(mockResp), { status: 200 }),
+    );
+
     const req = makeRequest(
       'POST',
       'http://localhost/api/admin/usuarios-empresa/toggle',
-      distribuidorHeaders(),
-      { username: 'user1', enabled: false },
+      funcHeaders(),
+      { userId: 7, enabled: false },
     );
     const res = await POST(req);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.mock).toBe(true);
+  });
+
+  it('devuelve 502 cuando el upstream no responde (error de red)', async () => {
+    vi.spyOn(global, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    const req = makeRequest(
+      'POST',
+      'http://localhost/api/admin/usuarios-empresa/toggle',
+      rootHeaders(),
+      { userId: 5, enabled: true },
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(502);
   });
 });
