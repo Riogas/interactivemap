@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PedidoSupabase, ServiceSupabase, MovilData, MovilOption } from '@/types';
-import { computeDelayMinutes, getDelayInfo, DelayInfo } from '@/utils/pedidoDelay';
+import { computeDelayMinutes, getDelayInfo, DelayInfo, ATRASO_FINALIZADO_OPTIONS, atrasoFinalizadoKey, type AtrasoFinalizadoKey } from '@/utils/pedidoDelay';
 import { getEstadoDescripcion, isPedidoEntregado } from '@/utils/estadoPedido';
 import { fixEncoding } from '@/utils/fixEncoding';
 import { matchesSearchPedido } from '@/utils/tableSearch';
@@ -12,7 +12,7 @@ import { isVisibleByWindow } from '@/lib/sa-window-filter';
 import { isSaInZonaScope } from '@/lib/sa-scope';
 
 // ========== Tipos internos ==========
-type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
+type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora' | AtrasoFinalizadoKey;
 type SortKey = 'delay' | 'id' | 'movil' | 'zona' | 'cliente' | 'producto' | 'importe' | 'direccion' | 'hora_max' | 'obs_pedido' | 'obs_cliente' | 'estado' | 'cumplido';
 type SortDir = 'asc' | 'desc';
 
@@ -542,12 +542,20 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       result = result.filter(({ pedido: p }) => matchesSearchPedido(p, search));
     }
 
-    // Atraso filter
+    // Atraso filter — pendientes usa la franja por hora límite (delayInfo);
+    // finalizados usa los rangos de minutos de atraso al cumplir (atraso_cump_mins).
     if (filters.atraso.length > 0) {
-      result = result.filter(({ delayInfo }) => {
-        const key = DELAY_LABEL_TO_KEY[delayInfo.label];
-        return key && filters.atraso.includes(key);
-      });
+      if (isFinalizados) {
+        result = result.filter(({ pedido: p }) => {
+          const mins = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+          return filters.atraso.includes(atrasoFinalizadoKey(mins));
+        });
+      } else {
+        result = result.filter(({ delayInfo }) => {
+          const key = DELAY_LABEL_TO_KEY[delayInfo.label];
+          return key && filters.atraso.includes(key);
+        });
+      }
     }
 
     // Zona filter
@@ -574,7 +582,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
 
     return result;
-  }, [pedidosWithDelay, filters]);
+  }, [pedidosWithDelay, filters, isFinalizados]);
 
   // ========== Sort ==========
   const sorted = useMemo(() => {
@@ -612,13 +620,22 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
 
   // ========== Stats ==========
   const stats = useMemo(() => {
-    const counts: Record<string, number> = { muy_atrasado: 0, atrasado: 0, limite_cercana: 0, en_hora: 0, sin_hora: 0 };
-    pedidosWithDelay.forEach(({ delayInfo }) => {
-      const key = DELAY_LABEL_TO_KEY[delayInfo.label] || 'sin_hora';
-      counts[key]++;
-    });
+    const counts: Record<string, number> = {};
+    if (isFinalizados) {
+      ATRASO_FINALIZADO_OPTIONS.forEach(o => { counts[o.key] = 0; });
+      pedidosWithDelay.forEach(({ pedido: p }) => {
+        const mins = p.atraso_cump_mins != null ? Number(p.atraso_cump_mins) : null;
+        counts[atrasoFinalizadoKey(mins)]++;
+      });
+    } else {
+      counts.muy_atrasado = 0; counts.atrasado = 0; counts.limite_cercana = 0; counts.en_hora = 0; counts.sin_hora = 0;
+      pedidosWithDelay.forEach(({ delayInfo }) => {
+        const key = DELAY_LABEL_TO_KEY[delayInfo.label] || 'sin_hora';
+        counts[key]++;
+      });
+    }
     return counts;
-  }, [pedidosWithDelay]);
+  }, [pedidosWithDelay, isFinalizados]);
 
   // ========== Handlers ==========
   const handleSort = useCallback((key: SortKey) => {
@@ -722,7 +739,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
               <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5">
                 <button
                   disabled={isFilterDisabled}
-                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('pendientes'); setFilters(f => ({ ...f, entrega: 'todos' })); } }}
+                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('pendientes'); setFilters(f => ({ ...f, entrega: 'todos', atraso: [] })); } }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
                     vista === 'pendientes' ? 'bg-teal-500/30 text-teal-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
                   } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -731,7 +748,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                 </button>
                 <button
                   disabled={isFilterDisabled}
-                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('finalizados'); setFilters(f => ({ ...f, asignacion: 'todos' })); } }}
+                  onClick={() => { if (!isFilterDisabled) { onVistaChange?.('finalizados'); setFilters(f => ({ ...f, asignacion: 'todos', atraso: [] })); } }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-all font-medium ${
                     isFinalizados ? 'bg-green-500/30 text-green-300 shadow-sm' : 'text-gray-500 hover:text-gray-300'
                   } ${isFilterDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -1196,7 +1213,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                     {/* Row 2: Atraso chips */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-gray-500 mr-1">Atraso:</span>
-                      {ATRASO_OPTIONS.map(opt => {
+                      {(isFinalizados ? ATRASO_FINALIZADO_OPTIONS : ATRASO_OPTIONS).map(opt => {
                         const active = filters.atraso.includes(opt.key);
                         return (
                           <button

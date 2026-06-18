@@ -168,3 +168,42 @@ export function bucketAtrasoFinalizado(mins: number | null): BucketFinalizado {
   if (mins <= 60) return '30-60 min';
   return '60+ min';
 }
+
+// ─── Filtro de atraso para FINALIZADOS (modales extendidos) ────────────────────
+// Reutiliza los rangos de minutos de la card "Atrasos por pedidos entregados"
+// (stats). Se basa en la columna atraso_cump_mins (minutos de atraso al cumplir).
+
+export type AtrasoFinalizadoKey =
+  | 'fin_1a15'
+  | 'fin_15a30'
+  | 'fin_30a60'
+  | 'fin_60mas'
+  | 'fin_sin_atraso';
+
+export const BUCKET_FINALIZADO_TO_KEY: Record<BucketFinalizado, AtrasoFinalizadoKey> = {
+  '1-15 min': 'fin_1a15',
+  '15-30 min': 'fin_15a30',
+  '30-60 min': 'fin_30a60',
+  '60+ min': 'fin_60mas',
+  'Sin atraso': 'fin_sin_atraso',
+};
+
+/** Opciones de chips de atraso cuando la vista es "Finalizados". Mismo shape
+ *  que ATRASO_OPTIONS de los modales para poder intercambiarlas en el render. */
+export const ATRASO_FINALIZADO_OPTIONS: {
+  key: AtrasoFinalizadoKey;
+  label: string;
+  color: string;
+  dotColor: string;
+}[] = [
+  { key: 'fin_1a15',       label: '1 a 15 min',  color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30', dotColor: 'bg-yellow-400' },
+  { key: 'fin_15a30',      label: '15 a 30 min', color: 'bg-orange-500/20 text-orange-300 border-orange-500/30', dotColor: 'bg-orange-400' },
+  { key: 'fin_30a60',      label: '30 a 60 min', color: 'bg-pink-500/20 text-pink-300 border-pink-500/30',       dotColor: 'bg-pink-400' },
+  { key: 'fin_60mas',      label: '60+ min',     color: 'bg-red-500/20 text-red-300 border-red-500/30',          dotColor: 'bg-red-400' },
+  { key: 'fin_sin_atraso', label: 'Sin atraso',  color: 'bg-green-500/20 text-green-300 border-green-500/30',    dotColor: 'bg-green-400' },
+];
+
+/** Clave de filtro finalizado para un valor de atraso_cump_mins. */
+export function atrasoFinalizadoKey(mins: number | null): AtrasoFinalizadoKey {
+  return BUCKET_FINALIZADO_TO_KEY[bucketAtrasoFinalizado(mins)];
+}
