@@ -131,11 +131,11 @@ function SaturacionLegend({
           : '';
         div.innerHTML = `
           <div class="demora-legend-title">Cap. Entrega</div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#22c55e"></span><span class="demora-legend-label">Holgura alta (≥ 4)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#84cc16"></span><span class="demora-legend-label">Holgura baja (1–3)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#eab308"></span><span class="demora-legend-label">Capacidad exacta (0)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#f97316"></span><span class="demora-legend-label">Sobrecupo leve (−1 a −3)</span></div>
-          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:#ef4444"></span><span class="demora-legend-label">Sobrecupo alto (≤ −4)</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#21', visualRefs)}"></span><span class="demora-legend-label">Holgura alta (≥ 4)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#21</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#22', visualRefs)}"></span><span class="demora-legend-label">Holgura baja (1–3)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#22</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#23', visualRefs)}"></span><span class="demora-legend-label">Capacidad exacta (0)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#23</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#24', visualRefs)}"></span><span class="demora-legend-label">Sobrecupo leve (−1 a −3)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#24</span></div>
+          <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#25', visualRefs)}"></span><span class="demora-legend-label">Sobrecupo alto (≤ −4)</span><span class="demora-legend-ref" title="Click para editar este color">Ref#25</span></div>
           <div class="demora-legend-row"><span class="demora-legend-swatch" style="background:${getRefColor('Ref#26', visualRefs)}"></span><span class="demora-legend-label">Sin datos</span><span class="demora-legend-ref" title="Click para editar este color">Ref#26</span></div>
           ${toggleHtml}
         `;
