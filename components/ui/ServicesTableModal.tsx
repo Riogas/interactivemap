@@ -8,6 +8,7 @@ import { isServiceEntregado } from '@/utils/estadoPedido';
 import { matchesSearchService } from '@/utils/tableSearch';
 import { isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { isVisibleByWindow } from '@/lib/sa-window-filter';
+import { isSaInZonaScope } from '@/lib/sa-scope';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -95,7 +96,9 @@ interface ServicesTableModalProps {
   /** Ver PedidosTableModal.openSource. */
   openSource?: 'colapsable' | 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' | 'movil_individual';
   scope?: ScopeFilter;
-  /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
+  /** Scope de zonas para SIN ASIGNAR (spec 2026-06-17). null = sin filtro; Set =
+   *  solo SA cuya zona_nro esté en el set (zonas de las EFL seleccionadas). */
+  saScopeZonaIds?: Set<number> | null;
   serverNow?: Date;
   /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
   minutosAntesSa?: number | null;
@@ -131,7 +134,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters }: ServicesTableModalProps) {
+export default function ServicesTableModal({ isOpen, onClose, services, moviles, hiddenMovilIds, onServiceClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, saScopeZonaIds = null, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters }: ServicesTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   const isFilterDisabled = openSource !== 'colapsable';
 
@@ -243,6 +246,14 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
           isVisibleByWindow(s.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null, !!(s.movil && Number(s.movil) !== 0))
         );
 
+      // Scope de zona para SIN ASIGNAR (spec 2026-06-17): los SA solo pasan si su
+      // zona está en saScopeZonaIds. null = sin filtro. Con-móvil no se toca.
+      result = result.filter(s => {
+        const sinMovil = !s.movil || Number(s.movil) === 0;
+        if (!sinMovil) return true;
+        return isSaInZonaScope(s.zona_nro, saScopeZonaIds);
+      });
+
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {
         result = result.filter(s => !s.movil || Number(s.movil) === 0);
@@ -275,7 +286,9 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
           if (isFinalizados) {
             return allMovilesSelected && privilegedUser;
           }
-          return canVerSinAsignarUnitario && allMovilesSelected && filters.asignacion !== 'con_movil';
+          // SA pendiente: independiente de allMovilesSelected (spec 2026-06-17).
+          // El scope de zona ya se aplicó arriba.
+          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
         }
         if (selectedMoviles.some(id => Number(id) === Number(s.movil))) return true;
         if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(s.movil))) return true;
@@ -313,7 +326,7 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     }
     
     return result;
-  }, [services, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource]);
+  }, [services, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, externalTipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource, saScopeZonaIds, serverNow, minutosAntesSa]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles) ==========
   // Respetamos scope: un distribuidor solo ve sus móviles/zonas/defectos en los dropdowns.

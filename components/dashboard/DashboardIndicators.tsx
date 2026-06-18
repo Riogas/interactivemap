@@ -8,7 +8,8 @@ import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { todayMontevideo } from '@/lib/date-utils';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
-import { filterFinalizadosByMovil, filterPedidosByEmpresa } from '@/lib/dashboard-indicators-filter';
+import { isSaInZonaScope } from '@/lib/sa-scope';
+import { filterPedidosByEmpresa } from '@/lib/dashboard-indicators-filter';
 
 interface DashboardIndicatorsProps {
   moviles: any[];
@@ -52,9 +53,12 @@ interface DashboardIndicatorsProps {
   serverNow?: Date;
   /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
   minutosAntesSa?: number | null;
+  /** Scope de zonas para SIN ASIGNAR (spec 2026-06-17). null = sin filtro de zona;
+   *  Set = solo cuenta SA cuya zona_nro esté en el set (zonas de las EFL seleccionadas). */
+  saScopeZonaIds?: Set<number> | null;
 }
 
-export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], selectedEmpresas = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, canVerAcumulados = true, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick, serverNow = new Date(), minutosAntesSa = null }: DashboardIndicatorsProps) {
+export default function DashboardIndicators({ moviles, pedidos, services, selectedDate, selectedMoviles = [], selectedEmpresas = [], escenarioIds = [], maxCoordinateDelayMinutes = 30, allMovilEstados, hiddenMovilIds, allHiddenMovilIds, zonasSinMovilServiceFilter = 'URGENTE', zonasRefreshSeconds = 60, scopedZonaIds = null, scopedEmpresas = null, scope, canVerAcumulados = true, onSinAsignarClick, onEntregadosClick, onPorcentajeClick, onZonasSinMovilClick, onMovilesSinReportarClick, onZonasNoActivasClick, serverNow = new Date(), minutosAntesSa = null, saScopeZonaIds = null }: DashboardIndicatorsProps) {
 
   // ============= CÁLCULOS DE PEDIDOS =============
   const pedidosStats = useMemo(() => {
@@ -69,6 +73,10 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     if (scopeRestricted && scope) {
       sinAsignar = sinAsignar.filter(p => isPedidoInScope(p, scope, { hideEntregadosSinMovil: false }));
     }
+    // Scope de zona para SIN ASIGNAR (spec 2026-06-17): el contador cuenta solo
+    // los SA cuya zona esté en saScopeZonaIds (zonas de las EFL seleccionadas en
+    // el período actual). null = sin filtro (despacho con todas las EFL).
+    sinAsignar = sinAsignar.filter(p => isSaInZonaScope(p.zona_nro, saScopeZonaIds));
 
     // Finalizados: estado_nro === 2
     let finalizados = pedidos.filter(p => Number(p.estado_nro) === 2);
@@ -89,11 +97,11 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
     //   finalizados = filterFinalizadosByMovil(finalizados, selectedMoviles);
     // }
 
-    // Filtro por empresa fletera seleccionada en la UI (aplica sobre sinAsignar y finalizados).
-    // Pedidos sin empresa_fletera_id (null) no pasan cuando hay selección activa.
-    // Este filtro es independiente del scope de distribuidor (ya manejado arriba).
+    // Filtro por empresa fletera seleccionada en la UI.
+    // SOLO aplica a finalizados: los SA (empresa_fletera_id=0) ya quedaron
+    // acotados por zona (saScopeZonaIds) arriba; filtrarlos por empresa los
+    // eliminaría incorrectamente (no tienen empresa).
     if (!scopeRestricted && selectedEmpresas.length > 0) {
-      sinAsignar = filterPedidosByEmpresa(sinAsignar, selectedEmpresas);
       finalizados = filterPedidosByEmpresa(finalizados, selectedEmpresas);
     }
 
@@ -111,7 +119,7 @@ export default function DashboardIndicators({ moviles, pedidos, services, select
       entregados,
       porcentajeEntregados,
     };
-  }, [pedidos, selectedMoviles, selectedEmpresas, scope, serverNow, minutosAntesSa]);
+  }, [pedidos, selectedMoviles, selectedEmpresas, scope, serverNow, minutosAntesSa, saScopeZonaIds]);
 
   // ============= MÓVILES SIN REPORTAR GPS =============
   // Excluir estadoNro 3 ("No Activo") — esos están fuera de servicio, no es un problema de GPS

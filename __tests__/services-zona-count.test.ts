@@ -65,16 +65,23 @@ function buildServicesZonaData(
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-// Fecha en el pasado para simular un service atrasado
-const now = new Date('2026-05-29T14:00:00Z');
-const pastDeadline = '2026-05-29T12:00:00'; // 2 horas antes = atrasado
-const futureDeadline = '2026-05-29T18:00:00'; // en el futuro = no atrasado
+// computeDelayMinutes compara contra la hora REAL actual (no contra `now`).
+// Para que el test sea determinístico en cualquier fecha, derivamos los
+// deadlines de la hora actual: pasado = atrasado, futuro = no atrasado.
+// Formato 'YYYY-MM-DDTHH:MM:SS' (sin offset, igual que la convención de la BD).
+const now = new Date();
+function toDbStr(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+const pastDeadline = toDbStr(new Date(now.getTime() - 2 * 60 * 60 * 1000));   // 2h atrás = atrasado
+const futureDeadline = toDbStr(new Date(now.getTime() + 4 * 60 * 60 * 1000)); // 4h adelante = no atrasado
 
 const services: ServiceZonaTestRecord[] = [
   // Zona 1: pendiente con movil
   { estado_nro: 1, movil: 10, zona_nro: 1, fch_hora_max_ent_comp: futureDeadline },
   // Zona 1: pendiente sin movil (sin_asignar)
-  { estado_nro: 1, movil: null, zona_nro: 1, fch_hora_para: '2026-05-29T13:30:00', fch_hora_max_ent_comp: futureDeadline },
+  { estado_nro: 1, movil: null, zona_nro: 1, fch_hora_para: toDbStr(new Date(now.getTime() + 30 * 60 * 1000)), fch_hora_max_ent_comp: futureDeadline },
   // Zona 1: finalizado (no cuenta)
   { estado_nro: 2, movil: 10, zona_nro: 1 },
   // Zona 2: pendiente atrasado

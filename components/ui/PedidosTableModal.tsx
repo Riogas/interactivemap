@@ -9,6 +9,7 @@ import { fixEncoding } from '@/utils/fixEncoding';
 import { matchesSearchPedido } from '@/utils/tableSearch';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { isVisibleByWindow } from '@/lib/sa-window-filter';
+import { isSaInZonaScope } from '@/lib/sa-scope';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora';
@@ -118,6 +119,9 @@ interface PedidosTableModalProps {
   openSource?: 'colapsable' | 'navbar_sin_asignar' | 'navbar_entregados' | 'zona_combo' | 'movil_individual';
   /** Scope del usuario distribuidor (móviles + zonas permitidas). null/no-restricted = sin filtro. */
   scope?: ScopeFilter;
+  /** Scope de zonas para SIN ASIGNAR (spec 2026-06-17). null = sin filtro de zona;
+   *  Set = solo SA cuya zona_nro esté en el set (zonas de las EFL seleccionadas). */
+  saScopeZonaIds?: Set<number> | null;
   /** Hora del servidor sincronizada — usada para el filtro de ventana SA. */
   serverNow?: Date;
   /** Minutos antes del FchHoraPara en que un SA es visible. null = sin filtro. */
@@ -158,7 +162,7 @@ function getDelayBadgeStyle(info: DelayInfo): string {
   }
 }
 
-export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters, services, initialTipo }: PedidosTableModalProps) {
+export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, hiddenMovilIds, onPedidoClick, onMovilClick, vista = 'pendientes', onVistaChange, selectedMoviles = [], externalAtraso = [], externalTipoServicio = 'all', preFilterMovil, preFilterZona, onClearPreFilter, initialAsignacion = 'todos', initialAtraso, hideUnassigned = false, allMovilesSelected = false, privilegedUser = false, canVerSinAsignarUnitario = false, onInnerFiltersChange, onSelectedMovilesChange, externalFilters, externalResetToken, openSource = 'colapsable', scope, saScopeZonaIds = null, serverNow = new Date(), minutosAntesSa = null, modalExtraSelectedMoviles = [], onModalExtraSelectedMovilesChange, inactiveMovilesAvailable = [], initialFilters, services, initialTipo }: PedidosTableModalProps) {
   const isFinalizados = vista === 'finalizados';
   // Cuando el openSource no es 'colapsable', todos los filtros excepto search
   // se muestran disabled+grisaceos (visibles pero no clickeables).
@@ -352,6 +356,15 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
           isVisibleByWindow(p.fch_hora_para, serverNow ?? new Date(), minutosAntesSa ?? null, !!(p.movil && Number(p.movil) !== 0))
         );
 
+      // Scope de zona para SIN ASIGNAR (spec 2026-06-17): los SA (sin móvil) solo
+      // pasan si su zona está en saScopeZonaIds (zonas de las EFL seleccionadas).
+      // null = sin filtro (despacho con todas las EFL). Los con-móvil no se tocan.
+      result = result.filter(p => {
+        const sinMovil = !p.movil || Number(p.movil) === 0;
+        if (!sinMovil) return true;
+        return isSaInZonaScope(p.zona_nro, saScopeZonaIds);
+      });
+
       // Filtro de asignación (con móvil / sin móvil)
       if (filters.asignacion === 'sin_movil') {
         result = result.filter(p => !p.movil || Number(p.movil) === 0);
@@ -388,7 +401,9 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
       // ese caso lo cubre el filtro de asignacion='sin_movil' aplicado arriba).
       result = result.filter(p => {
         if (!p.movil || Number(p.movil) === 0) {
-          return canVerSinAsignarUnitario && allMovilesSelected && filters.asignacion !== 'con_movil';
+          // SA: independiente de allMovilesSelected (spec 2026-06-17). El scope de
+          // zona ya se aplicó arriba; aquí solo gate de funcionalidad + asignacion.
+          return canVerSinAsignarUnitario && filters.asignacion !== 'con_movil';
         }
         if (selectedMoviles.some(id => Number(id) === Number(p.movil))) return true;
         if (allMovilesSelected && hiddenMovilIds && hiddenMovilIds.has(Number(p.movil))) return true;
@@ -426,7 +441,7 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     }
     
     return result;
-  }, [activeData, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, modalExtraSelectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource]);
+  }, [activeData, canVerSinAsignarUnitario, isFinalizados, selectedMoviles, modalExtraSelectedMoviles, filters.tipoServicio, preFilterMovil, preFilterZona, filters.asignacion, filters.entrega, hideUnassigned, allMovilesSelected, privilegedUser, moviles, hiddenMovilIds, scope, openSource, saScopeZonaIds]);
 
   // ========== Valores únicos para filtros (sin filtro de selectedMoviles para mostrar todos) ==========
   // Usamos el listado completo filtrado sólo por estado/vista para que el dropdown siempre muestre
