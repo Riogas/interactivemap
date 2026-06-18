@@ -483,18 +483,32 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       else movilesPrioridadDedup += 1;
     }
 
+    const pedidosDeZona = pedidosIndex.get(zonaId) ?? [];
+
     const snapshot: ZonaCapSnapshot = {
       zona_id: zonaId,
       capacidad_total: capacidadTotalDedup,
-      pedidos_sin_asignar: hasCount ? (pedidosIndex.get(zonaId)?.length ?? 0) : 0,
+      pedidos_sin_asignar: hasCount ? pedidosDeZona.length : 0,
       moviles_prioridad: movilesPrioridadDedup,
       moviles_transito: movilesTransitoDedup,
       moviles_detalle: movilesDetalle,
     };
 
+    // Contadores agrupados por servicio: con CUALQUIERA de las 2 funcionalidades.
+    // Son solo counts (no exponen el detalle por pedido) → aptos para "Ped s/asignar x zona".
+    if (hasCount && pedidosDeZona.length > 0) {
+      const porTipo = new Map<string, number>();
+      for (const p of pedidosDeZona) {
+        const tipo = (p.tipo_servicio || 'Sin tipo').toUpperCase();
+        porTipo.set(tipo, (porTipo.get(tipo) ?? 0) + 1);
+      }
+      snapshot.pedidos_sin_asignar_por_tipo = Array.from(porTipo, ([tipo, cant]) => ({ tipo, cant }))
+        .sort((a, b) => b.cant - a.cant);
+    }
+
     // Detalle por pedido SOLO con "Ped s/asignar unitarios".
     if (hasDetalle) {
-      snapshot.pedidos_sin_asignar_detalle = pedidosIndex.get(zonaId) ?? [];
+      snapshot.pedidos_sin_asignar_detalle = pedidosDeZona;
     }
 
     data.push(snapshot);

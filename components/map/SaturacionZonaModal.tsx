@@ -165,6 +165,8 @@ export default function SaturacionZonaModal({
   const detallesPrioridad = (snapshot?.moviles_detalle ?? []).filter(m => !m.en_transito);
   const detallesTransito = (snapshot?.moviles_detalle ?? []).filter(m => m.en_transito);
   const pedidosDetalle = snapshot?.pedidos_sin_asignar_detalle ?? [];
+  // Contadores por servicio: presentes con cualquiera de las 2 funcionalidades (por zona o unitarios).
+  const pedidosPorTipo = snapshot?.pedidos_sin_asignar_por_tipo ?? [];
 
   const colorClass = capEntregaColorClass(capacidadMostrada);
 
@@ -272,39 +274,33 @@ export default function SaturacionZonaModal({
                 </h3>
               </div>
 
+              {/* Descomposición por tipo de servicio (Ej: 1 URGENTE · 2 SERVICE).
+                  Se muestra con AMBAS funcionalidades: son solo contadores. */}
+              {pedidosPorTipo.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2 pl-1">
+                  {pedidosPorTipo.map(({ tipo, cant }) => (
+                    <span
+                      key={tipo}
+                      className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                    >
+                      <span className="font-bold">{cant}</span>
+                      <span>{tipo}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {canVerSinAsignarUnitario && pedidosDetalle.length > 0 ? (
                 // Detalle por pedido: SOLO con "Ped s/asignar unitarios".
-                <>
-                  {/* Descomposición por tipo de servicio (Ej: 3 URGENTE · 2 NOCTURNO). */}
-                  <div className="flex flex-wrap gap-1.5 mb-2 pl-1">
-                    {Array.from(
-                      pedidosDetalle.reduce((acc, p) => {
-                        const tipo = (p.tipo_servicio || 'Sin tipo').toUpperCase();
-                        acc.set(tipo, (acc.get(tipo) ?? 0) + 1);
-                        return acc;
-                      }, new Map<string, number>()),
-                    )
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([tipo, cant]) => (
-                        <span
-                          key={tipo}
-                          className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                        >
-                          <span className="font-bold">{cant}</span>
-                          <span>{tipo}</span>
-                        </span>
-                      ))}
-                  </div>
-                  <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                    {pedidosDetalle.map(p => (
-                      <PedidoSinAsignarCard key={p.id} pedido={p} />
-                    ))}
-                  </div>
-                </>
-              ) : (
-                // "Ped s/asignar x zona" (sin unitarios): solo el total (ya en el badge del título).
+                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                  {pedidosDetalle.map(p => (
+                    <PedidoSinAsignarCard key={p.id} pedido={p} />
+                  ))}
+                </div>
+              ) : pedidosPorTipo.length === 0 ? (
+                // Fallback defensivo: sin desglose disponible, solo el total.
                 <p className="text-sm text-gray-500 italic pl-1">{pedidosSinAsignar} pedido{pedidosSinAsignar !== 1 ? 's' : ''} sin asignar.</p>
-              )}
+              ) : null}
             </section>
           )}
         </div>

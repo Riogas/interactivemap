@@ -220,6 +220,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(zona10).toBeDefined();
     expect(zona10.pedidos_sin_asignar).toBe(0);
     expect(zona10.pedidos_sin_asignar_detalle).toBeUndefined();
+    expect(zona10.pedidos_sin_asignar_por_tipo).toBeUndefined();
   });
 
   // ─── Gating SA: x zona cuenta total pero NO trae detalle ──────────────────
@@ -238,6 +239,8 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(zona10).toBeDefined();
     expect(zona10.pedidos_sin_asignar).toBe(2); // cuenta el total
     expect(zona10.pedidos_sin_asignar_detalle).toBeUndefined(); // sin detalle
+    // Contadores agrupados por servicio: SÍ presentes con "x zona" (son solo counts).
+    expect(zona10.pedidos_sin_asignar_por_tipo).toEqual([{ tipo: 'GAS 13KG', cant: 2 }]);
   });
 
   // ─── Gating SA: unitarios trae el detalle con tipo_servicio ───────────────
@@ -264,6 +267,8 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(detalle).toHaveProperty('direccion_corta');
     expect(detalle).not.toHaveProperty('cliente');
     expect(detalle.tipo_servicio).toBe('GAS 13KG');
+    // Unitarios también trae los contadores agrupados (además del detalle).
+    expect(zona10.pedidos_sin_asignar_por_tipo).toEqual([{ tipo: 'GAS 13KG', cant: 2 }]);
   });
 
   // ─── AC-5: moviles_prioridad vs moviles_transito ──────────────────────────
