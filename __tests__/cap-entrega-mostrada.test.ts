@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { capEntregaMostrada } from '../lib/cap-entrega-color';
+import { capEntregaMostrada, formatCapEntregaLabel } from '../lib/cap-entrega-color';
 
 describe('capEntregaMostrada — gating del valor mostrado', () => {
   describe('SIN la funcionalidad (canVerSinAsignar=false)', () => {
@@ -49,6 +49,43 @@ describe('capEntregaMostrada — gating del valor mostrado', () => {
 
     it('aplica floor defensivo de −9999', () => {
       expect(capEntregaMostrada(-100000, 0, true)).toBe(-9999);
+    });
+  });
+});
+
+describe('formatCapEntregaLabel — redondeo (decisión 2026-06-18)', () => {
+  describe('positivos: round-half-up estándar (0.5 o más sube, < 0.5 baja)', () => {
+    it('Zona 79 real: 3.0733 − 2 SA = 1.0733 → "1" (antes daba "2" con ceil)', () => {
+      expect(formatCapEntregaLabel(1.0733)).toBe('1');
+    });
+
+    it('< 0.5 baja', () => {
+      expect(formatCapEntregaLabel(1.07)).toBe('1');
+      expect(formatCapEntregaLabel(3.2)).toBe('3');
+      expect(formatCapEntregaLabel(0.49)).toBe('0');
+    });
+
+    it('exactamente 0.5 sube', () => {
+      expect(formatCapEntregaLabel(1.5)).toBe('2');
+      expect(formatCapEntregaLabel(0.5)).toBe('1');
+    });
+
+    it('> 0.5 sube', () => {
+      expect(formatCapEntregaLabel(3.6)).toBe('4');
+    });
+
+    it('enteros quedan igual', () => {
+      expect(formatCapEntregaLabel(0)).toBe('0');
+      expect(formatCapEntregaLabel(4)).toBe('4');
+    });
+  });
+
+  describe('negativos: sobrecupo intacto (Math.floor, peor caso)', () => {
+    it('-5.3 → "-6" (se redondea al peor caso, sin cambios)', () => {
+      expect(formatCapEntregaLabel(-5.3)).toBe('-6');
+    });
+    it('-0.1 → "-1"', () => {
+      expect(formatCapEntregaLabel(-0.1)).toBe('-1');
     });
   });
 });

@@ -44,13 +44,14 @@ export interface SaturacionZonaStats {
  */
 /**
  * Formatea el valor de Cap. Entrega para mostrar como etiqueta.
- * Redondeo "away from zero" (CapEntrega.docx + decisión 2026-06-11):
- *   - positivos: hacia arriba (Math.ceil)  → 3.2 ⇒ 4
- *   - negativos: hacia abajo (Math.floor)  → -5.3 ⇒ -6 (sobrecupo = peor caso)
+ * Redondeo (decisión 2026-06-18):
+ *   - positivos: round-half-up estándar (Math.round) → 1.07 ⇒ 1 ; 1.5 ⇒ 2 ; 3.2 ⇒ 3
+ *     (0.5 o más sube, < 0.5 baja — coincide con la cuenta intuitiva del detalle).
+ *   - negativos: hacia abajo (Math.floor)  → -5.3 ⇒ -6 (sobrecupo = peor caso, intacto).
  * El COLOR se calcula sobre el decimal real, no sobre este valor redondeado.
  */
 export function formatCapEntregaLabel(capEntrega: number): string {
-  const rounded = capEntrega >= 0 ? Math.ceil(capEntrega) : Math.floor(capEntrega);
+  const rounded = capEntrega >= 0 ? Math.round(capEntrega) : Math.floor(capEntrega);
   return String(rounded);
 }
 
