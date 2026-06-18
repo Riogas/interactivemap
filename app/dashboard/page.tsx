@@ -3909,8 +3909,10 @@ function DashboardContent() {
             </svg>
           </button>
 
-          {/* FAB: Zonas por Empresa Fletera ? requiere permiso configzonaemp */}
-          {hasPermiso('configzonaemp') && (
+          {/* FAB: Zonas por Empresa Fletera — root siempre; resto por funcionalidad
+              "Configuraciones Emp. Fletera". Antes usaba hasPermiso('configzonaemp')
+              (sistema legacy de accesos) sin bypass de root, por lo que ni root lo veia. */}
+          {(isRoot(user) || hasFuncionalidad(user?.roles, 'Configuraciones Emp. Fletera')) && (
             <button
               id="tour-fab-fleteras-zonas"
               onClick={() => { setIsFleterasZonasOpen(true); setIsActionsExpanded(false); }}
