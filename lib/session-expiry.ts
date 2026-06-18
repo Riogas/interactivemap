@@ -18,6 +18,72 @@
 /** Duración máxima de INACTIVIDAD antes de expirar la sesión: 8 horas (en ms). */
 export const SESSION_MAX_IDLE_MS = 8 * 60 * 60 * 1000;
 
+/** Default global de inactividad en minutos (= 8h). Coincide con SESSION_MAX_IDLE_MS. */
+export const DEFAULT_IDLE_TIMEOUT_MINUTES = 8 * 60;
+
+/** Nombre del atributo de rol (SecuritySuite) que overridea el timeout global por usuario. */
+export const IDLE_TIMEOUT_ATTR = 'TiempoInactividadMin';
+
+/** Convierte minutos a milisegundos (defensivo ante valores inválidos → 0). */
+export function minutesToMs(min: number | null | undefined): number {
+  if (min == null || isNaN(min) || min <= 0) return 0;
+  return Math.round(min) * 60 * 1000;
+}
+
+/**
+ * Lee el override de inactividad por usuario desde los atributos de sus roles.
+ *
+ * Los atributos vienen del SecuritySuite por rol (`user.roles[].atributos`).
+ * Si varios roles definen `TiempoInactividadMin`, gana el MAYOR (más permisivo:
+ * "este usuario puede quedarse logueado más tiempo").
+ *
+ * @param atributos - lista plana de { atributo, valor } de todos los roles.
+ * @returns minutos (> 0) si hay un override válido, o null si no hay.
+ */
+export function readIdleTimeoutOverrideMin(
+  atributos: Array<{ atributo: string; valor: string }> | null | undefined,
+): number | null {
+  if (!Array.isArray(atributos) || atributos.length === 0) return null;
+  let best: number | null = null;
+  for (const a of atributos) {
+    if (!a || String(a.atributo).trim() !== IDLE_TIMEOUT_ATTR) continue;
+    const n = parseInt(String(a.valor).trim(), 10);
+    if (!isNaN(n) && n > 0) {
+      best = best == null ? n : Math.max(best, n);
+    }
+  }
+  return best;
+}
+
+/**
+ * Resuelve el timeout de inactividad EFECTIVO en minutos.
+ *
+ * Prioridad:
+ *   1. Override por usuario (atributo `TiempoInactividadMin` de algún rol).
+ *   2. Global configurado (de realtime_settings.session_idle_timeout_minutes).
+ *   3. DEFAULT_IDLE_TIMEOUT_MINUTES (8h).
+ *
+ * @param atributos     - atributos planos de los roles del usuario.
+ * @param globalMinutes - timeout global configurado (o null/undefined).
+ */
+export function resolveIdleTimeoutMin(
+  atributos: Array<{ atributo: string; valor: string }> | null | undefined,
+  globalMinutes: number | null | undefined,
+): number {
+  const override = readIdleTimeoutOverrideMin(atributos);
+  if (override != null) return override;
+  if (globalMinutes != null && !isNaN(globalMinutes) && globalMinutes > 0) return globalMinutes;
+  return DEFAULT_IDLE_TIMEOUT_MINUTES;
+}
+
+/** Resuelve el timeout de inactividad efectivo en MILISEGUNDOS (para isIdleExpired). */
+export function resolveIdleTimeoutMs(
+  atributos: Array<{ atributo: string; valor: string }> | null | undefined,
+  globalMinutes: number | null | undefined,
+): number {
+  return minutesToMs(resolveIdleTimeoutMin(atributos, globalMinutes));
+}
+
 /** No persistir la marca de actividad más de una vez por minuto (evita spam a storage). */
 export const ACTIVITY_PERSIST_THROTTLE_MS = 60 * 1000;
 

@@ -44,6 +44,7 @@ const DEFAULT_CONFIG = {
   tiempoBloqueoIpMinutos: 15,
   ipWhitelistPatterns: [],
   mensajeBloqueo: 'Tu acceso esta bloqueado temporalmente.',
+  mensajeBloqueoIp: 'Bloqueado por IP.',
 };
 
 // ==============================================================================
@@ -72,6 +73,7 @@ function makeValidPutBody(overrides: Record<string, unknown> = {}) {
     tiempoBloqueoIpMinutos: 30,
     ipWhitelistPatterns: [],
     mensajeBloqueo: 'Bloqueado.',
+    mensajeBloqueoIp: 'Bloqueado por IP.',
     ...overrides,
   };
 }
@@ -290,6 +292,13 @@ describe('PUT /api/admin/login-security/config', () => {
 
   it('retorna 400 para mensajeBloqueo vacio', async () => {
     const req = makeRequest('PUT', makeValidPutBody({ mensajeBloqueo: '   ' }));
+    const res = await PUT(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('retorna 400 para mensajeBloqueoIp vacio', async () => {
+    const req = makeRequest('PUT', makeValidPutBody({ mensajeBloqueoIp: '   ' }));
     const res = await PUT(req);
 
     expect(res.status).toBe(400);

@@ -190,6 +190,7 @@ describe('setLoginSecurityConfig', () => {
         tiempoBloqueoIpMinutos: 30,
         ipWhitelistPatterns: ['192.168.*.*'],
         mensajeBloqueo: 'Bloqueado.',
+        mensajeBloqueoIp: 'Bloqueado IP.',
       },
       'admin'
     );
@@ -219,6 +220,7 @@ describe('setLoginSecurityConfig', () => {
         tiempoBloqueoIpMinutos: 15,
         ipWhitelistPatterns: [],
         mensajeBloqueo: 'Bloqueado.',
+        mensajeBloqueoIp: 'Bloqueado IP.',
       },
       null
     );
@@ -238,6 +240,7 @@ describe('setLoginSecurityConfig', () => {
         tiempoBloqueoIpMinutos: 15,
         ipWhitelistPatterns: [],
         mensajeBloqueo: 'Bloqueado.',
+        mensajeBloqueoIp: 'Bloqueado IP.',
       },
       'admin'
     );
@@ -262,6 +265,7 @@ describe('setLoginSecurityConfig', () => {
           tiempoBloqueoIpMinutos: 15,
           ipWhitelistPatterns: [],
           mensajeBloqueo: 'Bloqueado.',
+          mensajeBloqueoIp: 'Bloqueado IP.',
         },
         'admin'
       )

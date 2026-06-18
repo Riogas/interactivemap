@@ -64,6 +64,8 @@ export interface UserPreferences {
   realtimePauseOnHiddenEnabled?: boolean;
   /** Minutos de gracia antes de desconectar Realtime al ocultarse. Range 5-60. */
   realtimePauseOnHiddenMinutes?: number;
+  /** Timeout GLOBAL de inactividad de sesión en minutos. Solo configurable desde Preferencias Globales (admin). Default 480 (8h). Un atributo de rol 'TiempoInactividadMin' lo overridea por usuario. */
+  sessionIdleTimeoutMinutes?: number;
   // ===== Halo de markers y patrones de zonas =====
   movilHalo: boolean;    // Resaltar móviles con halo blanco
   pedidoHalo: boolean;   // Resaltar pedidos con halo blanco
@@ -119,6 +121,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   realtimeEventsPerSecond: 10,
   realtimePauseOnHiddenEnabled: false,
   realtimePauseOnHiddenMinutes: 15,
+  sessionIdleTimeoutMinutes: 480,
   // Halo y patron -- default OFF / liso (no cambia UX existente)
   movilHalo: false,
   pedidoHalo: false,

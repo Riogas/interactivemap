@@ -26,6 +26,7 @@ interface RealtimeSettings {
   realtimePauseOnHiddenMinutes: number;
   demorasPollingSeconds: number;
   movilesZonasPollingSeconds: number;
+  sessionIdleTimeoutMinutes: number;
 }
 
 const DEFAULTS: RealtimeSettings = {
@@ -38,6 +39,7 @@ const DEFAULTS: RealtimeSettings = {
   realtimePauseOnHiddenMinutes: 15,
   demorasPollingSeconds: 120,
   movilesZonasPollingSeconds: 90,
+  sessionIdleTimeoutMinutes: 480,
 };
 
 interface RealtimeSettingsRow {
@@ -51,6 +53,7 @@ interface RealtimeSettingsRow {
   realtime_pause_on_hidden_minutes: number;
   demoras_polling_seconds: number;
   moviles_zonas_polling_seconds: number;
+  session_idle_timeout_minutes: number;
   updated_at: string;
   updated_by: string | null;
 }
@@ -66,6 +69,7 @@ function rowToSettings(row: RealtimeSettingsRow): RealtimeSettings {
     realtimePauseOnHiddenMinutes: row.realtime_pause_on_hidden_minutes,
     demorasPollingSeconds: row.demoras_polling_seconds,
     movilesZonasPollingSeconds: row.moviles_zonas_polling_seconds,
+    sessionIdleTimeoutMinutes: row.session_idle_timeout_minutes ?? DEFAULTS.sessionIdleTimeoutMinutes,
   };
 }
 
@@ -147,6 +151,7 @@ export async function PUT(request: NextRequest) {
     realtime_pause_on_hidden_minutes: clampInt(body.realtimePauseOnHiddenMinutes, 5, 60, DEFAULTS.realtimePauseOnHiddenMinutes),
     demoras_polling_seconds: clampInt(body.demorasPollingSeconds, 10, 120, DEFAULTS.demorasPollingSeconds),
     moviles_zonas_polling_seconds: clampInt(body.movilesZonasPollingSeconds, 10, 120, DEFAULTS.movilesZonasPollingSeconds),
+    session_idle_timeout_minutes: clampInt(body.sessionIdleTimeoutMinutes, 5, 100000, DEFAULTS.sessionIdleTimeoutMinutes),
     updated_at: new Date().toISOString(),
     updated_by: updatedBy ?? null,
   };

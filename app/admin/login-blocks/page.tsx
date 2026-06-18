@@ -225,6 +225,9 @@ export default function LoginBlocksPage() {
   const [configMensajeBloqueo, setConfigMensajeBloqueo] = useState<string>(
     'Tu acceso esta bloqueado temporalmente. Contacta al administrador.'
   );
+  const [configMensajeBloqueoIp, setConfigMensajeBloqueoIp] = useState<string>(
+    'Tu acceso fue bloqueado por demasiados intentos desde tu red. Contacta al administrador.'
+  );
   const [configLoading, setConfigLoading] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
   const [configToast, setConfigToast] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -306,6 +309,9 @@ export default function LoginBlocksPage() {
         }
         if (typeof json.mensajeBloqueo === 'string') {
           setConfigMensajeBloqueo(json.mensajeBloqueo);
+        }
+        if (typeof json.mensajeBloqueoIp === 'string') {
+          setConfigMensajeBloqueoIp(json.mensajeBloqueoIp);
         }
       }
     } catch (err) {
@@ -572,6 +578,7 @@ export default function LoginBlocksPage() {
           tiempoBloqueoIpMinutos: configTiempoBloqueoIp,
           ipWhitelistPatterns: configIpWhitelist,
           mensajeBloqueo: configMensajeBloqueo,
+          mensajeBloqueoIp: configMensajeBloqueoIp,
         }),
       });
       const json = await res.json();
@@ -934,6 +941,26 @@ export default function LoginBlocksPage() {
                     />
                     <p className="text-xs text-gray-400 text-right">
                       {configMensajeBloqueo.length}/500
+                    </p>
+                  </div>
+                  {/* Parte E.4: mensaje de bloqueo por IP */}
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-1 sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Mensaje de bloqueo por IP
+                    </label>
+                    <p className="text-xs text-gray-400 mb-1">
+                      Texto especifico cuando el bloqueo es por IP (demasiados intentos desde una red). Si lo dejas vacio se usa el mensaje de bloqueo general. Max 500 caracteres.
+                    </p>
+                    <textarea
+                      rows={3}
+                      maxLength={500}
+                      value={configMensajeBloqueoIp}
+                      onChange={(e) => setConfigMensajeBloqueoIp(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm resize-none"
+                      placeholder="Mensaje que ve el usuario cuando su IP esta bloqueada..."
+                    />
+                    <p className="text-xs text-gray-400 text-right">
+                      {configMensajeBloqueoIp.length}/500
                     </p>
                   </div>
                 </div>

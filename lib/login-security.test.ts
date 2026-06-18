@@ -53,6 +53,7 @@ vi.mock('./login-security-config', () => ({
     tiempoBloqueoIpMinutos: 15,
     ipWhitelistPatterns: [],
     mensajeBloqueo: 'Bloqueado temporalmente.',
+    mensajeBloqueoIp: 'Bloqueado por IP.',
   }),
   DEFAULT_LOGIN_SECURITY_CONFIG: {
     maxIntentosUsuario: 3,
@@ -61,6 +62,7 @@ vi.mock('./login-security-config', () => ({
     tiempoBloqueoIpMinutos: 15,
     ipWhitelistPatterns: [],
     mensajeBloqueo: 'Bloqueado temporalmente.',
+    mensajeBloqueoIp: 'Bloqueado por IP.',
   },
 }));
 

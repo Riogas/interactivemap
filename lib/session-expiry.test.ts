@@ -8,6 +8,11 @@ import {
   isIdleExpired,
   resolveLastActivityMs,
   SESSION_MAX_IDLE_MS,
+  DEFAULT_IDLE_TIMEOUT_MINUTES,
+  minutesToMs,
+  readIdleTimeoutOverrideMin,
+  resolveIdleTimeoutMin,
+  resolveIdleTimeoutMs,
 } from './session-expiry';
 
 describe('isIdleExpired()', () => {
@@ -72,5 +77,73 @@ describe('resolveLastActivityMs()', () => {
 
   it('devuelve 0 cuando no hay ni actividad ni loginTime', () => {
     expect(resolveLastActivityMs(null, undefined)).toBe(0);
+  });
+});
+
+describe('minutesToMs()', () => {
+  it('convierte minutos a ms', () => {
+    expect(minutesToMs(120)).toBe(120 * 60 * 1000);
+  });
+  it('valores inválidos/<=0 → 0', () => {
+    expect(minutesToMs(null)).toBe(0);
+    expect(minutesToMs(undefined)).toBe(0);
+    expect(minutesToMs(NaN)).toBe(0);
+    expect(minutesToMs(0)).toBe(0);
+    expect(minutesToMs(-5)).toBe(0);
+  });
+});
+
+describe('readIdleTimeoutOverrideMin()', () => {
+  it('devuelve null si no hay atributos o no está el atributo', () => {
+    expect(readIdleTimeoutOverrideMin(null)).toBeNull();
+    expect(readIdleTimeoutOverrideMin([])).toBeNull();
+    expect(readIdleTimeoutOverrideMin([{ atributo: 'Otro', valor: '99' }])).toBeNull();
+  });
+
+  it('lee TiempoInactividadMin como número', () => {
+    expect(readIdleTimeoutOverrideMin([{ atributo: 'TiempoInactividadMin', valor: '3600' }])).toBe(3600);
+  });
+
+  it('si varios roles lo definen, gana el mayor (más permisivo)', () => {
+    expect(readIdleTimeoutOverrideMin([
+      { atributo: 'TiempoInactividadMin', valor: '120' },
+      { atributo: 'TiempoInactividadMin', valor: '3600' },
+      { atributo: 'Otro', valor: '5' },
+    ])).toBe(3600);
+  });
+
+  it('ignora valores inválidos/<=0', () => {
+    expect(readIdleTimeoutOverrideMin([{ atributo: 'TiempoInactividadMin', valor: 'abc' }])).toBeNull();
+    expect(readIdleTimeoutOverrideMin([{ atributo: 'TiempoInactividadMin', valor: '0' }])).toBeNull();
+    expect(readIdleTimeoutOverrideMin([{ atributo: 'TiempoInactividadMin', valor: '-10' }])).toBeNull();
+  });
+});
+
+describe('resolveIdleTimeoutMin() — prioridad override > global > default', () => {
+  const atr = (v: string) => [{ atributo: 'TiempoInactividadMin', valor: v }];
+
+  it('override por usuario gana sobre global', () => {
+    expect(resolveIdleTimeoutMin(atr('3600'), 120)).toBe(3600);
+  });
+
+  it('sin override usa el global', () => {
+    expect(resolveIdleTimeoutMin([], 120)).toBe(120);
+    expect(resolveIdleTimeoutMin(null, 200)).toBe(200);
+  });
+
+  it('sin override ni global usa el default (8h = 480)', () => {
+    expect(resolveIdleTimeoutMin([], null)).toBe(DEFAULT_IDLE_TIMEOUT_MINUTES);
+    expect(resolveIdleTimeoutMin(null, undefined)).toBe(480);
+    expect(resolveIdleTimeoutMin([], 0)).toBe(480);
+  });
+});
+
+describe('resolveIdleTimeoutMs()', () => {
+  it('devuelve el efectivo en ms (override por usuario)', () => {
+    expect(resolveIdleTimeoutMs([{ atributo: 'TiempoInactividadMin', valor: '3600' }], 120))
+      .toBe(3600 * 60 * 1000);
+  });
+  it('cae al default 8h en ms cuando no hay nada', () => {
+    expect(resolveIdleTimeoutMs(null, null)).toBe(SESSION_MAX_IDLE_MS);
   });
 });

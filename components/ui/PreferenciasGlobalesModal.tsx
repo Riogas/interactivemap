@@ -64,6 +64,7 @@ export default function PreferenciasGlobalesModal({
     movilesZonasPollingSeconds:      p.movilesZonasPollingSeconds      ?? DEFAULT_PREFERENCES.movilesZonasPollingSeconds,
     realtimePauseOnHiddenEnabled:    p.realtimePauseOnHiddenEnabled    ?? DEFAULT_PREFERENCES.realtimePauseOnHiddenEnabled,
     realtimePauseOnHiddenMinutes:    p.realtimePauseOnHiddenMinutes    ?? DEFAULT_PREFERENCES.realtimePauseOnHiddenMinutes,
+    sessionIdleTimeoutMinutes:       p.sessionIdleTimeoutMinutes       ?? DEFAULT_PREFERENCES.sessionIdleTimeoutMinutes,
   });
 
   // Local copy of preferences for realtime sliders (committed on save).
@@ -482,6 +483,7 @@ export default function PreferenciasGlobalesModal({
       movilesZonasPollingSeconds:      localPrefs.movilesZonasPollingSeconds,
       realtimePauseOnHiddenEnabled:    localPrefs.realtimePauseOnHiddenEnabled ?? false,
       realtimePauseOnHiddenMinutes:    localPrefs.realtimePauseOnHiddenMinutes ?? 15,
+      sessionIdleTimeoutMinutes:       localPrefs.sessionIdleTimeoutMinutes ?? 480,
     });
     onClose();
   };
@@ -759,7 +761,28 @@ export default function PreferenciasGlobalesModal({
 
               <hr className="border-gray-200" />
 
-              {/* ===== Auditoría ===== */}
+              {/* ===== Inactividad de sesión ===== */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⏰</span>
+                  <span className="text-sm font-bold text-gray-800">Inactividad de sesión</span>
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-red-100 text-red-700">ADMIN</span>
+                </div>
+                <p className="text-xs text-gray-500 -mt-1">
+                  Minutos de inactividad antes de cerrar la sesión automáticamente. Aplica a todos los usuarios. Un usuario puede tener un tiempo mayor vía el atributo de rol <code className="px-1 bg-gray-100 rounded">TiempoInactividadMin</code> (gana sobre este global). Default 480 (8 h).
+                </p>
+                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 flex items-center gap-4">
+                  <label className="text-sm font-semibold text-gray-700 flex-1">Timeout global (minutos)</label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={100000}
+                    value={localPrefs.sessionIdleTimeoutMinutes ?? DEFAULT_PREFERENCES.sessionIdleTimeoutMinutes}
+                    onChange={(e) => setLocalPrefs({ ...localPrefs, sessionIdleTimeoutMinutes: Math.max(5, Math.min(100000, parseInt(e.target.value) || 5)) })}
+                    className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-mono text-sm"
+                  />
+                </div>
+              </div>
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">🔍</span>

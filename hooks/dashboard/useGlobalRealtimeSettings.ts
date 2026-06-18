@@ -26,6 +26,7 @@ export interface GlobalRealtimeSettings {
   realtimePauseOnHiddenMinutes: number;
   demorasPollingSeconds: number;
   movilesZonasPollingSeconds: number;
+  sessionIdleTimeoutMinutes: number;
 }
 
 export const DEFAULT_GLOBAL_REALTIME_SETTINGS: GlobalRealtimeSettings = {
@@ -38,6 +39,7 @@ export const DEFAULT_GLOBAL_REALTIME_SETTINGS: GlobalRealtimeSettings = {
   realtimePauseOnHiddenMinutes: 15,
   demorasPollingSeconds: 120,
   movilesZonasPollingSeconds: 90,
+  sessionIdleTimeoutMinutes: 480,
 };
 
 export function useGlobalRealtimeSettings() {

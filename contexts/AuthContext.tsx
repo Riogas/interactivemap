@@ -6,6 +6,7 @@ import { authStorage } from '@/lib/auth-storage';
 import {
   isIdleExpired,
   resolveLastActivityMs,
+  resolveIdleTimeoutMs,
   ACTIVITY_PERSIST_THROTTLE_MS,
   EXPIRY_CHECK_INTERVAL_MS,
   LAST_ACTIVITY_KEY,
@@ -169,17 +170,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permisos, setPermisos] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
-  // ⏰ Sesión deslizante (rolling): expira tras 8h de INACTIVIDAD, no 8h desde el
-  // login. Cada interacción del usuario renueva la marca de actividad, así que un
-  // despachador activo nunca es expulsado a mitad de turno; una sesión abandonada
-  // igual se cierra a las 8h. La lógica pura vive en lib/session-expiry.ts.
+  // ⏰ Sesión deslizante (rolling): expira tras N minutos de INACTIVIDAD (no desde
+  // el login). N se resuelve así: atributo de rol 'TiempoInactividadMin' (override
+  // por usuario) > timeout global (realtime_settings.session_idle_timeout_minutes) >
+  // default 8h. Cada interacción renueva la marca; una sesión abandonada igual se
+  // cierra. La lógica pura vive en lib/session-expiry.ts.
   // Throttle para no escribir la marca de actividad en cada evento (mousemove, etc).
   const lastActivityPersistRef = useRef<number>(0);
+  // Timeout global de inactividad (minutos) leído de /api/realtime-config. null =
+  // aún no cargado → resolveIdleTimeoutMs cae al default (8h).
+  const globalIdleMinutesRef = useRef<number | null>(null);
+
+  /** Atributos planos de todos los roles del usuario (para leer overrides como TiempoInactividadMin). */
+  const flattenAtributos = (
+    u: { roles?: Array<{ atributos?: Array<{ atributo: string; valor: string }> }> } | null | undefined,
+  ): Array<{ atributo: string; valor: string }> =>
+    (u?.roles ?? []).flatMap((r) => r.atributos ?? []);
 
   /** Verificar si la sesión expiró por inactividad (mira la última actividad persistida). */
-  const isSessionExpired = (loginTime: string | undefined): boolean => {
+  const isSessionExpired = (
+    loginTime: string | undefined,
+    atributos: Array<{ atributo: string; valor: string }> = [],
+  ): boolean => {
     const lastActivityMs = resolveLastActivityMs(authStorage.getItem(LAST_ACTIVITY_KEY), loginTime);
-    return isIdleExpired(lastActivityMs);
+    const maxIdleMs = resolveIdleTimeoutMs(atributos, globalIdleMinutesRef.current);
+    return isIdleExpired(lastActivityMs, Date.now(), maxIdleMs);
   };
 
   /** Registrar actividad del usuario (throttled), renovando la ventana de sesión. */
@@ -190,9 +205,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authStorage.setItem(LAST_ACTIVITY_KEY, String(now));
   }, []);
 
+  // Cargar el timeout global de inactividad desde la config global (GET público).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/realtime-config');
+        if (!res.ok) return;
+        const json = await res.json();
+        const min = json?.data?.sessionIdleTimeoutMinutes;
+        if (!cancelled && typeof min === 'number' && min > 0) {
+          globalIdleMinutesRef.current = min;
+        }
+      } catch {
+        // Sin config global → resolveIdleTimeoutMs usa el default (8h).
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   /** Limpiar sesión expirada de storage */
   const clearExpiredSession = () => {
-    console.log('⏰ Sesión expirada por inactividad (>8h) — cerrando sesión automáticamente');
+    console.log('⏰ Sesión expirada por inactividad — cerrando sesión automáticamente');
     authStorage.removeItem('trackmovil_user');
     authStorage.removeItem('trackmovil_token');
     authStorage.removeItem('trackmovil_allowed_empresas');
@@ -237,8 +271,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error('Invalid user data structure');
         }
 
-        // ⏰ Verificar expiración de sesión (8 horas)
-        if (isSessionExpired(parsedUser.loginTime)) {
+        // ⏰ Verificar expiración de sesión (inactividad, con override por atributo de rol)
+        if (isSessionExpired(parsedUser.loginTime, flattenAtributos(parsedUser))) {
           clearExpiredSession();
           setIsLoading(false);
           return;
@@ -302,7 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user?.loginTime) return;
 
     const checkExpiration = () => {
-      if (isSessionExpired(user.loginTime)) {
+      if (isSessionExpired(user.loginTime, flattenAtributos(user))) {
         clearExpiredSession();
       }
     };

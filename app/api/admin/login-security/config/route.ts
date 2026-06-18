@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
       tiempoBloqueoIpMinutos: config.tiempoBloqueoIpMinutos,
       ipWhitelistPatterns: config.ipWhitelistPatterns,
       mensajeBloqueo: config.mensajeBloqueo,
+      mensajeBloqueoIp: config.mensajeBloqueoIp,
     });
   } catch (error) {
     console.error('[api/admin/login-security/config] GET error:', error);
@@ -59,6 +60,7 @@ export async function PUT(request: NextRequest) {
     tiempoBloqueoIpMinutos,
     ipWhitelistPatterns,
     mensajeBloqueo,
+    mensajeBloqueoIp,
   } = body as Record<string, unknown>;
 
   // Validar maxIntentosUsuario
@@ -165,6 +167,18 @@ export async function PUT(request: NextRequest) {
     );
   }
 
+  // Validar mensajeBloqueoIp (mismo criterio que mensajeBloqueo)
+  if (
+    typeof mensajeBloqueoIp !== 'string' ||
+    mensajeBloqueoIp.trim().length === 0 ||
+    mensajeBloqueoIp.trim().length > 500
+  ) {
+    return NextResponse.json(
+      { success: false, error: 'mensajeBloqueoIp debe ser un texto de 1 a 500 caracteres' },
+      { status: 400 }
+    );
+  }
+
   try {
     const updatedBy = request.headers.get('x-track-user') ?? null;
     const cleanPatterns = (ipWhitelistPatterns as string[]).map(p => p.trim());
@@ -177,6 +191,7 @@ export async function PUT(request: NextRequest) {
         tiempoBloqueoIpMinutos,
         ipWhitelistPatterns: cleanPatterns,
         mensajeBloqueo: mensajeBloqueo.trim(),
+        mensajeBloqueoIp: mensajeBloqueoIp.trim(),
       },
       updatedBy
     );
@@ -189,6 +204,7 @@ export async function PUT(request: NextRequest) {
       tiempoBloqueoIpMinutos,
       ipWhitelistPatterns: cleanPatterns,
       mensajeBloqueo: mensajeBloqueo.trim(),
+      mensajeBloqueoIp: mensajeBloqueoIp.trim(),
     });
   } catch (error) {
     console.error('[api/admin/login-security/config] PUT error:', error);

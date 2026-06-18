@@ -25,6 +25,8 @@ export interface LoginSecurityConfig {
   ipWhitelistPatterns: string[];
   /** Mensaje que se muestra al usuario cuando intenta login y esta bloqueado. */
   mensajeBloqueo: string;
+  /** Mensaje especifico cuando el bloqueo es por IP (si vacio, se usa mensajeBloqueo). */
+  mensajeBloqueoIp: string;
 }
 
 // ==============================================================================
@@ -38,6 +40,7 @@ export const DEFAULT_LOGIN_SECURITY_CONFIG: LoginSecurityConfig = {
   tiempoBloqueoIpMinutos: 15,
   ipWhitelistPatterns: [],
   mensajeBloqueo: 'Tu acceso esta bloqueado temporalmente. Contacta al administrador.',
+  mensajeBloqueoIp: 'Tu acceso fue bloqueado por demasiados intentos desde tu red. Contacta al administrador.',
 };
 
 // ==============================================================================
@@ -57,7 +60,7 @@ export async function getLoginSecurityConfig(): Promise<LoginSecurityConfig> {
 
     const { data, error } = await client
       .from('login_security_config')
-      .select('max_intentos_usuario, max_intentos_ip, tiempo_bloqueo_usuario_minutos, tiempo_bloqueo_ip_minutos, ip_whitelist_patterns, mensaje_bloqueo')
+      .select('max_intentos_usuario, max_intentos_ip, tiempo_bloqueo_usuario_minutos, tiempo_bloqueo_ip_minutos, ip_whitelist_patterns, mensaje_bloqueo, mensaje_bloqueo_ip')
       .eq('id', 1)
       .maybeSingle();
 
@@ -96,7 +99,11 @@ export async function getLoginSecurityConfig(): Promise<LoginSecurityConfig> {
       ? data.mensaje_bloqueo.trim()
       : DEFAULT_LOGIN_SECURITY_CONFIG.mensajeBloqueo;
 
-    return { maxIntentosUsuario, maxIntentosIp, tiempoBloqueoUsuarioMinutos, tiempoBloqueoIpMinutos, ipWhitelistPatterns, mensajeBloqueo };
+    const mensajeBloqueoIp = typeof data.mensaje_bloqueo_ip === 'string' && data.mensaje_bloqueo_ip.trim().length > 0
+      ? data.mensaje_bloqueo_ip.trim()
+      : DEFAULT_LOGIN_SECURITY_CONFIG.mensajeBloqueoIp;
+
+    return { maxIntentosUsuario, maxIntentosIp, tiempoBloqueoUsuarioMinutos, tiempoBloqueoIpMinutos, ipWhitelistPatterns, mensajeBloqueo, mensajeBloqueoIp };
   } catch (error) {
     console.error('[login-security-config] Excepcion inesperada al leer config:', error);
     return DEFAULT_LOGIN_SECURITY_CONFIG;
@@ -127,6 +134,7 @@ export async function setLoginSecurityConfig(
       tiempo_bloqueo_ip_minutos: config.tiempoBloqueoIpMinutos,
       ip_whitelist_patterns: config.ipWhitelistPatterns,
       mensaje_bloqueo: config.mensajeBloqueo,
+      mensaje_bloqueo_ip: config.mensajeBloqueoIp,
       updated_at: new Date().toISOString(),
       updated_by: updatedBy,
     }, { onConflict: 'id' });

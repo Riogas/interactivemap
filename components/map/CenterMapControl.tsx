@@ -39,7 +39,7 @@ export default function CenterMapControl({
           'div',
           'leaflet-bar leaflet-control center-map-control',
         );
-        btn.title = 'Centrar mapa en todo el contenido';
+        btn.title = 'Centrar mapa y recargar';
         btn.innerHTML = `
           <a href="#" role="button" aria-label="Centrar mapa"
              style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;cursor:pointer;color:#374151;text-decoration:none;">
@@ -63,6 +63,12 @@ export default function CenterMapControl({
           } else {
             map.flyTo(fallbackCenter, fallbackZoom, { animate: true, duration: 0.8 });
           }
+          // Tras centrar, esperar ~1s para que el usuario vea el encuadre y luego
+          // recargar la pagina (hard refresh). Util en puestos con navegadores
+          // viejos donde estilos/tiles a veces quedan en estado inconsistente.
+          window.setTimeout(() => {
+            window.location.reload();
+          }, 1000);
         });
 
         return btn;
