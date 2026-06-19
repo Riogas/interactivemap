@@ -220,6 +220,7 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(zona10).toBeDefined();
     expect(zona10.pedidos_sin_asignar).toBe(0);
     expect(zona10.pedidos_sin_asignar_detalle).toBeUndefined();
+    expect(zona10.pedidos_sin_asignar_por_tipo).toBeUndefined();
   });
 
   // ─── Gating SA: x zona cuenta total pero NO trae detalle ──────────────────
@@ -238,6 +239,8 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(zona10).toBeDefined();
     expect(zona10.pedidos_sin_asignar).toBe(2); // cuenta el total
     expect(zona10.pedidos_sin_asignar_detalle).toBeUndefined(); // sin detalle
+    // Contadores agrupados por servicio: SÍ presentes con "x zona" (son solo counts).
+    expect(zona10.pedidos_sin_asignar_por_tipo).toEqual([{ tipo: 'GAS 13KG', cant: 2 }]);
   });
 
   // ─── Gating SA: unitarios trae el detalle con tipo_servicio ───────────────
@@ -264,6 +267,8 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(detalle).toHaveProperty('direccion_corta');
     expect(detalle).not.toHaveProperty('cliente');
     expect(detalle.tipo_servicio).toBe('GAS 13KG');
+    // Unitarios también trae los contadores agrupados (además del detalle).
+    expect(zona10.pedidos_sin_asignar_por_tipo).toEqual([{ tipo: 'GAS 13KG', cant: 2 }]);
   });
 
   // ─── AC-5: moviles_prioridad vs moviles_transito ──────────────────────────
@@ -370,6 +375,60 @@ describe('GET /api/zonas/capacidad-snapshot', () => {
     expect(movil100.aporte_a_zona).toBe(2);
     // Capacidad de la zona = suma de aportes clampeados = 2 + 0 = 2 (no 1).
     expect(zona10.capacidad_total).toBe(2);
+  });
+
+  // Regresión (bug 2026-06-19): el aporte se debe recalcular EN VIVO desde la
+  // capacidad/lote actuales del móvil, no desde el lote_disponible precomputado en
+  // zonas_cap_entrega (que queda stale cuando cambia la capacidad sin re-sincronizar).
+  // Reproduce las 2 capturas reportadas:
+  //   - Móvil lleno (4/4) en 7 zonas de tránsito con cache stale=4  → aporte 0.
+  //   - Móvil de prioridad 0/4 (libre 4) con cache stale=8          → aporte 4 (no 8).
+  it('aporte se recalcula en vivo e ignora lote_disponible stale del cache', async () => {
+    mockGetSupabase.mockReturnValue(
+      makeSupabaseMock({
+        vwRows: [
+          {
+            escenario: 1, zona: 85, emp_fletera_id: 70, tipo_servicio: 'URGENTE',
+            capacidad_total: 99, moviles_count: 2, moviles_prioridad: 1, moviles_transito: 1, last_sync: null,
+          },
+        ],
+        // Cache stale: ambos lote_disponible están desactualizados.
+        zceRows: [
+          { zona: 85, movil: 439, lote_disponible: 4, emp_fletera_id: 70, tipo_servicio: 'URGENTE' }, // lleno → debe ser 0
+          { zona: 85, movil: 81,  lote_disponible: 8, emp_fletera_id: 70, tipo_servicio: 'URGENTE' }, // libre 4 → debe ser 4
+        ],
+        mzRows: [
+          // Móvil 439: 0 prioridad, 7 zonas de tránsito (zona 85 es una de ellas).
+          { movil_id: '439', zona_id: 85, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' },
+          { movil_id: '439', zona_id: 86, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' },
+          { movil_id: '439', zona_id: 87, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' },
+          { movil_id: '439', zona_id: 88, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' },
+          { movil_id: '439', zona_id: 89, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' },
+          { movil_id: '439', zona_id: 90, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' },
+          { movil_id: '439', zona_id: 91, escenario_id: 1, prioridad_o_transito: 2, tipo_de_servicio: 'URGENTE' },
+          // Móvil 81: 1 zona de prioridad (la 85), 0 tránsito.
+          { movil_id: '81', zona_id: 85, escenario_id: 1, prioridad_o_transito: 1, tipo_de_servicio: 'URGENTE' },
+        ],
+        movilCapRows: [
+          { nro: 439, capacidad: 4, tamano_lote: 4, estado_nro: null }, // 4/4 lleno → loteLibre 0
+          { nro: 81,  capacidad: 0, tamano_lote: 4, estado_nro: null }, // 0/4       → loteLibre 4
+        ],
+      }) as unknown as ReturnType<typeof getServerSupabaseClient>,
+    );
+    const req = makeRequest({ escenario: '1', tipoServicio: 'URGENTE', isRoot: true });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const zona85 = body.data.find((z: { zona_id: number }) => z.zona_id === 85);
+    expect(zona85).toBeDefined();
+    const movil439 = zona85.moviles_detalle.find((m: { movil_id: number }) => m.movil_id === 439);
+    const movil81 = zona85.moviles_detalle.find((m: { movil_id: number }) => m.movil_id === 81);
+    // Móvil lleno (loteLibre 0): aporta 0 pese a cache=4.
+    expect(movil439.aporte_a_zona).toBe(0);
+    // Móvil de prioridad 0/4: aporta 4 (= (4/1)*1), NO el 8 stale del cache.
+    expect(movil81.aporte_a_zona).toBe(4);
+    // Capacidad de la zona = suma de aportes en vivo = 0 + 4 = 4 (no 99 ni 12).
+    expect(zona85.capacidad_total).toBe(4);
   });
 
   it('tipoServicio=SERVICE: devuelve zonas vacías cuando no hay datos de SERVICE', async () => {

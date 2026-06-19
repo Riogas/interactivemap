@@ -55,6 +55,8 @@ export interface MovilDetalleZona {
  * - `capacidad_total` puede ser negativo (sobrecupo real — sin cap) y decimal (prorrateo ponderado).
  * - `pedidos_sin_asignar` es 0 cuando el caller NO tiene ninguna funcionalidad SA
  *   ("Ped s/asignar x zona" ni "unitarios").
+ * - `pedidos_sin_asignar_por_tipo` está presente con CUALQUIERA de las 2 funcionalidades
+ *   (por zona o unitarios): son solo contadores agrupados por servicio, no exponen detalle.
  * - `pedidos_sin_asignar_detalle` solo está presente cuando el caller tiene "Ped s/asignar unitarios".
  * - El cap a 0 / -9999 es RESPONSABILIDAD DEL CLIENTE (PR2), no del endpoint.
  */
@@ -62,6 +64,12 @@ export interface ZonaCapSnapshot {
   zona_id: number;
   capacidad_total: number;
   pedidos_sin_asignar: number;
+  /**
+   * Desglose de SA por tipo de servicio (ej. [{tipo:'URGENTE',cant:1},{tipo:'SERVICE',cant:2}]).
+   * Presente con "Ped s/asignar x zona" O "unitarios": son contadores, no detalle por pedido.
+   * Ordenado desc por cantidad.
+   */
+  pedidos_sin_asignar_por_tipo?: Array<{ tipo: string; cant: number }>;
   /** Solo presente cuando caller tiene funcionalidad "Ped s/asignar unitarios". */
   pedidos_sin_asignar_detalle?: PedidoSinAsignarMini[];
   moviles_prioridad: number;
