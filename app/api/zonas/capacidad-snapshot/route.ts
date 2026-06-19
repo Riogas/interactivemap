@@ -301,6 +301,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!mCapResult.error) movilCapRows = mCapResult.data ?? [];
   }
 
+  // ─── Settings del escenario ────────────────────────────────────────────────
+  // Una sola lectura: provee el alpha de prorrateo (peso de zonas de tránsito,
+  // default 0.3) para recalcular el aporte EN VIVO, y la ventana SA para Query 5.
+  const escenarioSettings = await getEscenarioSettings(escenario);
+  const pesoTransitoAlpha = escenarioSettings.pesoTransitoAlpha;
+
   // ─── Query 5: pedidos sin asignar (solo si hasCount) ───────────────────────
   //
   // Ventana temporal (regla global de la app, request 2026-06-12):
@@ -349,8 +355,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // TODOS y SERVICE: sin filtro de servicio_nombre.
 
     if (fechaEsHoy) {
-      const { pedidosSaMinutosAntes } = await getEscenarioSettings(escenario);
-      const saWindowEnd = buildSaWindowEnd(new Date(), pedidosSaMinutosAntes);
+      const saWindowEnd = buildSaWindowEnd(new Date(), escenarioSettings.pedidosSaMinutosAntes);
       // Ventana SA: incluir SA dentro de la ventana O sin fecha-hora registrada.
       if (saWindowEnd !== null) {
         pedQuery = pedQuery.or(`fch_hora_para.is.null,fch_hora_para.lte.${saWindowEnd}`);
@@ -445,18 +450,39 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // Excluir móviles inactivos del detalle y del cálculo de capacidad
       if (capData && MOVIL_ESTADOS_INACTIVOS.has(capData.estado_nro as number)) continue;
 
-      const existing = movilDedupMap.get(m.movil);
-      if (existing) {
-        existing.aporte_a_zona += m.lote_disponible;
-        continue;
-      }
+      // Un móvil aparece una sola vez por (zona, capacityTipo): si ya se procesó,
+      // saltar. La fila de zonas_cap_entrega sólo indica QUÉ móviles cubren la zona;
+      // el aporte se recalcula en vivo (abajo), no se acumula desde el cache.
+      if (movilDedupMap.has(m.movil)) continue;
+
       const enTransito = mzIndex.get(`${m.movil}:${zonaId}`) ?? false;
+      const loteAsignado = capData?.tamano_lote ?? 0;
+      const capacidadActual = capData?.capacidad ?? 0;
+
+      // ── APORTE EN VIVO ──────────────────────────────────────────────────────
+      // Se recalcula desde la capacidad/lote ACTUALES del móvil (tabla `moviles`),
+      // NO desde el `lote_disponible` precomputado en zonas_cap_entrega, que queda
+      // stale cuando cambia la capacidad o el tamaño de lote sin re-sincronizar
+      // (bug reportado: móvil lleno 4/4 o en N zonas seguía mostrando aporte viejo).
+      // Reproduce calcularPorciones() de lib/zonas-cap-entrega.ts:
+      //   aporte    = (loteLibre / W_tipo) * peso_zona
+      //   loteLibre = max(0, tamano_lote - capacidad)
+      //   W_tipo    = #zonasPrioridad*1 + #zonasTransito*alpha  (zonas del móvil en este tipo)
+      //   peso_zona = 1 (prioridad) | alpha (tránsito)
+      // Queda además verificable a ojo desde los datos de la propia tarjeta.
+      const loteLibre = Math.max(0, loteAsignado - capacidadActual);
+      const W = zonasPrioDe(m.movil) * 1 + zonasTransDe(m.movil) * pesoTransitoAlpha;
+      const pesoZona = enTransito ? pesoTransitoAlpha : 1;
+      const aporte = loteLibre > 0 && W > 0
+        ? Math.round(((loteLibre / W) * pesoZona) * 10000) / 10000
+        : 0;
+
       movilDedupMap.set(m.movil, {
         movil_id: m.movil,
-        lote_asignado: capData?.tamano_lote ?? 0,
+        lote_asignado: loteAsignado,
         en_transito: enTransito,
-        capacidad_actual: capData?.capacidad ?? 0,
-        aporte_a_zona: m.lote_disponible,
+        capacidad_actual: capacidadActual,
+        aporte_a_zona: aporte,
         zonas_prioridad: zonasPrioDe(m.movil),
         zonas_transito: zonasTransDe(m.movil),
       });
