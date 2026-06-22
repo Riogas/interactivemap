@@ -10,6 +10,8 @@ import { matchesSearchPedido } from '@/utils/tableSearch';
 import { isPedidoInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { isVisibleByWindow } from '@/lib/sa-window-filter';
 import { isSaInZonaScope } from '@/lib/sa-scope';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import PedidosTableMobile from '@/components/ui/mobile/PedidosTableMobile';
 
 // ========== Tipos internos ==========
 type AtrasoFilter = 'muy_atrasado' | 'atrasado' | 'limite_cercana' | 'en_hora' | 'sin_hora' | AtrasoFinalizadoKey;
@@ -698,6 +700,78 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     if (val === null || val === undefined) return '—';
     return `$${val.toLocaleString('es-UY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   };
+
+  // ========== Render mobile (≤768px): tarjetas en vez de tabla ==========
+  // El bloque desktop de abajo queda intacto. La lógica (filtros/orden/paginación)
+  // se reutiliza vía este `ctx`; nada se recalcula ni se duplica.
+  const isMobile = useIsMobile();
+
+  const mobileSortOptions = [
+    { key: 'delay', label: 'Atraso' },
+    { key: 'id', label: '# Pedido' },
+    { key: 'movil', label: 'Móvil' },
+    { key: 'zona', label: 'Zona' },
+    { key: 'cliente', label: 'Cliente' },
+    { key: 'importe', label: 'Importe' },
+    { key: 'hora_max', label: 'Hora Máx' },
+    ...(isFinalizados ? [{ key: 'cumplido', label: 'Cumplido' }] : []),
+  ];
+
+  // Combo de móvil: mismos handlers que el desktop (colapsable ↔ selectedMoviles;
+  // otros sources ↔ filters.movil), expuestos planos para el shell mobile.
+  const isColapsableMode = openSource === 'colapsable';
+  const movilComboSelected = isColapsableMode ? selectedMoviles : filters.movil;
+  const movilComboToggle = (id: number, checked: boolean) => {
+    if (isColapsableMode && onSelectedMovilesChange) {
+      onSelectedMovilesChange(checked ? Array.from(new Set([...selectedMoviles, id])) : selectedMoviles.filter((x) => x !== id));
+    } else {
+      setFilters((f) => ({ ...f, movil: checked ? Array.from(new Set([...f.movil, id])) : f.movil.filter((x) => x !== id) }));
+    }
+    setPage(0);
+  };
+  const movilComboSelectAll = () => {
+    if (isColapsableMode && onSelectedMovilesChange) onSelectedMovilesChange(activeMovilesForCombo);
+    else setFilters((f) => ({ ...f, movil: [] }));
+    setPage(0);
+  };
+  const movilComboSelectNone = () => {
+    if (isColapsableMode && onSelectedMovilesChange) onSelectedMovilesChange([]);
+    else setFilters((f) => ({ ...f, movil: [] }));
+    setPage(0);
+  };
+
+  const activeFilterCount = [
+    filters.atraso.length > 0,
+    filters.zona !== null,
+    (isColapsableMode ? movilComboSelected.length > 0 && movilComboSelected.length !== activeMovilesForCombo.length : filters.movil.length > 0),
+    filters.producto !== null,
+    filters.tipoServicio.length > 0,
+    filters.asignacion !== 'todos',
+    filters.entrega !== 'todos',
+  ].filter(Boolean).length;
+
+  if (isMobile) {
+    return (
+      <PedidosTableMobile
+        ctx={{
+          isOpen, onClose, isFinalizados, isFilterDisabled, canVerSinAsignarUnitario,
+          sorted, totalBase: pedidosBase.length, stats, page, setPage, pageSize: PAGE_SIZE,
+          filters, setFilters, vista, onVistaChange,
+          servicesAvailable: !!(services && services.length >= 0), modalTipo, setModalTipo,
+          sortKey, sortDir, onSort: handleSort, sortOptions: mobileSortOptions,
+          atrasoOptions: (isFinalizados ? ATRASO_FINALIZADO_OPTIONS : ATRASO_OPTIONS),
+          uniqueZonas, uniqueProductos, uniqueServicioNombres,
+          movilCombo: {
+            ids: activeMovilesForCombo, selected: movilComboSelected,
+            onToggle: movilComboToggle, onSelectAll: movilComboSelectAll, onSelectNone: movilComboSelectNone,
+            getMovilName,
+          },
+          onPedidoClick, onMovilClick, getMovilName, getMovilColor, formatTime, formatCurrency,
+          hasActiveFilters: !!hasActiveFilters, clearFilters, activeFilterCount,
+        }}
+      />
+    );
+  }
 
   return (
     <AnimatePresence>
