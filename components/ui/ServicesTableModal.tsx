@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ServiceSupabase, MovilData, MovilOption } from '@/types';
 import { computeDelayMinutes, getDelayInfo, DelayInfo, ATRASO_FINALIZADO_OPTIONS, atrasoFinalizadoKey, type AtrasoFinalizadoKey } from '@/utils/pedidoDelay';
 import { isServiceEntregado } from '@/utils/estadoPedido';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import ServicesTableMobile from '@/components/ui/mobile/ServicesTableMobile';
 import { matchesSearchService } from '@/utils/tableSearch';
 import { isServiceInScope, type ScopeFilter } from '@/lib/scope-filter';
 import { isVisibleByWindow } from '@/lib/sa-window-filter';
@@ -553,6 +555,72 @@ export default function ServicesTableModal({ isOpen, onClose, services, moviles,
     if (val === null || val === undefined) return '—';
     return `$${val.toLocaleString('es-UY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   };
+
+  // ========== Render mobile (≤768px): tarjetas en vez de tabla ==========
+  // El bloque desktop de abajo queda intacto; la lógica se reutiliza vía `ctx`.
+  const isMobile = useIsMobile();
+
+  const mobileSortOptions = [
+    { key: 'delay', label: 'Atraso' },
+    { key: 'id', label: '# Service' },
+    { key: 'movil', label: 'Móvil' },
+    { key: 'zona', label: 'Zona' },
+    { key: 'cliente', label: 'Cliente' },
+    { key: 'defecto', label: 'Defecto' },
+    { key: 'hora_max', label: 'Hora Máx' },
+  ];
+
+  const isColapsableMode = openSource === 'colapsable';
+  const movilComboSelected = isColapsableMode ? selectedMoviles : filters.movil;
+  const movilComboToggle = (id: number, checked: boolean) => {
+    if (isColapsableMode && onSelectedMovilesChange) {
+      onSelectedMovilesChange(checked ? Array.from(new Set([...selectedMoviles, id])) : selectedMoviles.filter((x) => x !== id));
+    } else {
+      setFilters((f) => ({ ...f, movil: checked ? Array.from(new Set([...f.movil, id])) : f.movil.filter((x) => x !== id) }));
+    }
+    setPage(0);
+  };
+  const movilComboSelectAll = () => {
+    if (isColapsableMode && onSelectedMovilesChange) onSelectedMovilesChange(activeMovilesForCombo);
+    else setFilters((f) => ({ ...f, movil: [] }));
+    setPage(0);
+  };
+  const movilComboSelectNone = () => {
+    if (isColapsableMode && onSelectedMovilesChange) onSelectedMovilesChange([]);
+    else setFilters((f) => ({ ...f, movil: [] }));
+    setPage(0);
+  };
+
+  const activeFilterCount = [
+    filters.atraso.length > 0,
+    filters.zona !== null,
+    (isColapsableMode ? movilComboSelected.length > 0 && movilComboSelected.length !== activeMovilesForCombo.length : filters.movil.length > 0),
+    filters.defecto !== null,
+    filters.asignacion !== 'todos',
+    filters.entrega !== 'todos',
+  ].filter(Boolean).length;
+
+  if (isMobile) {
+    return (
+      <ServicesTableMobile
+        ctx={{
+          isOpen, onClose, isFinalizados, isFilterDisabled, canVerSinAsignarUnitario,
+          sorted, totalBase: servicesBase.length, stats, page, setPage, pageSize: PAGE_SIZE,
+          filters, setFilters, vista, onVistaChange,
+          sortKey, sortDir, onSort: handleSort, sortOptions: mobileSortOptions,
+          atrasoOptions: (isFinalizados ? ATRASO_FINALIZADO_OPTIONS : ATRASO_OPTIONS),
+          uniqueZonas, uniqueDefectos,
+          movilCombo: {
+            ids: activeMovilesForCombo, selected: movilComboSelected,
+            onToggle: movilComboToggle, onSelectAll: movilComboSelectAll, onSelectNone: movilComboSelectNone,
+            getMovilName,
+          },
+          onServiceClick, onMovilClick, getMovilName, getMovilColor, formatTime,
+          hasActiveFilters: !!hasActiveFilters, clearFilters, activeFilterCount,
+        }}
+      />
+    );
+  }
 
   return (
     <AnimatePresence>
