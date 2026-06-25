@@ -281,26 +281,34 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Aplicar pre-filtro de móvil inmediatamente
+  // Ref para aplicar preFilterMovil/preFilterZona solo en la transición cerrado→abierto,
+  // no en cada repoll de datos (evita resetear filtros manuales del usuario).
+  const preFilterAppliedRef = useRef(false);
+  const prevIsOpenForPreFilter = useRef(false);
+
+  // Aplicar pre-filtro de móvil solo al abrir el modal (cerrado→abierto) o cuando cambia preFilterMovil.
+  // NO incluir pedidos en deps: los datos cambian en cada repoll y re-dispararían el efecto,
+  // pisando el filtro de móvil que el usuario cambió manualmente y reseteando la paginación.
   useEffect(() => {
-    if (preFilterMovil && isOpen) {
-      console.log(`🔍 PRE-FILTER: Aplicando filtro de móvil ${preFilterMovil}`);
-      console.log(`🔍 PRE-FILTER: pedidosBase tiene ${pedidos.length} pedidos total`);
-      const match = pedidos.filter(p => Number(p.movil) === preFilterMovil);
-      console.log(`🔍 PRE-FILTER: Pedidos con movil=${preFilterMovil}: ${match.length}`);
-      if (match.length > 0) {
-        console.log(`🔍 PRE-FILTER: Ejemplo - movil raw:`, match[0].movil, `tipo:`, typeof match[0].movil, `estado_nro:`, match[0].estado_nro, `sub_estado_desc:`, match[0].sub_estado_desc);
-      }
-      // Buscar también con String comparison
-      const matchStr = pedidos.filter(p => String(p.movil) === String(preFilterMovil));
-      console.log(`🔍 PRE-FILTER: Pedidos con String(movil)==='${preFilterMovil}': ${matchStr.length}`);
-      
+    const justOpened = isOpen && !prevIsOpenForPreFilter.current;
+    prevIsOpenForPreFilter.current = isOpen;
+
+    if (!isOpen) {
+      preFilterAppliedRef.current = false;
+      return;
+    }
+
+    // Solo aplicar si acaba de abrirse o si cambió el valor de preFilterMovil
+    if (preFilterMovil && (justOpened || !preFilterAppliedRef.current)) {
+      console.log(`🔍 PRE-FILTER: Aplicando filtro de móvil ${preFilterMovil} (solo al abrir)`);
       setFilters(f => ({ ...f, movil: [preFilterMovil] }));
       setPage(0);
+      preFilterAppliedRef.current = true;
     }
-  }, [preFilterMovil, isOpen, pedidos, setFilters]);
+  }, [preFilterMovil, isOpen, setFilters]);
 
-  // Aplicar pre-filtro de zona inmediatamente
+  // Aplicar pre-filtro de zona solo al abrir el modal o cuando cambia preFilterZona.
+  // Mismo patrón que preFilterMovil: sin datos en deps para no pisar filtros manuales.
   useEffect(() => {
     if (preFilterZona && isOpen) {
       setFilters(f => ({ ...f, zona: preFilterZona }));

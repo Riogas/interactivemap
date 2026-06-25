@@ -1674,7 +1674,17 @@ function DashboardContent() {
         return cleanPrev;
       }
 
-      // Modo "Todos": mantener selected === visibleIds.
+      // Modo "Todos": mantener selected === visibleIds, pero SOLO si el usuario
+      // tenía todos los visibles seleccionados. Si cleanPrev es subconjunto estricto
+      // de visibleIds, el usuario tiene selección custom (p.ej. filtro por
+      // capacidad/estado en MovilSelector) y no se debe pisar.
+      const allVisiblesSelected = visibleIds.every(id => new Set(cleanPrev).has(id));
+      if (!allVisiblesSelected) {
+        // Selección custom: solo limpiar huérfanos, no agregar nuevos.
+        if (orphanCount === 0) return prev;
+        console.log(`?? Selección custom: limpiando ${orphanCount} huérfano(s), no agrego nuevos`);
+        return cleanPrev;
+      }
       if (missing.length === 0 && orphanCount === 0) return prev;
       if (missing.length > 0 || orphanCount > 0) {
         console.log(
@@ -1714,9 +1724,15 @@ function DashboardContent() {
         return visibleIds;
       }
       if (userExplicitlyCleared.current) return prev;
-      // Modo "Todos": auto-agregar nuevos visibles que llegaron por realtime/refetch.
+      // Modo "Todos": auto-agregar nuevos visibles SOLO si el usuario tenía todos
+      // los visibles seleccionados (prev es superconjunto de visibles antes del repoll).
+      // Si prev es un subconjunto estricto, el usuario tiene una selección custom
+      // (p.ej. filtro por capacidad/estado en MovilSelector) y no se debe pisar.
       const prevSet = new Set(prev);
-      const newIds = visibles.map(m => m.id).filter(id => !prevSet.has(id));
+      const visibleIds = visibles.map(m => m.id);
+      const allVisiblesSelected = visibleIds.every(id => prevSet.has(id));
+      if (!allVisiblesSelected) return prev; // selección custom — no tocar
+      const newIds = visibleIds.filter(id => !prevSet.has(id));
       if (newIds.length === 0) return prev;
       console.log(`§4.1 Auto-agrego ${newIds.length} móvil(es) visible(s) nuevo(s) (USE_NEW)`);
       return [...prev, ...newIds];
@@ -3480,8 +3496,26 @@ function DashboardContent() {
     fetchServices();
   }, [fetchServices]);
 
-  // Reset focusedMovil when date or selected companies change
+  // Reset focusedMovil when date or selected companies change (content, not reference).
+  // Guard de contenido: si selectedEmpresas genera nueva referencia pero mismos IDs
+  // (ocurre en algunos paths de repoll), no ejecutar el reset. Sin esto, el efecto
+  // dispara y oculta showPendientes/showCompletados aunque el usuario no haya cambiado nada.
+  const prevResetEmpresasRef = useRef<number[]>([]);
+  const prevResetDateRef = useRef<string>(selectedDate);
   useEffect(() => {
+    const prevEmpresas = prevResetEmpresasRef.current;
+    const dateChanged = prevResetDateRef.current !== selectedDate;
+    const empresasChanged = (() => {
+      if (prevEmpresas.length !== selectedEmpresas.length) return true;
+      const a = [...prevEmpresas].sort((x, y) => x - y);
+      const b = [...selectedEmpresas].sort((x, y) => x - y);
+      return a.some((v, i) => v !== b[i]);
+    })();
+    prevResetEmpresasRef.current = selectedEmpresas;
+    prevResetDateRef.current = selectedDate;
+
+    if (!dateChanged && !empresasChanged) return;
+
     setFocusedMovil(undefined);
     setSelectedMovil(undefined);
     setPopupMovil(undefined);
