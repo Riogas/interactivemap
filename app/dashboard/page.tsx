@@ -46,6 +46,7 @@ import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import PoiCategoryIconsModal from '@/components/ui/PoiCategoryIconsModal';
+import ImportPuntosInteresModal from '@/components/ui/ImportPuntosInteresModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
 import { capEntregaMostrada } from '@/lib/cap-entrega-color';
 import NovedadesModal from '@/components/ui/NovedadesModal';
@@ -2716,6 +2717,9 @@ function DashboardContent() {
   // Estado para el modal de iconos de categorías POI
   const [isPoiIconsOpen, setIsPoiIconsOpen] = useState(false);
 
+  // Estado para el modal de importación de POIs (desde el sidebar)
+  const [isImportPoiOpen, setIsImportPoiOpen] = useState(false);
+
   // Agrupamiento de POIs por categoría (misma lógica que en MovilSelector.tsx)
   // para alimentar el PoiCategoryIconsModal desde page.tsx.
   const poiByCategoryForModal = useMemo(() => {
@@ -4257,6 +4261,16 @@ function DashboardContent() {
         />
       )}
 
+      {/* Modal de importación de POIs (gated por Mantenimiento P.Interes) */}
+      {canMantenimientoPoi && (
+        <ImportPuntosInteresModal
+          isOpen={isImportPoiOpen}
+          onClose={() => setIsImportPoiOpen(false)}
+          onImportComplete={() => setReloadMarkersTrigger(n => n + 1)}
+          user={user}
+        />
+      )}
+
       {/* Modal de Saturación: click en zona del mapa (PR2: consume snapshot) */}
       {/* No abrir si zona inactiva (demoras.activa===false) — sin métricas relevantes */}
       {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && demorasData.get(saturacionModalZonaId)?.activa !== false && (() => {
@@ -4541,6 +4555,7 @@ function DashboardContent() {
                   isToday={isToday}
                   canMantenimientoPoi={canMantenimientoPoi}
                   onOpenPoiIconsModal={() => setIsPoiIconsOpen(true)}
+                  onOpenImportPoiModal={() => setIsImportPoiOpen(true)}
                 />
               </div>
             </motion.div>

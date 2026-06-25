@@ -246,6 +246,8 @@ interface MovilSelectorProps {
   canMantenimientoPoi?: boolean;
   /** Callback para abrir el modal centralizado de iconos de categorías POI. */
   onOpenPoiIconsModal?: () => void;
+  /** Callback para abrir el modal de importación de POIs. */
+  onOpenImportPoiModal?: () => void;
 }
 
 // Definir las categorías del árbol
@@ -317,6 +319,7 @@ export default function MovilSelector({
   saScopeZonaIds = null,
   canMantenimientoPoi = false,
   onOpenPoiIconsModal,
+  onOpenImportPoiModal,
 }: MovilSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<CategoryKey>>(new Set(['moviles']));
   const [guideCategory, setGuideCategory] = useState<CategoryKey | null>(null);
@@ -1534,6 +1537,22 @@ export default function MovilSelector({
                     >
                       <svg className="w-4 h-4 text-gray-400 group-hover:text-indigo-600 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                      </svg>
+                    </span>
+                  )}
+
+                  {/* Botón de importación de POIs */}
+                  {category.key === 'pois' && canMantenimientoPoi && onOpenImportPoiModal && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onOpenImportPoiModal(); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenImportPoiModal(); } }}
+                      className="p-1 rounded-full hover:bg-green-100 transition-colors group"
+                      title="Importar Puntos de Interés desde Excel"
+                    >
+                      <svg className="w-4 h-4 text-gray-400 group-hover:text-green-600 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
                       </svg>
                     </span>
                   )}
