@@ -134,6 +134,13 @@ function DashboardContent() {
   // Señal para el auto-select: si nonempty, agregar estos IDs extra a la
   // selección inicial (usado para fecha histórica → seleccionar inactivos también).
   const pendingInactivosIdsRef = useRef<number[]>([]);
+  // Universo de visibles del repoll ANTERIOR. Permite distinguir "modo Todos"
+  // (prev == universo anterior) de "selección custom" (prev ⊂ universo anterior)
+  // cuando llega un nuevo móvil: si comparásemos prev contra el universo POST-repoll
+  // (que ya incluye el nuevo ID), "modo Todos" siempre fallaría y el nuevo móvil
+  // nunca se auto-agregaría. Se inicializa vacío → first-render trata prev=[] como
+  // modo Todos (selección inicial), que es el comportamiento correcto.
+  const prevVisibleIdsRef = useRef<number[]>([]);
 
   // Cache de movilIds que ya verificamos como FUERA del scope del usuario actual
   // (allowedEmpresas). Cuando llega un GPS de uno de estos móviles, hacemos
@@ -1675,11 +1682,15 @@ function DashboardContent() {
       }
 
       // Modo "Todos": mantener selected === visibleIds, pero SOLO si el usuario
-      // tenía todos los visibles seleccionados. Si cleanPrev es subconjunto estricto
-      // de visibleIds, el usuario tiene selección custom (p.ej. filtro por
-      // capacidad/estado en MovilSelector) y no se debe pisar.
-      const allVisiblesSelected = visibleIds.every(id => new Set(cleanPrev).has(id));
-      if (!allVisiblesSelected) {
+      // tenía todos los visibles del repoll ANTERIOR seleccionados. Comparamos prev
+      // contra prevVisibleIdsRef.current (universo pre-repoll) — si comparásemos contra
+      // visibleIds post-repoll, un nuevo móvil en el universo haría fallar la check
+      // y el móvil nunca se auto-agregaría aunque el usuario estuviera en modo Todos.
+      const prevVisibles = prevVisibleIdsRef.current; // universo del repoll anterior
+      const cleanPrevSet = new Set(cleanPrev);
+      const allPrevVisiblesSelected = prevVisibles.every(id => cleanPrevSet.has(id));
+      prevVisibleIdsRef.current = visibleIds; // actualizar para el próximo repoll
+      if (!allPrevVisiblesSelected) {
         // Selección custom: solo limpiar huérfanos, no agregar nuevos.
         if (orphanCount === 0) return prev;
         console.log(`?? Selección custom: limpiando ${orphanCount} huérfano(s), no agrego nuevos`);
@@ -1724,14 +1735,17 @@ function DashboardContent() {
         return visibleIds;
       }
       if (userExplicitlyCleared.current) return prev;
-      // Modo "Todos": auto-agregar nuevos visibles SOLO si el usuario tenía todos
-      // los visibles seleccionados (prev es superconjunto de visibles antes del repoll).
-      // Si prev es un subconjunto estricto, el usuario tiene una selección custom
-      // (p.ej. filtro por capacidad/estado en MovilSelector) y no se debe pisar.
+      // Modo "Todos": auto-agregar nuevos visibles SOLO si el usuario tenía todos los
+      // visibles del repoll ANTERIOR seleccionados. Comparamos prev contra
+      // prevVisibleIdsRef.current (universo pre-repoll) — si comparásemos contra
+      // visibleIds post-repoll, un nuevo ID en el universo haría fallar la check
+      // y el móvil nunca se auto-agregaría aunque el usuario estuviera en modo Todos.
       const prevSet = new Set(prev);
       const visibleIds = visibles.map(m => m.id);
-      const allVisiblesSelected = visibleIds.every(id => prevSet.has(id));
-      if (!allVisiblesSelected) return prev; // selección custom — no tocar
+      const prevVisibles = prevVisibleIdsRef.current; // universo del repoll anterior
+      const allPrevVisiblesSelected = prevVisibles.every(id => prevSet.has(id));
+      prevVisibleIdsRef.current = visibleIds; // actualizar para el próximo repoll
+      if (!allPrevVisiblesSelected) return prev; // selección custom — no tocar
       const newIds = visibleIds.filter(id => !prevSet.has(id));
       if (newIds.length === 0) return prev;
       console.log(`§4.1 Auto-agrego ${newIds.length} móvil(es) visible(s) nuevo(s) (USE_NEW)`);
