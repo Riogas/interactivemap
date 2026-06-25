@@ -354,11 +354,22 @@ export default function MovilSelector({
   }, [onSetPoiCategoryIcon, closeIconPicker]);
 
 
-  // Agrupar POIs por campo categoria (con fallback a prefijo [Label] en observacion)
+  // Agrupar POIs por campo categoria (con fallback a prefijo [Label] en observacion).
+  // Aplica el filtro de búsqueda del campo de arriba (poisSearch) y ordena
+  // categorías e items alfabéticamente por nombre.
   const poiByCategory = useMemo(() => {
+    const q = poisSearch.trim().toLowerCase();
+    const matchesSearch = (poi: CustomMarker) => {
+      if (!q) return true;
+      const obs = (poi.observacion || '').replace(/^\[[^\]]+\]\s*/, '');
+      return (poi.nombre || '').toLowerCase().includes(q)
+        || obs.toLowerCase().includes(q)
+        || (poi.categoria || '').toLowerCase().includes(q);
+    };
     const groups: Record<string, { label: string; icono: string; items: CustomMarker[] }> = {};
     const uncategorized: CustomMarker[] = [];
     for (const poi of puntosInteres) {
+      if (!matchesSearch(poi)) continue;
       // Primero intentar campo categoria, luego prefijo [Cat] en observacion
       const cat = poi.categoria?.trim()
         || poi.observacion?.match(/^\[([^\]]+)\]/)?.[1]
@@ -370,13 +381,18 @@ export default function MovilSelector({
         uncategorized.push(poi);
       }
     }
+    // Ordenar items dentro de cada categoría alfabéticamente por nombre
+    const byNombre = (a: CustomMarker, b: CustomMarker) =>
+      (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' });
+    for (const g of Object.values(groups)) g.items.sort(byNombre);
+    uncategorized.sort(byNombre);
     // Ordenar categorías alfabéticamente
-    const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+    const sorted = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
     if (uncategorized.length > 0) {
       sorted.push(['_sin_categoria', { label: 'Mis Puntos', icono: '📌', items: uncategorized }]);
     }
     return sorted;
-  }, [puntosInteres]);
+  }, [puntosInteres, poisSearch]);
 
   const togglePoiSubCategory = useCallback((cat: string) => {
     setExpandedPoiCategories(prev => {
@@ -2287,24 +2303,14 @@ export default function MovilSelector({
                               <p className="text-xs mt-1">Crea uno haciendo clic en el boton verde del header</p>
                             </div>
                           ) : poiByCategory.length === 0 ? (
-                            puntosInteres.map((punto) => (
-                              <motion.button
-                                key={punto.id}
-                                onClick={() => onPuntoInteresClick?.(punto.id)}
-                                className="w-full text-left px-3 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-400 dark:from-cyan-600 dark:to-blue-600 hover:from-cyan-500 hover:to-blue-500 border border-cyan-300 dark:border-cyan-500 transition-all duration-200 group shadow-sm hover:shadow-md"
-                                whileHover={{ scale: 1.01, x: 2 }}
-                                whileTap={{ scale: 0.98 }}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-base">{punto.icono}</span>
-                                  <span className="font-semibold text-white text-sm truncate">{punto.nombre}</span>
-                                </div>
-                              </motion.button>
-                            ))
+                            <div className="text-center py-4 text-gray-500 text-sm">
+                              <p>Sin resultados para &quot;{poisSearch.trim()}&quot;</p>
+                            </div>
                           ) : (
                             poiByCategory.map(([catKey, group]) => {
                               const isCatHidden = hiddenPoiCategories.has(group.label);
-                              const isCatExpanded = expandedPoiCategories.has(catKey);
+                              // Con búsqueda activa, expandir todas las categorías para mostrar los resultados.
+                              const isCatExpanded = expandedPoiCategories.has(catKey) || poisSearch.trim().length > 0;
                               return (
                                 <div key={catKey} className="rounded-lg overflow-hidden border border-gray-200/50 dark:border-gray-600/50">
                                   <button
