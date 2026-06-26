@@ -8,13 +8,15 @@
  * El botón visual vive en el navbar (components/IncidentRecorderButton.tsx)
  * y consume este contexto vía useIncidentRecorder().
  *
- * UPLOAD: el video se sube en 3 pasos para evitar el límite de nginx:
- *   1. POST /api/incidents/upload-url → signed URL de Supabase Storage
- *   2. PUT <signedUrl> con el blob directamente (bypasa nginx del track)
- *   3. POST /api/incidents con solo metadata (JSON, no multipart) → DB insert
+ * UPLOAD: el video se sube en 2 pasos, proxyado por el backend:
+ *   1. POST /api/incidents/upload con el blob en el body → el server sube a
+ *      Supabase Storage con service_role y devuelve el path.
+ *   2. POST /api/incidents con solo metadata (JSON) → DB insert.
  *
- * Este diseño elimina el 413 de nginx para videos grandes ya que el blob
- * nunca pasa por la ruta /api/ que nginx proxea al servidor Next.js.
+ * El blob va al dominio del track (cert válido), no directo a Supabase Storage
+ * (host interno con CA de RioGas, rechazado fuera de la red por
+ * ERR_CERT_AUTHORITY_INVALID). nginx ya tiene client_max_body_size 500M +
+ * proxy_request_buffering off en /api/incidents, así que no hay 413.
  */
 
 import {
@@ -121,21 +123,23 @@ async function parseIncidentResponse(res: Response): Promise<{ success: boolean;
 }
 
 /**
- * Sube un Blob a una signed URL de Supabase Storage via XMLHttpRequest.
+ * Sube un Blob a POST /api/incidents/upload via XMLHttpRequest. El backend
+ * proxya el blob hacia Supabase Storage con service_role y devuelve el path.
  * Usa XHR en lugar de fetch para poder reportar progreso real (onprogress).
  *
- * @returns Promise que resuelve al porcentaje final (100) o rechaza con error.
+ * @returns Promise que resuelve al path del video en el bucket, o rechaza con error.
  */
 function uploadBlobWithProgress(
-  signedUrl: string,
   blob: Blob,
   mimeType: string,
+  username: string,
   onProgress: (pct: number) => void,
-): Promise<void> {
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', signedUrl);
+    xhr.open('POST', '/api/incidents/upload');
     xhr.setRequestHeader('Content-Type', mimeType);
+    xhr.setRequestHeader('x-track-user', username);
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
@@ -145,8 +149,17 @@ function uploadBlobWithProgress(
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress(100);
-        resolve();
+        try {
+          const data = JSON.parse(xhr.responseText) as { success?: boolean; path?: string; error?: string };
+          if (data.success && data.path) {
+            onProgress(100);
+            resolve(data.path);
+            return;
+          }
+          reject(new Error(data.error ?? 'El servidor no devolvió el path del video.'));
+        } catch {
+          reject(new Error('Respuesta inesperada del servidor durante el upload.'));
+        }
       } else {
         reject(new Error(`Upload falló con status ${xhr.status}: ${xhr.responseText.slice(0, 200)}`));
       }
@@ -497,17 +510,15 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
   }, [doStop]);
 
   /**
-   * confirmUpload — sube el incidente en 3 pasos sin pasar el blob por nginx:
+   * confirmUpload — sube el incidente en 2 pasos, proxyado por el backend:
    *
-   * Paso 1: POST /api/incidents/upload-url
-   *   → genera signed URL en Supabase Storage + path único del archivo
-   *
-   * Paso 2: PUT <signedUrl> con el Blob directamente
-   *   → el blob va directo a Supabase Storage, bypassando nginx del track
+   * Paso 1: POST /api/incidents/upload con el Blob en el body
+   *   → el server sube a Supabase Storage con service_role y devuelve el path
    *   → progreso real via XHR.upload.onprogress
+   *   → el blob viaja al dominio del track (cert válido), no a Supabase directo
    *
-   * Paso 3: POST /api/incidents con JSON de metadata
-   *   → body liviano (sin blob), nginx no tiene problema
+   * Paso 2: POST /api/incidents con JSON de metadata
+   *   → body liviano (sin blob)
    *   → inserta la fila en la tabla incidents
    */
   const confirmUpload = async () => {
@@ -524,67 +535,24 @@ function IncidentRecorderProviderActive({ children }: { children: ReactNode }) {
 
     setState('uploading');
     setUploadProgress(0);
-    setUploadPhase('url');
+    setUploadPhase('video');
 
     try {
-      const mimeType = pendingBlob.type || 'video/webm';
+      // El backend solo acepta video/webm o video/mp4. Normalizamos el mime
+      // del blob (puede venir con ;codecs=…) al base type esperado.
+      const baseMime = (pendingBlob.type || 'video/webm').split(';')[0].trim().toLowerCase();
+      const mimeType = baseMime.includes('mp4') ? 'video/mp4' : 'video/webm';
 
-      // ── Paso 1: Obtener signed upload URL ──────────────────────────────────
-      const urlRes = await fetch('/api/incidents/upload-url', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-track-user': user?.username ?? '',
-          'x-track-userid': user?.id ?? '',
-        },
-        body: JSON.stringify({ mime: mimeType }),
-      });
-
-      // Parsear el body del upload-url como texto para manejar HTML de nginx gracefully.
-      // A diferencia de parseIncidentResponse (que pierde campos extras), aquí
-      // necesitamos signedUrl y path → parseamos manualmente preservando todo.
-      const urlText = await urlRes.text();
-      if (!urlRes.ok) {
-        console.error('[IncidentRecorder] upload-url error:', urlRes.status, urlText.slice(0, 300));
-        const errMsg =
-          urlRes.status === 502 || urlRes.status === 504
-            ? 'El servidor tardó demasiado. Reintentá en unos segundos.'
-            : urlRes.status >= 500
-            ? 'Error del servidor. Reintentá en unos segundos.'
-            : (() => { try { return (JSON.parse(urlText) as { error?: string }).error ?? 'Error preparando el upload.'; } catch { return 'Error preparando el upload.'; } })();
-        setToast({ type: 'err', msg: errMsg });
-        setState('confirming');
-        return;
-      }
-      let urlJson: { success: boolean; signedUrl?: string; path?: string; error?: string };
-      try {
-        urlJson = JSON.parse(urlText) as typeof urlJson;
-      } catch {
-        setToast({ type: 'err', msg: 'Respuesta inesperada del servidor. Reintentá.' });
-        setState('confirming');
-        return;
-      }
-
-      if (!urlJson.success || !urlJson.signedUrl || !urlJson.path) {
-        setToast({ type: 'err', msg: urlJson.error ?? 'Error preparando el upload.' });
-        setState('confirming');
-        return;
-      }
-
-      const { signedUrl, path: videoPath } = urlJson;
-
-      // ── Paso 2: Subir el blob directamente a Supabase Storage ──────────────
-      setUploadPhase('video');
-      setUploadProgress(0);
-
-      await uploadBlobWithProgress(
-        signedUrl,
+      // ── Paso 1: Subir el blob proxyado por el backend ──────────────────────
+      // El server lo sube a Supabase Storage con service_role y devuelve el path.
+      const videoPath = await uploadBlobWithProgress(
         pendingBlob,
         mimeType,
+        user?.username ?? '',
         (pct) => setUploadProgress(pct),
       );
 
-      // ── Paso 3: Registrar metadata en la DB ────────────────────────────────
+      // ── Paso 2: Registrar metadata en la DB ────────────────────────────────
       setUploadPhase('meta');
       setUploadProgress(100);
 

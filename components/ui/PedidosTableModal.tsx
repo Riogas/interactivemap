@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -974,6 +974,18 @@ export default function PedidosTableModal({ isOpen, onClose, pedidos, moviles, h
                 Total: <span className="font-bold text-gray-300">{pedidosBase.length}</span>
               </div>
             </div>
+
+            {/* ========== Aviso filtros no editables ========== */}
+            {isFilterDisabled && (
+              <div className="flex items-center gap-2 px-6 py-2 border-b border-gray-700/30 bg-blue-500/10 border-l-4 border-l-blue-400 flex-shrink-0">
+                <svg className="w-4 h-4 text-blue-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-xs text-blue-200">
+                  Los filtros solo pueden editarse abriendo esta vista desde el panel lateral
+                </span>
+              </div>
+            )}
 
             {/* ========== Filters Panel ========== */}
             <AnimatePresence>
