@@ -46,6 +46,7 @@ import ZonasSinMovilModal from '@/components/ui/ZonasSinMovilModal';
 import MovilesSinReportarModal from '@/components/ui/MovilesSinReportarModal';
 import ZonasNoActivasModal from '@/components/ui/ZonasNoActivasModal';
 import PoiCategoryIconsModal from '@/components/ui/PoiCategoryIconsModal';
+import ImportPuntosInteresModal from '@/components/ui/ImportPuntosInteresModal';
 import SaturacionZonaModal from '@/components/map/SaturacionZonaModal';
 import { capEntregaMostrada } from '@/lib/cap-entrega-color';
 import NovedadesModal from '@/components/ui/NovedadesModal';
@@ -134,6 +135,13 @@ function DashboardContent() {
   // Señal para el auto-select: si nonempty, agregar estos IDs extra a la
   // selección inicial (usado para fecha histórica → seleccionar inactivos también).
   const pendingInactivosIdsRef = useRef<number[]>([]);
+  // Universo de visibles del repoll ANTERIOR. Permite distinguir "modo Todos"
+  // (prev == universo anterior) de "selección custom" (prev ⊂ universo anterior)
+  // cuando llega un nuevo móvil: si comparásemos prev contra el universo POST-repoll
+  // (que ya incluye el nuevo ID), "modo Todos" siempre fallaría y el nuevo móvil
+  // nunca se auto-agregaría. Se inicializa vacío → first-render trata prev=[] como
+  // modo Todos (selección inicial), que es el comportamiento correcto.
+  const prevVisibleIdsRef = useRef<number[]>([]);
 
   // Cache de movilIds que ya verificamos como FUERA del scope del usuario actual
   // (allowedEmpresas). Cuando llega un GPS de uno de estos móviles, hacemos
@@ -1674,7 +1682,21 @@ function DashboardContent() {
         return cleanPrev;
       }
 
-      // Modo "Todos": mantener selected === visibleIds.
+      // Modo "Todos": mantener selected === visibleIds, pero SOLO si el usuario
+      // tenía todos los visibles del repoll ANTERIOR seleccionados. Comparamos prev
+      // contra prevVisibleIdsRef.current (universo pre-repoll) — si comparásemos contra
+      // visibleIds post-repoll, un nuevo móvil en el universo haría fallar la check
+      // y el móvil nunca se auto-agregaría aunque el usuario estuviera en modo Todos.
+      const prevVisibles = prevVisibleIdsRef.current; // universo del repoll anterior
+      const cleanPrevSet = new Set(cleanPrev);
+      const allPrevVisiblesSelected = prevVisibles.every(id => cleanPrevSet.has(id));
+      prevVisibleIdsRef.current = visibleIds; // actualizar para el próximo repoll
+      if (!allPrevVisiblesSelected) {
+        // Selección custom: solo limpiar huérfanos, no agregar nuevos.
+        if (orphanCount === 0) return prev;
+        console.log(`?? Selección custom: limpiando ${orphanCount} huérfano(s), no agrego nuevos`);
+        return cleanPrev;
+      }
       if (missing.length === 0 && orphanCount === 0) return prev;
       if (missing.length > 0 || orphanCount > 0) {
         console.log(
@@ -1714,9 +1736,18 @@ function DashboardContent() {
         return visibleIds;
       }
       if (userExplicitlyCleared.current) return prev;
-      // Modo "Todos": auto-agregar nuevos visibles que llegaron por realtime/refetch.
+      // Modo "Todos": auto-agregar nuevos visibles SOLO si el usuario tenía todos los
+      // visibles del repoll ANTERIOR seleccionados. Comparamos prev contra
+      // prevVisibleIdsRef.current (universo pre-repoll) — si comparásemos contra
+      // visibleIds post-repoll, un nuevo ID en el universo haría fallar la check
+      // y el móvil nunca se auto-agregaría aunque el usuario estuviera en modo Todos.
       const prevSet = new Set(prev);
-      const newIds = visibles.map(m => m.id).filter(id => !prevSet.has(id));
+      const visibleIds = visibles.map(m => m.id);
+      const prevVisibles = prevVisibleIdsRef.current; // universo del repoll anterior
+      const allPrevVisiblesSelected = prevVisibles.every(id => prevSet.has(id));
+      prevVisibleIdsRef.current = visibleIds; // actualizar para el próximo repoll
+      if (!allPrevVisiblesSelected) return prev; // selección custom — no tocar
+      const newIds = visibleIds.filter(id => !prevSet.has(id));
       if (newIds.length === 0) return prev;
       console.log(`§4.1 Auto-agrego ${newIds.length} móvil(es) visible(s) nuevo(s) (USE_NEW)`);
       return [...prev, ...newIds];
@@ -2686,6 +2717,9 @@ function DashboardContent() {
   // Estado para el modal de iconos de categorías POI
   const [isPoiIconsOpen, setIsPoiIconsOpen] = useState(false);
 
+  // Estado para el modal de importación de POIs (desde el sidebar)
+  const [isImportPoiOpen, setIsImportPoiOpen] = useState(false);
+
   // Agrupamiento de POIs por categoría (misma lógica que en MovilSelector.tsx)
   // para alimentar el PoiCategoryIconsModal desde page.tsx.
   const poiByCategoryForModal = useMemo(() => {
@@ -3480,8 +3514,26 @@ function DashboardContent() {
     fetchServices();
   }, [fetchServices]);
 
-  // Reset focusedMovil when date or selected companies change
+  // Reset focusedMovil when date or selected companies change (content, not reference).
+  // Guard de contenido: si selectedEmpresas genera nueva referencia pero mismos IDs
+  // (ocurre en algunos paths de repoll), no ejecutar el reset. Sin esto, el efecto
+  // dispara y oculta showPendientes/showCompletados aunque el usuario no haya cambiado nada.
+  const prevResetEmpresasRef = useRef<number[]>([]);
+  const prevResetDateRef = useRef<string>(selectedDate);
   useEffect(() => {
+    const prevEmpresas = prevResetEmpresasRef.current;
+    const dateChanged = prevResetDateRef.current !== selectedDate;
+    const empresasChanged = (() => {
+      if (prevEmpresas.length !== selectedEmpresas.length) return true;
+      const a = [...prevEmpresas].sort((x, y) => x - y);
+      const b = [...selectedEmpresas].sort((x, y) => x - y);
+      return a.some((v, i) => v !== b[i]);
+    })();
+    prevResetEmpresasRef.current = selectedEmpresas;
+    prevResetDateRef.current = selectedDate;
+
+    if (!dateChanged && !empresasChanged) return;
+
     setFocusedMovil(undefined);
     setSelectedMovil(undefined);
     setPopupMovil(undefined);
@@ -4209,6 +4261,16 @@ function DashboardContent() {
         />
       )}
 
+      {/* Modal de importación de POIs (gated por Mantenimiento P.Interes) */}
+      {canMantenimientoPoi && (
+        <ImportPuntosInteresModal
+          isOpen={isImportPoiOpen}
+          onClose={() => setIsImportPoiOpen(false)}
+          onImportComplete={() => setReloadMarkersTrigger(n => n + 1)}
+          user={user}
+        />
+      )}
+
       {/* Modal de Saturación: click en zona del mapa (PR2: consume snapshot) */}
       {/* No abrir si zona inactiva (demoras.activa===false) — sin métricas relevantes */}
       {saturacionModalZonaId !== null && (!scopedZonaIds || scopedZonaIds.has(saturacionModalZonaId)) && demorasData.get(saturacionModalZonaId)?.activa !== false && (() => {
@@ -4493,6 +4555,7 @@ function DashboardContent() {
                   isToday={isToday}
                   canMantenimientoPoi={canMantenimientoPoi}
                   onOpenPoiIconsModal={() => setIsPoiIconsOpen(true)}
+                  onOpenImportPoiModal={() => setIsImportPoiOpen(true)}
                 />
               </div>
             </motion.div>
