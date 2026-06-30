@@ -41,7 +41,8 @@ export default function LoginPage() {
         }
         // Animacion de exito antes de redirigir
         await new Promise(resolve => setTimeout(resolve, 500));
-        router.push('/dashboard');
+        const landingRoute = (result as { landingRoute?: string }).landingRoute ?? '/dashboard';
+        router.push(landingRoute);
       } else {
         // Type assertion para campos adicionales del endpoint de seguridad
         const errorResult = result as {

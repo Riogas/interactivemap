@@ -11,6 +11,7 @@ import {
   EXPIRY_CHECK_INTERVAL_MS,
   LAST_ACTIVITY_KEY,
 } from '@/lib/session-expiry';
+import { resolveLandingRoute } from '@/lib/role-attributes';
 
 interface User {
   id: string;
@@ -157,7 +158,7 @@ interface AuthContextType {
   escenarioId: number;
   permisos: Set<string>;
   hasPermiso: (accionKey: string) => boolean;
-  login: (username: string, password: string, escenarioId?: number) => Promise<{ success: boolean; error?: string }>;
+  login: (username: string, password: string, escenarioId?: number) => Promise<{ success: boolean; error?: string; warning?: string; landingRoute?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -373,7 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user?.id, markActivity]);
 
-  const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string }> => {
+  const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string; landingRoute?: string }> => {
     try {
       console.log('🔐 Iniciando login en GeneXus...');
       const response: ParsedLoginResponse = await authService.login(username, password, selectedEscenarioId);
@@ -501,9 +502,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(newUser);
         setEscenarioId(selectedEscenarioId);
+        // Resolver la pantalla de aterrizaje según el atributo de rol PantallaLogin.
+        // Default '/dashboard' (mapa) si no hay preferencia o no aplica.
+        const landingRoute = resolveLandingRoute(newUser);
+
         // Propagar warning del endpoint de seguridad (ej. USER_EQ_PASS) al consumidor
         const warning = (response as { warning?: string }).warning;
-        return warning ? { success: true, warning } : { success: true };
+        return warning
+          ? { success: true, warning, landingRoute }
+          : { success: true, landingRoute };
       } else if (response.success && !response.user) {
         // Si success=true pero no hay usuario, es credencial inválida
         console.log('❌ Login falló: no hay datos de usuario');
