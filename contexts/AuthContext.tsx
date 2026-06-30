@@ -346,10 +346,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         // Recibir: respuesta a NUESTRO pedido de bootstrap.
         if (matchesResponse(msg, nonce) && !cancelled) {
+          cancelled = true;
           if (timer) { clearTimeout(timer); timer = null; }
           applySession(msg.payload, (k, v) => authStorage.setItem(k, v));
-          const res = hydrateFromStorage(); // re-lee el storage ya poblado, valida expiración
-          if (res !== 'ok') setIsLoading(false); // expirada/ inválida → login
+          hydrateFromStorage(); // ok → muestra la app; expirada/inválida/none → login
+          setIsLoading(false);
         }
       };
     }
@@ -364,7 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Sin sesión local → pedir handoff y esperar. Sin canal → login directo.
     if (channel) {
-      timer = setTimeout(() => { if (!cancelled) setIsLoading(false); }, HANDOFF_TIMEOUT_MS);
+      timer = setTimeout(() => { if (!cancelled) { cancelled = true; setIsLoading(false); } }, HANDOFF_TIMEOUT_MS);
       channel.postMessage(buildRequest(nonce));
     } else {
       setIsLoading(false);
