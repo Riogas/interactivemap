@@ -157,3 +157,109 @@ export function getMaxRoleAttribute(
 
   return max;
 }
+
+import { isRoot } from './auth-scope';
+import { hasFuncionalidad } from './role-funcionalidades';
+
+/**
+ * Shape mínimo que necesita resolveLandingRoute. Compatible estructuralmente con
+ * el `User` del AuthContext (sus roles incluyen RolNombre, atributos y funcionalidades).
+ */
+export interface LandingUser {
+  isRoot?: string;
+  roles?: Array<{
+    RolNombre?: string;
+    atributos?: Array<{ atributo: string; valor: string }>;
+    funcionalidades?: Array<{ funcionalidadId: number; nombre: string }>;
+  }>;
+}
+
+/** Ruta por defecto al iniciar sesión (el mapa) — comportamiento histórico. */
+const DEFAULT_LANDING = '/dashboard';
+
+/** Funcionalidad que habilita el acceso a /dashboard/stats (igual gate que stats/layout.tsx). */
+const STATS_FUNCIONALIDAD = 'Estadistica Global RiogasTracking';
+
+interface ScreenDef {
+  route: string;
+  /** Si está presente, el usuario debe pasarlo; si no, cae al default. */
+  canAccess?: (user: LandingUser | null | undefined) => boolean;
+}
+
+/**
+ * Catálogo cerrado de pantallas de aterrizaje. Las claves se comparan en minúsculas.
+ * Extensible: agregar una entrada (ej. `ranking: { route: '/dashboard/ranking', canAccess: ... }`).
+ */
+const LANDING_SCREENS: Record<string, ScreenDef> = {
+  mapa: { route: '/dashboard' },
+  stats: {
+    route: '/dashboard/stats',
+    canAccess: (user) =>
+      // Reutiliza los helpers existentes; los casts acotan la diferencia de shape
+      // entre LandingUser y los tipos ScopedUser / RoleWithFuncionalidades.
+      isRoot(user as Parameters<typeof isRoot>[0]) ||
+      hasFuncionalidad(
+        (user?.roles ?? []) as Parameters<typeof hasFuncionalidad>[0],
+        STATS_FUNCIONALIDAD,
+      ),
+  },
+};
+
+/**
+ * Extrae la clave de pantalla del `valor` del atributo PantallaLogin, de forma defensiva.
+ * Acepta:
+ *   - string pelado: `stats`
+ *   - JSON string: `"stats"`
+ *   - JSON objeto: `{"Pantalla":"stats"}` (clave canónica) o el primer valor string del objeto
+ * Devuelve null si no logra extraer una clave.
+ */
+function parsePantallaValor(valor: string): string | null {
+  const raw = String(valor).trim();
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === 'string') return parsed;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const obj = parsed as Record<string, unknown>;
+      if (typeof obj.Pantalla === 'string') return obj.Pantalla;
+      const firstStr = Object.values(obj).find((v) => typeof v === 'string');
+      return typeof firstStr === 'string' ? firstStr : null;
+    }
+    return null;
+  } catch {
+    // No es JSON → el string crudo es la clave (ej. "stats").
+    return raw;
+  }
+}
+
+/**
+ * Resuelve a qué ruta debe aterrizar el usuario al iniciar sesión, según el atributo
+ * de rol `PantallaLogin`. Siempre devuelve una ruta válida; el default es el mapa
+ * (`/dashboard`), preservando el comportamiento previo a esta feature.
+ *
+ * Reglas:
+ *  - Gana el PRIMER rol (en orden) con `PantallaLogin` de valor no vacío.
+ *  - Clave normalizada con trim().toLowerCase() contra un catálogo cerrado.
+ *  - Si la pantalla tiene gate de acceso y el usuario no lo pasa → default (no se lo
+ *    manda a una pantalla de la que el guard lo rebotaría).
+ *  - Cualquier ausencia / valor inválido / clave desconocida → default.
+ */
+export function resolveLandingRoute(user: LandingUser | null | undefined): string {
+  const roles = user?.roles ?? [];
+
+  let rawKey: string | null = null;
+  for (const role of roles) {
+    const attr = (role.atributos ?? []).find((a) => a.atributo === 'PantallaLogin');
+    if (attr?.valor != null && String(attr.valor).trim() !== '') {
+      rawKey = parsePantallaValor(attr.valor); // primero gana, aunque su valor sea inválido
+      break;
+    }
+  }
+  if (!rawKey) return DEFAULT_LANDING;
+
+  const key = rawKey.trim().toLowerCase();
+  const screen = LANDING_SCREENS[key];
+  if (!screen) return DEFAULT_LANDING; // clave desconocida
+  if (screen.canAccess && !screen.canAccess(user)) return DEFAULT_LANDING; // sin acceso
+  return screen.route;
+}
