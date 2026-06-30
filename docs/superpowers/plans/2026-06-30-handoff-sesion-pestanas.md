@@ -467,10 +467,11 @@ por este (extrae la hidratación a `hydrateFromStorage()` y agrega el `Broadcast
         }
         // Recibir: respuesta a NUESTRO pedido de bootstrap.
         if (matchesResponse(msg, nonce) && !cancelled) {
+          cancelled = true; // ignorar respuestas duplicadas (varias pestañas) o tardías
           if (timer) { clearTimeout(timer); timer = null; }
           applySession(msg.payload, (k, v) => authStorage.setItem(k, v));
-          const res = hydrateFromStorage(); // re-lee el storage ya poblado, valida expiración
-          if (res !== 'ok') setIsLoading(false); // expirada/ inválida → login
+          hydrateFromStorage(); // re-lee el storage ya poblado, valida expiración
+          setIsLoading(false);  // ok → muestra la app; expirada/inválida → login
         }
       };
     }
@@ -485,7 +486,7 @@ por este (extrae la hidratación a `hydrateFromStorage()` y agrega el `Broadcast
 
     // Sin sesión local → pedir handoff y esperar. Sin canal → login directo.
     if (channel) {
-      timer = setTimeout(() => { if (!cancelled) setIsLoading(false); }, HANDOFF_TIMEOUT_MS);
+      timer = setTimeout(() => { if (!cancelled) { cancelled = true; setIsLoading(false); } }, HANDOFF_TIMEOUT_MS);
       channel.postMessage(buildRequest(nonce));
     } else {
       setIsLoading(false);
