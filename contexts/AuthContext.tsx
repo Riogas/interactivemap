@@ -11,6 +11,16 @@ import {
   EXPIRY_CHECK_INTERVAL_MS,
   LAST_ACTIVITY_KEY,
 } from '@/lib/session-expiry';
+import {
+  HANDOFF_CHANNEL,
+  HANDOFF_TIMEOUT_MS,
+  collectSession,
+  applySession,
+  buildRequest,
+  buildResponse,
+  isRequest,
+  matchesResponse,
+} from '@/lib/session-handoff';
 import { resolveLandingRoute } from '@/lib/role-attributes';
 
 interface User {
@@ -253,83 +263,121 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Cargar sesión desde localStorage al iniciar
+  // Cargar sesión al iniciar, con handoff entre pestañas.
+  //
+  // La sesión vive en sessionStorage (por pestaña, a propósito). Una pestaña nueva
+  // (ej. el botón "Abrir mapa" que abre /dashboard con target=_blank) arranca sin
+  // sesión propia. Para no mandarla al login, le pide la sesión a las pestañas
+  // hermanas del mismo navegador vía BroadcastChannel y, si alguna responde a
+  // tiempo, la hidrata. Si nadie responde en HANDOFF_TIMEOUT_MS, cae al login.
   useEffect(() => {
-    const savedUser = authStorage.getItem('trackmovil_user');
-    const savedToken = authStorage.getItem('trackmovil_token');
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let channel: BroadcastChannel | null = null;
 
-    if (savedUser && savedToken) {
+    /**
+     * Lee la sesión de authStorage y, si es válida, hidrata el estado.
+     * Retorna 'ok' | 'none' (no hay) | 'expired' | 'error'. No toca isLoading.
+     */
+    const hydrateFromStorage = (): 'ok' | 'none' | 'expired' | 'error' => {
+      const savedUser = authStorage.getItem('trackmovil_user');
+      const savedToken = authStorage.getItem('trackmovil_token');
+      if (!savedUser || !savedToken) return 'none';
+
       try {
-        // Validar que savedUser sea JSON válido
-        if (!savedUser.startsWith('{')) {
-          throw new Error('Invalid user data format');
-        }
-
+        if (!savedUser.startsWith('{')) throw new Error('Invalid user data format');
         const parsedUser = JSON.parse(savedUser);
+        if (!parsedUser.username || !parsedUser.id) throw new Error('Invalid user data structure');
 
-        // Validar que tenga campos mínimos requeridos
-        if (!parsedUser.username || !parsedUser.id) {
-          throw new Error('Invalid user data structure');
-        }
-
-        // ⏰ Verificar expiración de sesión (inactividad, con override por atributo de rol)
         if (isSessionExpired(parsedUser.loginTime, flattenAtributos(parsedUser))) {
           clearExpiredSession();
-          setIsLoading(false);
-          return;
+          return 'expired';
         }
 
-        // Cargar empresas permitidas desde localStorage
         const savedEmpresas = authStorage.getItem('trackmovil_allowed_empresas');
         let allowedEmpresas: number[] | null = null;
         if (savedEmpresas) {
-          try {
-            allowedEmpresas = JSON.parse(savedEmpresas);
-          } catch (e) {
-            console.warn('⚠️ Error parsing allowed empresas:', e);
-          }
+          try { allowedEmpresas = JSON.parse(savedEmpresas); }
+          catch (e) { console.warn('⚠️ Error parsing allowed empresas:', e); }
         }
 
-        // Cargar escenarios permitidos desde localStorage
         const savedEscenarios = authStorage.getItem('trackmovil_allowed_escenarios');
         let allowedEscenarios: number[] | null = null;
         if (savedEscenarios) {
-          try {
-            allowedEscenarios = JSON.parse(savedEscenarios);
-          } catch (e) {
-            console.warn('⚠️ Error parsing allowed escenarios:', e);
-          }
+          try { allowedEscenarios = JSON.parse(savedEscenarios); }
+          catch (e) { console.warn('⚠️ Error parsing allowed escenarios:', e); }
         }
 
-        // Cargar escenario persistido
         const savedEscenario = authStorage.getItem('trackmovil_escenario_id');
         if (savedEscenario) setEscenarioId(parseInt(savedEscenario, 10));
 
-        // Cargar permisos persistidos
         const savedPermisos = authStorage.getItem('trackmovil_permisos');
         if (savedPermisos) {
-          try {
-            const arr: string[] = JSON.parse(savedPermisos);
-            setPermisos(new Set(arr));
-          } catch {
-            // ignore: se recargarán si el usuario hace algo
-          }
+          try { setPermisos(new Set(JSON.parse(savedPermisos) as string[])); }
+          catch { /* se recargarán si el usuario hace algo */ }
         }
 
-        setUser({
-          ...parsedUser,
-          token: savedToken,
-          allowedEmpresas,
-          allowedEscenarios,
-        });
+        setUser({ ...parsedUser, token: savedToken, allowedEmpresas, allowedEscenarios });
+        return 'ok';
       } catch (e) {
         console.error('Error al cargar sesión, limpiando localStorage:', e);
-        // Limpiar datos corruptos
         authStorage.removeItem('trackmovil_user');
         authStorage.removeItem('trackmovil_token');
+        return 'error';
+      }
+    };
+
+    const nonce =
+      (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`;
+
+    // Abrir el canal (vive lo que vive el provider): responde a pedidos de otras
+    // pestañas y, abajo, lo usamos para pedir sesión si hace falta.
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel(HANDOFF_CHANNEL);
+        channel.onmessage = (ev: MessageEvent) => {
+          const msg = ev.data;
+          // Responder: si esta pestaña tiene sesión, mandársela a quien la pidió.
+          // Mandamos la sesión si hay user+token (sin chequear expiración aquí
+          // a propósito; el requester revalida expiración antes de hidratar).
+          if (isRequest(msg)) {
+            const payload = collectSession((k) => authStorage.getItem(k));
+            if (payload && channel) channel.postMessage(buildResponse(msg.nonce, payload));
+            return;
+          }
+          // Recibir: respuesta a NUESTRO pedido de bootstrap.
+          if (matchesResponse(msg, nonce) && !cancelled) {
+            cancelled = true;
+            if (timer) { clearTimeout(timer); timer = null; }
+            applySession(msg.payload, (k, v) => authStorage.setItem(k, v));
+            hydrateFromStorage(); // ok → muestra la app; expirada/inválida/none → login
+            setIsLoading(false);
+          }
+        };
+      } catch {
+        channel = null; // entorno sin BroadcastChannel utilizable → sin handoff, cae al login
       }
     }
-    setIsLoading(false);
+
+    // Bootstrap: primero intentar sesión local.
+    const local = hydrateFromStorage();
+    if (local !== 'none') {
+      // Había sesión (ok) o estaba expirada/corrupta (ya limpiada). Listo.
+      setIsLoading(false);
+      return () => { cancelled = true; if (timer) clearTimeout(timer); channel?.close(); };
+    }
+
+    // Sin sesión local → pedir handoff y esperar. Sin canal → login directo.
+    if (channel) {
+      timer = setTimeout(() => { if (!cancelled) { cancelled = true; setIsLoading(false); } }, HANDOFF_TIMEOUT_MS);
+      channel.postMessage(buildRequest(nonce));
+    } else {
+      setIsLoading(false);
+    }
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer); channel?.close(); };
   }, []);
 
   // ⏰ Chequeo periódico: expirar sesión por inactividad mientras la app está abierta
