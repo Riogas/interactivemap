@@ -335,24 +335,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Abrir el canal (vive lo que vive el provider): responde a pedidos de otras
     // pestañas y, abajo, lo usamos para pedir sesión si hace falta.
     if (typeof BroadcastChannel !== 'undefined') {
-      channel = new BroadcastChannel(HANDOFF_CHANNEL);
-      channel.onmessage = (ev: MessageEvent) => {
-        const msg = ev.data;
-        // Responder: si esta pestaña tiene sesión, mandársela a quien la pidió.
-        if (isRequest(msg)) {
-          const payload = collectSession((k) => authStorage.getItem(k));
-          if (payload && channel) channel.postMessage(buildResponse(msg.nonce, payload));
-          return;
-        }
-        // Recibir: respuesta a NUESTRO pedido de bootstrap.
-        if (matchesResponse(msg, nonce) && !cancelled) {
-          cancelled = true;
-          if (timer) { clearTimeout(timer); timer = null; }
-          applySession(msg.payload, (k, v) => authStorage.setItem(k, v));
-          hydrateFromStorage(); // ok → muestra la app; expirada/inválida/none → login
-          setIsLoading(false);
-        }
-      };
+      try {
+        channel = new BroadcastChannel(HANDOFF_CHANNEL);
+        channel.onmessage = (ev: MessageEvent) => {
+          const msg = ev.data;
+          // Responder: si esta pestaña tiene sesión, mandársela a quien la pidió.
+          // Mandamos la sesión si hay user+token (sin chequear expiración aquí
+          // a propósito; el requester revalida expiración antes de hidratar).
+          if (isRequest(msg)) {
+            const payload = collectSession((k) => authStorage.getItem(k));
+            if (payload && channel) channel.postMessage(buildResponse(msg.nonce, payload));
+            return;
+          }
+          // Recibir: respuesta a NUESTRO pedido de bootstrap.
+          if (matchesResponse(msg, nonce) && !cancelled) {
+            cancelled = true;
+            if (timer) { clearTimeout(timer); timer = null; }
+            applySession(msg.payload, (k, v) => authStorage.setItem(k, v));
+            hydrateFromStorage(); // ok → muestra la app; expirada/inválida/none → login
+            setIsLoading(false);
+          }
+        };
+      } catch {
+        channel = null; // entorno sin BroadcastChannel utilizable → sin handoff, cae al login
+      }
     }
 
     // Bootstrap: primero intentar sesión local.
