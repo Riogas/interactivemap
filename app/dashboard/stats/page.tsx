@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { canSeeAllEmpresas, isRoot } from '@/lib/auth-scope';
+import { resolveLandingRoute } from '@/lib/role-attributes';
 import { useSearchParams } from 'next/navigation';
 import {
   computeDelayMinutes,
@@ -326,6 +327,11 @@ function StatsContent() {
   const searchParams = useSearchParams();
   const date = searchParams.get('date') ?? todayMontevideo();
   const { user, escenarioId } = useAuth();
+  // Botón "Abrir mapa": solo para usuarios cuya pantalla de inicio es stats
+  // (PantallaLogin=stats). Estos no ven el mapa por defecto, así que les damos un
+  // acceso rápido a abrirlo en otra pestaña. Reusa el helper de landing (single
+  // source of truth). Usuario normal (que arranca en el mapa) no ve el botón.
+  const showMapButton = resolveLandingRoute(user) === '/dashboard/stats';
   // Gate: puede ver sin-asignar — controlado únicamente por la funcionalidad 'Ped s/asignar acumulados'.
   // Root siempre puede. El rol del usuario ya no condiciona esta visibilidad.
   const canSeeUnassigned = isRoot(user) || hasSaAcumulados(user?.roles);
@@ -1150,6 +1156,23 @@ function StatsContent() {
           </div>
           {/* Acciones */}
           <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Abrir mapa en otra pestaña — solo para usuarios con pantalla de inicio = stats */}
+            {showMapButton && (
+              <a
+                href="/dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Abrir mapa en otra pestaña"
+                aria-label="Abrir mapa en otra pestaña"
+                className="p-1.5 rounded-lg transition-colors hover:bg-stats-surface-2 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-stats-info"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+                  <line x1="8" y1="2" x2="8" y2="18" />
+                  <line x1="16" y1="6" x2="16" y2="22" />
+                </svg>
+              </a>
+            )}
             {/* Combo refresh: 1m–30m en pasos de 1 minuto */}
             <select
               value={refreshSeconds}
