@@ -21,6 +21,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
+import { sendIncidentEmail } from '@/lib/email';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -216,6 +217,18 @@ export async function POST(request: NextRequest) {
       description,
       detail_url: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/admin/incidencias?id=${insertedId}`,
       ip,
+    });
+
+    // Notificación por correo fire-and-forget (no bloquea la respuesta ni el
+    // guardado del incidente — sendIncidentEmail nunca lanza, ver lib/email.ts)
+    void sendIncidentEmail({
+      id: insertedId,
+      usuario: username,
+      reporter: reporter_nombre,
+      celular: contact_celular,
+      email: contact_email,
+      descripcion: description,
+      fecha: now.toLocaleString('es-UY'),
     });
 
     return NextResponse.json({
