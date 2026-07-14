@@ -11,6 +11,7 @@ import {
   EXPIRY_CHECK_INTERVAL_MS,
   LAST_ACTIVITY_KEY,
 } from '@/lib/session-expiry';
+import { resolveModoKiosko } from '@/lib/kiosk';
 import {
   HANDOFF_CHANNEL,
   HANDOFF_TIMEOUT_MS,
@@ -171,6 +172,8 @@ interface AuthContextType {
   login: (username: string, password: string, escenarioId?: number) => Promise<{ success: boolean; error?: string; warning?: string; landingRoute?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
+  /** True si el usuario logueado tiene el atributo de rol ModoKiosko activo. */
+  isKiosko: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -203,6 +206,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loginTime: string | undefined,
     atributos: Array<{ atributo: string; valor: string }> = [],
   ): boolean => {
+    // Modo Kiosko: la sesión nunca expira por inactividad (AC2). Bypass
+    // incondicional, cubre tanto la rehidratación (hydrateFromStorage) como el
+    // chequeo periódico (checkExpiration) porque ambos llaman a esta función.
+    if (resolveModoKiosko(atributos)) return false;
     const lastActivityMs = resolveLastActivityMs(authStorage.getItem(LAST_ACTIVITY_KEY), loginTime);
     const maxIdleMs = resolveIdleTimeoutMs(atributos, globalIdleMinutesRef.current);
     return isIdleExpired(lastActivityMs, Date.now(), maxIdleMs);
@@ -318,6 +325,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         setUser({ ...parsedUser, token: savedToken, allowedEmpresas, allowedEscenarios });
+        // Re-derivar el modo de persistencia del usuario rehidratado. Cubre el
+        // cold start (AC9: reinicio de PC/navegador — sessionStorage vacío,
+        // token/user vienen del fallback a localStorage vía getItem) y la
+        // revocación (AC13): si este arranque YA no trae ModoKiosko, el modo
+        // vuelve a 'session' y el próximo setItem limpia localStorage.
+        authStorage.setPersistMode(resolveModoKiosko(flattenAtributos(parsedUser)) ? 'local' : 'session');
         return 'ok';
       } catch (e) {
         console.error('Error al cargar sesión, limpiando localStorage:', e);
@@ -425,6 +438,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string, selectedEscenarioId: number = 1000): Promise<{ success: boolean; error?: string; warning?: string; landingRoute?: string }> => {
     try {
       console.log('🔐 Iniciando login en GeneXus...');
+      // Orden obligatorio (AC14): autenticar → resolver atributos → decidir storage.
+      // Resetear a 'session' ANTES de autenticar neutraliza el setItem temprano de
+      // token/user que hace authService.login (lib/api/auth.ts) — ModoKiosko todavía
+      // no se conoce en ese punto, así que ese write siempre debe caer en el path
+      // seguro. Si el usuario resulta kiosko, se flipea a 'local' más abajo, una vez
+      // resueltos los atributos del response.
+      authStorage.setPersistMode('session');
       const response: ParsedLoginResponse = await authService.login(username, password, selectedEscenarioId);
 
       // El login es exitoso SOLO si success=true Y viene el objeto user
@@ -477,6 +497,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             error: 'Perfil de usuario incompleto',
           };
         }
+
+        // 🖥️ Modo Kiosko (AC1/AC14): recién ACÁ, con los atributos de rol del
+        // response ya disponibles, se resuelve si el usuario es kiosko y se decide
+        // el storage. Nunca antes — ver el reset a 'session' al inicio de login().
+        const isKiosko = resolveModoKiosko((response.roles ?? []).flatMap((r) => r.atributos ?? []));
+        authStorage.setPersistMode(isKiosko ? 'local' : 'session');
 
         if (isRoot || verTodasEmpresas) {
           console.log(
@@ -597,6 +623,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('🔐 Limpiando sesión local...');
     setUser(null);
     setPermisos(new Set());
+    // Modo Kiosko: volver a 'session' en el logout, para que un login posterior
+    // en esta misma PC (de otro usuario, o del mismo tras revocación) arranque
+    // siempre en el path seguro por defecto.
+    authStorage.setPersistMode('session');
     authService.logout();
     authStorage.removeItem('trackmovil_allowed_empresas');
     authStorage.removeItem('trackmovil_allowed_escenarios');
@@ -630,6 +660,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     isAuthenticated: !!user,
+    isKiosko: user ? resolveModoKiosko(flattenAtributos(user)) : false,
   };
 
   if (isLoading) {

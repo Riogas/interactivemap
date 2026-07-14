@@ -19,6 +19,7 @@ import { isPedidoEntregado, isServiceEntregado } from '@/utils/estadoPedido';
 import { isMovilActiveForUI } from '@/lib/moviles/visibility';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { todayMontevideo, pendienteDateRangeCompact } from '@/lib/date-utils';
+import { msUntilNextRollover } from '@/lib/kiosk';
 import { useServerTime } from '@/hooks/useServerTime';
 import { useEscenarioSettings } from '@/hooks/useEscenarioSettings';
 import { isWithinSaWindow } from '@/lib/sa-window-filter';
@@ -326,7 +327,7 @@ function RevealChartBlock({
 function StatsContent() {
   const searchParams = useSearchParams();
   const date = searchParams.get('date') ?? todayMontevideo();
-  const { user, escenarioId } = useAuth();
+  const { user, escenarioId, isKiosko } = useAuth();
   // Botón "Abrir mapa": solo para usuarios cuya pantalla de inicio es stats
   // (PantallaLogin=stats). Estos no ven el mapa por defecto, así que les damos un
   // acceso rápido a abrirlo en otra pestaña. Reusa el helper de landing (single
@@ -1130,6 +1131,61 @@ function StatsContent() {
     });
     return Math.round((enHora.length / conAmbas.length) * 100);
   }, [filteredPedidos]);
+
+  // ─── Modo Kiosko: rollover de medianoche ───────────────────────────────────
+  // Con ModoKiosko activo, poco después de medianoche (Montevideo) la vista
+  // rueda sola a la fecha de hoy con datos frescos (AC4), sin intervención
+  // humana. `window.location.assign` a la ruta pelada (sin `?date`) descarta
+  // cualquier `?date=<pasado>` que hubiera en la URL. El id del timer se guarda
+  // en un ref y se limpia en cleanup/reprogramación (lección
+  // settimeout-id-persistence, AC10): nunca queda un timer duplicado ni un
+  // reload huérfano al navegar fuera de stats. El catch-up por
+  // `visibilitychange` cubre una PC que hibernó/suspendió cruzando medianoche.
+  const rolloverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isKiosko) return;
+
+    const scheduleNext = () => {
+      if (rolloverTimerRef.current) {
+        clearTimeout(rolloverTimerRef.current);
+        rolloverTimerRef.current = null;
+      }
+      rolloverTimerRef.current = setTimeout(() => {
+        window.location.assign('/dashboard/stats');
+      }, msUntilNextRollover());
+    };
+    scheduleNext();
+
+    const onVisibilityCatchUp = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (todayMontevideo() !== date) {
+        window.location.assign('/dashboard/stats');
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityCatchUp);
+
+    return () => {
+      if (rolloverTimerRef.current) {
+        clearTimeout(rolloverTimerRef.current);
+        rolloverTimerRef.current = null;
+      }
+      document.removeEventListener('visibilitychange', onVisibilityCatchUp);
+    };
+  }, [isKiosko, date]);
+
+  // ─── Modo Kiosko: fullscreen best-effort ───────────────────────────────────
+  // El fullscreen REAL lo da el acceso directo `msedge --kiosk` (AC6); este
+  // intento es solo un plus por si el navegador ya tuvo un gesto de usuario
+  // previo. Si `requestFullscreen` rechaza (sin gesto), se captura y no bloquea
+  // nada.
+  useEffect(() => {
+    if (!isKiosko) return;
+    try {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } catch {
+      // no-op: Fullscreen API no disponible o rechazada sin gesto de usuario.
+    }
+  }, [isKiosko]);
 
   const isFiltered = selectedEmpresa !== 'Todas' || selectedProducto !== 'Todos';
   const clearFilters = () => { setSelectedEmpresa('Todas'); setSelectedProducto('Todos'); };
