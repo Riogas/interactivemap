@@ -129,12 +129,15 @@ export function useViewportCulling<T>(
     };
   }, [map, filterByViewport, throttledFilter]);
 
-  // Re-filtrar cuando cambia la cantidad de items (entrada o salida de datos en tiempo real)
+  // Re-filtrar cuando cambian los items: altas/bajas Y posiciones nuevas en
+  // tiempo real. Cada GPS produce un array nuevo con el mismo length; depender
+  // solo del length dejaba visibleItems reteniendo las referencias viejas de
+  // los móviles (markers congelados aunque el estado tuviera la posición nueva)
   useEffect(() => {
     // Invalidar boundsRef para forzar recalculo cuando los items cambian
     boundsRef.current = null;
     filterByViewport();
-  }, [items.length, filterByViewport]);
+  }, [items, filterByViewport]);
 
   return visibleItems;
 }
