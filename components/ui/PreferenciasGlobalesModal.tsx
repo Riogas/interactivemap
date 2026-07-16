@@ -8,6 +8,7 @@ import { UserPreferences, DEFAULT_PREFERENCES } from '@/components/ui/Preference
 import { hasFuncionalidad } from '@/lib/role-funcionalidades';
 import { isRoot } from '@/lib/auth-scope';
 import { useGlobalRealtimeSettings } from '@/hooks/dashboard/useGlobalRealtimeSettings';
+import { useEmailSettings, DEFAULT_EMAIL_SETTINGS, type EmailSettings } from '@/hooks/dashboard/useEmailSettings';
 import ImportPuntosInteresModal from '@/components/ui/ImportPuntosInteresModal';
 
 interface PreferenciasGlobalesModalProps {
@@ -29,6 +30,16 @@ export default function PreferenciasGlobalesModal({
   // contra este store global (no en las preferencias por-usuario), para que un
   // cambio de un admin lo vean todos.
   const { settings: globalRealtime, updateSettings: updateGlobalRealtime } = useGlobalRealtimeSettings();
+
+  // Config GLOBAL de notificación de incidentes por correo (SMTP + plantillas).
+  const { settings: emailSettings, updateSettings: updateEmailSettings, sendTest: sendTestEmail } = useEmailSettings();
+  const [localEmail, setLocalEmail] = useState<EmailSettings & { hasPassword: boolean }>({ ...DEFAULT_EMAIL_SETTINGS, hasPassword: false });
+  const [testEmailSending, setTestEmailSending] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  useEffect(() => {
+    setLocalEmail(emailSettings);
+  }, [emailSettings]);
 
   // ===== Estado para Auditoría =====
   const [auditEnabled, setAuditEnabled] = useState<boolean | null>(null);
@@ -342,7 +353,43 @@ export default function PreferenciasGlobalesModal({
       realtimePauseOnHiddenMinutes:    localPrefs.realtimePauseOnHiddenMinutes ?? 15,
       sessionIdleTimeoutMinutes:       localPrefs.sessionIdleTimeoutMinutes ?? 480,
     });
+    // Config de notificación de incidentes por correo (misma acción de guardado).
+    await updateEmailSettings({
+      enabled: localEmail.enabled,
+      smtpHost: localEmail.smtpHost,
+      smtpPort: localEmail.smtpPort,
+      smtpSecure: localEmail.smtpSecure,
+      smtpUser: localEmail.smtpUser,
+      smtpPassword: localEmail.smtpPassword, // vacío = conserva la anterior (lo resuelve el PUT)
+      fromEmail: localEmail.fromEmail,
+      toEmails: localEmail.toEmails,
+      subjectTemplate: localEmail.subjectTemplate,
+      bodyTemplate: localEmail.bodyTemplate,
+    });
     onClose();
+  };
+
+  const handleSendTestEmail = async () => {
+    if (testEmailSending) return;
+    setTestEmailSending(true);
+    setTestEmailResult(null);
+    try {
+      const result = await sendTestEmail({
+        enabled: localEmail.enabled,
+        smtpHost: localEmail.smtpHost,
+        smtpPort: localEmail.smtpPort,
+        smtpSecure: localEmail.smtpSecure,
+        smtpUser: localEmail.smtpUser,
+        smtpPassword: localEmail.smtpPassword,
+        fromEmail: localEmail.fromEmail,
+        toEmails: localEmail.toEmails,
+        subjectTemplate: localEmail.subjectTemplate,
+        bodyTemplate: localEmail.bodyTemplate,
+      });
+      setTestEmailResult(result);
+    } finally {
+      setTestEmailSending(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -681,6 +728,170 @@ export default function PreferenciasGlobalesModal({
                     <span className={["inline-block h-4 w-4 transform rounded-full bg-white transition-transform", auditEnabled ? "translate-x-6" : "translate-x-1"].join(" ")} />
                   </button>
                 </div>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              {/* ===== Notificación de incidentes por correo ===== */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📧</span>
+                  <span className="text-sm font-bold text-gray-800">Notificación de incidentes por correo</span>
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-red-100 text-red-700">ADMIN</span>
+                </div>
+                <p className="text-xs text-gray-500 -mt-2">
+                  Al cargar un incidente, además de guardarse en la base, se puede enviar un correo por SMTP
+                  a una o varias casillas. El envío nunca bloquea la carga del incidente aunque falle.
+                </p>
+
+                {/* Toggle enabled */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex-1 pr-3">
+                    <div className="text-sm font-semibold text-gray-700">Enviar mail al cargar incidente</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalEmail({ ...localEmail, enabled: !localEmail.enabled })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${localEmail.enabled ? 'bg-red-500' : 'bg-gray-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${localEmail.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                {/* SMTP host + port */}
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 space-y-1">
+                    <label className="text-xs font-semibold text-gray-600">Servidor SMTP</label>
+                    <input
+                      type="text"
+                      placeholder="smtp.ejemplo.com"
+                      value={localEmail.smtpHost}
+                      onChange={(e) => setLocalEmail({ ...localEmail, smtpHost: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400"
+                    />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <label className="text-xs font-semibold text-gray-600">Puerto</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={localEmail.smtpPort}
+                      onChange={(e) => setLocalEmail({ ...localEmail, smtpPort: parseInt(e.target.value) || DEFAULT_EMAIL_SETTINGS.smtpPort })}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 text-center"
+                    />
+                  </div>
+                </div>
+
+                {/* Conexión segura */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex-1 pr-3">
+                    <div className="text-sm font-semibold text-gray-700">Conexión segura SSL/TLS</div>
+                    <div className="text-xs text-gray-500">Activar para puerto 465. Puerto 587 usualmente va con STARTTLS (desactivado).</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalEmail({ ...localEmail, smtpSecure: !localEmail.smtpSecure })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${localEmail.smtpSecure ? 'bg-red-500' : 'bg-gray-200'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${localEmail.smtpSecure ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                {/* SMTP user + password */}
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 space-y-1">
+                    <label className="text-xs font-semibold text-gray-600">Usuario SMTP</label>
+                    <input
+                      type="text"
+                      value={localEmail.smtpUser}
+                      onChange={(e) => setLocalEmail({ ...localEmail, smtpUser: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <label className="text-xs font-semibold text-gray-600">Contraseña SMTP</label>
+                    <input
+                      type="password"
+                      placeholder={localEmail.hasPassword ? '•••• (sin cambios)' : ''}
+                      value={localEmail.smtpPassword}
+                      onChange={(e) => setLocalEmail({ ...localEmail, smtpPassword: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400"
+                    />
+                  </div>
+                </div>
+
+                {/* From + to */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-600">Remitente (From)</label>
+                  <input
+                    type="text"
+                    placeholder="notificaciones@ejemplo.com"
+                    value={localEmail.fromEmail}
+                    onChange={(e) => setLocalEmail({ ...localEmail, fromEmail: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-600">Destinatarios (separados por coma)</label>
+                  <input
+                    type="text"
+                    placeholder="soporte@ejemplo.com, jefe@ejemplo.com"
+                    value={localEmail.toEmails}
+                    onChange={(e) => setLocalEmail({ ...localEmail, toEmails: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400"
+                  />
+                </div>
+
+                {/* Plantillas */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-600">Plantilla de asunto</label>
+                  <input
+                    type="text"
+                    value={localEmail.subjectTemplate}
+                    onChange={(e) => setLocalEmail({ ...localEmail, subjectTemplate: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-600">Plantilla de cuerpo</label>
+                  <textarea
+                    rows={5}
+                    value={localEmail.bodyTemplate}
+                    onChange={(e) => setLocalEmail({ ...localEmail, bodyTemplate: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 font-mono"
+                  />
+                  <p className="text-xs text-gray-400">
+                    Variables disponibles: <code className="px-1 bg-gray-100 rounded">{'{{id}}'}</code>{' '}
+                    <code className="px-1 bg-gray-100 rounded">{'{{usuario}}'}</code>{' '}
+                    <code className="px-1 bg-gray-100 rounded">{'{{reporter}}'}</code>{' '}
+                    <code className="px-1 bg-gray-100 rounded">{'{{celular}}'}</code>{' '}
+                    <code className="px-1 bg-gray-100 rounded">{'{{email}}'}</code>{' '}
+                    <code className="px-1 bg-gray-100 rounded">{'{{descripcion}}'}</code>{' '}
+                    <code className="px-1 bg-gray-100 rounded">{'{{fecha}}'}</code>{' '}
+                    <code className="px-1 bg-gray-100 rounded">{'{{link}}'}</code>
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={testEmailSending}
+                  onClick={() => void handleSendTestEmail()}
+                  className={[
+                    'px-4 py-2 text-sm font-medium rounded-lg transition-all',
+                    testEmailSending
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-red-500 hover:bg-red-600 text-white shadow hover:shadow-md',
+                  ].join(' ')}
+                >
+                  {testEmailSending ? 'Enviando...' : 'Enviar prueba'}
+                </button>
+
+                {testEmailResult && (
+                  <div className={`text-sm px-4 py-3 rounded-lg border ${testEmailResult.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                    {testEmailResult.ok ? 'Correo de prueba enviado correctamente.' : (testEmailResult.error ?? 'Error al enviar el correo de prueba.')}
+                  </div>
+                )}
               </div>
 
               <hr className="border-gray-200" />

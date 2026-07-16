@@ -649,7 +649,11 @@ const arePropsEqual = (prev: MapViewProps, next: MapViewProps) => {
     // Comparación de IDs de móviles (más barato que deep equal)
     prev.moviles.every((m, i) => m.id === next.moviles[i]?.id) &&
     // Detectar cuando se carga el historial de un móvil (history pasa de undefined/vacío a tener datos)
-    prev.moviles.every((m, i) => (m.history?.length ?? 0) === (next.moviles[i]?.history?.length ?? 0))
+    prev.moviles.every((m, i) => (m.history?.length ?? 0) === (next.moviles[i]?.history?.length ?? 0)) &&
+    // Detectar movimiento: el dashboard recrea currentPosition inmutablemente en
+    // cada GPS (y conserva la referencia en los móviles no tocados), así que la
+    // comparación por referencia es barata y suficiente
+    prev.moviles.every((m, i) => m.currentPosition === next.moviles[i]?.currentPosition)
   );
 };
 
