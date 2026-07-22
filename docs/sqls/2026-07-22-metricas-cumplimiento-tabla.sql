@@ -16,7 +16,11 @@ CREATE TABLE IF NOT EXISTS metricas_cumplimiento (
   chofer                text,                                       -- null si no atribuible (nombre-texto, sin ID estable)
   fch_hora_asignado     timestamptz,                                -- null cuando asignado_source='DERIVADO'
   fch_hora_finalizacion timestamptz NOT NULL,
-  demora_mins           numeric     NOT NULL,                       -- >= 0 (negativos se excluyen en el run)
+  fch_hora_para         timestamptz,                                -- hora máxima comprometida (origen)
+  demora_mins           numeric     NOT NULL,                       -- bruta: fin - asignado, >= 0 (negativos se excluyen en el run)
+  demora_efectiva_mins  numeric     NOT NULL,                       -- MÉTRICA PRINCIPAL: fin - reloj_inicio, clamp 0 (regla agendados: asignado+60min < para → reloj=para)
+  atraso_vs_para_mins   numeric,                                    -- fin - para CON signo (negativo = entregó antes); null sin para
+  reloj_inicio          text        NOT NULL DEFAULT 'ASIGNADO' CHECK (reloj_inicio IN ('ASIGNADO','PARA')),
   asignado_source       text        NOT NULL CHECK (asignado_source IN ('CAMPO','DERIVADO')),
   created_at            timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (origen, pedido_id, escenario)

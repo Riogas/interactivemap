@@ -42,7 +42,11 @@ para tener una PK homogénea entre orígenes).
 | `chofer` | text NULL | Nombre-texto, sin ID estable (ver limitación abajo) |
 | `fch_hora_asignado` | timestamptz NULL | NULL cuando `asignado_source='DERIVADO'` |
 | `fch_hora_finalizacion` | timestamptz NOT NULL | |
-| `demora_mins` | numeric | Siempre `>= 0` (negativos se excluyen, no se persisten) |
+| `fch_hora_para` | timestamptz NULL | Hora máxima comprometida (origen) |
+| `demora_mins` | numeric | Bruta: `fin − asignado`. Siempre `>= 0` (negativos se excluyen, no se persisten) |
+| `demora_efectiva_mins` | numeric | **MÉTRICA PRINCIPAL** — ver regla de agendados abajo |
+| `atraso_vs_para_mins` | numeric NULL | `fin − para` CON signo (negativo = entregó antes); NULL sin para |
+| `reloj_inicio` | `'ASIGNADO'\|'PARA'` | Desde dónde arrancó el reloj de la efectiva |
 | `asignado_source` | `'CAMPO'\|'DERIVADO'` | Ver fallback |
 | `created_at` | timestamptz | |
 
@@ -59,7 +63,31 @@ Sin RLS: el acceso de escritura es exclusivamente vía `getServerSupabaseClient(
 columnas homogéneas: `dimension`, `dimension_valor`, `periodo`, `tipo_servicio`,
 `empresa_fletera_id`, `cantidad`, `promedio_mins`, `mediana_mins`
 (`percentile_cont(0.5)`), `p90_mins` (`percentile_cont(0.9)`), `min_mins`,
-`max_mins`.
+`max_mins`, `promedio_atraso_mins`.
+
+Todas las columnas de agregación (`promedio/mediana/p90/min/max`) se calculan
+sobre **`demora_efectiva_mins`** (la métrica principal). `promedio_atraso_mins`
+promedia `atraso_vs_para_mins` con signo (AVG ignora los NULL). La demora bruta
+queda disponible en la tabla de hechos para consultas ad-hoc.
+
+### Regla de agendados (demora efectiva)
+
+Acordada 2026-07-22. Un pedido agendado (ej. nocturno pedido "para las 13")
+no debe medir demora desde que se asignó temprano al móvil:
+
+- Si `fch_hora_asignado + 60 min < fch_hora_para` → el pedido es **AGENDADO**:
+  el reloj arranca en la `para` (`reloj_inicio='PARA'`) y
+  `demora_efectiva_mins = max(0, fin − para)` (entregar antes del compromiso
+  cuenta como 0, no como crédito negativo; la anticipación queda visible en
+  `atraso_vs_para_mins`, que sí es negativo).
+- Si no (pedido inmediato, o `para` inexistente/ inválida) → el reloj arranca
+  en el asignado y `demora_efectiva_mins = demora_mins` (la bruta).
+- En `DERIVADO` el asignado implícito se reconstruye como
+  `fin − demora_movil_desde_asignacion_mins` y se aplica la misma regla.
+- El umbral vive en `UMBRAL_AGENDADO_MINS` (`lib/metricas/demora.ts`).
+
+Ejemplo canónico: asignado 10:00, para 13:00, entregado 13:30 → bruta 210 min,
+**efectiva 30 min**, atraso +30. Entregado 12:40 → efectiva 0, atraso −20.
 
 Como los hechos persisten para siempre, los agregados son **vistas** (no
 tablas materializadas): siempre exactos al momento de la consulta, sin drift.

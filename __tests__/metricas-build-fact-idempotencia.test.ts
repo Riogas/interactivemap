@@ -20,6 +20,7 @@ function baseRow(overrides: Partial<SourceRow> = {}): SourceRow {
     estado_nro: 2,
     fch_hora_asignado: '2026-07-21T14:00:00Z',
     fch_hora_finalizacion: '2026-07-21T14:30:00Z',
+    fch_hora_para: null,
     demora_movil_desde_asignacion_mins: null,
     ...overrides,
   };
@@ -152,7 +153,11 @@ describe('dedupByPk() — idempotencia (AC6)', () => {
       chofer: null,
       fch_hora_asignado: '2026-07-21T14:00:00Z',
       fch_hora_finalizacion: '2026-07-21T14:30:00Z',
+      fch_hora_para: null,
       demora_mins: 30,
+      demora_efectiva_mins: 30,
+      atraso_vs_para_mins: null,
+      reloj_inicio: 'ASIGNADO',
       asignado_source: 'CAMPO',
       ...overrides,
     };

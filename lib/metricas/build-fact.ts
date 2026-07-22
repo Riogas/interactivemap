@@ -4,7 +4,7 @@
  * chofer ya resuelto en ctx). AC6/AC7/AC8/AC9/AC11.
  */
 
-import { computeDemora } from './demora';
+import { computeDemora, type RelojInicio } from './demora';
 import { clasificarTipoServicio, type TipoServicio } from './tipo-servicio';
 import { montevideoDateOf, daysAgoMontevideo } from '@/lib/date-utils';
 
@@ -21,6 +21,7 @@ export interface SourceRow {
   estado_nro: number | null;
   fch_hora_asignado: string | null;
   fch_hora_finalizacion: string | null;
+  fch_hora_para: string | null;
   demora_movil_desde_asignacion_mins: number | null;
 }
 
@@ -37,7 +38,11 @@ export interface MetricaFact {
   chofer: string | null;
   fch_hora_asignado: string | null;
   fch_hora_finalizacion: string;
+  fch_hora_para: string | null;
   demora_mins: number;
+  demora_efectiva_mins: number;
+  atraso_vs_para_mins: number | null;
+  reloj_inicio: RelojInicio;
   asignado_source: 'CAMPO' | 'DERIVADO';
 }
 
@@ -74,6 +79,7 @@ export function buildFact(
     fchHoraFinalizacion: row.fch_hora_finalizacion,
     fchHoraAsignado: row.fch_hora_asignado,
     demoraMovilDesdeAsignacionMins: row.demora_movil_desde_asignacion_mins,
+    fchHoraPara: row.fch_hora_para,
   });
 
   if (!demora.ok) {
@@ -93,7 +99,11 @@ export function buildFact(
     chofer: ctx.chofer,
     fch_hora_asignado: demora.fchHoraAsignado,
     fch_hora_finalizacion: row.fch_hora_finalizacion,
+    fch_hora_para: row.fch_hora_para,
     demora_mins: demora.demoraMins,
+    demora_efectiva_mins: demora.demoraEfectivaMins,
+    atraso_vs_para_mins: demora.atrasoVsParaMins,
+    reloj_inicio: demora.relojInicio,
     asignado_source: demora.source,
   };
 
