@@ -108,6 +108,55 @@ export function daysAgoMontevideo(days: number, now: Date = new Date()): string 
 }
 
 /**
+ * Devuelve la fecha `YYYY-MM-DD` (hora Montevideo) de un instante dado.
+ * Reusa el mismo `fmt` (Intl.DateTimeFormat) que `todayMontevideo`, solo que
+ * el instante lo aporta el caller en lugar de tomar `now`.
+ *
+ * Uso típico: derivar la `fecha` de un hecho (metricas_cumplimiento) desde
+ * `fch_hora_finalizacion` (timestamptz UTC) — AC11.
+ *
+ * @param iso - string ISO o Date del instante a convertir.
+ * @returns string `YYYY-MM-DD` en hora Montevideo.
+ *
+ * @example
+ * // 23:30 UY del 21/07 = 02:30 UTC del 22/07
+ * montevideoDateOf('2026-07-22T02:30:00Z') // → '2026-07-21'
+ */
+export function montevideoDateOf(iso: string | Date): string {
+  const d = iso instanceof Date ? iso : new Date(iso);
+  return fmt.format(d);
+}
+
+/**
+ * Convierte un rango de días `YYYY-MM-DD` (calendario Montevideo) a bounds
+ * UTC comparables contra una columna `timestamptz`: `gte` (inicio del día
+ * `desde`, inclusive) y `ltExclusive` (inicio del día siguiente a `hasta`,
+ * exclusivo — cubre TODO el día `hasta` en hora Montevideo).
+ *
+ * Offset fijo `-03:00`: Uruguay no tiene DST desde 2015 (ver nota de
+ * REGLA CANONICAL DE TZ al inicio del archivo). Si UY reinstaurara DST, este
+ * offset dejaría de ser válido para todo el año.
+ *
+ * @param desde - Fecha `YYYY-MM-DD` (inclusive), día Montevideo.
+ * @param hasta - Fecha `YYYY-MM-DD` (inclusive), día Montevideo.
+ * @returns `{ gte, ltExclusive }` — strings ISO-8601 UTC.
+ *
+ * @example
+ * montevideoRangeToUtc('2026-07-21', '2026-07-21')
+ * // → { gte: '2026-07-21T03:00:00.000Z', ltExclusive: '2026-07-22T03:00:00.000Z' }
+ */
+export function montevideoRangeToUtc(desde: string, hasta: string): { gte: string; ltExclusive: string } {
+  const gte = new Date(`${desde}T00:00:00-03:00`).toISOString();
+
+  const [y, m, d] = hasta.split('-').map((v) => parseInt(v, 10));
+  const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
+  const nextDayStr = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
+  const ltExclusive = new Date(`${nextDayStr}T00:00:00-03:00`).toISOString();
+
+  return { gte, ltExclusive };
+}
+
+/**
  * Devuelve el rango de fechas (formato `YYYY-MM-DD`) que cuentan como "pendiente"
  * para una fecha dada.
  *

@@ -96,7 +96,7 @@ function parseNumOrNull(raw: unknown): number | null {
 /**
  * Transforma campos de PascalCase a snake_case para Supabase
  */
-function transformPedidoToSupabase(pedido: any) {
+export function transformPedidoToSupabase(pedido: any) {
   // Manejar fechas inválidas de AS400: "0000-00-00T00:00:00", "100-00-01T00:00:00", etc.
   const parseDate = (dateStr: string) => {
     if (!dateStr || dateStr.startsWith('0000-00-00')) {
@@ -201,6 +201,7 @@ function transformPedidoToSupabase(pedido: any) {
     fch_hora_max_ent_comp: parseDate(pedido.FchHoraMaxEntComp || pedido.fch_hora_max_ent_comp),
     fch_hora_mov: parseDate(pedido.FchHoraMov || pedido.fch_hora_mov),
     fch_hora_finalizacion: parseDate(pedido.FchHoraCump || pedido.fch_hora_finalizacion),
+    fch_hora_asignado: parseDate(pedido.FchHoraAsignado || pedido.fch_hora_asignado),
     fch_hora_para: parseDate(pedido.FchHoraPara || pedido.fch_hora_para),
     fch_hora_upd_firestore: parseDate(pedido.FchHoraUPDFireStore || pedido.fch_hora_upd_firestore),
     fch_para: parseDateYYYYMMDD(pedido.FchPara || pedido.fch_para), // Formato especial YYYYMMDD
