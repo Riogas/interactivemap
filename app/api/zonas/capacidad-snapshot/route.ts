@@ -351,7 +351,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       pedQuery = pedQuery.eq('servicio_nombre', tipoServicio);
     } else if (tipoServicio === 'OTROS') {
       // ≠ URGENTE y ≠ NOCTURNO, incluyendo servicio_nombre null. Mismo bucket que
-      // 'COMUN' en metricas_cumplimiento — regla compartida vía buildComunOrFilter()
+      // 'OTROS' en metricas_cumplimiento — regla compartida vía buildComunOrFilter()
       // (lib/metricas/tipo-servicio.ts) para no duplicarla (AC9 del plan de métricas).
       pedQuery = pedQuery.or(buildComunOrFilter());
     }

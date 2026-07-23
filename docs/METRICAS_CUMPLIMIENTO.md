@@ -2,7 +2,7 @@
 
 Estructura persistida + job nocturno que mide cuánto demora cada CHOFER, MÓVIL
 y ZONA en cumplir pedidos/services, desglosado por fecha y tipo de servicio
-(URGENTE / NOCTURNO / COMUN / SERVICE), con promedios diario/semanal/mensual.
+(URGENTE / NOCTURNO / OTROS / SERVICE), con promedios diario/semanal/mensual.
 
 Este documento cubre solo backend (estructuras + cálculo + persistencia +
 scheduling). El panel/UI de visualización es una iteración posterior — fuera
@@ -34,7 +34,7 @@ para tener una PK homogénea entre orígenes).
 | `pedido_id` | bigint | `id` de `pedidos`/`services` |
 | `escenario` | integer | |
 | `fecha` | date | Día de **cumplimiento** en `America/Montevideo` (no UTC) |
-| `tipo_servicio` | `'URGENTE'\|'NOCTURNO'\|'COMUN'\|'SERVICE'` | Ver clasificación abajo |
+| `tipo_servicio` | `'URGENTE'\|'NOCTURNO'\|'OTROS'\|'SERVICE'` | Ver clasificación abajo |
 | `servicio_nombre` | text NULL | Valor crudo de origen |
 | `movil` | integer NULL | Puede ser NULL/0 (cumplido sin móvil) |
 | `zona_nro` | integer NULL | |
@@ -102,16 +102,14 @@ Fuente única: `lib/metricas/tipo-servicio.ts`.
 - **PEDIDO** → `clasificarTipoServicioPedido(servicio_nombre)`:
   - `servicio_nombre` (trim + uppercase) `=== 'URGENTE'` → `'URGENTE'`.
   - `=== 'NOCTURNO'` → `'NOCTURNO'`.
-  - cualquier otro valor, **incluido `null`** → `'COMUN'`.
+  - cualquier otro valor, **incluido `null`** → `'OTROS'`.
 
 Esta regla es la MISMA que usa `app/api/zonas/capacidad-snapshot/route.ts` en
 su rama `OTROS` (bucket sin URGENTE/NOCTURNO) — se extrajo a
 `buildComunOrFilter()` y `capacidad-snapshot` la reusa (sin duplicar el string
-`.or(...)` hardcodeado que tenía antes). **Naming**: el mismo bucket se llama
-`'COMUN'` en `metricas_cumplimiento` y `'OTROS'` en el combo/API de capacidad
-— es el mismo conjunto de datos, solo cambia el label según la capa (no se
-renombró `'OTROS'` en capacidad-snapshot porque es un contrato de UI/combo
-existente).
+`.or(...)` hardcodeado que tenía antes). **Naming**: el bucket "resto" se llama
+`'OTROS'` en ambas capas (métricas y capacidad-snapshot), unificado. El helper
+conserva el nombre histórico `buildComunOrFilter()` por compatibilidad de import.
 
 ## Cálculo de demora + fallback
 
@@ -136,13 +134,14 @@ consultas futuras.
 
 ## "Cumplido" y exclusiones
 
-Un pedido/service cuenta como cumplido si `estado_nro = 2` **Y**
-`fch_hora_finalizacion IS NOT NULL` (convención transversal del repo, ver
-`lib/moviles/visibility.ts`). El run excluye, con contador por motivo en el
-resumen:
+Un pedido/service cuenta como **cumplido genuino** si `estado_nro = 2` **Y**
+`sub_estado_nro = 3` **Y** `fch_hora_finalizacion IS NOT NULL`. El
+`sub_estado_nro = 3` es clave: los demás sub_estados pueden ser "fruta" (cierres
+en lote, marcas automáticas) que llegan con timestamps constantes y ensucian los
+tiempos. El run excluye, con contador por motivo en el resumen:
 
 - `cancelado` — `orden_cancelacion = 'S'`.
-- `no_cumplido` — `estado_nro != 2` o `fch_hora_finalizacion` NULL.
+- `no_cumplido` — `estado_nro != 2`, `sub_estado_nro != 3`, o `fch_hora_finalizacion` NULL.
 - `sin_escenario` — `escenario` NULL (la PK lo exige; en la práctica no debería
   ocurrir, ambos orígenes lo tienen poblado).
 - `sin_asignado_calculable` / `demora_negativa` — ver sección de demora.

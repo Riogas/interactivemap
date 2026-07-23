@@ -1,18 +1,17 @@
 /**
- * Regla compartida de clasificación de tipo_servicio (URGENTE/NOCTURNO/COMUN/SERVICE).
+ * Regla compartida de clasificación de tipo_servicio (URGENTE/NOCTURNO/OTROS/SERVICE).
  *
  * Fuente única para:
  *  - app/api/metricas/cumplimiento/run/route.ts (tabla de hechos metricas_cumplimiento)
  *  - app/api/zonas/capacidad-snapshot/route.ts (rama OTROS, vía buildComunOrFilter())
  *
- * Naming: 'COMUN' es el label canónico de esta tabla; en capacidad-snapshot el
- * mismo bucket (servicio_nombre null o distinto de URGENTE/NOCTURNO) se llama
- * 'OTROS' — es el mismo conjunto, la traducción queda documentada acá y en
- * docs/METRICAS_CUMPLIMIENTO.md. NO se renombra 'OTROS' en capacidad-snapshot
- * porque es un parámetro de contrato del combo/UI existente.
+ * Naming: 'OTROS' es el label canónico del bucket "resto" (servicio_nombre null o
+ * distinto de URGENTE/NOCTURNO). El mismo nombre lo usa capacidad-snapshot, así
+ * que ambas superficies quedan alineadas. El helper conserva el nombre histórico
+ * buildComunOrFilter() por compatibilidad de import.
  */
 
-export type TipoServicio = 'URGENTE' | 'NOCTURNO' | 'COMUN' | 'SERVICE';
+export type TipoServicio = 'URGENTE' | 'NOCTURNO' | 'OTROS' | 'SERVICE';
 
 export const SERVICIO_NOMBRE_ESPECIALES = ['URGENTE', 'NOCTURNO'] as const;
 
@@ -27,16 +26,16 @@ export function esServicioEspecial(nombre: string | null | undefined): boolean {
 }
 
 /**
- * Clasifica un pedido en 'URGENTE' | 'NOCTURNO' | 'COMUN' según servicio_nombre
- * (trim + toUpperCase). Cualquier otro valor, incluido null, cae en 'COMUN'.
+ * Clasifica un pedido en 'URGENTE' | 'NOCTURNO' | 'OTROS' según servicio_nombre
+ * (trim + toUpperCase). Cualquier otro valor, incluido null, cae en 'OTROS'.
  */
 export function clasificarTipoServicioPedido(
   servicioNombre: string | null | undefined,
-): 'URGENTE' | 'NOCTURNO' | 'COMUN' {
+): 'URGENTE' | 'NOCTURNO' | 'OTROS' {
   const normalizado = servicioNombre?.trim().toUpperCase();
   if (normalizado === 'URGENTE') return 'URGENTE';
   if (normalizado === 'NOCTURNO') return 'NOCTURNO';
-  return 'COMUN';
+  return 'OTROS';
 }
 
 /**
@@ -52,7 +51,7 @@ export function clasificarTipoServicio(
 }
 
 /**
- * Cláusula PostgREST `.or(...)` para el bucket COMUN/OTROS (servicio_nombre nulo
+ * Cláusula PostgREST `.or(...)` para el bucket OTROS (servicio_nombre nulo
  * o distinto de todos los SERVICIO_NOMBRE_ESPECIALES). Construida dinámicamente
  * desde SERVICIO_NOMBRE_ESPECIALES para no duplicar la regla; hoy con 2 valores
  * produce EXACTAMENTE:

@@ -19,6 +19,7 @@ export interface SourceRow {
   empresa_fletera_id: number | null;
   orden_cancelacion: string | null;
   estado_nro: number | null;
+  sub_estado_nro: number | null;
   fch_hora_asignado: string | null;
   fch_hora_finalizacion: string | null;
   fch_hora_para: string | null;
@@ -65,7 +66,9 @@ export function buildFact(
   if (row.orden_cancelacion === 'S') {
     return { ok: false, motivo: 'cancelado' };
   }
-  if (Number(row.estado_nro) !== 2) {
+  // Cumplido genuino = estado_nro 2 (cumplido) AND sub_estado_nro 3. Los demás
+  // sub_estados pueden ser fruta (cierres en lote, etc.) y ensucian los tiempos.
+  if (Number(row.estado_nro) !== 2 || Number(row.sub_estado_nro) !== 3) {
     return { ok: false, motivo: 'no_cumplido' };
   }
   if (!row.fch_hora_finalizacion) {
