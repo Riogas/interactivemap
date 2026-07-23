@@ -32,6 +32,7 @@ import { requireAuth } from '@/lib/auth-middleware';
 import { MOVIL_ESTADOS_INACTIVOS } from '@/lib/movil-estados';
 import { getEscenarioSettings } from '@/lib/escenario-settings';
 import { todayMontevideo, dateWindowBounds } from '@/lib/date-utils';
+import { buildComunOrFilter } from '@/lib/metricas/tipo-servicio';
 import type { ZonaCapSnapshot, PedidoSinAsignarMini, MovilDetalleZona } from '@/types/zona-capacidad';
 
 /**
@@ -349,8 +350,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (tipoServicio === 'URGENTE' || tipoServicio === 'NOCTURNO') {
       pedQuery = pedQuery.eq('servicio_nombre', tipoServicio);
     } else if (tipoServicio === 'OTROS') {
-      // ≠ URGENTE y ≠ NOCTURNO, incluyendo servicio_nombre null.
-      pedQuery = pedQuery.or('servicio_nombre.is.null,and(servicio_nombre.neq.URGENTE,servicio_nombre.neq.NOCTURNO)');
+      // ≠ URGENTE y ≠ NOCTURNO, incluyendo servicio_nombre null. Mismo bucket que
+      // 'COMUN' en metricas_cumplimiento — regla compartida vía buildComunOrFilter()
+      // (lib/metricas/tipo-servicio.ts) para no duplicarla (AC9 del plan de métricas).
+      pedQuery = pedQuery.or(buildComunOrFilter());
     }
     // TODOS y SERVICE: sin filtro de servicio_nombre.
 
