@@ -18,6 +18,7 @@ function baseRow(overrides: Partial<SourceRow> = {}): SourceRow {
     empresa_fletera_id: 70,
     orden_cancelacion: 'N',
     estado_nro: 2,
+    sub_estado_nro: 3,
     fch_hora_asignado: '2026-07-21T14:00:00Z',
     fch_hora_finalizacion: '2026-07-21T14:30:00Z',
     fch_hora_para: null,
@@ -37,6 +38,23 @@ describe('buildFact() — exclusiones (AC7)', () => {
     const result = buildFact(baseRow({ estado_nro: 1 }), 'PEDIDO', { chofer: null });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.motivo).toBe('no_cumplido');
+  });
+
+  it('sub_estado_nro != 3 → excluido con motivo no_cumplido (la "fruta" no entra)', () => {
+    const result = buildFact(baseRow({ estado_nro: 2, sub_estado_nro: 5 }), 'PEDIDO', { chofer: null });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.motivo).toBe('no_cumplido');
+  });
+
+  it('sub_estado_nro null → excluido con motivo no_cumplido', () => {
+    const result = buildFact(baseRow({ estado_nro: 2, sub_estado_nro: null }), 'PEDIDO', { chofer: null });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.motivo).toBe('no_cumplido');
+  });
+
+  it('estado_nro=2 + sub_estado_nro=3 → califica (cumplido genuino)', () => {
+    const result = buildFact(baseRow({ estado_nro: 2, sub_estado_nro: 3 }), 'PEDIDO', { chofer: null });
+    expect(result.ok).toBe(true);
   });
 
   it('fch_hora_finalizacion null → excluido con motivo no_cumplido', () => {
@@ -111,7 +129,7 @@ describe('buildFact() — construcción del hecho (ok)', () => {
     const r1 = buildFact(baseRow({ servicio_nombre: 'URGENTE' }), 'PEDIDO', { chofer: null });
     const r2 = buildFact(baseRow({ servicio_nombre: null }), 'PEDIDO', { chofer: null });
     expect(r1.ok && r1.fact.tipo_servicio).toBe('URGENTE');
-    expect(r2.ok && r2.fact.tipo_servicio).toBe('COMUN');
+    expect(r2.ok && r2.fact.tipo_servicio).toBe('OTROS');
   });
 
   it('movil null/0 → el hecho se registra igual (chofer=NULL vía ctx, OQ7)', () => {
@@ -145,7 +163,7 @@ describe('dedupByPk() — idempotencia (AC6)', () => {
       pedido_id: 1001,
       escenario: 1,
       fecha: '2026-07-21',
-      tipo_servicio: 'COMUN',
+      tipo_servicio: 'OTROS',
       servicio_nombre: null,
       movil: 40,
       zona_nro: 10,

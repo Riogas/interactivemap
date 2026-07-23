@@ -35,7 +35,7 @@ const UPSERT_CHUNK = 500;
 const MAX_RANGO_DIAS = 35; // clamp de seguridad — retención de origen ~1 mes
 
 const SOURCE_COLS =
-  'id, escenario, servicio_nombre, movil, zona_nro, empresa_fletera_id, orden_cancelacion, estado_nro, fch_hora_asignado, fch_hora_finalizacion, fch_hora_para, demora_movil_desde_asignacion_mins';
+  'id, escenario, servicio_nombre, movil, zona_nro, empresa_fletera_id, orden_cancelacion, estado_nro, sub_estado_nro, fch_hora_asignado, fch_hora_finalizacion, fch_hora_para, demora_movil_desde_asignacion_mins';
 
 /**
  * Lee todos los cumplidos de una tabla dentro del rango [gte, ltExclusive),
@@ -59,6 +59,7 @@ async function fetchCumplidos(
       .from(table)
       .select(SOURCE_COLS)
       .eq('estado_nro', 2)
+      .eq('sub_estado_nro', 3)
       .not('fch_hora_finalizacion', 'is', null)
       .gte('fch_hora_finalizacion', gte)
       .lt('fch_hora_finalizacion', ltExclusive)

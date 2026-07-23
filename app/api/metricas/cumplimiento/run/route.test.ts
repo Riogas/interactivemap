@@ -60,6 +60,7 @@ type SourceRowFixture = {
   empresa_fletera_id: number | null;
   orden_cancelacion: string | null;
   estado_nro: number | null;
+  sub_estado_nro: number | null;
   fch_hora_asignado: string | null;
   fch_hora_finalizacion: string | null;
   demora_movil_desde_asignacion_mins: number | null;
@@ -75,6 +76,7 @@ function baseRow(overrides: Partial<SourceRowFixture> = {}): SourceRowFixture {
     empresa_fletera_id: 70,
     orden_cancelacion: 'N',
     estado_nro: 2,
+    sub_estado_nro: 3,
     fch_hora_asignado: '2026-07-20T14:00:00Z',
     fch_hora_finalizacion: '2026-07-20T14:45:00Z',
     demora_movil_desde_asignacion_mins: null,
@@ -334,6 +336,23 @@ describe('POST /api/metricas/cumplimiento/run', () => {
 
     expect(body.procesados).toBe(1);
     expect(body.excluidos).toEqual({ cancelado: 1, demora_negativa: 1 });
+  });
+
+  it('exclusiones: sub_estado_nro != 3 se cuenta como no_cumplido y no entra en procesados', async () => {
+    const ok = baseRow({ id: 1, movil: 200 });
+    const fruta = baseRow({ id: 2, movil: 200, estado_nro: 2, sub_estado_nro: 5 });
+
+    mockGetSupabase.mockReturnValue(
+      makeSupabaseMock({ pedidosRows: [ok, fruta] }) as unknown as ReturnType<typeof getServerSupabaseClient>,
+    );
+    mockFetchSession.mockResolvedValue(null);
+
+    const req = makeRequest({ token: TOKEN, desde: '2026-07-20', hasta: '2026-07-20' });
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(body.procesados).toBe(1);
+    expect(body.excluidos).toEqual({ no_cumplido: 1 });
   });
 
   it('movil null/0: se registra el hecho (OQ7), sin llamar fetchSessionHistorial, cuenta cumplidos_sin_movil', async () => {

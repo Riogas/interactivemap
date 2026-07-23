@@ -1,5 +1,5 @@
 /**
- * Tests para lib/metricas/tipo-servicio.ts — clasificación URGENTE/NOCTURNO/COMUN/SERVICE
+ * Tests para lib/metricas/tipo-servicio.ts — clasificación URGENTE/NOCTURNO/OTROS/SERVICE
  * (AC9/AC14) y buildComunOrFilter (regla compartida con capacidad-snapshot, OQ1).
  */
 
@@ -51,17 +51,17 @@ describe('clasificarTipoServicioPedido()', () => {
     expect(clasificarTipoServicioPedido('Nocturno ')).toBe('NOCTURNO');
   });
 
-  it('null → COMUN', () => {
-    expect(clasificarTipoServicioPedido(null)).toBe('COMUN');
+  it('null → OTROS', () => {
+    expect(clasificarTipoServicioPedido(null)).toBe('OTROS');
   });
 
-  it('undefined → COMUN', () => {
-    expect(clasificarTipoServicioPedido(undefined)).toBe('COMUN');
+  it('undefined → OTROS', () => {
+    expect(clasificarTipoServicioPedido(undefined)).toBe('OTROS');
   });
 
-  it('cualquier otro valor → COMUN', () => {
-    expect(clasificarTipoServicioPedido('GAS 13KG')).toBe('COMUN');
-    expect(clasificarTipoServicioPedido('')).toBe('COMUN');
+  it('cualquier otro valor → OTROS', () => {
+    expect(clasificarTipoServicioPedido('GAS 13KG')).toBe('OTROS');
+    expect(clasificarTipoServicioPedido('')).toBe('OTROS');
   });
 });
 
@@ -74,8 +74,8 @@ describe('clasificarTipoServicio()', () => {
   it('origen PEDIDO delega en clasificarTipoServicioPedido', () => {
     expect(clasificarTipoServicio('PEDIDO', 'URGENTE')).toBe('URGENTE');
     expect(clasificarTipoServicio('PEDIDO', 'NOCTURNO')).toBe('NOCTURNO');
-    expect(clasificarTipoServicio('PEDIDO', null)).toBe('COMUN');
-    expect(clasificarTipoServicio('PEDIDO', 'GAS 13KG')).toBe('COMUN');
+    expect(clasificarTipoServicio('PEDIDO', null)).toBe('OTROS');
+    expect(clasificarTipoServicio('PEDIDO', 'GAS 13KG')).toBe('OTROS');
   });
 });
 
