@@ -114,4 +114,60 @@ describe('resolveLandingRoute()', () => {
     ]);
     expect(resolveLandingRoute(u)).toBe('/dashboard');
   });
+
+  // --- PantallaLogin a NIVEL USUARIO (preferencias) ---
+
+  it("nivel usuario: PantallaLogin 'stats' en preferencias (con funcionalidad en rol) → /dashboard/stats", () => {
+    const u: LandingUser = {
+      isRoot: 'N',
+      roles: [role([], [STATS_FUNC])],
+      preferencias: [{ atributo: 'PantallaLogin', valor: 'stats' }],
+    };
+    expect(resolveLandingRoute(u)).toBe('/dashboard/stats');
+  });
+
+  it('nivel usuario: valor JSON {"Pantalla":"stats"} en preferencias → /dashboard/stats', () => {
+    const u: LandingUser = {
+      isRoot: 'N',
+      roles: [role([], [STATS_FUNC])],
+      preferencias: [{ atributo: 'PantallaLogin', valor: '{"Pantalla":"stats"}' }],
+    };
+    expect(resolveLandingRoute(u)).toBe('/dashboard/stats');
+  });
+
+  it('usuario override rol: usuario=mapa vence a rol=stats → /dashboard', () => {
+    const u: LandingUser = {
+      isRoot: 'N',
+      roles: [role([{ atributo: 'PantallaLogin', valor: 'stats' }], [STATS_FUNC])],
+      preferencias: [{ atributo: 'PantallaLogin', valor: 'mapa' }],
+    };
+    expect(resolveLandingRoute(u)).toBe('/dashboard');
+  });
+
+  it('usuario override rol: usuario=stats vence a rol=mapa → /dashboard/stats', () => {
+    const u: LandingUser = {
+      isRoot: 'N',
+      roles: [role([{ atributo: 'PantallaLogin', valor: 'mapa' }], [STATS_FUNC])],
+      preferencias: [{ atributo: 'PantallaLogin', valor: 'stats' }],
+    };
+    expect(resolveLandingRoute(u)).toBe('/dashboard/stats');
+  });
+
+  it("nivel usuario: 'stats' sin funcionalidad ni root → /dashboard (defensa en profundidad)", () => {
+    const u: LandingUser = {
+      isRoot: 'N',
+      roles: [role()],
+      preferencias: [{ atributo: 'PantallaLogin', valor: 'stats' }],
+    };
+    expect(resolveLandingRoute(u)).toBe('/dashboard');
+  });
+
+  it('nivel usuario: preferencia vacía → cae al rol', () => {
+    const u: LandingUser = {
+      isRoot: 'N',
+      roles: [role([{ atributo: 'PantallaLogin', valor: 'stats' }], [STATS_FUNC])],
+      preferencias: [{ atributo: 'PantallaLogin', valor: '' }],
+    };
+    expect(resolveLandingRoute(u)).toBe('/dashboard/stats');
+  });
 });
