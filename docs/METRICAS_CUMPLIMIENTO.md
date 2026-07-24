@@ -339,3 +339,77 @@ El campo está mapeado y listo para recibirlo (`parseDate(pedido.FchHoraAsignado
 run automáticamente prioriza `asignado_source='CAMPO'` sobre el fallback
 DERIVADO, sin cambios de código. Coordinar con el equipo del sender (gestión
 del usuario, fuera de alcance de este run).
+
+## Dashboard `/dashboard/metricas-cumplimiento` (2026-07-24)
+
+Ruta cliente premium (Recharts, tema claro/oscuro, animado) que visualiza los
+datos de este documento. Ruta protegida, **accesible solo por URL** (no
+linkeada en ningún menú a propósito). Ver
+`.claude/runs/20260724-141300-2wy/{spec,plan}.md` para el diseño completo.
+
+### Capa de datos: RPC `metricas_dashboard(p jsonb)`
+
+Nueva migración `docs/sqls/2026-07-24-metricas-dashboard-rpc.sql` (aditiva,
+idempotente — `CREATE OR REPLACE FUNCTION`, no toca nada de lo documentado
+arriba). Calcula KPIs con percentiles **exactos** (`percentile_cont`) directo
+sobre `metricas_cumplimiento` — nunca sobre `vw_metricas_cumplimiento_*`
+(promediar promedios ya agregados da resultados incorrectos). Acceso exclusivo
+`service_role` (`SECURITY INVOKER` + `REVOKE`/`GRANT` explícitos — la tabla no
+tiene RLS, así que el gate real es que solo `getServerSupabaseClient()` la
+invoca). Aplicar en el SQL Editor de Supabase, después de las migraciones
+listadas en "Cómo aplicar las migraciones" arriba (requiere que
+`metricas_cumplimiento` ya exista). El archivo trae su propio bloque de
+verificación (smoke queries + fail-closed + check de grants) al final.
+
+### Cómo dar de alta la funcionalidad `Estadisticas Cumplimiento`
+
+El guard de `/dashboard/metricas-cumplimiento` (`app/dashboard/metricas-cumplimiento/layout.tsx`)
+exige `isRoot(user) || hasFuncionalidad(user?.roles, 'Estadisticas Cumplimiento')`.
+Esa funcionalidad **no existe todavía** — se da de alta en SecuritySuite (tarea
+de admin, fuera de alcance de este run, igual que `ModoKiosko` en su momento):
+crear la funcionalidad con nombre EXACTO `Estadisticas Cumplimiento` y
+asignarla a los roles que deban ver el dashboard (análogo a cómo
+`Estadistica Global RiogasTracking` habilita `/dashboard/stats`). Mientras no
+se dé de alta, solo los usuarios `root` pueden entrar.
+
+### Advertencia: escenario del backfill
+
+El dashboard filtra por el `escenarioId` activo de `useAuth()` (consistente
+con el resto de la app). Si `metricas_cumplimiento_run` se corrió (backfill)
+bajo un `escenario` distinto al que usan los usuarios que van a mirar el
+dashboard, la página va a mostrar el empty state ("Sin datos de cumplimiento
+para el escenario/empresa seleccionados") aunque la tabla tenga filas — no es
+un bug, es que el filtro de escenario no matchea. Verificar con qué
+`escenario` se corrió `metricas_cumplimiento_run(desde, hasta)` antes de
+reportar la página como "vacía".
+
+### Riesgo de seguridad conocido y aceptado
+
+El scope de autorización de `GET /api/metricas/dashboard` (qué empresas/qué
+choferes puede ver el caller) se resuelve a partir de los headers
+`x-track-isroot` / `x-track-empresas-ids`, que el propio browser setea en cada
+request desde `contexts/AuthContext.tsx` — **no hay validación server-side
+contra la sesión/DB de esos claims**. Esto es un modelo de confianza
+**heredado del resto del repo**: el mismo patrón ya lo usan ~15-20 endpoints
+en producción (`app/api/zonas/capacidad-snapshot`, `app/api/moviles-dia`,
+`app/api/pedidos`, etc.), documentado como decisión consciente en el propio
+`lib/api-auth-gates.ts`.
+
+Lo que sí es nuevo con este endpoint: es **el primero que expone PII nominal
+de chofer** (nombre en `ranking`/`detalle`) cruzando el límite de empresa bajo
+ese modelo — cualquier usuario autenticado que forje `x-track-isroot: S` en
+una request directa (curl/Postman con su propia cookie de sesión) puede ver
+KPIs y nombres de chofer de todas las empresas fleteras, no solo la suya.
+
+Detalle completo, evidencia y las 3 opciones de mitigación planteadas
+((a) resolver `isRoot`/`allowedEmpresas` server-side desde `session.user.id`
+contra la tabla de roles/permisos, (b) firmar esos claims como custom claims
+en el JWT de sesión de Supabase, o (c) aceptar el riesgo explícitamente para
+este dataset) en `.claude/runs/20260724-141300-2wy/security.md`, hallazgo
+🟠 Alto #1. **No se implementó ninguna mitigación en este run** — arreglar el
+modelo de auth de los ~20 endpoints que comparten el patrón está fuera de
+alcance de este feature y requiere una decisión de equipo (qué opción tomar,
+y si se hace de forma puntual para este endpoint o sistémica para todos).
+Antes de exponer este dashboard ampliamente en producción (más allá de la URL
+no linkeada actual), el equipo debe decidir explícitamente cuál de las 3
+opciones aplicar, o aceptar el riesgo por escrito.
