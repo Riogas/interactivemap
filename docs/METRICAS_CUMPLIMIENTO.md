@@ -406,10 +406,36 @@ Detalle completo, evidencia y las 3 opciones de mitigación planteadas
 contra la tabla de roles/permisos, (b) firmar esos claims como custom claims
 en el JWT de sesión de Supabase, o (c) aceptar el riesgo explícitamente para
 este dataset) en `.claude/runs/20260724-141300-2wy/security.md`, hallazgo
-🟠 Alto #1. **No se implementó ninguna mitigación en este run** — arreglar el
-modelo de auth de los ~20 endpoints que comparten el patrón está fuera de
-alcance de este feature y requiere una decisión de equipo (qué opción tomar,
-y si se hace de forma puntual para este endpoint o sistémica para todos).
-Antes de exponer este dashboard ampliamente en producción (más allá de la URL
-no linkeada actual), el equipo debe decidir explícitamente cuál de las 3
-opciones aplicar, o aceptar el riesgo por escrito.
+🟠 Alto #1.
+
+#### Mitigación aplicada (2026-07-24): allowlist server-side por email
+
+Se agregó una **defensa concreta y contenida a este endpoint**, sin tocar el
+modelo de los otros ~20: `GET /api/metricas/dashboard` ahora pasa por
+`requireAllowlistedEmail(session.user.email, METRICAS_DASHBOARD_ALLOWED_EMAILS)`
+(`lib/api-auth-gates.ts`) **antes** de confiar en cualquier header. El email lo
+da `requireAuth` (validado contra Supabase Auth, **no** spoofeable), así que
+aunque alguien forje `x-track-isroot: S` o `x-track-funcs`, si su email
+autenticado no está en la env allowlist recibe `403 NOT_ALLOWLISTED` y la RPC ni
+se ejecuta.
+
+- **Configuración**: `METRICAS_DASHBOARD_ALLOWED_EMAILS` = CSV de emails
+  (case-insensitive) de los usuarios internos autorizados. Setearla en el `.env`
+  de prod **antes** de aplicar la migración RPC / exponer el dashboard.
+- **Sin la env seteada**: el gate no bloquea (para no romper dev) pero loguea un
+  warning — el endpoint queda dependiendo solo del gate por headers. Por eso, en
+  prod, **setear la allowlist es obligatorio** para que la mitigación tenga
+  efecto.
+- **Qué cierra**: el hueco de mayor impacto — que *cualquier* usuario logueado
+  forje headers y baje KPIs + nombres de chofer de todas las empresas. Con la
+  allowlist, solo los emails internos listados acceden.
+- **Qué NO cierra (residual)**: un usuario interno allowlisted es de confianza,
+  pero el scope por-empresa sigue viniendo del header. El fix completo para
+  exponerlo a usuarios de **fletera** (que solo deben ver su empresa) es la
+  opción (a): authz server-side con el scope real resuelto desde SecuritySuite.
+  Mientras eso no exista, **asignar `Estadisticas Cumplimiento` + allowlist solo
+  a usuarios internos de RioGas**, no a fleteras.
+
+Antes de exponer este dashboard a usuarios de fletera (más allá de admins
+internos), el equipo debe implementar la opción (a) o aceptar el riesgo residual
+por escrito.
