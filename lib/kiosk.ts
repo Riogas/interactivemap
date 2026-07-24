@@ -21,21 +21,46 @@ export const ROLLOVER_OFFSET_MS = 30_000;
 
 const MONTEVIDEO_TZ = 'America/Montevideo';
 
+/** ¿Un escalar (boolean/number/string) representa un ModoKiosko activo? */
+function isScalarKioskoTruthy(v: unknown): boolean {
+  if (typeof v === 'boolean') return v === true;
+  if (typeof v === 'number') return v === 1;
+  if (typeof v === 'string') {
+    const lower = v.trim().toLowerCase();
+    return lower === 'true' || lower === 's' || lower === '1';
+  }
+  return false;
+}
+
 /**
  * ¿El valor crudo de un atributo activa Modo Kiosko?
  *
- * Solo valores truthy explícitos activan el modo (fail-safe): `true`, `S`, `1`
- * (trim + case-insensitive), o un JSON literal cuyo valor parseado sea el
- * boolean `true`. Cualquier otra cosa (`false`, `0`, `N`, cadena vacía, JSON no
- * booleano, valores ambiguos) se trata como `false`.
+ * Solo valores truthy explícitos activan el modo (fail-safe). Se aceptan tres
+ * formas:
+ *   1. Escalar pelado: `true`, `S`, `1` (trim + case-insensitive).
+ *   2. JSON literal `true`.
+ *   3. Objeto JSON plano `{ campo: valor }` con AL MENOS un valor truthy
+ *      (`true`/`S`/`1`/`1`). Este es el shape que produce la UI de SecuritySuite,
+ *      que guarda TODOS los atributos como objeto `{ id: valor }` (nunca un
+ *      escalar pelado) — sin esta rama, un `ModoKiosko` seteado desde esa UI
+ *      (ej. `{"Activo":"true"}`) nunca activaría el kiosko.
+ *
+ * Cualquier otra cosa (`false`, `0`, `N`, cadena vacía, objeto sin valores
+ * truthy `{"Activo":"false"}`, objeto vacío `{}`, array, string JSON-quoted,
+ * valores ambiguos) se trata como `false`.
  */
 function isTruthyKioskoValue(raw: string): boolean {
   const trimmed = String(raw ?? '').trim();
   if (trimmed === '') return false;
-  const lower = trimmed.toLowerCase();
-  if (lower === 'true' || lower === 's' || lower === '1') return true;
+  // 1) Escalar pelado (true / S / 1).
+  if (isScalarKioskoTruthy(trimmed)) return true;
+  // 2) JSON literal `true`, o 3) objeto plano con algún valor truthy.
   try {
-    if (JSON.parse(trimmed) === true) return true;
+    const parsed: unknown = JSON.parse(trimmed);
+    if (parsed === true) return true;
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return Object.values(parsed as Record<string, unknown>).some(isScalarKioskoTruthy);
+    }
   } catch {
     // No era JSON válido → ya se evaluó como no-truthy arriba.
   }

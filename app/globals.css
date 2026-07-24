@@ -42,6 +42,18 @@
   /* Fonts: Fira Sans (body) + Fira Code (data/tabular numbers) */
   --font-stats-sans: var(--font-stats-sans-base, 'Fira Sans'), system-ui, sans-serif;
   --font-stats-mono: var(--font-stats-mono-base, 'Fira Code'), ui-monospace, monospace;
+
+  /* ─── Métricas de Cumplimiento (/dashboard/metricas-cumplimiento) ────────
+   * Serie principal (demora efectiva) + paleta categórica de los 5 tipos de
+   * servicio, CVD-safe (validada en el pedido). Light mode; overrides dark
+   * en el bloque [data-theme="dark"] de abajo. NUNCA usar estos hex directo
+   * en TSX — siempre var(--color-metricas-*). */
+  --color-metricas-serie: #1E40AF;
+  --color-metricas-urgente: #D55E00;
+  --color-metricas-nocturno: #0072B2;
+  --color-metricas-especial: #CC79A7;
+  --color-metricas-otros: #009E73;
+  --color-metricas-service: #E69F00;
 }
 
 /* Habilitar `dark:` variant de Tailwind v4 cuando el ancestor tiene
@@ -69,9 +81,29 @@
   animation: stats-section-enter 360ms ease-out both;
 }
 
+/* Popover/modal del dashboard de Métricas de Cumplimiento. Reusan los
+ * keyframes de arriba (transform/opacity puro, sin color) más un fondo/borde
+ * theme-aware vía tokens stats-* (a diferencia de .stats-modal-content, que
+ * tiene un gradiente oscuro fijo pensado para /dashboard/stats). */
+@keyframes metricas-popover-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.metricas-popover-in { animation: metricas-popover-in 160ms ease-out both; }
+
+.metricas-modal-backdrop {
+  animation: stats-backdrop-in 0.22s ease-out both;
+}
+.metricas-modal-content {
+  animation: stats-card-in 0.32s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stats-row-enter,
-  .stats-section-enter { animation: none; }
+  .stats-section-enter,
+  .metricas-popover-in,
+  .metricas-modal-backdrop,
+  .metricas-modal-content { animation: none; }
 }
 
 /* Dark theme overrides (activado por [data-theme="dark"] en el root o por
@@ -87,6 +119,14 @@
   --color-stats-warning-soft: #422006;
   --color-stats-destructive-soft: #450A0A;
   --color-stats-info-soft: #0B2447;
+
+  /* Métricas de Cumplimiento — paleta dark (mismo mapeo, hex validados). */
+  --color-metricas-serie: #5b8cf0;
+  --color-metricas-urgente: #E06A2C;
+  --color-metricas-nocturno: #3B93D6;
+  --color-metricas-especial: #BE73A8;
+  --color-metricas-otros: #1F9E74;
+  --color-metricas-service: #B47826;
 }
 
 body {

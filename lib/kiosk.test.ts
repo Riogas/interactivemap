@@ -32,10 +32,24 @@ describe('resolveModoKiosko()', () => {
     expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '' }])).toBe(false);
   });
 
-  it('false para JSON no booleano', () => {
-    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{"a":1}' }])).toBe(false);
+  it('false para JSON string-quoted o array (no soportados)', () => {
     expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '"true"' }])).toBe(false);
     expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '[true]' }])).toBe(false);
+  });
+
+  it('objeto JSON {campo: valor} con algún valor truthy ⇒ true (shape de la UI de SecuritySuite)', () => {
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{"Activo":"true"}' }])).toBe(true);
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{"ModoKiosko":"S"}' }])).toBe(true);
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{"x":"1"}' }])).toBe(true);
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{"a":1}' }])).toBe(true);
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{ "Habilitado": "TRUE" }' }])).toBe(true);
+  });
+
+  it('objeto JSON sin valor truthy o vacío ⇒ false (fail-safe)', () => {
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{"Activo":"false"}' }])).toBe(false);
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{"x":"0"}' }])).toBe(false);
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{"Pantalla":"stats"}' }])).toBe(false);
+    expect(resolveModoKiosko([{ atributo: KIOSK_ATTR, valor: '{}' }])).toBe(false);
   });
 
   it('atributo ausente/otro nombre → false', () => {

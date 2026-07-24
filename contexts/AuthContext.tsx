@@ -45,6 +45,12 @@ interface User {
   allowedEscenarios: number[] | null; // null = root/sin restricción, array = IDs permitidos
   /** True si EmpFletera = {"TODAS":"*"} → ve todas las empresas (reemplaza el hardcodeo de roles). */
   verTodasEmpresas: boolean;
+  /**
+   * Atributos a NIVEL USUARIO (usuario_preferencias del SecuritySuite), tal cual
+   * llegan en `response.preferencias`. ModoKiosko y PantallaLogin se pueden setear
+   * acá (por usuario) o por rol; se persiste para que sobrevivan al cold-start.
+   */
+  preferencias?: Array<{ atributo: string; valor: string }>;
 }
 
 type PreferenciaEntry = { nombre: string; valor: number };
@@ -201,17 +207,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ): Array<{ atributo: string; valor: string }> =>
     (u?.roles ?? []).flatMap((r) => r.atributos ?? []);
 
+  /**
+   * Atributos que gobiernan el Modo Kiosko: los de ROL ∪ las preferencias de
+   * USUARIO (`usuario_preferencias`). ModoKiosko sirve a AMBOS niveles — semántica
+   * OR: si cualquiera de los dos lo activa, es kiosko. (El idle-timeout, en cambio,
+   * sigue leyendo solo atributos de rol vía flattenAtributos, sin cambios.)
+   */
+  const kioskoAtributos = (
+    u:
+      | {
+          roles?: Array<{ atributos?: Array<{ atributo: string; valor: string }> }>;
+          preferencias?: Array<{ atributo: string; valor: string }>;
+        }
+      | null
+      | undefined,
+  ): Array<{ atributo: string; valor: string }> => [
+    ...flattenAtributos(u),
+    ...(u?.preferencias ?? []),
+  ];
+
   /** Verificar si la sesión expiró por inactividad (mira la última actividad persistida). */
   const isSessionExpired = (
-    loginTime: string | undefined,
-    atributos: Array<{ atributo: string; valor: string }> = [],
+    u:
+      | {
+          loginTime?: string;
+          roles?: Array<{ atributos?: Array<{ atributo: string; valor: string }> }>;
+          preferencias?: Array<{ atributo: string; valor: string }>;
+        }
+      | null
+      | undefined,
   ): boolean => {
     // Modo Kiosko: la sesión nunca expira por inactividad (AC2). Bypass
     // incondicional, cubre tanto la rehidratación (hydrateFromStorage) como el
     // chequeo periódico (checkExpiration) porque ambos llaman a esta función.
-    if (resolveModoKiosko(atributos)) return false;
-    const lastActivityMs = resolveLastActivityMs(authStorage.getItem(LAST_ACTIVITY_KEY), loginTime);
-    const maxIdleMs = resolveIdleTimeoutMs(atributos, globalIdleMinutesRef.current);
+    // Se resuelve sobre ROL ∪ USUARIO (ModoKiosko a cualquier nivel activa).
+    if (resolveModoKiosko(kioskoAtributos(u))) return false;
+    const lastActivityMs = resolveLastActivityMs(authStorage.getItem(LAST_ACTIVITY_KEY), u?.loginTime);
+    // Idle-timeout: solo atributos de rol (comportamiento histórico, sin cambios).
+    const maxIdleMs = resolveIdleTimeoutMs(flattenAtributos(u), globalIdleMinutesRef.current);
     return isIdleExpired(lastActivityMs, Date.now(), maxIdleMs);
   };
 
@@ -296,7 +329,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const parsedUser = JSON.parse(savedUser);
         if (!parsedUser.username || !parsedUser.id) throw new Error('Invalid user data structure');
 
-        if (isSessionExpired(parsedUser.loginTime, flattenAtributos(parsedUser))) {
+        if (isSessionExpired(parsedUser)) {
           clearExpiredSession();
           return 'expired';
         }
@@ -330,7 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // token/user vienen del fallback a localStorage vía getItem) y la
         // revocación (AC13): si este arranque YA no trae ModoKiosko, el modo
         // vuelve a 'session' y el próximo setItem limpia localStorage.
-        authStorage.setPersistMode(resolveModoKiosko(flattenAtributos(parsedUser)) ? 'local' : 'session');
+        authStorage.setPersistMode(resolveModoKiosko(kioskoAtributos(parsedUser)) ? 'local' : 'session');
         return 'ok';
       } catch (e) {
         console.error('Error al cargar sesión, limpiando localStorage:', e);
@@ -398,7 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user?.loginTime) return;
 
     const checkExpiration = () => {
-      if (isSessionExpired(user.loginTime, flattenAtributos(user))) {
+      if (isSessionExpired(user)) {
         clearExpiredSession();
       }
     };
@@ -501,7 +534,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 🖥️ Modo Kiosko (AC1/AC14): recién ACÁ, con los atributos de rol del
         // response ya disponibles, se resuelve si el usuario es kiosko y se decide
         // el storage. Nunca antes — ver el reset a 'session' al inicio de login().
-        const isKiosko = resolveModoKiosko((response.roles ?? []).flatMap((r) => r.atributos ?? []));
+        const isKiosko = resolveModoKiosko([
+          ...(response.roles ?? []).flatMap((r) => r.atributos ?? []),
+          ...(response.preferencias ?? []),
+        ]);
         authStorage.setPersistMode(isKiosko ? 'local' : 'session');
 
         if (isRoot || verTodasEmpresas) {
@@ -562,6 +598,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           allowedEmpresas,
           allowedEscenarios,
           verTodasEmpresas,
+          preferencias: response.preferencias ?? [],
         };
 
         // Guardar en localStorage el newUser completo (incluye loginTime para validar expiración en F5)
@@ -660,7 +697,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     isAuthenticated: !!user,
-    isKiosko: user ? resolveModoKiosko(flattenAtributos(user)) : false,
+    isKiosko: user ? resolveModoKiosko(kioskoAtributos(user)) : false,
   };
 
   if (isLoading) {

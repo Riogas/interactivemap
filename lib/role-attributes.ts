@@ -172,6 +172,12 @@ export interface LandingUser {
     atributos?: Array<{ atributo: string; valor: string }>;
     funcionalidades?: Array<{ funcionalidadId: number; nombre: string }>;
   }>;
+  /**
+   * Preferencias a NIVEL USUARIO (usuario_preferencias del SecuritySuite).
+   * Un `PantallaLogin` acá tiene prioridad sobre el de cualquier rol
+   * (override "usuario > rol").
+   */
+  preferencias?: Array<{ atributo: string; valor: string }>;
 }
 
 /** Ruta por defecto al iniciar sesión (el mapa) — comportamiento histórico. */
@@ -234,25 +240,35 @@ function parsePantallaValor(valor: string): string | null {
 
 /**
  * Resuelve a qué ruta debe aterrizar el usuario al iniciar sesión, según el atributo
- * de rol `PantallaLogin`. Siempre devuelve una ruta válida; el default es el mapa
+ * `PantallaLogin`. Siempre devuelve una ruta válida; el default es el mapa
  * (`/dashboard`), preservando el comportamiento previo a esta feature.
  *
  * Reglas:
- *  - Gana el PRIMER rol (en orden) con `PantallaLogin` de valor no vacío.
+ *  - `PantallaLogin` se lee a NIVEL USUARIO (`user.preferencias`) o a NIVEL ROL
+ *    (`user.roles[].atributos`). El de USUARIO tiene prioridad (override
+ *    "usuario > rol"); si no hay a nivel usuario, gana el PRIMER rol (en orden)
+ *    con `PantallaLogin` de valor no vacío.
  *  - Clave normalizada con trim().toLowerCase() contra un catálogo cerrado.
  *  - Si la pantalla tiene gate de acceso y el usuario no lo pasa → default (no se lo
  *    manda a una pantalla de la que el guard lo rebotaría).
  *  - Cualquier ausencia / valor inválido / clave desconocida → default.
  */
 export function resolveLandingRoute(user: LandingUser | null | undefined): string {
-  const roles = user?.roles ?? [];
-
   let rawKey: string | null = null;
-  for (const role of roles) {
-    const attr = (role.atributos ?? []).find((a) => a.atributo === 'PantallaLogin');
-    if (attr?.valor != null && String(attr.valor).trim() !== '') {
-      rawKey = parsePantallaValor(attr.valor); // primero gana, aunque su valor sea inválido
-      break;
+
+  // 1. Preferencia a NIVEL USUARIO (override sobre el rol). Si está presente y no
+  //    vacía, gana — aunque su valor sea inválido (no se cae al rol).
+  const userAttr = (user?.preferencias ?? []).find((a) => a.atributo === 'PantallaLogin');
+  if (userAttr?.valor != null && String(userAttr.valor).trim() !== '') {
+    rawKey = parsePantallaValor(userAttr.valor);
+  } else {
+    // 2. Si no hay a nivel usuario, primer rol con PantallaLogin (histórico).
+    for (const role of user?.roles ?? []) {
+      const attr = (role.atributos ?? []).find((a) => a.atributo === 'PantallaLogin');
+      if (attr?.valor != null && String(attr.valor).trim() !== '') {
+        rawKey = parsePantallaValor(attr.valor); // primero gana, aunque su valor sea inválido
+        break;
+      }
     }
   }
   if (!rawKey) return DEFAULT_LANDING;
