@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS metricas_cumplimiento (
   pedido_id             bigint      NOT NULL,
   escenario             integer     NOT NULL,
   fecha                 date        NOT NULL,                       -- día de cumplimiento en America/Montevideo
-  tipo_servicio         text        NOT NULL CHECK (tipo_servicio IN ('URGENTE','NOCTURNO','OTROS','SERVICE')),
+  tipo_servicio         text        NOT NULL CHECK (tipo_servicio IN ('URGENTE','NOCTURNO','ESPECIAL','OTROS','SERVICE')),
   servicio_nombre       text,                                       -- valor crudo de origen (puede ser null)
   movil                 integer,                                    -- puede ser null/0 (cumplido sin móvil)
   zona_nro              integer,                                    -- null → bucket propio en la vista de zona

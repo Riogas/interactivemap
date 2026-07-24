@@ -1,17 +1,19 @@
 /**
- * Regla compartida de clasificación de tipo_servicio (URGENTE/NOCTURNO/OTROS/SERVICE).
+ * Regla compartida de clasificación de tipo_servicio.
+ * Buckets: URGENTE / NOCTURNO / ESPECIAL / OTROS (de pedidos) + SERVICE (origen services).
  *
  * Fuente única para:
  *  - app/api/metricas/cumplimiento/run/route.ts (tabla de hechos metricas_cumplimiento)
  *  - app/api/zonas/capacidad-snapshot/route.ts (rama OTROS, vía buildComunOrFilter())
  *
- * Naming: 'OTROS' es el label canónico del bucket "resto" (servicio_nombre null o
- * distinto de URGENTE/NOCTURNO). El mismo nombre lo usa capacidad-snapshot, así
- * que ambas superficies quedan alineadas. El helper conserva el nombre histórico
- * buildComunOrFilter() por compatibilidad de import.
+ * Naming: 'OTROS' es el label del bucket "resto" (servicio_nombre null o que no
+ * cae en URGENTE/NOCTURNO/ESPECIAL). OJO: en métricas los ESPECIAL se separan en
+ * su propio bucket; capacidad-snapshot NO los separa (su 'OTROS', vía
+ * buildComunOrFilter(), sigue siendo "todo lo que no es URGENTE ni NOCTURNO",
+ * incluyendo especiales). Son features distintas, no confundir los dos 'OTROS'.
  */
 
-export type TipoServicio = 'URGENTE' | 'NOCTURNO' | 'OTROS' | 'SERVICE';
+export type TipoServicio = 'URGENTE' | 'NOCTURNO' | 'ESPECIAL' | 'OTROS' | 'SERVICE';
 
 export const SERVICIO_NOMBRE_ESPECIALES = ['URGENTE', 'NOCTURNO'] as const;
 
@@ -26,15 +28,19 @@ export function esServicioEspecial(nombre: string | null | undefined): boolean {
 }
 
 /**
- * Clasifica un pedido en 'URGENTE' | 'NOCTURNO' | 'OTROS' según servicio_nombre
- * (trim + toUpperCase). Cualquier otro valor, incluido null, cae en 'OTROS'.
+ * Clasifica un pedido según servicio_nombre (trim + toUpperCase):
+ *  - `=== 'URGENTE'`            → 'URGENTE'
+ *  - `=== 'NOCTURNO'`           → 'NOCTURNO'
+ *  - empieza con `'ESPECIAL'`   → 'ESPECIAL'  (ej. "ESPECIAL SIN FLETE")
+ *  - cualquier otro, incl. null → 'OTROS'
  */
 export function clasificarTipoServicioPedido(
   servicioNombre: string | null | undefined,
-): 'URGENTE' | 'NOCTURNO' | 'OTROS' {
+): 'URGENTE' | 'NOCTURNO' | 'ESPECIAL' | 'OTROS' {
   const normalizado = servicioNombre?.trim().toUpperCase();
   if (normalizado === 'URGENTE') return 'URGENTE';
   if (normalizado === 'NOCTURNO') return 'NOCTURNO';
+  if (normalizado?.startsWith('ESPECIAL')) return 'ESPECIAL';
   return 'OTROS';
 }
 
@@ -51,9 +57,10 @@ export function clasificarTipoServicio(
 }
 
 /**
- * Cláusula PostgREST `.or(...)` para el bucket OTROS (servicio_nombre nulo
- * o distinto de todos los SERVICIO_NOMBRE_ESPECIALES). Construida dinámicamente
- * desde SERVICIO_NOMBRE_ESPECIALES para no duplicar la regla; hoy con 2 valores
+ * Cláusula PostgREST `.or(...)` para el bucket de capacidad-snapshot
+ * (servicio_nombre nulo o distinto de todos los SERVICIO_NOMBRE_ESPECIALES).
+ * NO separa ESPECIAL — es el contrato existente del combo/UI de capacidad.
+ * Construida dinámicamente desde SERVICIO_NOMBRE_ESPECIALES; hoy con 2 valores
  * produce EXACTAMENTE:
  *   'servicio_nombre.is.null,and(servicio_nombre.neq.URGENTE,servicio_nombre.neq.NOCTURNO)'
  */

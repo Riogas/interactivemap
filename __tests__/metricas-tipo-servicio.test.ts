@@ -51,6 +51,17 @@ describe('clasificarTipoServicioPedido()', () => {
     expect(clasificarTipoServicioPedido('Nocturno ')).toBe('NOCTURNO');
   });
 
+  it('servicio_nombre que empieza con ESPECIAL → ESPECIAL', () => {
+    expect(clasificarTipoServicioPedido('ESPECIAL SIN FLETE')).toBe('ESPECIAL');
+    expect(clasificarTipoServicioPedido('especial con flete')).toBe('ESPECIAL');
+    expect(clasificarTipoServicioPedido('  ESPECIAL  ')).toBe('ESPECIAL');
+  });
+
+  it('OTROS no absorbe a los ESPECIAL', () => {
+    expect(clasificarTipoServicioPedido('GAS 13KG')).not.toBe('ESPECIAL');
+    expect(clasificarTipoServicioPedido('GAS 13KG')).toBe('OTROS');
+  });
+
   it('null → OTROS', () => {
     expect(clasificarTipoServicioPedido(null)).toBe('OTROS');
   });

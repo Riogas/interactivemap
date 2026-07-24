@@ -2,7 +2,7 @@
 
 Estructura persistida + job nocturno que mide cuánto demora cada CHOFER, MÓVIL
 y ZONA en cumplir pedidos/services, desglosado por fecha y tipo de servicio
-(URGENTE / NOCTURNO / OTROS / SERVICE), con promedios diario/semanal/mensual.
+(URGENTE / NOCTURNO / ESPECIAL / OTROS / SERVICE), con promedios diario/semanal/mensual.
 
 Este documento cubre solo backend (estructuras + cálculo + persistencia +
 scheduling). El panel/UI de visualización es una iteración posterior — fuera
@@ -34,7 +34,7 @@ para tener una PK homogénea entre orígenes).
 | `pedido_id` | bigint | `id` de `pedidos`/`services` |
 | `escenario` | integer | |
 | `fecha` | date | Día de **cumplimiento** en `America/Montevideo` (no UTC) |
-| `tipo_servicio` | `'URGENTE'\|'NOCTURNO'\|'OTROS'\|'SERVICE'` | Ver clasificación abajo |
+| `tipo_servicio` | `'URGENTE'\|'NOCTURNO'\|'ESPECIAL'\|'OTROS'\|'SERVICE'` | Ver clasificación abajo |
 | `servicio_nombre` | text NULL | Valor crudo de origen |
 | `movil` | integer NULL | Puede ser NULL/0 (cumplido sin móvil) |
 | `zona_nro` | integer NULL | |
@@ -102,6 +102,7 @@ Fuente única: `lib/metricas/tipo-servicio.ts`.
 - **PEDIDO** → `clasificarTipoServicioPedido(servicio_nombre)`:
   - `servicio_nombre` (trim + uppercase) `=== 'URGENTE'` → `'URGENTE'`.
   - `=== 'NOCTURNO'` → `'NOCTURNO'`.
+  - empieza con `'ESPECIAL'` (ej. `ESPECIAL SIN FLETE`) → `'ESPECIAL'`.
   - cualquier otro valor, **incluido `null`** → `'OTROS'`.
 
 Esta regla es la MISMA que usa `app/api/zonas/capacidad-snapshot/route.ts` en
