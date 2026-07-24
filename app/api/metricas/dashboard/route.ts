@@ -33,7 +33,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
-import { requireFuncionalidad } from '@/lib/api-auth-gates';
+import { requireFuncionalidad, requireAllowlistedEmail } from '@/lib/api-auth-gates';
 import type { MetricasDashboardData, Ventana, Dimension } from '@/types/metricas-dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +74,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // 1) Autenticación requerida — primer paso.
   const authResult = await requireAuth(request);
   if (authResult instanceof NextResponse) return authResult;
+
+  // 1a) Allowlist server-side por EMAIL (defensa contra headers spoofeables).
+  //     El gate de funcionalidad y el scope de empresa viajan en headers
+  //     (x-track-*) que el cliente puede forjar; este endpoint expone PII de
+  //     chofer cruzando empresa, así que exigimos que el email de la sesión
+  //     (verificado server-side por requireAuth) esté en una allowlist env
+  //     antes de servir nada. Si METRICAS_DASHBOARD_ALLOWED_EMAILS no está
+  //     seteada, se mantiene el comportamiento previo (solo gate por headers)
+  //     con un warning — configurarla antes de exponer el dashboard.
+  //     Fix completo (scope real por empresa para fletera) = authz server-side
+  //     contra SecuritySuite, pendiente de decisión de equipo (ver doc).
+  const allowGate = requireAllowlistedEmail(
+    authResult.user?.email,
+    process.env.METRICAS_DASHBOARD_ALLOWED_EMAILS,
+  );
+  if (allowGate !== true) return allowGate;
 
   // 1b) Gate de funcionalidad — mismo patrón que los endpoints admin/*
   // (root pasa siempre; reproduce server-side el guard client-only del layout).

@@ -52,3 +52,52 @@ export function requireFuncionalidad(
   }
   return true;
 }
+
+/**
+ * requireAllowlistedEmail — gate por email VERIFICADO server-side.
+ *
+ * A diferencia de requireFuncionalidad / x-track-* (que confían en headers que
+ * el cliente puede forjar), este chequea el email de la sesión autenticada
+ * (el que devuelve `requireAuth`, validado contra Supabase Auth) contra una
+ * allowlist configurada por env (CSV de emails). Sirve como defensa concreta
+ * en endpoints con datos sensibles MIENTRAS el modelo de authz server-side
+ * real (resolver scope/rol desde SecuritySuite en el server) no esté hecho:
+ * aunque alguien forje `x-track-isroot`/`x-track-funcs`, si su email autenticado
+ * no está en la lista no ve nada.
+ *
+ * Semántica:
+ *  - env vacía/ausente  -> `true` (no rompe el flujo; loguea un warning para
+ *    que quede claro que el endpoint depende solo del gate por headers).
+ *  - env seteada        -> el email debe estar en la lista (case-insensitive);
+ *    si no, 403 `NOT_ALLOWLISTED`.
+ *
+ * Uso:
+ *   const gate = requireAllowlistedEmail(authResult.user?.email, process.env.MI_ALLOWLIST);
+ *   if (gate !== true) return gate;
+ */
+export function requireAllowlistedEmail(
+  email: string | null | undefined,
+  allowlistEnv: string | undefined,
+): true | NextResponse {
+  const raw = (allowlistEnv ?? '').trim();
+  if (raw === '') {
+    console.warn(
+      '[api-auth-gates] allowlist de email no configurada — el endpoint depende solo del gate por headers (spoofeable). Configurar la env antes de exponer datos sensibles.',
+    );
+    return true;
+  }
+  const allowed = new Set(
+    raw
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e.length > 0),
+  );
+  const e = (email ?? '').trim().toLowerCase();
+  if (e.length === 0 || !allowed.has(e)) {
+    return NextResponse.json(
+      { success: false, error: 'Acceso denegado', code: 'NOT_ALLOWLISTED' },
+      { status: 403 },
+    );
+  }
+  return true;
+}

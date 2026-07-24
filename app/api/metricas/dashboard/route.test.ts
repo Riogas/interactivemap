@@ -12,7 +12,7 @@
  * alto), y 400 ante params inválidos (AC13).
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 // =============================================================================
@@ -141,6 +141,57 @@ describe('GET /api/metricas/dashboard', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
+  });
+
+  // ─── Allowlist server-side por email (defensa contra headers spoofeables) ──
+  describe('allowlist por email (METRICAS_DASHBOARD_ALLOWED_EMAILS)', () => {
+    const ENV_KEY = 'METRICAS_DASHBOARD_ALLOWED_EMAILS';
+    const prev = process.env[ENV_KEY];
+    afterEach(() => {
+      if (prev === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = prev;
+    });
+
+    it('email autenticado en la lista pasa (200) — case-insensitive, aunque el scope venga por header', async () => {
+      process.env[ENV_KEY] = 'admin@riogas.com.uy, otro@riogas.com.uy';
+      mockRequireAuth.mockResolvedValue({
+        session: { user: { id: 'u1', email: 'Admin@Riogas.com.uy' } },
+        user: { id: 'u1', email: 'Admin@Riogas.com.uy' },
+      } as never);
+      const req = makeRequest({ escenario: '1000', isRoot: true });
+      const res = await GET(req);
+      expect(res.status).toBe(200);
+      expect((await res.json()).success).toBe(true);
+    });
+
+    it('email FUERA de la lista -> 403 NOT_ALLOWLISTED aunque forje x-track-isroot + funcionalidad, sin tocar la RPC', async () => {
+      process.env[ENV_KEY] = 'admin@riogas.com.uy';
+      mockRequireAuth.mockResolvedValue({
+        session: { user: { id: 'u2', email: 'intruso@gmail.com' } },
+        user: { id: 'u2', email: 'intruso@gmail.com' },
+      } as never);
+      const req = makeRequest({ escenario: '1000', isRoot: true, funcionalidades: [FUNC] }); // headers forjados
+      const res = await GET(req);
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe('NOT_ALLOWLISTED');
+      expect(mockGetSupabase).not.toHaveBeenCalled();
+    });
+
+    it('sesión sin email + allowlist seteada -> 403 NOT_ALLOWLISTED', async () => {
+      process.env[ENV_KEY] = 'admin@riogas.com.uy';
+      mockRequireAuth.mockResolvedValue({ session: { user: { id: 'u3' } }, user: { id: 'u3' } } as never);
+      const req = makeRequest({ escenario: '1000', isRoot: true });
+      const res = await GET(req);
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe('NOT_ALLOWLISTED');
+    });
+
+    it('sin allowlist (env ausente): no bloquea, cae al gate por headers (comportamiento previo)', async () => {
+      delete process.env[ENV_KEY];
+      const req = makeRequest({ escenario: '1000', isRoot: true });
+      const res = await GET(req);
+      expect(res.status).toBe(200);
+    });
   });
 
   // ─── Scope fail-closed ──────────────────────────────────────────────────
