@@ -8,6 +8,19 @@ Este documento cubre solo backend (estructuras + cálculo + persistencia +
 scheduling). El panel/UI de visualización es una iteración posterior — fuera
 de alcance de este run.
 
+> **⚡ Arquitectura vigente (2026-07-24): función SQL pura.** El chofer ahora
+> sale de `pedidos/services.fletero` (mismo dato que daba el endpoint externo
+> `getSessionData`), así que el job entero corre adentro de Postgres: la
+> función `metricas_cumplimiento_run(desde, hasta)` (ver
+> `docs/sqls/2026-07-24-metricas-funcion-sql-pura.sql`), disparada por `pg_cron`
+> **sin HTTP**. El backfill es `SELECT metricas_cumplimiento_run('…','…');`,
+> instantáneo. El endpoint `POST /api/metricas/cumplimiento/run` y toda la
+> lógica TS de `lib/metricas/*` quedan como **legacy** (siguen andando, pero ya
+> no los usa el cron; se pueden retirar en una limpieza posterior). Las
+> secciones de abajo describen las reglas de cálculo, que la función SQL replica
+> 1:1 — salvo el chofer, que en la versión SQL es `fletero` directo (más preciso
+> que el heurístico por horario de sesión).
+
 ## Modelo de datos
 
 ### `pedidos.fch_hora_asignado` / `services.fch_hora_asignado`
