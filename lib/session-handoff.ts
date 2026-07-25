@@ -10,8 +10,16 @@
 /** Nombre del BroadcastChannel usado para el handoff. */
 export const HANDOFF_CHANNEL = 'trackmovil-auth';
 
-/** Cuánto espera una pestaña nueva una respuesta antes de caer al login. */
-export const HANDOFF_TIMEOUT_MS = 600;
+/**
+ * Cuánto espera una pestaña nueva una respuesta del handoff antes de caer al
+ * login. El round-trip por BroadcastChannel entre pestañas del mismo navegador
+ * es sincrónico (<10ms desde una hermana activa), así que esta ventana es breve
+ * a propósito: en una carga sin sesión (ej. kiosko de perfil nuevo, sin hermanas)
+ * es tiempo de spinner muerto antes del login. 200ms deja ~20x de margen para el
+ * handoff real (caso "Abrir mapa") y a la vez queda por debajo del umbral en que
+ * el ojo percibe un "cargando".
+ */
+export const HANDOFF_TIMEOUT_MS = 200;
 
 /**
  * Keys de auth que viven en sessionStorage (las que maneja authStorage).
