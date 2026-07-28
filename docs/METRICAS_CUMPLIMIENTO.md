@@ -58,7 +58,9 @@ para tener una PK homogénea entre orígenes).
 | `fch_hora_para` | timestamptz NULL | Hora máxima comprometida (origen) |
 | `demora_mins` | numeric | Bruta: `fin − asignado`. Siempre `>= 0` (negativos se excluyen, no se persisten) |
 | `demora_efectiva_mins` | numeric | **MÉTRICA PRINCIPAL** — ver regla de agendados abajo |
-| `atraso_vs_para_mins` | numeric NULL | `fin − para` CON signo (negativo = entregó antes); NULL sin para |
+| `fch_hora_max_ent_comp` | timestamptz NULL | Hora máxima de entrega **comprometida** (SLA) del origen |
+| `atraso_vs_compromiso_mins` | numeric NULL | **ATRASO OFICIAL**: `fin − max_ent_comp` CON signo (negativo = entregó antes del plazo); NULL sin compromiso |
+| `atraso_vs_para_mins` | numeric NULL | `fin − para` = tiempo total desde el **alta** del pedido. ⚠ NO es un atraso — ver abajo |
 | `reloj_inicio` | `'ASIGNADO'\|'PARA'` | Desde dónde arrancó el reloj de la efectiva |
 | `asignado_source` | `'CAMPO'\|'DERIVADO'` | Ver fallback |
 | `created_at` | timestamptz | |
@@ -67,6 +69,43 @@ para tener una PK homogénea entre orígenes).
 
 Sin RLS: el acceso de escritura es exclusivamente vía `getServerSupabaseClient()`
 (service_role) desde el endpoint del run.
+
+### `fch_hora_para` NO es el compromiso (2026-07-28)
+
+Hallazgo al ver los primeros números reales de la RPC: `on_time_pct` daba
+**0,14%**. El motivo es que el atraso se medía contra `fch_hora_para`
+asumiendo que era la hora comprometida. No lo es. Evidencia sobre la base:
+
+- El 59% de los valores de `fch_hora_para` terminan en `:59` segundos.
+- Está sistemáticamente **antes** de `fch_hora_asignado` — incluso en los
+  NOCTURNO, que serían los candidatos a estar agendados.
+- En `services` la relación es exacta: `fch_hora_max_ent_comp = fch_hora_para + 4h`.
+  O sea `para` = alta del pedido (para cuándo lo quiere ≈ ahora) y
+  `max_ent_comp` = el SLA.
+
+Nada puede terminar antes de haber entrado al sistema, así que ese 0,14% era
+un artefacto. Medido sobre 1000 pedidos cumplidos:
+
+| Campo usado como compromiso | % a tiempo | Atraso mediano |
+|---|---|---|
+| `fch_hora_para` | 0,2% | +28,2 min |
+| **`fch_hora_max_ent_comp`** | **77,6%** | **−15,8 min** |
+
+Corregido en `docs/sqls/2026-07-28b-metricas-compromiso-real.sql`, **aditiva**:
+se agregan `fch_hora_max_ent_comp` y `atraso_vs_compromiso_mins`, y el atraso
+oficial (vistas + RPC) pasa a salir de ahí. **No se renombró ni se pisó
+`atraso_vs_para_mins`**: lo escribe el path legacy `lib/metricas/build-fact.ts`
+y un rename lo rompería en runtime; además `fin − alta` es una métrica válida
+por sí sola (cuánto esperó el cliente desde que pidió).
+
+El backfill se hizo con `UPDATE ... FROM`, **no** con `metricas_cumplimiento_run()`:
+ese hace DELETE + INSERT desde `pedidos`/`services`, y si la fuente no cubriera
+todo el rango borraría hechos históricos irrecuperables.
+
+> **`fch_hora_para` sigue siendo correcto para la regla de agendados** — ahí
+> significa "para cuándo lo quiere", que es su sentido real. Que la regla
+> dispare poco (26 de 168.315) no es un bug: casi todos los pedidos son
+> inmediatos, así que `para ≈ ahora` y no hay espera planificada que descontar.
 
 ### El escenario es la clave principal (2026-07-28)
 
@@ -343,6 +382,10 @@ En orden, en el SQL Editor de Supabase:
    clave principal (índices + vistas + `p_escenario` en el run) **y la RPC del
    dashboard**. Es self-contained: aplicando este quedan la RPC y todo lo demás
    al día.
+8. **`docs/sqls/2026-07-28b-metricas-compromiso-real.sql`** — el atraso se mide
+   contra `fch_hora_max_ent_comp` (el SLA) en vez de `fch_hora_para` (que es el
+   alta). Aditiva; incluye el backfill por `UPDATE`. Aplicar **después** del
+   paso 7.
 
 ⚠ **`docs/sqls/2026-07-24-metricas-dashboard-rpc.sql` quedó OBSOLETO — no
 aplicar.** Nunca llegó a correrse en la base (verificado 2026-07-28: la RPC no
