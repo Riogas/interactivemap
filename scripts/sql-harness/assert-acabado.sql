@@ -24,6 +24,12 @@ SELECT chk('sube tope 30', (SELECT suavizada FROM demoras_acabado(120, 30, 30,12
 SELECT chk('baja tope 15', (SELECT suavizada FROM demoras_acabado(30, 120, 30,120,30,15,15)), 105::numeric);
 -- movimiento menor al tope pasa entero
 SELECT chk('sube 10 pasa', (SELECT suavizada FROM demoras_acabado(40, 30, 30,120,30,15,15)), 40::numeric);
+-- piso en el redondeo: suavizado puede mover valor fuera de rango si config cambio en caliente
+-- demoras_acabado(50, 35, 100, 120, 30, 15, 15): crudo=50 baja de 35 en tope -15 = 20
+-- pero 20 es menor que piso 100, asi que debe acotar a 100 sin salir del rango
+SELECT chk('piso en redondeo', (SELECT informada FROM demoras_acabado(50, 35, 100, 120, 30, 15, 15)), 100);
+-- previo muy por debajo del piso, baja es -15, pero valor acotado a piso
+SELECT chk('previo bajo se acota', (SELECT informada FROM demoras_acabado(50, 10, 100, 120, 30, 15, 15)), 100);
 
 -- Secuencia PICO FALSO de la spec: crudo 30,120,60,60,45 -> informa 30,60,60,60,45
 DO $$

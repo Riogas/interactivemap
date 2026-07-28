@@ -335,17 +335,20 @@ BEGIN
     v_suav := v_clamp;
   END IF;
 
-  -- 4. redondeo hacia arriba al escalon, sin salirse del techo
+  -- 4. redondeo hacia arriba al escalon, acotado por piso y techo
+  -- El suavizado puede mover el valor fuera del rango si p_prev estaba fuera;
+  -- la config es editable en caliente (demora_min_minutos, demora_max_minutos),
+  -- asi que volvemos a acotar aqui. La informada nunca sale del rango configurado.
   RETURN QUERY SELECT
     v_suav,
-    least(p_max, (ceil(v_suav::numeric / p_escalon) * p_escalon))::integer,
+    greatest(p_min, least(p_max, (ceil(v_suav::numeric / p_escalon) * p_escalon)))::integer,
     v_marca,
     v_aplico;
 END;
 $fn$;
 
 COMMENT ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) IS
-  'Aplica clamp -> suavizado asimetrico -> redondeo hacia arriba. Devuelve la suavizada continua (estado para la proxima corrida) y la informada redondeada (salida). p_prev NULL = primera corrida del dia.';
+  'Aplica clamp -> suavizado asimetrico -> redondeo hacia arriba, acotando por piso y techo. Devuelve la suavizada continua (estado para la proxima corrida) y la informada redondeada (salida). La informada nunca sale del rango [p_min, p_max] incluso si el suavizado la movieria fuera, lo que puede ocurrir cuando la config se edita en caliente. p_prev NULL = primera corrida del dia.';
 ```
 
 - [ ] **Step 4: Correr el assert para verificar que pasa**
@@ -366,6 +369,8 @@ separacion el redondeo se come los incrementos chicos y la serie se atasca.
 Validada en Postgres local con las dos secuencias de la spec: el pico falso
 nunca informa el 120, y la congestion real llega a la verdad en 30 minutos."
 ```
+
+**Fix round 1 (2026-07-28):** Hallazgo Important: el redondeo no tenia piso, solo techo. La config es editable en caliente (demora_min_minutos), asi que si p_prev queda por debajo del piso, la informada se cuele tambien. Arreglado: `greatest(p_min, least(p_max, ...))`. Aprobado por usuario.
 
 ---
 
