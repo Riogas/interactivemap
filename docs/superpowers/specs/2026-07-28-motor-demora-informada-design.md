@@ -74,16 +74,20 @@ Por par (zona, tipo), pedidos y services con `estado_nro = 1` y `fch_para` =
 hoy en Montevideo. Se cuentan **unidades, no lote** — el tamaño del lote se
 descartó explícitamente.
 
-Mapeo de tipos (la demanda tiene 5 baldes, la oferta 3):
+Mapeo de tipos (la demanda tiene 5 baldes, el motor usa 3):
 
 | Balde de demanda | Va al tipo |
 |---|---|
-| URGENTE, ESPECIAL, OTROS | `URGENTE` |
+| URGENTE | `URGENTE` |
 | NOCTURNO | `NOCTURNO` |
 | (todos los services) | `SERVICE` |
+| **ESPECIAL, OTROS** | **excluidos — no cuentan como demanda** |
 
-ESPECIAL y OTROS caen en URGENTE porque **no existe oferta diferenciada** para
-ellos: no hay móviles asignados "para ESPECIAL" en `moviles_zonas`.
+**Corrección del 2026-07-28 (decisión del usuario):** ESPECIAL y OTROS quedan
+**fuera** del motor. La versión anterior de esta spec los plegaba a URGENTE
+porque no tienen oferta propia en `moviles_zonas`; eso inflaba artificialmente
+la demanda de URGENTE con pedidos que no compiten por los mismos móviles. Un
+pedido ESPECIAL no cuenta como demanda para ningún bucket.
 
 Se cuentan tanto los asignados a un móvil como los sin asignar de esa zona.
 

@@ -667,15 +667,17 @@ STABLE
 AS $fn$
   WITH base AS (
     SELECT m.zona_nro,
-           -- La demanda tiene 5 baldes y la oferta 3: ESPECIAL y OTROS
-           -- caen en URGENTE porque no hay moviles propios para ellos.
-           CASE WHEN m.tipo_servicio IN ('URGENTE','ESPECIAL','OTROS') THEN 'URGENTE'
-                ELSE m.tipo_servicio END AS tipo,
+           m.tipo_servicio AS tipo,
            m.demora_efectiva_mins AS v
     FROM metricas_cumplimiento m
     WHERE m.escenario = p_escenario
       AND m.fecha BETWEEN (p_hasta - p_dias) AND (p_hasta - 1)
       AND m.zona_nro IS NOT NULL
+      -- ESPECIAL y OTROS quedan FUERA del motor de demora por decision del
+      -- usuario (2026-07-28): no se pliegan a URGENTE ni a ningun otro
+      -- balde. Solo se informa demora de los tres tipos que tienen oferta
+      -- propia en moviles_zonas.
+      AND m.tipo_servicio IN ('URGENTE','NOCTURNO','SERVICE')
   ),
   por_zona AS (
     SELECT zona_nro AS zona_id, tipo,
@@ -987,7 +989,9 @@ BEGIN
   rit AS (
     SELECT * FROM demoras_ritmo(v_esc, v_fecha)
   ),
-  -- Demanda: pendientes de hoy por zona, con los 5 baldes plegados a 3.
+  -- Demanda: pendientes de hoy por zona. ESPECIAL y OTROS quedan FUERA por
+  -- decision del usuario (2026-07-28): no se pliegan a URGENTE. Los pedidos
+  -- de esos tipos no cuentan como demanda para ningun bucket.
   dem AS (
     SELECT zona_nro AS zona_id, tipo,
            count(*) FILTER (WHERE movil IS NOT NULL AND movil <> 0)::integer AS asignados,
@@ -999,9 +1003,14 @@ BEGIN
                                                  AND md.fecha = v_fecha
                                                  AND md.activo))::integer    AS atrapados
     FROM (
+      -- Solo URGENTE y NOCTURNO exactos. Cualquier otro servicio_nombre
+      -- (ESPECIAL*, o lo que sea) da tipo NULL y se descarta abajo.
       SELECT zona_nro, movil,
-             CASE WHEN upper(trim(coalesce(servicio_nombre,''))) = 'NOCTURNO'
-                  THEN 'NOCTURNO' ELSE 'URGENTE' END AS tipo
+             CASE upper(trim(coalesce(servicio_nombre,'')))
+               WHEN 'NOCTURNO' THEN 'NOCTURNO'
+               WHEN 'URGENTE'  THEN 'URGENTE'
+               ELSE NULL
+             END AS tipo
       FROM pedidos
       WHERE escenario = v_esc AND estado_nro = 1
         AND fch_para = to_char(v_fecha, 'YYYYMMDD') AND zona_nro IS NOT NULL
@@ -1011,6 +1020,7 @@ BEGIN
       WHERE escenario = v_esc AND estado_nro = 1
         AND fch_para = to_char(v_fecha, 'YYYYMMDD') AND zona_nro IS NOT NULL
     ) p
+    WHERE p.tipo IS NOT NULL
     GROUP BY zona_nro, tipo
   ),
   -- Universo: todo par (zona activa, tipo) que tenga moviles asignados.
