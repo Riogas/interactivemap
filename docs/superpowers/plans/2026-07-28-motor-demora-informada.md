@@ -610,7 +610,21 @@ Validado: un movil en 1 zona de prioridad + 3 de transito aporta 0.5263 y
 
 ```sql
 \set ON_ERROR_STOP on
+TRUNCATE moviles_zonas;
 TRUNCATE metricas_cumplimiento;
+
+-- Poblamos el universo de moviles_zonas: zonas 100, 200, 300 con tipos URGENTE, NOCTURNO, SERVICE.
+INSERT INTO moviles_zonas (escenario_id, zona_id, tipo_de_servicio, activa)
+VALUES
+  (1000, 100, 'URGENTE', true),
+  (1000, 100, 'NOCTURNO', true),
+  (1000, 100, 'SERVICE', true),
+  (1000, 200, 'URGENTE', true),
+  (1000, 200, 'NOCTURNO', true),
+  (1000, 200, 'SERVICE', true),
+  (1000, 300, 'URGENTE', true),
+  (1000, 300, 'NOCTURNO', true),
+  (1000, 300, 'SERVICE', true);
 
 -- Zona 100 URGENTE: 5 hechos -> alcanza el minimo, origen ZONA.
 INSERT INTO metricas_cumplimiento
@@ -647,6 +661,28 @@ BEGIN
   IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 200 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
   RAISE NOTICE 'ok fallback a global por pocas muestras';
 END $$;
+
+-- Zona 300 URGENTE: en universo pero sin hechos -> fallback a GLOBAL.
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=300 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 300 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  RAISE NOTICE 'ok zona en universo sin hechos: devuelve fila, origen GLOBAL, valores del global';
+END $$;
+
+-- Tipo NOCTURNO: sin hechos en toda la ventana -> estadisticas NULL, muestras=0.
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='NOCTURNO';
+  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 100 NOCTURNO origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  IF r.ritmo_media IS NOT NULL OR r.ritmo_mediana IS NOT NULL OR r.ritmo_p75 IS NOT NULL OR r.ritmo_p90 IS NOT NULL THEN
+    RAISE EXCEPTION 'zona 100 NOCTURNO: estadisticas deben ser NULL (sin datos globales)';
+  END IF;
+  IF r.ritmo_muestras <> 0 THEN RAISE EXCEPTION 'zona 100 NOCTURNO: muestras debe ser 0, es %', r.ritmo_muestras; END IF;
+  RAISE NOTICE 'ok tipo sin hechos globales: estadisticas=NULL, muestras=0';
+END $$;
 ```
 
 - [ ] **Step 2: Correr el assert para verificar que falla**
@@ -669,6 +705,8 @@ Expected: FALLA con `function demoras_ritmo(...) does not exist`.
 -- reprocesar el historico con otra sin recalcular nada.
 --
 -- Si la zona no llega a p_min_muestras hechos, cae al global del tipo.
+-- Universo: pares (zona, tipo) en moviles_zonas; incluso zonas sin hechos
+-- deben devolver fila, con valores del global.
 -- =====================================================================
 CREATE OR REPLACE FUNCTION demoras_ritmo(
   p_escenario    integer,
@@ -689,7 +727,17 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 AS $fn$
-  WITH base AS (
+  WITH universo AS (
+    -- Pares (zona, tipo) que tienen moviles asignados en moviles_zonas.
+    -- Es el universo de referencia: incluso zonas sin hechos en la ventana
+    -- deben devolver una fila (con fallback a global).
+    SELECT DISTINCT mz.zona_id, mz.tipo_de_servicio AS tipo
+    FROM moviles_zonas mz
+    WHERE mz.escenario_id = p_escenario
+      AND coalesce(mz.activa, true)
+      AND mz.tipo_de_servicio IN ('URGENTE','NOCTURNO','SERVICE')
+  ),
+  base AS (
     SELECT m.zona_nro,
            m.tipo_servicio AS tipo,
            m.demora_efectiva_mins AS v
@@ -697,10 +745,8 @@ AS $fn$
     WHERE m.escenario = p_escenario
       AND m.fecha BETWEEN (p_hasta - p_dias) AND (p_hasta - 1)
       AND m.zona_nro IS NOT NULL
-      -- ESPECIAL y OTROS quedan FUERA del motor de demora por decision del
-      -- usuario (2026-07-28): no se pliegan a URGENTE ni a ningun otro
-      -- balde. Solo se informa demora de los tres tipos que tienen oferta
-      -- propia en moviles_zonas.
+      -- ESPECIAL y OTROS se excluyen del motor de demora por decision del
+      -- usuario (2026-07-28): no tienen oferta propia en moviles_zonas.
       AND m.tipo_servicio IN ('URGENTE','NOCTURNO','SERVICE')
   ),
   por_zona AS (
@@ -721,20 +767,21 @@ AS $fn$
            count(*)::integer AS n
     FROM base GROUP BY tipo
   )
-  SELECT z.zona_id,
-         z.tipo,
-         CASE WHEN z.n >= p_min_muestras THEN z.media   ELSE g.media   END,
-         CASE WHEN z.n >= p_min_muestras THEN z.mediana ELSE g.mediana END,
-         CASE WHEN z.n >= p_min_muestras THEN z.p75     ELSE g.p75     END,
-         CASE WHEN z.n >= p_min_muestras THEN z.p90     ELSE g.p90     END,
-         CASE WHEN z.n >= p_min_muestras THEN 'ZONA'    ELSE 'GLOBAL'  END,
-         CASE WHEN z.n >= p_min_muestras THEN z.n       ELSE g.n       END
-  FROM por_zona z
-  LEFT JOIN global g ON g.tipo = z.tipo;
+  SELECT u.zona_id,
+         u.tipo,
+         CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.media   ELSE g.media   END,
+         CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.mediana ELSE g.mediana END,
+         CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.p75     ELSE g.p75     END,
+         CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.p90     ELSE g.p90     END,
+         CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN 'ZONA'    ELSE 'GLOBAL'  END,
+         CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.n       ELSE g.n       END
+  FROM universo u
+  LEFT JOIN por_zona z ON z.zona_id = u.zona_id AND z.tipo = u.tipo
+  LEFT JOIN global g ON g.tipo = u.tipo;
 $fn$;
 
 COMMENT ON FUNCTION demoras_ritmo(integer, date, integer, integer) IS
-  'Las cuatro estadisticas (media/mediana/p75/p90) de demora_efectiva_mins por (zona, tipo) sobre los ultimos p_dias. Cae al global del tipo si la zona no llega a p_min_muestras. ESPECIAL y OTROS se pliegan a URGENTE.';
+  'Las cuatro estadisticas (media/mediana/p75/p90) de demora_efectiva_mins por (zona, tipo) sobre los ultimos p_dias. Cae al global del tipo si la zona no llega a p_min_muestras. Devuelve filas de todas las (zona, tipo) en moviles_zonas, incluso sin hechos (estadisticas NULL, muestras=0). ESPECIAL y OTROS se excluyen del motor.';
 ```
 
 - [ ] **Step 4: Correr el assert para verificar que pasa**
@@ -745,15 +792,21 @@ Expected: todos los `ok ...` y exit 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/sqls/2026-07-29-demoras-ritmo.sql scripts/sql-harness/assert-ritmo.sql
-git commit -m "feat(demoras): ritmo por zona con las cuatro estadisticas
+git add docs/sqls/2026-07-29-demoras-ritmo.sql scripts/sql-harness/assert-ritmo.sql docs/superpowers/plans/2026-07-28-motor-demora-informada.md
+git commit -m "feat(demoras): ritmo por zona con las cuatro estadisticas + fix round 1
 
 Calcula media, mediana, p75 y p90 de demora_efectiva_mins de los ultimos 7
 dias, y guarda las cuatro. Cual manda lo decide la config: tener todas
 permite reprocesar el historico con otra sin recalcular.
 
 Cae al global del tipo cuando la zona no llega a 5 muestras. ESPECIAL y
-OTROS se pliegan a URGENTE porque no tienen moviles propios."
+OTROS se excluyen del motor porque no tienen oferta propia en moviles_zonas.
+
+Fix round 1: bug critical hallado en revisión (zona sin hechos no devolvía
+fila). Solución: invertir conducción de la query: partir del universo de
+pares (zona,tipo) en moviles_zonas, hacer LEFT JOIN contra hechos. Ahora
+zonas sin hechos devuelven fila con valores del global. Agregados 2 nuevos
+asserts para cubrir edge cases."
 ```
 
 ---
