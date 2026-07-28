@@ -830,6 +830,7 @@ asserts para cubrir edge cases."
   ventana SA. Agregar la columna con el mismo tipo y default que producción:
   `pedidos_sa_minutos_antes INTEGER` (nullable, sin default; hoy vale 60 en el
   escenario 1000), y sembrarla en 60 en el INSERT del escenario 1000.
+  `demoras_config` NO va al stub: la crea la propia migración de esta task.
 
 **Interfaces:**
 - Consumes: `demoras_acabado`, `demoras_capacidad`, `demoras_ritmo`.
@@ -977,8 +978,7 @@ SELECT 'PEDIDO', 1000+g, 1000, (now() AT TIME ZONE 'America/Montevideo')::date -
 FROM generate_series(1,10) g;
 
 -- Fuerza ventana abierta para que el assert no dependa de la hora real.
-UPDATE app_config SET value='00:00' WHERE key='demora_hora_inicio';
-UPDATE app_config SET value='23:59' WHERE key='demora_hora_fin';
+UPDATE demoras_config SET hora_inicio='00:00', hora_fin='23:59' WHERE escenario_id=1000;
 
 DO $$
 DECLARE n bigint; r record;
@@ -1081,7 +1081,7 @@ BEGIN
 END $$;
 
 -- Interruptor de emergencia.
-UPDATE app_config SET value='false' WHERE key='demora_motor_activo';
+UPDATE demoras_config SET motor_activo=false WHERE escenario_id=1000;
 DO $$
 BEGIN
   IF demoras_calcular_run(timestamptz '2026-07-29 16:00:00-03') <> 0 THEN
@@ -1089,11 +1089,10 @@ BEGIN
   END IF;
   RAISE NOTICE 'ok interruptor';
 END $$;
-UPDATE app_config SET value='true' WHERE key='demora_motor_activo';
+UPDATE demoras_config SET motor_activo=true WHERE escenario_id=1000;
 
 -- Fuera de ventana.
-UPDATE app_config SET value='07:00' WHERE key='demora_hora_inicio';
-UPDATE app_config SET value='08:00' WHERE key='demora_hora_fin';
+UPDATE demoras_config SET hora_inicio='07:00', hora_fin='08:00' WHERE escenario_id=1000;
 DO $$
 BEGIN
   IF demoras_calcular_run(timestamptz '2026-07-29 15:00:00-03') <> 0 THEN
@@ -1130,39 +1129,19 @@ RETURNS bigint
 LANGUAGE plpgsql
 AS $fn$
 DECLARE
-  v_esc        integer := 1000;
-  v_local      timestamp;
-  v_fecha      date;
-  v_hora       time;
-  v_ini        time;
-  v_fin        time;
-  v_activo     boolean;
-  v_min        integer;  v_max     integer;  v_escalon integer;
-  v_subida     integer;  v_bajada  integer;
-  v_estad      text;     v_factor  numeric;
-  v_sa_mins    integer;
-  v_escritas   bigint;
-  cfg          jsonb;
+  v_esc      integer := 1000;
+  v_local    timestamp;
+  v_fecha    date;
+  v_hora     time;
+  v_sa_mins  integer;
+  v_escritas bigint;
 BEGIN
-  SELECT jsonb_object_agg(key, value) INTO cfg FROM app_config WHERE key LIKE 'demora\_%';
-
-  v_activo := coalesce((cfg->>'demora_motor_activo')::boolean, true);
-  IF NOT v_activo THEN RETURN 0; END IF;
-
+  -- La ventana horaria y el interruptor se evaluan POR TIPO, no globalmente:
+  -- NOCTURNO tiene su propio horario. Por eso no hay early return aca; el
+  -- filtro vive en el CTE `cfg` y se propaga por el JOIN de `universo`.
   v_local := p_corrida_at AT TIME ZONE 'America/Montevideo';
   v_fecha := v_local::date;
   v_hora  := v_local::time;
-  v_ini   := coalesce((cfg->>'demora_hora_inicio')::time, time '07:00');
-  v_fin   := coalesce((cfg->>'demora_hora_fin')::time,    time '23:30');
-  IF v_hora < v_ini OR v_hora > v_fin THEN RETURN 0; END IF;
-
-  v_min     := coalesce((cfg->>'demora_min_minutos')::integer, 30);
-  v_max     := coalesce((cfg->>'demora_max_minutos')::integer, 120);
-  v_escalon := coalesce((cfg->>'demora_escalon_minutos')::integer, 15);
-  v_subida  := coalesce((cfg->>'demora_subida_max')::integer, 30);
-  v_bajada  := coalesce((cfg->>'demora_bajada_max')::integer, 15);
-  v_estad   := coalesce(cfg->>'demora_estadistico', 'MEDIANA');
-  v_factor  := coalesce((cfg->>'demora_factor_calibracion')::numeric, 1.0);
 
   -- Ventana de visibilidad de los sin-asignar. NO es config del motor: es la
   -- misma que ya usan la capa de capacidad de entrega y el mapa, y vive por
@@ -1171,6 +1150,13 @@ BEGIN
     FROM escenario_settings es WHERE es.escenario_id = v_esc;
 
   WITH
+  -- Config por (escenario, tipo). Un tipo sin fila aca NO se calcula.
+  cfg AS (
+    SELECT * FROM demoras_config dc
+     WHERE dc.escenario_id = v_esc
+       AND dc.motor_activo
+       AND v_hora BETWEEN dc.hora_inicio AND dc.hora_fin
+  ),
   -- Zona activa: la bandera vive en la fila URGENTE del AS400 y la heredan
   -- NOCTURNO y SERVICE, que no tienen bandera propia.
   zonas_activas AS (
@@ -1231,10 +1217,15 @@ BEGIN
       )
     GROUP BY zona_nro, tipo
   ),
-  -- Universo: todo par (zona activa, tipo) que tenga moviles asignados.
+  -- Universo: zona activa + tipo con moviles asignados + config vigente
+  -- (motor prendido y dentro de la ventana horaria DE ESE TIPO).
   universo AS (
-    SELECT c.zona_id, c.tipo_servicio
-    FROM cap c JOIN zonas_activas za ON za.zona_id = c.zona_id
+    SELECT c.zona_id, c.tipo_servicio,
+           cf.min_minutos, cf.max_minutos, cf.escalon_minutos,
+           cf.subida_max, cf.bajada_max, cf.estadistico, cf.factor_calibracion
+    FROM cap c
+    JOIN zonas_activas za ON za.zona_id = c.zona_id
+    JOIN cfg cf          ON cf.tipo_servicio = c.tipo_servicio
   ),
   prev AS (
     SELECT DISTINCT ON (zona_id, tipo_servicio) zona_id, tipo_servicio, demora_suavizada
@@ -1247,6 +1238,8 @@ BEGIN
   arm AS (
     SELECT
       u.zona_id, u.tipo_servicio,
+      u.min_minutos, u.max_minutos, u.escalon_minutos,
+      u.subida_max, u.bajada_max, u.factor_calibracion,
       coalesce(d.asignados,0) AS asignados,
       coalesce(d.sin_asignar,0) AS sin_asignar,
       coalesce(d.atrapados,0) AS atrapados,
@@ -1257,10 +1250,10 @@ BEGIN
       coalesce(c.alpha_usado,0.3) AS alpha,
       r.ritmo_media, r.ritmo_mediana, r.ritmo_p75, r.ritmo_p90,
       r.ritmo_origen, r.ritmo_muestras,
-      CASE v_estad WHEN 'MEDIA' THEN r.ritmo_media
-                   WHEN 'P75'   THEN r.ritmo_p75
-                   WHEN 'P90'   THEN r.ritmo_p90
-                   ELSE r.ritmo_mediana END AS ritmo_usado,
+      CASE u.estadistico WHEN 'MEDIA' THEN r.ritmo_media
+                         WHEN 'P75'   THEN r.ritmo_p75
+                         WHEN 'P90'   THEN r.ritmo_p90
+                         ELSE r.ritmo_mediana END AS ritmo_usado,
       p.demora_suavizada AS prev_suav,
       (SELECT dd.minutos FROM demoras dd
         WHERE dd.escenario_id = v_esc AND dd.zona_id = u.zona_id
@@ -1275,10 +1268,10 @@ BEGIN
     SELECT a.*,
            (a.asignados + a.sin_asignar) AS pendientes_total,
            CASE
-             WHEN (a.asignados + a.sin_asignar) = 0 THEN v_min::numeric
-             WHEN a.capacidad <= 0                  THEN v_max::numeric
+             WHEN (a.asignados + a.sin_asignar) = 0 THEN a.min_minutos::numeric
+             WHEN a.capacidad <= 0                  THEN a.max_minutos::numeric
              ELSE ((a.asignados + a.sin_asignar)::numeric / a.capacidad)
-                  * coalesce(a.ritmo_usado, 30) * v_factor
+                  * coalesce(a.ritmo_usado, 30) * a.factor_calibracion
            END AS demora_cruda
     FROM arm a
   ),
@@ -1286,7 +1279,8 @@ BEGIN
     SELECT c.*, f.suavizada, f.informada, f.clampeado, f.suavizado_aplicado
     FROM crudo c
     CROSS JOIN LATERAL demoras_acabado(
-      c.demora_cruda, c.prev_suav, v_min, v_max, v_subida, v_bajada, v_escalon
+      c.demora_cruda, c.prev_suav,
+      c.min_minutos, c.max_minutos, c.subida_max, c.bajada_max, c.escalon_minutos
     ) f
   ),
   ins AS (
@@ -1321,7 +1315,7 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION demoras_calcular_run(timestamptz) IS
-  'Motor de demora informada. Corre sobre zonas activas con moviles asignados, usando solo moviles activos. Evalua la ventana horaria internamente (pg_cron corre en UTC y la ventana cruza medianoche UTC). Devuelve filas escritas; 0 si esta apagado o fuera de ventana.';
+  'Motor de demora informada. Corre sobre zonas activas con moviles asignados, usando solo moviles activos. La config vive en demoras_config por (escenario, tipo): el interruptor y la ventana horaria se evaluan POR TIPO, asi que NOCTURNO puede tener su propio horario. Un tipo sin fila de config no se calcula. Devuelve filas escritas.';
 ```
 
 - [ ] **Step 5: Correr el assert para verificar que pasa**
@@ -2000,11 +1994,12 @@ el AS400 no informa esos tipos."
   -- 3) Los jobs quedaron programados
   SELECT jobname, schedule, active FROM cron.job WHERE jobname LIKE 'demoras-%';
   ```
-- **Cómo apagar el motor en caliente**: `UPDATE app_config SET value='false' WHERE key='demora_motor_activo';`
-- **Cómo cambiar el estadístico**: `UPDATE app_config SET value='P75' WHERE key='demora_estadistico';`
+- **Cómo apagar el motor en caliente**: `UPDATE demoras_config SET motor_activo=false WHERE escenario_id=1000;`
+- **Cómo cambiar el estadístico** (por tipo):
+  `UPDATE demoras_config SET estadistico='P75' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';`
 - **El riesgo R1 copiado íntegro** desde la spec, con el recordatorio de que el
   número no debe informarse a un cliente hasta que la brecha esté calibrada.
-- **Tabla de las 10 claves de configuración** con sus defaults.
+- **Tabla de las columnas de `demoras_config`** con sus defaults, aclarando que la config es por (escenario, tipo de servicio) y que un tipo sin fila no se calcula.
 
 - [ ] **Step 2: Marcar la spec como implementada**
 
@@ -2034,8 +2029,8 @@ que la brecha contra el AS400 este calibrada."
 puede desde acá (Postgres firewalleado). Al terminar, las 6 migraciones quedan
 listas para pegar en el SQL Editor, en el orden de la Task 9.
 
-**Los campos en Preferencias Globales.** Este plan deja las 10 claves sembradas
-en `app_config` y editables por SQL. Exponerlas en
+**Los campos en Preferencias Globales.** Este plan deja la tabla `demoras_config`
+sembrada con los tres tipos del escenario 1000 y editable por SQL. Exponerla en
 `components/ui/PreferenciasGlobalesModal.tsx` es un incremento posterior, una
 vez que el motor haya corrido unos días y sepamos qué vale la pena tocar. No
 tiene sentido construir la pantalla antes de saber eso.
@@ -2060,9 +2055,9 @@ Requisito del usuario (2026-07-28).
 - Modify: `docs/DEMORA_INFORMADA.md` (documentar la clave nueva)
 
 **Interfaces:**
-- Consumes: `app_config.demora_ritmo_cascada` (sembrada en la Task 5, default
-  `'CHOFER,MOVIL,ZONA,GLOBAL'`), `metricas_cumplimiento`, `moviles_zonas`,
-  `moviles_dia`.
+- Consumes: `demoras_config.ritmo_cascada` por (escenario, tipo) (sembrada en la
+  Task 5, default `'CHOFER,MOVIL,ZONA,GLOBAL'`), `metricas_cumplimiento`,
+  `moviles_zonas`, `moviles_dia`.
 - Produces: misma firma que `demoras_ritmo(p_escenario, p_hasta, p_dias, p_min_muestras)`.
   `ritmo_origen` pasa a poder valer `CHOFER | MOVIL | ZONA | GLOBAL`. La Task 5
   no necesita cambios: ya hace `LEFT JOIN` contra esta función y persiste
@@ -2083,7 +2078,7 @@ un móvil de tránsito pesa menos que uno de prioridad, igual que en la capacida
 - **ZONA** — lo que ya hace hoy.
 - **GLOBAL** — lo que ya hace hoy.
 
-**Orden.** Se lee `demora_ritmo_cascada` como CSV, se recorre de izquierda a
+**Orden.** Se lee `demoras_config.ritmo_cascada` del tipo en cuestion como CSV, se recorre de izquierda a
 derecha y **gana el primer nivel que llegue a `p_min_muestras`**. Niveles
 desconocidos se ignoran; si la lista queda vacía o mal formada, se cae al
 default `CHOFER,MOVIL,ZONA,GLOBAL`. `GLOBAL` se evalúa siempre último aunque no
@@ -2104,7 +2099,7 @@ BEGIN
 END $$;
 
 -- Sacando CHOFER de la lista, el mismo dato debe resolver por MOVIL.
-UPDATE app_config SET value='MOVIL,ZONA,GLOBAL' WHERE key='demora_ritmo_cascada';
+UPDATE demoras_config SET ritmo_cascada='MOVIL,ZONA,GLOBAL' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
 DO $$
 DECLARE r record;
 BEGIN
@@ -2114,7 +2109,7 @@ BEGIN
 END $$;
 
 -- Lista solo con ZONA: debe resolver por ZONA, y caer a GLOBAL si no alcanza.
-UPDATE app_config SET value='ZONA' WHERE key='demora_ritmo_cascada';
+UPDATE demoras_config SET ritmo_cascada='ZONA' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
 DO $$
 DECLARE r record;
 BEGIN
@@ -2124,7 +2119,7 @@ BEGIN
 END $$;
 
 -- Lista basura: cae al default sin romper.
-UPDATE app_config SET value='FRUTA,,XX' WHERE key='demora_ritmo_cascada';
+UPDATE demoras_config SET ritmo_cascada='FRUTA,,XX' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
 DO $$
 DECLARE r record;
 BEGIN
@@ -2132,7 +2127,7 @@ BEGIN
   IF r.ritmo_origen IS NULL THEN RAISE EXCEPTION 'lista basura no debe romper'; END IF;
   RAISE NOTICE 'ok lista invalida cae al default';
 END $$;
-UPDATE app_config SET value='CHOFER,MOVIL,ZONA,GLOBAL' WHERE key='demora_ritmo_cascada';
+UPDATE demoras_config SET ritmo_cascada='CHOFER,MOVIL,ZONA,GLOBAL' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
 ```
 
 Los datos de prueba tienen que poblar `metricas_cumplimiento` con al menos un
@@ -2155,7 +2150,9 @@ más un `LATERAL` o un `CASE` en cascada que elija el primero que cumpla
 Leer la config con:
 ```sql
 v_cascada text[] := string_to_array(
-  upper(coalesce((SELECT value FROM app_config WHERE key='demora_ritmo_cascada'),
+  upper(coalesce((SELECT dc.ritmo_cascada FROM demoras_config dc
+                   WHERE dc.escenario_id = p_escenario
+                     AND dc.tipo_servicio = <tipo en curso>),
                  'CHOFER,MOVIL,ZONA,GLOBAL')), ',');
 ```
 
@@ -2167,7 +2164,7 @@ seguir pasando.
 
 - [ ] **Step 5: Documentar y commitear**
 
-Agregar la clave `demora_ritmo_cascada` a la tabla de configuración de
+Agregar la columna `ritmo_cascada` a la tabla de configuración de
 `docs/DEMORA_INFORMADA.md`, con los niveles válidos y la regla de que GLOBAL es
 siempre la red final.
 
@@ -2176,8 +2173,9 @@ git add docs/sqls/2026-07-30-demoras-ritmo-cascada.sql scripts/sql-harness/asser
 git commit -m "feat(demoras): cascada del ritmo completa y con orden configurable
 
 Sube de zona->global a chofer->movil->zona->global, con el orden leido de
-app_config.demora_ritmo_cascada (default CHOFER,MOVIL,ZONA,GLOBAL) para
-poder cambiarlo desde Preferencias Globales sin deploy.
+demoras_config.ritmo_cascada por (escenario, tipo) (default
+CHOFER,MOVIL,ZONA,GLOBAL) para poder cambiarlo desde Preferencias Globales
+sin deploy y de forma distinta por tipo de servicio.
 
 Los niveles CHOFER y MOVIL no son valores unicos por zona: se resuelven
 como promedio ponderado por el aporte de cada movil, el mismo que usa

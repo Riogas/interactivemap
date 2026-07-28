@@ -266,32 +266,44 @@ CREATE INDEX idx_demoras_calc_at ON demoras_calculadas (corrida_at);
 ```
 
 Volumen: ~254 filas × 99 corridas/día ≈ **25.000 filas/día**. Con retención de
-30 días, ~750k filas.
+**180 días**, ~4,5M filas.
 
 ### 4.2 Retención
 
-Job diario que purga `corrida_at < now() - 30 días`. Se agrega al mismo pg_cron
+Job diario que purga `corrida_at < now() - 180 días`. Se eligió 180 y no 30
+para poder comparar contra el AS400 sobre media temporada, no sobre un mes
+suelto. Se agrega al mismo pg_cron
 que ya limpia GPS (`cron-cleanup-gps-history.sql` es el patrón).
 
-### 4.3 Configuración
+### 4.3 Configuración: `demoras_config`
 
-Tabla `app_config` (ya existe, la usa el modal de Preferencias Globales).
-Gate: root o funcionalidad `Preferencias Globales`.
+**Por (escenario, tipo de servicio)** — no en `app_config`, que es key-value
+global. Un NOCTURNO no tiene por qué compartir la ventana horaria ni los topes
+de un URGENTE. Editable desde Preferencias Globales.
 
-| Clave | Default | Descripción |
+PK `(escenario_id, tipo_servicio)`. **Un tipo sin fila no se calcula** — es la
+forma de apagar un tipo entero sin borrar histórico.
+
+| Columna | Default | Para qué |
 |---|---|---|
-| `demora_min_minutos` | 30 | Piso |
-| `demora_max_minutos` | 120 | Techo |
-| `demora_escalon_minutos` | 15 | Redondeo hacia arriba |
-| `demora_subida_max` | 30 | Máximo que sube por corrida |
-| `demora_bajada_max` | 15 | Máximo que baja por corrida |
-| `demora_estadistico` | `MEDIANA` | `MEDIA\|MEDIANA\|P75\|P90` |
-| `demora_hora_inicio` | `07:00` | Inicio de ventana (Montevideo) |
-| `demora_hora_fin` | `23:30` | Fin de ventana (Montevideo) |
-| `demora_factor_calibracion` | `1.0` | Multiplicador global (ver R1) |
-| `demora_motor_activo` | `true` | Interruptor de emergencia |
+| `motor_activo` | `true` | Interruptor, por tipo |
+| `min_minutos` | 30 | Piso |
+| `max_minutos` | 120 | Techo |
+| `escalon_minutos` | 15 | Redondeo hacia arriba |
+| `subida_max` | 30 | Cuánto sube por corrida |
+| `bajada_max` | 15 | Cuánto baja por corrida |
+| `estadistico` | `MEDIANA` | Cuál de las cuatro manda |
+| `ritmo_cascada` | `CHOFER,MOVIL,ZONA,GLOBAL` | Orden de la cascada |
+| `factor_calibracion` | 1.0 | Ajuste global (ver R1) |
+| `hora_inicio` / `hora_fin` | 07:00 / 23:30 | Ventana operativa **de ese tipo** |
 
----
+El seed arranca NOCTURNO en **18:00–23:30**, que es el caso que motivó pasar la
+config a por-tipo: calcular demora de nocturnos a las 8 de la mañana no
+significa nada.
+
+Constraints en la tabla: `max_minutos >= min_minutos`, `escalon_minutos > 0`,
+`factor_calibracion > 0`, y `estadistico` restringido a los cuatro válidos. Es
+config editable por gente, así que la base la valida en vez de confiar.
 
 ## 5. El motor
 
