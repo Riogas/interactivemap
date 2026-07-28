@@ -99,7 +99,7 @@ export const INFO_TEXTS = {
   },
   kpi_atraso: {
     title: 'Atraso vs. compromiso',
-    text: 'Atraso vs. compromiso = hora de finalización − hora comprometida, CON signo: positivo = entregó después de lo comprometido; negativo = entregó antes. Se promedia solo sobre los pedidos que tienen hora comprometida registrada (los que no la tienen quedan fuera de este cálculo, no cuentan como 0). El porcentaje "a tiempo" es la proporción con atraso ≤ 0.',
+    text: 'Atraso vs. compromiso = hora de finalización − hora máxima de entrega comprometida (el SLA que viaja en el pedido), CON signo: positivo = entregó después de lo comprometido; negativo = entregó antes, que es lo esperable en la mayoría de los casos. Se promedia solo sobre los pedidos que traen compromiso registrado (los que no lo traen quedan fuera del cálculo, no cuentan como 0). El porcentaje "a tiempo" es la proporción con atraso ≤ 0. OJO: no confundir con el tiempo transcurrido desde el alta del pedido, que es otra cosa y queda guardado aparte en la tabla de hechos.',
   },
   tendencia: {
     title: 'Tendencia · demora efectiva',
