@@ -1,8 +1,15 @@
 'use client';
 
-import type { Ventana, Dimension, RangoDisponible, PeriodoSel, TipoServicioDashboard } from '@/types/metricas-dashboard';
+import type {
+  Ventana,
+  Dimension,
+  RangoDisponible,
+  PeriodoSel,
+  TipoServicioDashboard,
+  EscenarioOption,
+} from '@/types/metricas-dashboard';
 import { TIPOS_SERVICIO } from '@/types/metricas-dashboard';
-import { COLOR_TIPO, TIPO_LABEL } from './metricas-theme';
+import { COLOR_TIPO, TIPO_LABEL, formatCount } from './metricas-theme';
 import { PeriodPicker, type PeriodValue } from './PeriodPicker';
 
 const VENTANA_OPTIONS: { value: Ventana; label: string }[] = [
@@ -58,6 +65,9 @@ export interface EmpresaOption {
 }
 
 export function FiltersBar({
+  escenarios,
+  escenarioSel,
+  onEscenarioChange,
   empresas,
   empresaSel,
   onEmpresaChange,
@@ -72,6 +82,10 @@ export function FiltersBar({
   periodValue,
   onPeriodChange,
 }: {
+  /** Escenarios con datos en el scope del caller. Vacío = todavía no cargó. */
+  escenarios: EscenarioOption[];
+  escenarioSel: number | null;
+  onEscenarioChange: (id: number) => void;
   empresas: EmpresaOption[];
   empresaSel: number | null;
   onEmpresaChange: (id: number | null) => void;
@@ -88,6 +102,42 @@ export function FiltersBar({
 }) {
   return (
     <div className="stats-section-enter mt-5 flex flex-wrap items-center gap-4 rounded-2xl border border-stats-border bg-stats-surface p-3 shadow-sm">
+      {/* ── Escenario: clave principal del modelo, por eso va primero y
+             visualmente destacado (borde/fondo de acento + separador). Con un
+             solo escenario se muestra como etiqueta fija: un desplegable de
+             una sola opción es ruido. ── */}
+      <div className="flex items-center gap-4">
+        <label className="flex flex-col gap-[0.3rem]">
+          <span className="text-[0.66rem] font-semibold uppercase tracking-wide text-stats-primary">Escenario</span>
+          {escenarios.length > 1 ? (
+            <select
+              value={escenarioSel ?? ''}
+              onChange={(e) => onEscenarioChange(Number(e.target.value))}
+              aria-label="Escenario"
+              className="rounded-md border border-stats-primary/50 bg-stats-primary/5 px-2.5 py-1.5 text-sm font-semibold text-stats-foreground outline-none focus:border-stats-primary dark:bg-stats-primary/15"
+            >
+              {escenarios.map((e) => (
+                <option key={e.escenario} value={e.escenario}>
+                  {e.nombre} · {formatCount(e.cantidad)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span
+              className="inline-flex items-center rounded-md border border-stats-primary/50 bg-stats-primary/5 px-2.5 py-1.5 text-sm font-semibold text-stats-foreground dark:bg-stats-primary/15"
+              title={
+                escenarios[0]
+                  ? `${formatCount(escenarios[0].cantidad)} cumplidos · ${escenarios[0].min_fecha} → ${escenarios[0].max_fecha}`
+                  : undefined
+              }
+            >
+              {escenarios[0]?.nombre ?? (escenarioSel != null ? `Escenario ${escenarioSel}` : '—')}
+            </span>
+          )}
+        </label>
+        <div className="h-9 w-px self-end bg-stats-border" aria-hidden="true" />
+      </div>
+
       {empresas.length > 0 && (
         <label className="flex flex-col gap-[0.3rem]">
           <span className="text-[0.66rem] font-semibold uppercase tracking-wide text-stats-muted-fg">Empresa fletera</span>

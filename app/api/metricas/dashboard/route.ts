@@ -3,9 +3,19 @@
  *
  * Datos agregados (KPIs con percentiles exactos, tendencia, por-tipo,
  * ranking) para /dashboard/metricas-cumplimiento. Consume la RPC
- * `metricas_dashboard(p jsonb)` (ver docs/sqls/2026-07-24-metricas-dashboard-rpc.sql),
+ * `metricas_dashboard(p jsonb)` (ver docs/sqls/2026-07-28-metricas-escenario-primero.sql),
  * que lee directo de la tabla de hechos `metricas_cumplimiento` (nunca de las
  * vistas `vw_metricas_cumplimiento_*` — promediar promedios da mal).
+ *
+ * El ESCENARIO es la clave principal: un chofer/móvil/zona puede repetirse
+ * en escenarios distintos y jamás debe sumarse entre ellos. La RPC devuelve
+ * además `escenarios` (los disponibles en el scope, para el selector) y
+ * `comparativa` (todos los escenarios sobre el mismo período).
+ *
+ * OJO: `escenario` NO es un límite de autorización y nunca lo fue — el
+ * usuario ya lo elegía tipeándolo en el login. El scope real es la allowlist
+ * por email + el filtro de empresa fletera, que también acota qué escenarios
+ * se listan.
  *
  * Query params:
  *   - escenario  (requerido, int)
@@ -58,8 +68,10 @@ const EMPTY_KPIS = {
   on_time_pct: null,
 } as const;
 
-function emptyPayload(): MetricasDashboardData {
+function emptyPayload(escenario: number): MetricasDashboardData {
   return {
+    escenario_sel: escenario,
+    escenarios: [],
     rango: null,
     periodo_sel: { desde: null, hasta: null },
     kpis: { ...EMPTY_KPIS },
@@ -67,6 +79,7 @@ function emptyPayload(): MetricasDashboardData {
     serie: [],
     por_tipo: [],
     ranking: [],
+    comparativa: [],
   };
 }
 
@@ -161,7 +174,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   // Fail-closed: no-root sin empresas válidas -> payload vacío SIN tocar la RPC.
   if (scopeEmpresaIds !== null && scopeEmpresaIds.length === 0) {
-    return NextResponse.json({ success: true, data: emptyPayload() });
+    return NextResponse.json({ success: true, data: emptyPayload(escenario) });
   }
 
   // 8) empresaSel (query "empresa", int opcional) — INTERSECCIÓN server-side,
@@ -204,5 +217,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  return NextResponse.json({ success: true, data: (data as MetricasDashboardData) ?? emptyPayload() });
+  return NextResponse.json({ success: true, data: (data as MetricasDashboardData) ?? emptyPayload(escenario) });
 }
