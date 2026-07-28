@@ -646,11 +646,11 @@ DO $$
 DECLARE r record;
 BEGIN
   SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='URGENTE';
-  IF r.ritmo_origen <> 'ZONA' THEN RAISE EXCEPTION 'zona 100 origen: % (esperaba ZONA)', r.ritmo_origen; END IF;
-  IF r.ritmo_muestras <> 5 THEN RAISE EXCEPTION 'zona 100 muestras: %', r.ritmo_muestras; END IF;
-  IF round(r.ritmo_mediana,2) <> 30.00 THEN RAISE EXCEPTION 'mediana: % (esperaba 30)', r.ritmo_mediana; END IF;
-  IF round(r.ritmo_media,2) <> 40.00 THEN RAISE EXCEPTION 'media: % (esperaba 40)', r.ritmo_media; END IF;
-  IF r.ritmo_p90 <= r.ritmo_mediana THEN RAISE EXCEPTION 'p90 debe superar la mediana'; END IF;
+  IF r.ritmo_origen IS DISTINCT FROM 'ZONA' THEN RAISE EXCEPTION 'zona 100 origen: % (esperaba ZONA)', r.ritmo_origen; END IF;
+  IF r.ritmo_muestras IS DISTINCT FROM 5 THEN RAISE EXCEPTION 'zona 100 muestras: %', r.ritmo_muestras; END IF;
+  IF round(r.ritmo_mediana,2) IS DISTINCT FROM 30.00 THEN RAISE EXCEPTION 'mediana: % (esperaba 30)', r.ritmo_mediana; END IF;
+  IF round(r.ritmo_media,2) IS DISTINCT FROM 40.00 THEN RAISE EXCEPTION 'media: % (esperaba 40)', r.ritmo_media; END IF;
+  IF r.ritmo_p90 IS DISTINCT FROM NULL AND r.ritmo_p90 <= r.ritmo_mediana THEN RAISE EXCEPTION 'p90 debe superar la mediana'; END IF;
   RAISE NOTICE 'ok zona con muestras suficientes';
 END $$;
 
@@ -658,16 +658,24 @@ DO $$
 DECLARE r record;
 BEGIN
   SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=200 AND tipo_servicio='URGENTE';
-  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 200 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  IF r.ritmo_origen IS DISTINCT FROM 'GLOBAL' THEN RAISE EXCEPTION 'zona 200 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  -- Cuando cae al global, ritmo_muestras es el count del global (7 = 5 de zona 100 + 2 de zona 200)
+  IF r.ritmo_muestras IS DISTINCT FROM 7 THEN RAISE EXCEPTION 'zona 200 muestras: % (esperaba 7 del global)', r.ritmo_muestras; END IF;
   RAISE NOTICE 'ok fallback a global por pocas muestras';
 END $$;
 
 -- Zona 300 URGENTE: en universo pero sin hechos -> fallback a GLOBAL.
+-- Valores deben coincidir con el global de URGENTE.
 DO $$
-DECLARE r record;
+DECLARE r record; r_global record;
 BEGIN
   SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=300 AND tipo_servicio='URGENTE';
-  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 300 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  -- Obtener el global de URGENTE desde zona 200 que tiene origen='GLOBAL'
+  SELECT * INTO r_global FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=200 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen IS DISTINCT FROM 'GLOBAL' THEN RAISE EXCEPTION 'zona 300 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  -- Zona 300 sin hechos debe tener los mismos valores que el global (sacado del global del tipo URGENTE)
+  IF r.ritmo_media IS DISTINCT FROM r_global.ritmo_media THEN RAISE EXCEPTION 'zona 300 media: % (esperaba %)', r.ritmo_media, r_global.ritmo_media; END IF;
+  IF r.ritmo_mediana IS DISTINCT FROM r_global.ritmo_mediana THEN RAISE EXCEPTION 'zona 300 mediana: % (esperaba %)', r.ritmo_mediana, r_global.ritmo_mediana; END IF;
   RAISE NOTICE 'ok zona en universo sin hechos: devuelve fila, origen GLOBAL, valores del global';
 END $$;
 
@@ -676,11 +684,11 @@ DO $$
 DECLARE r record;
 BEGIN
   SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='NOCTURNO';
-  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 100 NOCTURNO origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  IF r.ritmo_origen IS DISTINCT FROM 'GLOBAL' THEN RAISE EXCEPTION 'zona 100 NOCTURNO origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
   IF r.ritmo_media IS NOT NULL OR r.ritmo_mediana IS NOT NULL OR r.ritmo_p75 IS NOT NULL OR r.ritmo_p90 IS NOT NULL THEN
     RAISE EXCEPTION 'zona 100 NOCTURNO: estadisticas deben ser NULL (sin datos globales)';
   END IF;
-  IF r.ritmo_muestras <> 0 THEN RAISE EXCEPTION 'zona 100 NOCTURNO: muestras debe ser 0, es %', r.ritmo_muestras; END IF;
+  IF r.ritmo_muestras IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'zona 100 NOCTURNO: muestras debe ser 0, es %', r.ritmo_muestras; END IF;
   RAISE NOTICE 'ok tipo sin hechos globales: estadisticas=NULL, muestras=0';
 END $$;
 ```
@@ -774,7 +782,7 @@ AS $fn$
          CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.p75     ELSE g.p75     END,
          CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.p90     ELSE g.p90     END,
          CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN 'ZONA'    ELSE 'GLOBAL'  END,
-         CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.n       ELSE g.n       END
+         coalesce(CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.n ELSE g.n END, 0)
   FROM universo u
   LEFT JOIN por_zona z ON z.zona_id = u.zona_id AND z.tipo = u.tipo
   LEFT JOIN global g ON g.tipo = u.tipo;
@@ -889,21 +897,49 @@ CREATE INDEX IF NOT EXISTS idx_demoras_calc_at
 COMMENT ON TABLE demoras_calculadas IS
   'Una fila por (corrida, zona, tipo) con la demora calculada y todos sus insumos. Escrita por demoras_calcular_run (pg_cron cada 10 min). NO alimenta a nadie: es solo comparativa contra el AS400.';
 
--- ─── Configuracion (app_config es key-value TEXT) ────────────────────
-INSERT INTO app_config (key, value, description) VALUES
-  ('demora_min_minutos',        '30',      'Motor de demora: piso en minutos'),
-  ('demora_max_minutos',        '120',     'Motor de demora: techo en minutos'),
-  ('demora_escalon_minutos',    '15',      'Motor de demora: redondeo hacia arriba'),
-  ('demora_subida_max',         '30',      'Motor de demora: cuanto puede subir por corrida'),
-  ('demora_bajada_max',         '15',      'Motor de demora: cuanto puede bajar por corrida'),
-  ('demora_estadistico',        'MEDIANA', 'Motor de demora: MEDIA|MEDIANA|P75|P90'),
-  ('demora_ritmo_cascada',      'CHOFER,MOVIL,ZONA,GLOBAL',
-                                           'Motor de demora: orden de la cascada de atribucion del ritmo, CSV. Se prueba nivel por nivel de izquierda a derecha y gana el primero que llegue al minimo de muestras. Niveles validos: CHOFER, MOVIL, ZONA, GLOBAL. Se pueden omitir niveles (ej. ZONA,GLOBAL) pero GLOBAL debe ir siempre ultimo.'),
-  ('demora_hora_inicio',        '07:00',   'Motor de demora: inicio de ventana (Montevideo)'),
-  ('demora_hora_fin',           '23:30',   'Motor de demora: fin de ventana (Montevideo)'),
-  ('demora_factor_calibracion', '1.0',     'Motor de demora: multiplicador global (ver riesgo R1)'),
-  ('demora_motor_activo',       'true',    'Motor de demora: interruptor de emergencia')
-ON CONFLICT (key) DO NOTHING;
+-- ─── Configuracion POR ESCENARIO Y POR TIPO DE SERVICIO ──────────────
+-- No va en app_config: esa tabla es key-value GLOBAL y esta config tiene que
+-- poder diferir por escenario y por tipo. Un NOCTURNO no tiene por que
+-- compartir la ventana horaria ni los topes de un URGENTE.
+CREATE TABLE IF NOT EXISTS demoras_config (
+  escenario_id              integer NOT NULL,
+  tipo_servicio             text    NOT NULL CHECK (tipo_servicio IN ('URGENTE','NOCTURNO','SERVICE')),
+
+  motor_activo              boolean NOT NULL DEFAULT true,
+  min_minutos               integer NOT NULL DEFAULT 30  CHECK (min_minutos  >= 0),
+  max_minutos               integer NOT NULL DEFAULT 120 CHECK (max_minutos  >= 0),
+  escalon_minutos           integer NOT NULL DEFAULT 15  CHECK (escalon_minutos > 0),
+  subida_max                integer NOT NULL DEFAULT 30  CHECK (subida_max   >= 0),
+  bajada_max                integer NOT NULL DEFAULT 15  CHECK (bajada_max   >= 0),
+  estadistico               text    NOT NULL DEFAULT 'MEDIANA'
+                                    CHECK (estadistico IN ('MEDIA','MEDIANA','P75','P90')),
+  ritmo_cascada             text    NOT NULL DEFAULT 'CHOFER,MOVIL,ZONA,GLOBAL',
+  factor_calibracion        numeric NOT NULL DEFAULT 1.0 CHECK (factor_calibracion > 0),
+  hora_inicio               time    NOT NULL DEFAULT '07:00',
+  hora_fin                  time    NOT NULL DEFAULT '23:30',
+
+  updated_at                timestamptz NOT NULL DEFAULT now(),
+  updated_by                text,
+
+  PRIMARY KEY (escenario_id, tipo_servicio),
+  CONSTRAINT demoras_config_rango CHECK (max_minutos >= min_minutos)
+);
+
+COMMENT ON TABLE demoras_config IS
+  'Configuracion del motor de demora por (escenario, tipo de servicio). Editable desde Preferencias Globales. Si falta la fila de un tipo, ese tipo no se calcula.';
+COMMENT ON COLUMN demoras_config.ritmo_cascada IS
+  'Orden de la cascada de atribucion del ritmo, CSV. Se recorre de izquierda a derecha y gana el primer nivel que llegue al minimo de muestras. Niveles validos: CHOFER, MOVIL, ZONA, GLOBAL. GLOBAL se evalua siempre ultimo aunque no figure: es la red final.';
+COMMENT ON COLUMN demoras_config.factor_calibracion IS
+  'Multiplicador global del resultado crudo. Existe por el riesgo R1: demora_efectiva_mins ya incluye la espera en cola, asi que multiplicarla por los pendientes puede doble-contar. Permite corregir el nivel sin tocar codigo.';
+
+-- Seed: los tres tipos del escenario 1000 con los defaults.
+-- NOCTURNO arranca con su propia ventana horaria, que es el caso que motivo
+-- pasar la config a por-tipo.
+INSERT INTO demoras_config (escenario_id, tipo_servicio, hora_inicio, hora_fin) VALUES
+  (1000, 'URGENTE',  '07:00', '23:30'),
+  (1000, 'NOCTURNO', '18:00', '23:30'),
+  (1000, 'SERVICE',  '07:00', '23:30')
+ON CONFLICT (escenario_id, tipo_servicio) DO NOTHING;
 ```
 
 - [ ] **Step 2: Escribir el assert que falla**
@@ -1340,11 +1376,13 @@ SELECT cron.unschedule('demoras-calcular')
 SELECT cron.schedule('demoras-calcular', '*/10 * * * *',
   $cron$ SELECT demoras_calcular_run(); $cron$);
 
--- Retencion: 30 dias de detalle. ~25.000 filas/dia -> ~750k en regimen.
+-- Retencion: 180 dias de detalle. ~25.000 filas/dia -> ~4,5M en regimen.
+-- Se eligio 180 y no 30 para poder comparar contra el AS400 sobre media
+-- temporada, no sobre un mes suelto.
 SELECT cron.unschedule('demoras-purga')
   WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'demoras-purga');
 SELECT cron.schedule('demoras-purga', '40 4 * * *',
-  $cron$ DELETE FROM demoras_calculadas WHERE corrida_at < now() - interval '30 days'; $cron$);
+  $cron$ DELETE FROM demoras_calculadas WHERE corrida_at < now() - interval '180 days'; $cron$);
 
 -- ─── Verificacion ────────────────────────────────────────────────────
 -- SELECT jobname, schedule, active FROM cron.job WHERE jobname LIKE 'demoras-%';

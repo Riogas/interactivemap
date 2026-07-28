@@ -35,11 +35,11 @@ DO $$
 DECLARE r record;
 BEGIN
   SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='URGENTE';
-  IF r.ritmo_origen <> 'ZONA' THEN RAISE EXCEPTION 'zona 100 origen: % (esperaba ZONA)', r.ritmo_origen; END IF;
-  IF r.ritmo_muestras <> 5 THEN RAISE EXCEPTION 'zona 100 muestras: %', r.ritmo_muestras; END IF;
-  IF round(r.ritmo_mediana,2) <> 30.00 THEN RAISE EXCEPTION 'mediana: % (esperaba 30)', r.ritmo_mediana; END IF;
-  IF round(r.ritmo_media,2) <> 40.00 THEN RAISE EXCEPTION 'media: % (esperaba 40)', r.ritmo_media; END IF;
-  IF r.ritmo_p90 <= r.ritmo_mediana THEN RAISE EXCEPTION 'p90 debe superar la mediana'; END IF;
+  IF r.ritmo_origen IS DISTINCT FROM 'ZONA' THEN RAISE EXCEPTION 'zona 100 origen: % (esperaba ZONA)', r.ritmo_origen; END IF;
+  IF r.ritmo_muestras IS DISTINCT FROM 5 THEN RAISE EXCEPTION 'zona 100 muestras: %', r.ritmo_muestras; END IF;
+  IF round(r.ritmo_mediana,2) IS DISTINCT FROM 30.00 THEN RAISE EXCEPTION 'mediana: % (esperaba 30)', r.ritmo_mediana; END IF;
+  IF round(r.ritmo_media,2) IS DISTINCT FROM 40.00 THEN RAISE EXCEPTION 'media: % (esperaba 40)', r.ritmo_media; END IF;
+  IF r.ritmo_p90 IS DISTINCT FROM NULL AND r.ritmo_p90 <= r.ritmo_mediana THEN RAISE EXCEPTION 'p90 debe superar la mediana'; END IF;
   RAISE NOTICE 'ok zona con muestras suficientes';
 END $$;
 
@@ -47,16 +47,24 @@ DO $$
 DECLARE r record;
 BEGIN
   SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=200 AND tipo_servicio='URGENTE';
-  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 200 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  IF r.ritmo_origen IS DISTINCT FROM 'GLOBAL' THEN RAISE EXCEPTION 'zona 200 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  -- Cuando cae al global, ritmo_muestras es el count del global (7 = 5 de zona 100 + 2 de zona 200)
+  IF r.ritmo_muestras IS DISTINCT FROM 7 THEN RAISE EXCEPTION 'zona 200 muestras: % (esperaba 7 del global)', r.ritmo_muestras; END IF;
   RAISE NOTICE 'ok fallback a global por pocas muestras';
 END $$;
 
 -- Zona 300 URGENTE: en universo pero sin hechos -> fallback a GLOBAL.
+-- Valores deben coincidir con el global de URGENTE.
 DO $$
-DECLARE r record;
+DECLARE r record; r_global record;
 BEGIN
   SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=300 AND tipo_servicio='URGENTE';
-  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 300 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  -- Obtener el global de URGENTE desde zona 200 que tiene origen='GLOBAL'
+  SELECT * INTO r_global FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=200 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen IS DISTINCT FROM 'GLOBAL' THEN RAISE EXCEPTION 'zona 300 origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  -- Zona 300 sin hechos debe tener los mismos valores que el global (sacado del global del tipo URGENTE)
+  IF r.ritmo_media IS DISTINCT FROM r_global.ritmo_media THEN RAISE EXCEPTION 'zona 300 media: % (esperaba %)', r.ritmo_media, r_global.ritmo_media; END IF;
+  IF r.ritmo_mediana IS DISTINCT FROM r_global.ritmo_mediana THEN RAISE EXCEPTION 'zona 300 mediana: % (esperaba %)', r.ritmo_mediana, r_global.ritmo_mediana; END IF;
   RAISE NOTICE 'ok zona en universo sin hechos: devuelve fila, origen GLOBAL, valores del global';
 END $$;
 
@@ -65,10 +73,10 @@ DO $$
 DECLARE r record;
 BEGIN
   SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='NOCTURNO';
-  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'zona 100 NOCTURNO origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
+  IF r.ritmo_origen IS DISTINCT FROM 'GLOBAL' THEN RAISE EXCEPTION 'zona 100 NOCTURNO origen: % (esperaba GLOBAL)', r.ritmo_origen; END IF;
   IF r.ritmo_media IS NOT NULL OR r.ritmo_mediana IS NOT NULL OR r.ritmo_p75 IS NOT NULL OR r.ritmo_p90 IS NOT NULL THEN
     RAISE EXCEPTION 'zona 100 NOCTURNO: estadisticas deben ser NULL (sin datos globales)';
   END IF;
-  IF r.ritmo_muestras <> 0 THEN RAISE EXCEPTION 'zona 100 NOCTURNO: muestras debe ser 0, es %', r.ritmo_muestras; END IF;
+  IF r.ritmo_muestras IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'zona 100 NOCTURNO: muestras debe ser 0, es %', r.ritmo_muestras; END IF;
   RAISE NOTICE 'ok tipo sin hechos globales: estadisticas=NULL, muestras=0';
 END $$;

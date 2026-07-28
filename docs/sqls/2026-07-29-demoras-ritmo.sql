@@ -75,7 +75,7 @@ AS $fn$
          CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.p75     ELSE g.p75     END,
          CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.p90     ELSE g.p90     END,
          CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN 'ZONA'    ELSE 'GLOBAL'  END,
-         CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.n       ELSE g.n       END
+         coalesce(CASE WHEN coalesce(z.n, 0) >= p_min_muestras THEN z.n ELSE g.n END, 0)
   FROM universo u
   LEFT JOIN por_zona z ON z.zona_id = u.zona_id AND z.tipo = u.tipo
   LEFT JOIN global g ON g.tipo = u.tipo;
