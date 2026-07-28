@@ -27,9 +27,10 @@ import { TipoBarChart } from '@/components/metricas/TipoBarChart';
 import { RankingList } from '@/components/metricas/RankingList';
 import { DetalleTable } from '@/components/metricas/DetalleTable';
 import { ExpandModal } from '@/components/metricas/ExpandModal';
+import { EscenarioComparativa } from '@/components/metricas/EscenarioComparativa';
 import { INFO_TEXTS, DIMENSION_LABEL, COLOR_TIPO, TIPO_LABEL, formatMin, formatPct } from '@/components/metricas/metricas-theme';
 
-type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | null;
+type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | null;
 
 // ─── Sub-tablas chicas usadas SOLO dentro del ExpandModal (E2: "tabla completa
 // de datos de esa sección" para tendencia/por-tipo, complementando el chart). ──
@@ -145,6 +146,17 @@ function MetricasCumplimientoContent() {
     if (typeof window !== 'undefined') window.localStorage.setItem('metricas-theme', theme);
   }, [theme]);
 
+  // ── Escenario: clave principal de todo el modelo ──────────────────────
+  // Arranca en el escenario de la sesión (el que el usuario eligió al
+  // loguearse) y a partir de ahí manda la selección explícita del usuario —
+  // por eso el `prev ??`: que llegue escenarioId tarde no debe pisar lo que
+  // ya eligió. Cambiar de escenario invalida el período elegido (cada
+  // escenario tiene su propio rango de fechas disponible).
+  const [escenarioSel, setEscenarioSel] = useState<number | null>(null);
+  useEffect(() => {
+    setEscenarioSel((prev) => prev ?? escenarioId ?? null);
+  }, [escenarioId]);
+
   // ── Filtros ───────────────────────────────────────────────────────────
   const [ventana, setVentana] = useState<Ventana>('diario');
   const [dimension, setDimension] = useState<Dimension>('chofer');
@@ -156,6 +168,11 @@ function MetricasCumplimientoContent() {
   function handleVentanaChange(v: Ventana) {
     setVentana(v);
     setPeriodValue(null); // el picker cambia de granularidad -> vuelve a "último disponible"
+  }
+
+  function handleEscenarioChange(id: number) {
+    setEscenarioSel(id);
+    setPeriodValue(null); // el rango disponible es otro -> "último disponible" del escenario nuevo
   }
 
   function toggleTipo(t: TipoServicioDashboard) {
@@ -203,7 +220,7 @@ function MetricasCumplimientoContent() {
 
   // ── Datos ─────────────────────────────────────────────────────────────
   const { data, isLoading, error, refetch } = useMetricasDashboard({
-    escenario: escenarioId ?? null,
+    escenario: escenarioSel,
     ventana,
     dimension,
     desde: periodValue?.desde ?? null,
@@ -224,11 +241,18 @@ function MetricasCumplimientoContent() {
   const dimLabel = DIMENSION_LABEL[dimension];
   const showEmptyScopeBanner = !isLoading && data && data.rango === null;
 
+  const escenarios = data?.escenarios ?? [];
+  const escenarioActual = escenarios.find((e) => e.escenario === escenarioSel);
+  const escenarioLabel = escenarioActual?.nombre ?? (escenarioSel != null ? `Escenario ${escenarioSel}` : null);
+
   function exportCsv() {
     if (!data) return;
-    const header = [dimLabel.singularCap, 'Cumplidos', 'Promedio (min)', 'Mediana (min)', 'P90 (min)', 'Atraso (min)'];
-    const rows = data.ranking.map((r) => [r.valor, r.cantidad, r.promedio, r.mediana, r.p90, r.atraso]);
-    downloadCsv(`metricas-cumplimiento-${dimension}-${periodValue?.desde ?? data.periodo_sel.desde ?? 'periodo'}.csv`, [header, ...rows]);
+    // El escenario va como 1ª columna Y en el nombre del archivo: exportar dos
+    // escenarios distintos no puede producir dos CSV indistinguibles.
+    const header = ['Escenario', dimLabel.singularCap, 'Cumplidos', 'Promedio (min)', 'Mediana (min)', 'P90 (min)', 'Atraso (min)'];
+    const rows = data.ranking.map((r) => [escenarioLabel ?? '', r.valor, r.cantidad, r.promedio, r.mediana, r.p90, r.atraso]);
+    const periodo = periodValue?.desde ?? data.periodo_sel.desde ?? 'periodo';
+    downloadCsv(`metricas-cumplimiento-esc${escenarioSel ?? 'NA'}-${dimension}-${periodo}.csv`, [header, ...rows]);
   }
 
   return (
@@ -244,7 +268,16 @@ function MetricasCumplimientoContent() {
               </svg>
             </div>
             <div>
-              <h1 className="text-[1.4rem] font-bold tracking-tight text-stats-foreground">Métricas de Cumplimiento</h1>
+              <h1 className="flex flex-wrap items-center gap-2 text-[1.4rem] font-bold tracking-tight text-stats-foreground">
+                Métricas de Cumplimiento
+                {/* El escenario acota TODO lo de esta pantalla: se muestra en
+                    el título para que nunca haya duda de qué se está mirando. */}
+                {escenarioLabel && (
+                  <span className="rounded-md border border-stats-primary/40 bg-stats-primary/10 px-2 py-0.5 font-stats-mono text-[0.72rem] font-semibold text-stats-primary">
+                    {escenarioLabel}
+                  </span>
+                )}
+              </h1>
               <p className="mt-0.5 text-[0.85rem] text-stats-muted-fg">Tiempo asignado → cumplido · por chofer, móvil y zona</p>
             </div>
           </div>
@@ -302,6 +335,9 @@ function MetricasCumplimientoContent() {
 
         {/* ── Filtros ── */}
         <FiltersBar
+          escenarios={escenarios}
+          escenarioSel={escenarioSel}
+          onEscenarioChange={handleEscenarioChange}
           empresas={empresas}
           empresaSel={empresaSel}
           onEmpresaChange={setEmpresaSel}
@@ -319,7 +355,25 @@ function MetricasCumplimientoContent() {
 
         {showEmptyScopeBanner && (
           <div className="mt-4 rounded-xl border border-stats-border bg-stats-surface-2 px-4 py-3 text-sm text-stats-muted-fg">
-            Sin datos de cumplimiento para el escenario/empresa seleccionados. Verificá que <code className="font-stats-mono">metricas_cumplimiento_run</code> ya corrió para este escenario.
+            Sin datos de cumplimiento para <span className="font-semibold text-stats-foreground">{escenarioLabel ?? 'el escenario'}</span> con
+            la empresa seleccionada. Verificá que <code className="font-stats-mono">metricas_cumplimiento_run</code> ya corrió para este escenario.
+            {/* La RPC devuelve la lista de escenarios aunque el pedido no tenga
+                datos, justamente para poder ofrecer la salida acá. */}
+            {escenarios.length > 0 && (
+              <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span>Escenarios con datos:</span>
+                {escenarios.map((e) => (
+                  <button
+                    key={e.escenario}
+                    type="button"
+                    onClick={() => handleEscenarioChange(e.escenario)}
+                    className="rounded-md border border-stats-border bg-stats-surface px-2 py-0.5 text-[0.78rem] font-semibold text-stats-foreground transition-colors hover:border-stats-primary hover:text-stats-primary"
+                  >
+                    {e.nombre}
+                  </button>
+                ))}
+              </span>
+            )}
           </div>
         )}
 
@@ -454,6 +508,30 @@ function MetricasCumplimientoContent() {
               <DetalleTable ranking={data?.ranking ?? []} dimensionLabel={dimLabel.singularCap} limit={10} />
             )}
           </CardShell>
+
+          {/* ── Comparativa entre escenarios ──
+              Única card que mira FUERA del escenario seleccionado: los mismos
+              filtros aplicados a todos los escenarios, para ver cuál viene
+              mejor y saltar entre ellos. */}
+          <CardShell
+            title="Comparativa entre escenarios"
+            hint="mismos filtros · todos los escenarios"
+            infoTitle={INFO_TEXTS.comparativa.title}
+            infoText={INFO_TEXTS.comparativa.text}
+            onExpand={() => setExpandedSection('escenarios')}
+            className="col-span-12"
+            style={{ animationDelay: '320ms' }}
+          >
+            {isLoading && !data ? (
+              <Skeleton className="h-[140px] w-full" />
+            ) : (
+              <EscenarioComparativa
+                comparativa={data?.comparativa ?? []}
+                escenarioSel={escenarioSel}
+                onEscenarioChange={handleEscenarioChange}
+              />
+            )}
+          </CardShell>
         </div>
 
         <div className="mt-4 text-[0.76rem] text-stats-muted-fg">
@@ -473,7 +551,9 @@ function MetricasCumplimientoContent() {
               ? 'Por tipo de servicio'
               : expandedSection === 'ranking'
                 ? `Ranking · ${dimLabel.plural}`
-                : `Detalle por ${dimLabel.singular}`
+                : expandedSection === 'escenarios'
+                  ? 'Comparativa entre escenarios'
+                  : `Detalle por ${dimLabel.singular}`
         }
       >
         {data && expandedSection === 'tendencia' && (
@@ -497,6 +577,16 @@ function MetricasCumplimientoContent() {
           </div>
         )}
         {data && expandedSection === 'tabla' && <DetalleTable ranking={data.ranking} dimensionLabel={dimLabel.singularCap} />}
+        {data && expandedSection === 'escenarios' && (
+          <EscenarioComparativa
+            comparativa={data.comparativa}
+            escenarioSel={escenarioSel}
+            onEscenarioChange={(id) => {
+              handleEscenarioChange(id);
+              setExpandedSection(null); // cambiar de escenario recarga todo: el modal ya no aplica
+            }}
+          />
+        )}
       </ExpandModal>
     </div>
   );

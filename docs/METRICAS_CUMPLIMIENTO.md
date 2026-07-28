@@ -68,15 +68,49 @@ para tener una PK homogénea entre orígenes).
 Sin RLS: el acceso de escritura es exclusivamente vía `getServerSupabaseClient()`
 (service_role) desde el endpoint del run.
 
+### El escenario es la clave principal (2026-07-28)
+
+Un mismo **chofer, móvil o zona puede repetirse en escenarios distintos**, y
+sus tiempos no significan nada si se suman entre ellos. Por eso `escenario`
+encabeza toda la cadena:
+
+| Capa | Cómo lo respeta |
+|---|---|
+| Tabla de hechos | columna `NOT NULL`, **parte de la PK** `(origen, pedido_id, escenario)` |
+| Índices | todos liderados por `escenario` (`(escenario, fecha)`, `(escenario, fecha, empresa_fletera_id)`, + los 3 por dimensión) |
+| Vistas | `escenario` es la **1ª columna del `SELECT` y del `GROUP BY`** |
+| `metricas_cumplimiento_run` | 3er parámetro `p_escenario` acota purga e inserción |
+| RPC `metricas_dashboard` | `escenario` requerido; filtra todo; devuelve `escenario_sel`, `escenarios` y `comparativa` |
+| API + UI | `escenario` requerido (400 si falta); selector visible en el dashboard |
+
+Migración: `docs/sqls/2026-07-28-metricas-escenario-primero.sql` (aditiva — no
+recomputa ni borra hechos, el escenario ya estaba en cada fila).
+
+> **Historial:** hasta esa migración las 3 vistas agrupaban SIN `escenario`, así
+> que dos escenarios caían en la misma fila sumados. No causó datos malos
+> porque ningún código las consumía (el dashboard va directo a los hechos vía
+> RPC) y porque la base tenía un solo escenario (el 1000), pero era una bomba
+> de tiempo. Los índices también lideraban con `fecha` en vez de `escenario`.
+
 ### Vistas de agregación
 
 `vw_metricas_cumplimiento_diario` / `_semanal` (ISO, lunes–domingo) / `_mensual`
 (mes calendario). Cada una es un `UNION ALL` de 3 bloques por dimensión
 (`CHOFER` / `MOVIL` / `ZONA`) × `tipo_servicio` × `empresa_fletera_id`, con
-columnas homogéneas: `dimension`, `dimension_valor`, `periodo`, `tipo_servicio`,
-`empresa_fletera_id`, `cantidad`, `promedio_mins`, `mediana_mins`
-(`percentile_cont(0.5)`), `p90_mins` (`percentile_cont(0.9)`), `min_mins`,
-`max_mins`, `promedio_atraso_mins`.
+columnas homogéneas: **`escenario`** (1ª, clave de agrupación), `dimension`,
+`dimension_valor`, `periodo`, `tipo_servicio`, `empresa_fletera_id`,
+`cantidad`, `promedio_mins`, `mediana_mins` (`percentile_cont(0.5)`),
+`p90_mins` (`percentile_cont(0.9)`), `min_mins`, `max_mins`,
+`promedio_atraso_mins`.
+
+Además `vw_metricas_cumplimiento_escenarios`: comparativa cross-escenario al
+grano `(escenario, escenario_nombre, fecha, tipo_servicio, empresa_fletera_id)`.
+El "% a tiempo" viaja como dos **conteos** (`cantidad_a_tiempo` /
+`cantidad_con_compromiso`) a propósito, para que el consumidor sume numerador y
+denominador — promediar porcentajes da mal.
+
+Los nombres legibles de escenario salen de `escenario_settings.nombre`
+(opcional; sin valor, los consumidores muestran `Escenario <id>`).
 
 Todas las columnas de agregación (`promedio/mediana/p90/min/max`) se calculan
 sobre **`demora_efectiva_mins`** (la métrica principal). `promedio_atraso_mins`
@@ -302,9 +336,22 @@ En orden, en el SQL Editor de Supabase:
    ejecutar**; el archivo versionado en git lleva placeholders (NO commitear
    el token real). Requiere haber habilitado `pg_cron`/`pg_net` primero.
 
-Las 4 son idempotentes (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`,
-`CREATE OR REPLACE VIEW`) — se pueden re-correr sin efectos destructivos.
-Cada archivo trae su bloque de verificación al final.
+5. `docs/sqls/2026-07-23-metricas-otros-y-subestado.sql`
+6. `docs/sqls/2026-07-24-metricas-funcion-sql-pura.sql` — el job pasa a SQL
+   puro y el cron deja de usar `net.http_post`.
+7. **`docs/sqls/2026-07-28-metricas-escenario-primero.sql`** — escenario como
+   clave principal (índices + vistas + `p_escenario` en el run) **y la RPC del
+   dashboard**. Es self-contained: aplicando este quedan la RPC y todo lo demás
+   al día.
+
+⚠ **`docs/sqls/2026-07-24-metricas-dashboard-rpc.sql` quedó OBSOLETO — no
+aplicar.** Nunca llegó a correrse en la base (verificado 2026-07-28: la RPC no
+existía) y hoy pisaría la versión escenario-aware del paso 7.
+
+Todas son idempotentes (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`,
+`CREATE OR REPLACE FUNCTION`, `DROP VIEW IF EXISTS` + `CREATE VIEW`) — se pueden
+re-correr sin efectos destructivos sobre los datos. Cada archivo trae su bloque
+de verificación al final.
 
 También hace falta:
 - Env `METRICAS_CRON_TOKEN` en el `.env` del servidor de la app (generar con
@@ -330,15 +377,19 @@ respuesta, pero rangos muy grandes con muchos móviles distintos aumentan la
 cantidad de llamadas a `/tracking/getSessionData`, una por combinación
 móvil+fecha nueva). Rango máximo aceptado por el endpoint: 35 días.
 
-## Qué falta del lado del sender
+## Lado del sender: ✅ RESUELTO (verificado 2026-07-28)
 
-El sender (Firestore bridge / GeneXus) **no emite `FchHoraAsignado`** en el
-payload de `POST /api/import/pedidos` ni `POST /api/import/services` todavía.
-El campo está mapeado y listo para recibirlo (`parseDate(pedido.FchHoraAsignado || pedido.fch_hora_asignado)`)
-— en cuanto el sender lo agregue, empieza a poblarse `fch_hora_asignado` y el
-run automáticamente prioriza `asignado_source='CAMPO'` sobre el fallback
-DERIVADO, sin cambios de código. Coordinar con el equipo del sender (gestión
-del usuario, fuera de alcance de este run).
+El sender (Firestore bridge / GeneXus) **ya emite `FchHoraAsignado`**. Medido
+contra la base de prod el 2026-07-28:
+
+- Primer hecho con `asignado_source='CAMPO'`: **2026-07-23**.
+- Último día completo (2026-07-27): **2111 de 2111 hechos son `CAMPO`** (100%).
+- Acumulado histórico: 10 489 `CAMPO` sobre 168 315 hechos — el resto son
+  días previos al 23/07, que quedaron `DERIVADO` por backfill.
+
+O sea: las demoras ya se calculan con la hora de asignación real, no
+reconstruida. Si se quisiera mejorar el histórico previo al 23/07 no hay nada
+que hacer: ese dato nunca existió en origen.
 
 ## Dashboard `/dashboard/metricas-cumplimiento` (2026-07-24)
 
@@ -349,9 +400,12 @@ linkeada en ningún menú a propósito). Ver
 
 ### Capa de datos: RPC `metricas_dashboard(p jsonb)`
 
-Nueva migración `docs/sqls/2026-07-24-metricas-dashboard-rpc.sql` (aditiva,
-idempotente — `CREATE OR REPLACE FUNCTION`, no toca nada de lo documentado
-arriba). Calcula KPIs con percentiles **exactos** (`percentile_cont`) directo
+Migración vigente: **`docs/sqls/2026-07-28-metricas-escenario-primero.sql`**
+(la versión escenario-aware; supersede a `2026-07-24-metricas-dashboard-rpc.sql`,
+que quedó obsoleto y **no debe aplicarse**). Además de lo de abajo devuelve
+`escenario_sel`, `escenarios` (para el selector, acotado por empresa) y
+`comparativa` (todos los escenarios sobre el mismo período). Calcula KPIs con
+percentiles **exactos** (`percentile_cont`) directo
 sobre `metricas_cumplimiento` — nunca sobre `vw_metricas_cumplimiento_*`
 (promediar promedios ya agregados da resultados incorrectos). Acceso exclusivo
 `service_role` (`SECURITY INVOKER` + `REVOKE`/`GRANT` explícitos — la tabla no
@@ -372,16 +426,31 @@ asignarla a los roles que deban ver el dashboard (análogo a cómo
 `Estadistica Global RiogasTracking` habilita `/dashboard/stats`). Mientras no
 se dé de alta, solo los usuarios `root` pueden entrar.
 
-### Advertencia: escenario del backfill
+### Selector de escenario (2026-07-28)
 
-El dashboard filtra por el `escenarioId` activo de `useAuth()` (consistente
-con el resto de la app). Si `metricas_cumplimiento_run` se corrió (backfill)
-bajo un `escenario` distinto al que usan los usuarios que van a mirar el
-dashboard, la página va a mostrar el empty state ("Sin datos de cumplimiento
-para el escenario/empresa seleccionados") aunque la tabla tenga filas — no es
-un bug, es que el filtro de escenario no matchea. Verificar con qué
-`escenario` se corrió `metricas_cumplimiento_run(desde, hasta)` antes de
-reportar la página como "vacía".
+El dashboard **arranca** en el `escenarioId` de la sesión (el que el usuario
+eligió al loguearse) y a partir de ahí manda su selección explícita en el
+selector, que va primero en la barra de filtros y destacado — es la clave
+principal, no un filtro más. El escenario activo también aparece como chip en
+el título, para que nunca haya duda de qué se está mirando, y encabeza el CSV
+exportado (nombre de archivo incluido).
+
+Si el escenario elegido no tiene datos, la página ya no queda en un empty
+state ciego: la RPC devuelve igual la lista de escenarios **que sí tienen**
+(dentro del scope de empresa del usuario) y el banner los ofrece como botones
+para saltar. Esto reemplaza la vieja advertencia de "verificá con qué escenario
+se corrió el backfill" — ahora la propia pantalla lo responde.
+
+La card **Comparativa entre escenarios** aplica los mismos filtros (período,
+tipo, empresa) a todos los escenarios a la vez, con percentiles exactos por
+escenario. Con un solo escenario lo dice explícitamente en vez de fingir un
+ranking de una fila.
+
+> `escenario` **no es un límite de autorización** y nunca lo fue: el usuario ya
+> lo elegía tipeándolo en el login y la API acepta cualquier entero. El scope
+> real es la allowlist por email + el filtro de empresa fletera — que también
+> acota qué escenarios se listan, así que un usuario de fletera solo ve
+> escenarios donde su empresa operó.
 
 ### Riesgo de seguridad conocido y aceptado
 

@@ -1,4 +1,17 @@
 -- =====================================================================
+-- ⚠⚠ OBSOLETO — NO APLICAR ⚠⚠
+--
+-- SUPERSEDIDO por docs/sqls/2026-07-28-metricas-escenario-primero.sql, que
+-- contiene una versión escenario-aware de esta misma RPC (agrega
+-- `escenario_sel`, `escenarios` y `comparativa` al payload).
+--
+-- Este archivo nunca llegó a aplicarse en la base (verificado 2026-07-28:
+-- la RPC no existía, PGRST202). Se conserva solo como historia. Aplicarlo
+-- HOY PISARÍA la versión nueva y rompería el selector de escenario del
+-- dashboard.
+-- =====================================================================
+
+-- =====================================================================
 -- Dashboard de Métricas de Cumplimiento — RPC de lectura
 -- Fecha: 2026-07-24 | Idempotente | Aplicar en: Supabase SQL Editor.
 --

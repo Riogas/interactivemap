@@ -44,6 +44,15 @@ const FAKE_SESSION = { session: { user: { id: 'user-123' } }, user: { id: 'user-
 const FUNC = 'Estadisticas Cumplimiento';
 
 const FIXTURE_PAYLOAD = {
+  escenario_sel: 1000,
+  escenarios: [
+    { escenario: 1000, nombre: 'Escenario 1000', min_fecha: '2026-06-24', max_fecha: '2026-07-23', cantidad: 168315 },
+    { escenario: 2000, nombre: 'Interior', min_fecha: '2026-07-01', max_fecha: '2026-07-23', cantidad: 4210 },
+  ],
+  comparativa: [
+    { escenario: 1000, nombre: 'Escenario 1000', promedio: 28.4, mediana: 24, p90: 58, cantidad: 120, promedio_atraso: 6.8, on_time_pct: 0.72 },
+    { escenario: 2000, nombre: 'Interior', promedio: 41.1, mediana: 36, p90: 77, cantidad: 33, promedio_atraso: 12.4, on_time_pct: 0.55 },
+  ],
   rango: { min_fecha: '2026-06-24', max_fecha: '2026-07-23' },
   periodo_sel: { desde: '2026-07-23', hasta: '2026-07-23' },
   kpis: { cantidad: 120, promedio: 28.4, mediana: 24, p90: 58, min: 3, max: 120, promedio_atraso: 6.8, on_time_pct: 0.72 },
@@ -272,6 +281,60 @@ describe('GET /api/metricas/dashboard', () => {
     expect(fnName).toBe('metricas_dashboard');
     expect((args as { p: Record<string, unknown> }).p.empresas).toBeNull();
     expect((args as { p: Record<string, unknown> }).p.escenario).toBe(1000);
+  });
+
+  // ─── Escenario como clave principal ─────────────────────────────────────
+  // El escenario acota TODO el payload: un chofer/móvil/zona puede repetirse
+  // en escenarios distintos y jamás debe sumarse entre ellos.
+
+  describe('escenario como clave principal', () => {
+    it('200 root: escenario_sel / escenarios / comparativa viajan al cliente', async () => {
+      const req = makeRequest({ escenario: '1000', isRoot: true });
+      const res = await GET(req);
+      const body = await res.json();
+
+      expect(body.data.escenario_sel).toBe(1000);
+      expect(body.data.escenarios).toHaveLength(2);
+      expect(body.data.escenarios.map((e: { escenario: number }) => e.escenario)).toEqual([1000, 2000]);
+      expect(body.data.comparativa).toHaveLength(2);
+      // La comparativa trae cada escenario por separado — nunca fusionado.
+      expect(body.data.comparativa[0].escenario).not.toBe(body.data.comparativa[1].escenario);
+    });
+
+    it('el escenario pedido llega a la RPC tal cual (no se pisa con un default)', async () => {
+      const req = makeRequest({ escenario: '2000', isRoot: true });
+      await GET(req);
+
+      const mock = mockGetSupabase.mock.results[0].value as ReturnType<typeof makeSupabaseMock>;
+      const [, args] = mock.rpc.mock.calls[0];
+      expect((args as { p: Record<string, unknown> }).p.escenario).toBe(2000);
+    });
+
+    it('fail-closed: el payload vacío igual identifica el escenario pedido y trae escenarios/comparativa vacíos', async () => {
+      // Sin esto, el cliente no puede saber a qué escenario corresponde el
+      // vacío que recibió (y el tipo MetricasDashboardData quedaría incompleto).
+      const req = makeRequest({ escenario: '4242', isRoot: false, funcionalidades: [FUNC] }); // sin empresasIds
+      const res = await GET(req);
+      const body = await res.json();
+
+      expect(body.data.escenario_sel).toBe(4242);
+      expect(body.data.escenarios).toEqual([]);
+      expect(body.data.comparativa).toEqual([]);
+      expect(mockGetSupabase).not.toHaveBeenCalled();
+    });
+
+    it('RPC que devuelve null -> payload vacío CON escenario_sel del request', async () => {
+      mockGetSupabase.mockReturnValue(makeSupabaseMock(null) as never);
+      const req = makeRequest({ escenario: '777', isRoot: true });
+      const res = await GET(req);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.data.escenario_sel).toBe(777);
+      expect(body.data.escenarios).toEqual([]);
+      expect(body.data.comparativa).toEqual([]);
+      expect(body.data.rango).toBeNull();
+    });
   });
 
   it('root: ventana/dimension/desde/hasta (E1, período elegido) viajan intactos a la RPC', async () => {

@@ -70,9 +70,17 @@ export interface InfoText {
 
 /**
  * E3 — textos "i" redactados por card, en base a los cálculos reales
- * (ver docs/METRICAS_CUMPLIMIENTO.md y docs/sqls/2026-07-24-metricas-dashboard-rpc.sql).
+ * (ver docs/METRICAS_CUMPLIMIENTO.md y docs/sqls/2026-07-28-metricas-escenario-primero.sql).
  */
 export const INFO_TEXTS = {
+  escenario: {
+    title: 'Escenario',
+    text: 'El escenario es la clave principal de todas estas métricas. Un mismo chofer, móvil o zona puede operar en escenarios distintos, y sus tiempos NUNCA se suman entre ellos: todo lo que ves en esta pantalla (KPIs, tendencia, ranking, detalle) corresponde exclusivamente al escenario seleccionado. Solo se listan los escenarios que tienen cumplidos registrados dentro de tu alcance de empresa fletera.',
+  },
+  comparativa: {
+    title: 'Comparativa entre escenarios',
+    text: 'Los mismos filtros de período, tipo de servicio y empresa aplicados a TODOS los escenarios con datos, uno al lado del otro. Cada escenario se calcula por separado sobre los hechos (percentiles exactos), nunca promediando los promedios de otro agregado. El escenario que estás viendo aparece resaltado.',
+  },
   kpi_promedio: {
     title: 'Demora efectiva promedio',
     text: 'Demora efectiva = hora de finalización − reloj de inicio. El reloj de inicio es la hora de asignación al móvil, salvo que el pedido esté agendado con más de 60 minutos de anticipación (ej. un nocturno "para las 13"): en ese caso el reloj arranca en la hora comprometida, para no penalizar la espera planificada. Se promedia sobre todos los cumplidos genuinos del período.',
