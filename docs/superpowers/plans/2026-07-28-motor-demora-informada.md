@@ -591,21 +591,18 @@ Validado: un movil en 1 zona de prioridad + 3 de transito aporta 0.5263 y
 - Produces: `demoras_ritmo(p_escenario int, p_hasta date, p_dias int DEFAULT 7, p_min_muestras int DEFAULT 5)` → `TABLE(zona_id int, tipo_servicio text, ritmo_media numeric, ritmo_mediana numeric, ritmo_p75 numeric, ritmo_p90 numeric, ritmo_origen text, ritmo_muestras int)`.
   `ritmo_origen` ∈ `ZONA | GLOBAL`.
 
-> **⚠ DIVERGENCIA DELIBERADA RESPECTO DE LA SPEC.** La spec (§3.3) describe una
-> cascada de cuatro niveles: `chofer → móvil → zona → global`, con el ritmo de la
-> zona como promedio ponderado por aporte de los ritmos de sus móviles. Este plan
-> implementa **solo `zona → global`**.
+> **⚠ ALCANCE DE ESTA TASK: solo `zona → global`.** La cascada completa de
+> cuatro niveles (`chofer → móvil → zona → global`), con el orden
+> **configurable** desde Preferencias Globales, la implementa la **Task 10**.
 >
-> Motivo: el nivel chofer exige resolver, en cada corrida y para cada móvil
-> activo, quién lo está manejando hoy — dato que `moviles_dia` no trae y que
-> habría que inferir de los pedidos ya cumplidos del día. Eso agrega una consulta
-> pesada y una heurística nueva a un motor cuyo supuesto central todavía no está
-> validado (riesgo R1).
+> El corte es deliberado y de secuencia, no de alcance final: el nivel chofer
+> exige resolver en cada corrida quién maneja cada móvil hoy — dato que
+> `moviles_dia` no trae —, y conviene tener el motor entero funcionando de punta
+> a punta antes de agregar esa consulta. La Task 10 lo completa sobre esta misma
+> función.
 >
-> La columna `ritmo_origen` acepta igual `CHOFER` y `MOVIL` en su CHECK, así que
-> subir de nivel más adelante no requiere migración de esquema — solo cambiar
-> esta función. **Antes de dar el motor por terminado, actualizar §3.3 de la spec
-> para que refleje lo implementado, o abrir una task para completar la cascada.**
+> `ritmo_origen` ya acepta `CHOFER` y `MOVIL` en su CHECK, así que la Task 10 no
+> necesita migración de esquema: solo reescribe esta función.
 
 - [ ] **Step 1: Escribir el assert que falla**
 
@@ -847,6 +844,8 @@ INSERT INTO app_config (key, value, description) VALUES
   ('demora_subida_max',         '30',      'Motor de demora: cuanto puede subir por corrida'),
   ('demora_bajada_max',         '15',      'Motor de demora: cuanto puede bajar por corrida'),
   ('demora_estadistico',        'MEDIANA', 'Motor de demora: MEDIA|MEDIANA|P75|P90'),
+  ('demora_ritmo_cascada',      'CHOFER,MOVIL,ZONA,GLOBAL',
+                                           'Motor de demora: orden de la cascada de atribucion del ritmo, CSV. Se prueba nivel por nivel de izquierda a derecha y gana el primero que llegue al minimo de muestras. Niveles validos: CHOFER, MOVIL, ZONA, GLOBAL. Se pueden omitir niveles (ej. ZONA,GLOBAL) pero GLOBAL debe ir siempre ultimo.'),
   ('demora_hora_inicio',        '07:00',   'Motor de demora: inicio de ventana (Montevideo)'),
   ('demora_hora_fin',           '23:30',   'Motor de demora: fin de ventana (Montevideo)'),
   ('demora_factor_calibracion', '1.0',     'Motor de demora: multiplicador global (ver riesgo R1)'),
@@ -1953,3 +1952,147 @@ tiene sentido construir la pantalla antes de saber eso.
 **Orden de dependencias.** Tasks 2, 3 y 4 son independientes entre sí y pueden
 hacerse en cualquier orden o en paralelo. La 5 las necesita a las tres. La 6
 necesita la 5. La 7 necesita la tabla de la 5. La 8 necesita la 7.
+
+---
+
+### Task 10: Cascada del ritmo completa y con orden configurable
+
+Extiende `demoras_ritmo` de `zona → global` a la cascada de cuatro niveles que
+pide la spec, con el **orden configurable** desde Preferencias Globales.
+Requisito del usuario (2026-07-28).
+
+**Files:**
+- Modify: `docs/sqls/2026-07-29-demoras-ritmo.sql` → nueva migración
+  `docs/sqls/2026-07-30-demoras-ritmo-cascada.sql` (`CREATE OR REPLACE`, no se
+  edita la migración ya aplicada)
+- Modify: `scripts/sql-harness/assert-ritmo.sql`
+- Modify: `docs/DEMORA_INFORMADA.md` (documentar la clave nueva)
+
+**Interfaces:**
+- Consumes: `app_config.demora_ritmo_cascada` (sembrada en la Task 5, default
+  `'CHOFER,MOVIL,ZONA,GLOBAL'`), `metricas_cumplimiento`, `moviles_zonas`,
+  `moviles_dia`.
+- Produces: misma firma que `demoras_ritmo(p_escenario, p_hasta, p_dias, p_min_muestras)`.
+  `ritmo_origen` pasa a poder valer `CHOFER | MOVIL | ZONA | GLOBAL`. La Task 5
+  no necesita cambios: ya hace `LEFT JOIN` contra esta función y persiste
+  `ritmo_origen` tal cual venga.
+
+**Cómo se resuelve cada nivel.** Para un par (zona, tipo), los niveles CHOFER y
+MOVIL no son valores únicos: la zona tiene varios móviles activos, cada uno con
+su chofer. El ritmo del nivel es el **promedio ponderado por el aporte de cada
+móvil a esa zona** — el mismo aporte que ya calcula `demoras_capacidad`, así que
+un móvil de tránsito pesa menos que uno de prioridad, igual que en la capacidad.
+
+- **CHOFER** — para cada móvil activo de la zona, el chofer que lo manejó más
+  veces en la ventana (`metricas_cumplimiento.chofer` es nombre-texto, no hay id
+  estable); se toma el ritmo de ese chofer y se pondera por el aporte del móvil.
+  Cuenta como resuelto si la suma de muestras de los choferes considerados llega
+  a `p_min_muestras`.
+- **MOVIL** — igual pero agrupando por `movil` en vez de por `chofer`.
+- **ZONA** — lo que ya hace hoy.
+- **GLOBAL** — lo que ya hace hoy.
+
+**Orden.** Se lee `demora_ritmo_cascada` como CSV, se recorre de izquierda a
+derecha y **gana el primer nivel que llegue a `p_min_muestras`**. Niveles
+desconocidos se ignoran; si la lista queda vacía o mal formada, se cae al
+default `CHOFER,MOVIL,ZONA,GLOBAL`. `GLOBAL` se evalúa siempre último aunque no
+esté en la lista, como red final.
+
+- [ ] **Step 1: Escribir los asserts que fallan**
+
+Extender `scripts/sql-harness/assert-ritmo.sql` con:
+
+```sql
+-- Cascada por defecto: con datos suficientes de chofer, gana CHOFER.
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen <> 'CHOFER' THEN RAISE EXCEPTION 'esperaba CHOFER, obtuvo %', r.ritmo_origen; END IF;
+  RAISE NOTICE 'ok cascada default gana CHOFER';
+END $$;
+
+-- Sacando CHOFER de la lista, el mismo dato debe resolver por MOVIL.
+UPDATE app_config SET value='MOVIL,ZONA,GLOBAL' WHERE key='demora_ritmo_cascada';
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen <> 'MOVIL' THEN RAISE EXCEPTION 'esperaba MOVIL, obtuvo %', r.ritmo_origen; END IF;
+  RAISE NOTICE 'ok orden configurable saltea CHOFER';
+END $$;
+
+-- Lista solo con ZONA: debe resolver por ZONA, y caer a GLOBAL si no alcanza.
+UPDATE app_config SET value='ZONA' WHERE key='demora_ritmo_cascada';
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=200 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'GLOBAL debe ser la red final, obtuvo %', r.ritmo_origen; END IF;
+  RAISE NOTICE 'ok GLOBAL es red final aunque no este en la lista';
+END $$;
+
+-- Lista basura: cae al default sin romper.
+UPDATE app_config SET value='FRUTA,,XX' WHERE key='demora_ritmo_cascada';
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen IS NULL THEN RAISE EXCEPTION 'lista basura no debe romper'; END IF;
+  RAISE NOTICE 'ok lista invalida cae al default';
+END $$;
+UPDATE app_config SET value='CHOFER,MOVIL,ZONA,GLOBAL' WHERE key='demora_ritmo_cascada';
+```
+
+Los datos de prueba tienen que poblar `metricas_cumplimiento` con al menos un
+chofer con ≥5 hechos en la zona 100, y `moviles_zonas` + `moviles_dia` para que
+ese móvil esté activo y asignado a la zona.
+
+- [ ] **Step 2: Correr los asserts y verificar que fallan**
+
+Run: `bash scripts/sql-harness/run.sh docs/sqls/2026-07-29-demoras-ritmo.sql --assert scripts/sql-harness/assert-ritmo.sql`
+Expected: FALLA — `ritmo_origen` devuelve `ZONA` o `GLOBAL`, nunca `CHOFER`.
+
+- [ ] **Step 3: Escribir la migración**
+
+`docs/sqls/2026-07-30-demoras-ritmo-cascada.sql` con `CREATE OR REPLACE FUNCTION
+demoras_ritmo(...)` manteniendo la firma. Estructura sugerida: un CTE por nivel
+(`por_chofer`, `por_movil`, `por_zona`, `global`), todos sobre el mismo `base`,
+más un `LATERAL` o un `CASE` en cascada que elija el primero que cumpla
+`coalesce(n,0) >= p_min_muestras` siguiendo el orden leído de config.
+
+Leer la config con:
+```sql
+v_cascada text[] := string_to_array(
+  upper(coalesce((SELECT value FROM app_config WHERE key='demora_ritmo_cascada'),
+                 'CHOFER,MOVIL,ZONA,GLOBAL')), ',');
+```
+
+- [ ] **Step 4: Correr los asserts y verificar que pasan**
+
+Run: `bash scripts/sql-harness/run.sh docs/sqls/2026-07-29-demoras-ritmo.sql docs/sqls/2026-07-30-demoras-ritmo-cascada.sql --assert scripts/sql-harness/assert-ritmo.sql`
+Expected: todos los `ok ...`, exit 0. Los asserts viejos de zona/global deben
+seguir pasando.
+
+- [ ] **Step 5: Documentar y commitear**
+
+Agregar la clave `demora_ritmo_cascada` a la tabla de configuración de
+`docs/DEMORA_INFORMADA.md`, con los niveles válidos y la regla de que GLOBAL es
+siempre la red final.
+
+```bash
+git add docs/sqls/2026-07-30-demoras-ritmo-cascada.sql scripts/sql-harness/assert-ritmo.sql docs/DEMORA_INFORMADA.md
+git commit -m "feat(demoras): cascada del ritmo completa y con orden configurable
+
+Sube de zona->global a chofer->movil->zona->global, con el orden leido de
+app_config.demora_ritmo_cascada (default CHOFER,MOVIL,ZONA,GLOBAL) para
+poder cambiarlo desde Preferencias Globales sin deploy.
+
+Los niveles CHOFER y MOVIL no son valores unicos por zona: se resuelven
+como promedio ponderado por el aporte de cada movil, el mismo que usa
+demoras_capacidad, asi que un movil de transito pesa menos que uno de
+prioridad. Gana el primer nivel que llegue al minimo de muestras.
+
+GLOBAL se evalua siempre ultimo aunque no este en la lista: es la red
+final. Una lista vacia o mal formada cae al default sin romper."
+```

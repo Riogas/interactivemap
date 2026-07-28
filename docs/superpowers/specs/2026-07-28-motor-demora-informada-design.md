@@ -150,7 +150,17 @@ resolverse a niveles distintos, `ritmo_origen` registra el **nivel más
 específico que se pudo usar para al menos un móvil** de esa zona: si al menos
 uno resolvió por chofer, la fila dice `CHOFER`.
 
-Cuál de las cuatro alimenta el cálculo lo decide `demora_estadistico`
+**El orden de la cascada es configurable** (`demora_ritmo_cascada`, default
+`CHOFER,MOVIL,ZONA,GLOBAL`): se recorre de izquierda a derecha y gana el primer
+nivel que llegue al mínimo de muestras. Se pueden omitir niveles; `GLOBAL` se
+evalúa siempre último aunque no figure, como red final.
+
+Los niveles CHOFER y MOVIL no son valores únicos por zona —la zona tiene varios
+móviles, cada uno con su chofer—, así que se resuelven como **promedio ponderado
+por el aporte de cada móvil**, el mismo que usa la capacidad: un móvil de
+tránsito pesa menos que uno de prioridad.
+
+Cuál de las cuatro estadísticas alimenta el cálculo lo decide `demora_estadistico`
 (default `MEDIANA`). Las otras tres quedan guardadas, así se puede reprocesar
 el histórico con otra sin recalcular nada.
 
