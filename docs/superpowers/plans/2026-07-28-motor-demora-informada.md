@@ -1866,7 +1866,7 @@ Expected: los jobs existentes (`metricas-cumplimiento-run`, limpieza de GPS) tie
 
 ```bash
 git add docs/sqls/2026-07-29-demoras-cron.sql
-git commit -m "feat(demoras): cron cada 10 minutos y retencion de 30 dias
+git commit -m "feat(demoras): cron cada 10 minutos y retencion de 180 dias
 
 El cron dispara las 24 horas a proposito; la ventana 07:00-23:30 la evalua
 la funcion internamente porque pg_cron corre en UTC y esa ventana cruza la
