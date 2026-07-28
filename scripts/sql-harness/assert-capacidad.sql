@@ -26,13 +26,14 @@ BEGIN
   RAISE NOTICE 'ok prorrateo';
 END $$;
 
--- El total de las 4 zonas suma exactamente 1 movil.
+-- El total de las 4 zonas suma ~1 movil (tolerancia por residuo de redondeo).
+-- Suma de fracciones redondeadas independientemente no da exacto. Residuo típico ~1e-4.
 DO $$
 DECLARE v numeric;
 BEGIN
   SELECT sum(capacidad_efectiva) INTO v FROM demoras_capacidad(1000, DATE '2026-07-29');
-  IF round(v,6) <> 1.0 THEN RAISE EXCEPTION 'suma total: obtuvo % esperaba 1.0', round(v,6); END IF;
-  RAISE NOTICE 'ok suma = 1 movil';
+  IF abs(v - 1.0) >= 0.001 THEN RAISE EXCEPTION 'suma total: obtuvo % (fuera de tolerancia)', v; END IF;
+  RAISE NOTICE 'ok suma ~ 1 movil';
 END $$;
 
 -- El movil inactivo no cuenta.
@@ -58,4 +59,27 @@ BEGIN
   IF round(v,6) <> 1 THEN RAISE EXCEPTION 'alpha=0 prioridad: obtuvo % esperaba 1', v; END IF;
   RAISE NOTICE 'ok alpha=0';
 END $$;
+
+-- Edge case: alpha=0.33 con mas zonas de transito (1 prioridad + 5 transito).
+-- W = 1 + 0.33*5 = 2.65; suma redondeada ~ 0.9999 (fuera de 1.0 pero dentro de tolerancia).
+TRUNCATE moviles_zonas, moviles_dia;
+INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito) VALUES
+  ('30', 200, 1000, 'URGENTE', 1),
+  ('30', 201, 1000, 'URGENTE', 2),
+  ('30', 202, 1000, 'URGENTE', 2),
+  ('30', 203, 1000, 'URGENTE', 2),
+  ('30', 204, 1000, 'URGENTE', 2),
+  ('30', 205, 1000, 'URGENTE', 2);
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo) VALUES
+  (1000, 30, DATE '2026-07-29', true);
+UPDATE escenario_settings SET peso_transito_alpha = 0.33 WHERE escenario_id = 1000;
+DO $$
+DECLARE v numeric;
+BEGIN
+  SELECT sum(capacidad_efectiva) INTO v FROM demoras_capacidad(1000, DATE '2026-07-29');
+  IF abs(v - 1.0) >= 0.001 THEN RAISE EXCEPTION 'alpha=0.33 suma: obtuvo % (fuera de tolerancia)', v; END IF;
+  RAISE NOTICE 'ok alpha=0.33 6zonas suma dentro de tolerancia';
+END $$;
+
+-- Restaurar alpha a default
 UPDATE escenario_settings SET peso_transito_alpha = 0.3 WHERE escenario_id = 1000;

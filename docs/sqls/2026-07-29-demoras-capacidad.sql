@@ -55,6 +55,9 @@ AS $fn$
   SELECT
     p.zona_id,
     p.tipo                                                   AS tipo_servicio,
+    -- Redondeo a 4 decimales (réplica lib/zonas-cap-entrega.ts:76-77).
+    -- Nota: suma de fracciones redondeadas independientemente ≠ 1.0 exacto.
+    -- Residuo típico ~1e-4, no es invariante duro.
     round(sum(CASE WHEN p.w > 0 THEN p.peso / p.w ELSE 0 END), 4) AS capacidad_efectiva,
     count(DISTINCT p.movil)::integer                          AS moviles_activos,
     count(DISTINCT p.movil) FILTER (WHERE p.es_prioridad)::integer     AS moviles_prioridad,
@@ -65,4 +68,4 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION demoras_capacidad(integer, date) IS
-  'Capacidad efectiva por (zona, tipo): suma del aporte prorrateado de los moviles ACTIVOS. peso 1 prioridad / alpha transito, normalizado por tipo. Un movil nunca suma mas de 1 en total.';
+  'Capacidad efectiva por (zona, tipo): suma del aporte prorrateado de los moviles ACTIVOS. peso 1 prioridad / alpha transito, normalizado por tipo. Suma de aportes de un movil = 1 ± residuo de redondeo (~1e-4); no es invariante exacto.';
