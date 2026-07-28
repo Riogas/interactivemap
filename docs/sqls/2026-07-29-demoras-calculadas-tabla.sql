@@ -49,6 +49,22 @@ CREATE TABLE IF NOT EXISTS demoras_calculadas (
   PRIMARY KEY (corrida_at, escenario, zona_id, tipo_servicio)
 );
 
+-- Idempotencia (fix round 3): demoras_calculadas y demoras_config se crean
+-- en este MISMO archivo, asi que si demoras_config ya existia (la premisa
+-- del fix de idempotencia de arriba) entonces demoras_calculadas TAMBIEN
+-- existe, con el CHECK viejo de ritmo_origen (sin 'DEFECTO'). El CREATE
+-- TABLE IF NOT EXISTS de arriba la saltea entera, y sin este swap la
+-- migracion aplica SIN ERROR pero demoras_calcular_run revienta en
+-- runtime, en cada corrida que produzca una fila sin estadistica
+-- ("violates check constraint demoras_calculadas_ritmo_origen_check") —
+-- peor que un apply que aborta, porque el cron falla callado cada 10 min.
+-- Mismo patron de swap que ya usa 2026-07-23-metricas-otros-y-subestado.sql
+-- (el nombre autogenerado por Postgres para el CHECK inline de una columna
+-- es <tabla>_<columna>_check).
+ALTER TABLE demoras_calculadas DROP CONSTRAINT IF EXISTS demoras_calculadas_ritmo_origen_check;
+ALTER TABLE demoras_calculadas ADD  CONSTRAINT demoras_calculadas_ritmo_origen_check
+  CHECK (ritmo_origen IN ('CHOFER','MOVIL','ZONA','GLOBAL','DEFECTO'));
+
 CREATE INDEX IF NOT EXISTS idx_demoras_calc_esc_zona_tipo_at
   ON demoras_calculadas (escenario, zona_id, tipo_servicio, corrida_at DESC);
 CREATE INDEX IF NOT EXISTS idx_demoras_calc_at

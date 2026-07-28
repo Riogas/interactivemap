@@ -144,9 +144,9 @@ chofer), el ritmo de la zona es el **promedio ponderado por aporte** de los
 ritmos de sus móviles activos. Si ninguno tiene dato suficiente, cae a la zona;
 si la zona tampoco, al global del tipo.
 
-Se persiste `ritmo_origen` (`CHOFER|MOVIL|ZONA|GLOBAL`) para poder auditar de
-dónde salió cada número. Como distintos móviles de la misma zona pueden
-resolverse a niveles distintos, `ritmo_origen` registra el **nivel más
+Se persiste `ritmo_origen` (`CHOFER|MOVIL|ZONA|GLOBAL|DEFECTO`) para poder
+auditar de dónde salió cada número. Como distintos móviles de la misma zona
+pueden resolverse a niveles distintos, `ritmo_origen` registra el **nivel más
 específico que se pudo usar para al menos un móvil** de esa zona: si al menos
 uno resolvió por chofer, la fila dice `CHOFER`.
 
@@ -154,6 +154,12 @@ uno resolvió por chofer, la fila dice `CHOFER`.
 `CHOFER,MOVIL,ZONA,GLOBAL`): se recorre de izquierda a derecha y gana el primer
 nivel que llegue al mínimo de muestras. Se pueden omitir niveles; `GLOBAL` se
 evalúa siempre último aunque no figure, como red final.
+
+Si ni siquiera `GLOBAL` tiene una muestra (el tipo de servicio no tiene un solo
+hecho en la ventana de días), no hay ninguna estadística real que usar.
+`ritmo_usado` cae al piso configurado en `demoras_config.ritmo_default_minutos`
+y `ritmo_origen` queda `DEFECTO` — deliberadamente **no** `GLOBAL`, para no
+mentir que hubo un cálculo global que en realidad nunca ocurrió.
 
 Los niveles CHOFER y MOVIL no son valores únicos por zona —la zona tiene varios
 móviles, cada uno con su chofer—, así que se resuelven como **promedio ponderado
@@ -201,13 +207,21 @@ informa  30  60  60  60  45       informa  30  60  90 120 120
 
 | Situación | Resultado |
 |---|---|
-| Zona activa, sin demanda | `demora_min` |
-| Zona activa, con demanda, `capacidad_efectiva = 0` | `demora_max`, y `sin_capacidad = true` |
+| Zona activa, `capacidad_efectiva = 0` (con o sin demanda) | `demora_max`, y `sin_capacidad = true` |
+| Zona activa, con capacidad, sin demanda | `demora_min` |
 | Zona con `demoras.activa = false` | No se emite fila |
 | NOCTURNO/SERVICE (sin bandera propia) | Hereda `demoras.activa` de la fila URGENTE de esa zona |
 | Zona+tipo sin ningún móvil en `moviles_zonas` | No se emite fila (el servicio no existe ahí) |
 | Primera corrida del día (07:00) | El suavizado **no** arrastra del día anterior: `demora_suavizada = clamp(crudo)`. Entre las 23:30 y las 07:00 la operación cambia por completo; arrastrar el estado de anoche informaría una demora que ya no significa nada. |
 | Fuera de ventana horaria | La función no hace nada y retorna 0 |
+
+**La falta de capacidad manda sobre la falta de demanda.** Si no hay ningún
+móvil activo en la zona, la respuesta honesta a "¿cuánto demora?" no es el
+piso: un pedido que entre ahora mismo no tiene quién lo atienda, sin importar
+que la cola esté vacía en el instante de la corrida. El piso sólo describe el
+caso genuinamente bueno: hay alguien trabajando **y** no hay nada pendiente.
+`sin_capacidad` refleja el estado de la oferta (`capacidad_efectiva = 0`) por
+sí solo, no la coincidencia entre oferta y demanda.
 
 ---
 
@@ -249,7 +263,7 @@ CREATE TABLE demoras_calculadas (
   ritmo_p75             numeric,
   ritmo_p90             numeric,
   ritmo_usado           numeric,                -- la que alimentó el cálculo
-  ritmo_origen          text CHECK (ritmo_origen IN ('CHOFER','MOVIL','ZONA','GLOBAL')),
+  ritmo_origen          text CHECK (ritmo_origen IN ('CHOFER','MOVIL','ZONA','GLOBAL','DEFECTO')),
   ritmo_muestras        integer,
 
   -- banderas

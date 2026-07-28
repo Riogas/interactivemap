@@ -900,6 +900,22 @@ CREATE TABLE IF NOT EXISTS demoras_calculadas (
   PRIMARY KEY (corrida_at, escenario, zona_id, tipo_servicio)
 );
 
+-- Idempotencia (fix round 3): demoras_calculadas y demoras_config se crean
+-- en este MISMO archivo, asi que si demoras_config ya existia (la premisa
+-- del fix de idempotencia de arriba) entonces demoras_calculadas TAMBIEN
+-- existe, con el CHECK viejo de ritmo_origen (sin 'DEFECTO'). El CREATE
+-- TABLE IF NOT EXISTS de arriba la saltea entera, y sin este swap la
+-- migracion aplica SIN ERROR pero demoras_calcular_run revienta en
+-- runtime, en cada corrida que produzca una fila sin estadistica
+-- ("violates check constraint demoras_calculadas_ritmo_origen_check") —
+-- peor que un apply que aborta, porque el cron falla callado cada 10 min.
+-- Mismo patron de swap que ya usa 2026-07-23-metricas-otros-y-subestado.sql
+-- (el nombre autogenerado por Postgres para el CHECK inline de una columna
+-- es <tabla>_<columna>_check).
+ALTER TABLE demoras_calculadas DROP CONSTRAINT IF EXISTS demoras_calculadas_ritmo_origen_check;
+ALTER TABLE demoras_calculadas ADD  CONSTRAINT demoras_calculadas_ritmo_origen_check
+  CHECK (ritmo_origen IN ('CHOFER','MOVIL','ZONA','GLOBAL','DEFECTO'));
+
 CREATE INDEX IF NOT EXISTS idx_demoras_calc_esc_zona_tipo_at
   ON demoras_calculadas (escenario, zona_id, tipo_servicio, corrida_at DESC);
 CREATE INDEX IF NOT EXISTS idx_demoras_calc_at
@@ -1176,19 +1192,35 @@ VALUES (7001, 1000, 'SERVICE', 10, 100, 1, date '2026-07-29');
 -- prueba que el seed nuevo es valido ANTES de usarlo para probar
 -- aislamiento (si esto fallara, las ausencias de abajo serian falsos
 -- positivos por falta de datos, no por el interruptor/ventana).
+--
+-- De paso, NOCTURNO y SERVICE en zona 100 no tienen NI UNA fila en
+-- metricas_cumplimiento (todo el seed de mas arriba es tipo_servicio=
+-- URGENTE), asi que demoras_ritmo no tiene estadistica ni de zona ni
+-- global para esos dos tipos -> caen en DEFECTO. Es el escenario exacto
+-- que violaba el CHECK viejo de ritmo_origen (fix round 3): si el INSERT
+-- de mas arriba no hubiera hecho el swap del constraint, esta corrida
+-- fallaria con "violates check constraint
+-- demoras_calculadas_ritmo_origen_check" en vez de escribir la fila.
 DO $$
+DECLARE r_noc record;
 BEGIN
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:00:00-03');
 
-  PERFORM 1 FROM demoras_calculadas
+  SELECT * INTO r_noc FROM demoras_calculadas
    WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 20:00:00-03';
-  IF NOT FOUND THEN RAISE EXCEPTION 'NOCTURNO debio calcular (control positivo)'; END IF;
+  IF r_noc IS NULL THEN RAISE EXCEPTION 'NOCTURNO debio calcular (control positivo)'; END IF;
+  IF r_noc.ritmo_origen IS DISTINCT FROM 'DEFECTO' THEN
+    RAISE EXCEPTION 'NOCTURNO sin metricas: ritmo_origen=% (esperaba DEFECTO)', r_noc.ritmo_origen;
+  END IF;
+  IF r_noc.ritmo_muestras IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'NOCTURNO sin metricas: ritmo_muestras=% (esperaba 0)', r_noc.ritmo_muestras;
+  END IF;
 
   PERFORM 1 FROM demoras_calculadas
    WHERE zona_id=100 AND tipo_servicio='SERVICE' AND corrida_at = timestamptz '2026-07-29 20:00:00-03';
   IF NOT FOUND THEN RAISE EXCEPTION 'SERVICE debio calcular (control positivo)'; END IF;
 
-  RAISE NOTICE 'ok NOCTURNO y SERVICE calculan con datos propios (control positivo)';
+  RAISE NOTICE 'ok NOCTURNO y SERVICE calculan con datos propios (control positivo), ritmo_origen=DEFECTO sin violar el CHECK';
   DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 20:00:00-03';
 END $$;
 
@@ -1741,6 +1773,43 @@ Verificado: aplicar la migración de tabla dos veces seguidas en el harness
 no aborta (segunda pasada solo emite `NOTICE ... already exists,
 skipping`, exit 0). Harness completo con todo corregido: exit 0, con los
 asserts viejos y los 2 nuevos de precedencia capacidad/demanda.
+
+**Fix round 3 (2026-07-28), sobre 1 rotura nueva introducida por el fix
+round 2:**
+- `demoras_calculadas` y `demoras_config` se crean en el **mismo** archivo.
+  Si `demoras_config` ya existía (la premisa misma del fix de idempotencia
+  del round 2), entonces `demoras_calculadas` también, con el `CHECK` viejo
+  de `ritmo_origen` (sin `'DEFECTO'`). El `CREATE TABLE IF NOT EXISTS` lo
+  salteaba sin ningún `DROP CONSTRAINT`/`ADD CONSTRAINT`, así que la
+  migración aplicaba **sin error** pero `demoras_calcular_run` reventaba en
+  runtime, en cada corrida que produjera una fila sin estadística
+  (`violates check constraint demoras_calculadas_ritmo_origen_check`) — el
+  cron fallando callado cada 10 minutos, peor que un apply que aborta.
+  Se agrega el mismo swap de constraint que ya usa
+  `2026-07-23-metricas-otros-y-subestado.sql` (`DROP CONSTRAINT IF EXISTS`
+  + `ADD CONSTRAINT` con el nombre autogenerado `<tabla>_<columna>_check`).
+  Se revisó el archivo entero con este criterio (diff completo contra
+  `e8570bf`): el único otro cambio de esquema desde la versión original es
+  `ritmo_default_minutos` (columna nueva, ya cubierta por el `ADD COLUMN
+  IF NOT EXISTS` del round 2 — una columna nueva no tiene el problema de
+  "CHECK que cambió de valores" porque su CHECK se define una sola vez, en
+  el momento en que se crea, por cualquiera de los dos caminos). No se
+  encontró ningún otro CHECK, default, o índice con el mismo problema.
+- Se sincroniza también `docs/superpowers/specs/2026-07-28-motor-demora-
+  informada-design.md`: la tabla de casos borde de §3.5 decía "Zona
+  activa, sin demanda → demora_min", que ahora es falso cuando
+  `capacidad_efectiva = 0`; se reordena para reflejar que la falta de
+  capacidad manda sobre la falta de demanda. Se agrega `DEFECTO` a la
+  lista de valores de `ritmo_origen` (prosa + `CHECK` embebido en §4.1) y
+  una nota en §3.3 explicando cuándo se usa (ni zona ni global tienen
+  muestra).
+
+Verificado (el escenario que rompía): aplicar la versión **pre-fix**
+(`e8570bf`) de la migración de tabla y encima la actual — la migración
+aplica sin error, y `demoras_calcular_run` escribe una fila con
+`ritmo_origen='DEFECTO'` (NOCTURNO/SERVICE de zona 100, sin ninguna
+`metricas_cumplimiento`) sin violar el `CHECK`. Harness completo: exit 0,
+14 `NOTICE ok`.
 
 ---
 

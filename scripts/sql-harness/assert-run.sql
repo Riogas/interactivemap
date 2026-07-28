@@ -203,19 +203,35 @@ VALUES (7001, 1000, 'SERVICE', 10, 100, 1, date '2026-07-29');
 -- prueba que el seed nuevo es valido ANTES de usarlo para probar
 -- aislamiento (si esto fallara, las ausencias de abajo serian falsos
 -- positivos por falta de datos, no por el interruptor/ventana).
+--
+-- De paso, NOCTURNO y SERVICE en zona 100 no tienen NI UNA fila en
+-- metricas_cumplimiento (todo el seed de mas arriba es tipo_servicio=
+-- URGENTE), asi que demoras_ritmo no tiene estadistica ni de zona ni
+-- global para esos dos tipos -> caen en DEFECTO. Es el escenario exacto
+-- que violaba el CHECK viejo de ritmo_origen (fix round 3): si el INSERT
+-- de mas arriba no hubiera hecho el swap del constraint, esta corrida
+-- fallaria con "violates check constraint
+-- demoras_calculadas_ritmo_origen_check" en vez de escribir la fila.
 DO $$
+DECLARE r_noc record;
 BEGIN
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:00:00-03');
 
-  PERFORM 1 FROM demoras_calculadas
+  SELECT * INTO r_noc FROM demoras_calculadas
    WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 20:00:00-03';
-  IF NOT FOUND THEN RAISE EXCEPTION 'NOCTURNO debio calcular (control positivo)'; END IF;
+  IF r_noc IS NULL THEN RAISE EXCEPTION 'NOCTURNO debio calcular (control positivo)'; END IF;
+  IF r_noc.ritmo_origen IS DISTINCT FROM 'DEFECTO' THEN
+    RAISE EXCEPTION 'NOCTURNO sin metricas: ritmo_origen=% (esperaba DEFECTO)', r_noc.ritmo_origen;
+  END IF;
+  IF r_noc.ritmo_muestras IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'NOCTURNO sin metricas: ritmo_muestras=% (esperaba 0)', r_noc.ritmo_muestras;
+  END IF;
 
   PERFORM 1 FROM demoras_calculadas
    WHERE zona_id=100 AND tipo_servicio='SERVICE' AND corrida_at = timestamptz '2026-07-29 20:00:00-03';
   IF NOT FOUND THEN RAISE EXCEPTION 'SERVICE debio calcular (control positivo)'; END IF;
 
-  RAISE NOTICE 'ok NOCTURNO y SERVICE calculan con datos propios (control positivo)';
+  RAISE NOTICE 'ok NOCTURNO y SERVICE calculan con datos propios (control positivo), ritmo_origen=DEFECTO sin violar el CHECK';
   DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 20:00:00-03';
 END $$;
 
