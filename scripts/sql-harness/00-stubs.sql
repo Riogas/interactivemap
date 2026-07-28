@@ -27,7 +27,8 @@ CREATE TABLE demoras (
   demora_id BIGSERIAL PRIMARY KEY,
   escenario_id INTEGER, zona_id INTEGER, zona_tipo TEXT,
   descripcion TEXT, minutos INTEGER, activa BOOLEAN, zona_nombre TEXT,
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT demoras_natural_key UNIQUE (escenario_id, zona_id, zona_tipo, descripcion)
 );
 
 CREATE TABLE moviles_zonas (

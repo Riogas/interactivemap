@@ -4,6 +4,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 C=pgharness
+trap 'docker rm -f $C >/dev/null 2>&1 || true' EXIT
 
 MIGS=(); ASSERTS=(); MODE=mig
 for a in "$@"; do
