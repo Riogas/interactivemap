@@ -740,6 +740,11 @@ OTROS se pliegan a URGENTE porque no tienen moviles propios."
 - Create: `docs/sqls/2026-07-29-demoras-calculadas-tabla.sql`
 - Create: `docs/sqls/2026-07-29-demoras-calcular-run.sql`
 - Create: `scripts/sql-harness/assert-run.sql`
+- Modify: `scripts/sql-harness/00-stubs.sql` — la tabla `escenario_settings` del
+  stub no tiene `pedidos_sa_minutos_antes`, que la función necesita para la
+  ventana SA. Agregar la columna con el mismo tipo y default que producción:
+  `pedidos_sa_minutos_antes INTEGER` (nullable, sin default; hoy vale 60 en el
+  escenario 1000), y sembrarla en 60 en el INSERT del escenario 1000.
 
 **Interfaces:**
 - Consumes: `demoras_acabado`, `demoras_capacidad`, `demoras_ritmo`.
@@ -881,6 +886,74 @@ BEGIN
   RAISE NOTICE 'ok ignora zonas inactivas';
 END $$;
 
+-- Ventana SA: un pedido SIN movil que arranca mas alla de la ventana no debe
+-- contar como demanda; uno CON movil cuenta siempre aunque arranque tarde.
+DO $$
+DECLARE r_antes record; r_desp record;
+BEGIN
+  SELECT pendientes_sin_asignar, pendientes_asignados INTO r_antes
+    FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE'
+     AND corrida_at = timestamptz '2026-07-29 15:00:00-03';
+
+  -- Uno SA que arranca en 4 horas (fuera de la ventana de 60 min) y uno CON
+  -- movil que tambien arranca en 4 horas.
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para, fch_hora_para)
+  VALUES (5001, 1000, 'URGENTE', NULL, 100, 1,
+          to_char((now() AT TIME ZONE 'America/Montevideo')::date,'YYYYMMDD'),
+          timestamptz '2026-07-29 19:00:00-03'),
+         (5002, 1000, 'URGENTE', 10, 100, 1,
+          to_char((now() AT TIME ZONE 'America/Montevideo')::date,'YYYYMMDD'),
+          timestamptz '2026-07-29 19:00:00-03');
+
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:05:00-03');
+  SELECT pendientes_sin_asignar, pendientes_asignados INTO r_desp
+    FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE'
+     AND corrida_at = timestamptz '2026-07-29 15:05:00-03';
+
+  IF r_desp.pendientes_sin_asignar <> r_antes.pendientes_sin_asignar THEN
+    RAISE EXCEPTION 'el SA fuera de ventana no debe contar: % -> %',
+      r_antes.pendientes_sin_asignar, r_desp.pendientes_sin_asignar;
+  END IF;
+  IF r_desp.pendientes_asignados <> r_antes.pendientes_asignados + 1 THEN
+    RAISE EXCEPTION 'el asignado fuera de ventana SI debe contar: % -> %',
+      r_antes.pendientes_asignados, r_desp.pendientes_asignados;
+  END IF;
+  RAISE NOTICE 'ok ventana SA (SA fuera de ventana excluido, asignado incluido)';
+
+  DELETE FROM pedidos WHERE id IN (5001,5002);
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 15:05:00-03';
+END $$;
+
+-- ESPECIAL y OTROS no deben contar como demanda de ningun tipo.
+DO $$
+DECLARE r_antes int; r_desp int;
+BEGIN
+  SELECT pendientes_asignados INTO r_antes FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE'
+     AND corrida_at = timestamptz '2026-07-29 15:00:00-03';
+
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (5101, 1000, 'ESPECIAL SIN FLETE', 10, 100, 1,
+          to_char((now() AT TIME ZONE 'America/Montevideo')::date,'YYYYMMDD')),
+         (5102, 1000, 'LO QUE SEA', 10, 100, 1,
+          to_char((now() AT TIME ZONE 'America/Montevideo')::date,'YYYYMMDD'));
+
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:10:00-03');
+  SELECT pendientes_asignados INTO r_desp FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE'
+     AND corrida_at = timestamptz '2026-07-29 15:10:00-03';
+
+  IF r_desp <> r_antes THEN
+    RAISE EXCEPTION 'ESPECIAL/OTROS no deben contar como demanda: % -> %', r_antes, r_desp;
+  END IF;
+  RAISE NOTICE 'ok ESPECIAL y OTROS excluidos';
+
+  DELETE FROM pedidos WHERE id IN (5101,5102);
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 15:10:00-03';
+END $$;
+
 -- Idempotencia: la misma corrida_at dos veces no duplica ni cambia.
 DO $$
 DECLARE a bigint; b bigint;
@@ -952,6 +1025,7 @@ DECLARE
   v_min        integer;  v_max     integer;  v_escalon integer;
   v_subida     integer;  v_bajada  integer;
   v_estad      text;     v_factor  numeric;
+  v_sa_mins    integer;
   v_escritas   bigint;
   cfg          jsonb;
 BEGIN
@@ -974,6 +1048,12 @@ BEGIN
   v_bajada  := coalesce((cfg->>'demora_bajada_max')::integer, 15);
   v_estad   := coalesce(cfg->>'demora_estadistico', 'MEDIANA');
   v_factor  := coalesce((cfg->>'demora_factor_calibracion')::numeric, 1.0);
+
+  -- Ventana de visibilidad de los sin-asignar. NO es config del motor: es la
+  -- misma que ya usan la capa de capacidad de entrega y el mapa, y vive por
+  -- escenario. NULL o 0 = sin filtro (compatibilidad hacia atras).
+  SELECT es.pedidos_sa_minutos_antes INTO v_sa_mins
+    FROM escenario_settings es WHERE es.escenario_id = v_esc;
 
   WITH
   -- Zona activa: la bandera vive en la fila URGENTE del AS400 y la heredan
@@ -1005,7 +1085,7 @@ BEGIN
     FROM (
       -- Solo URGENTE y NOCTURNO exactos. Cualquier otro servicio_nombre
       -- (ESPECIAL*, o lo que sea) da tipo NULL y se descarta abajo.
-      SELECT zona_nro, movil,
+      SELECT zona_nro, movil, fch_hora_para,
              CASE upper(trim(coalesce(servicio_nombre,'')))
                WHEN 'NOCTURNO' THEN 'NOCTURNO'
                WHEN 'URGENTE'  THEN 'URGENTE'
@@ -1015,12 +1095,25 @@ BEGIN
       WHERE escenario = v_esc AND estado_nro = 1
         AND fch_para = to_char(v_fecha, 'YYYYMMDD') AND zona_nro IS NOT NULL
       UNION ALL
-      SELECT zona_nro, movil, 'SERVICE'
+      SELECT zona_nro, movil, fch_hora_para, 'SERVICE'
       FROM services
       WHERE escenario = v_esc AND estado_nro = 1
         AND fch_para = to_char(v_fecha, 'YYYYMMDD') AND zona_nro IS NOT NULL
     ) p
     WHERE p.tipo IS NOT NULL
+      -- Ventana SA (regla canonica de la app, ver lib/sa-window-filter.ts
+      -- isVisibleByWindow y app/api/zonas/capacidad-snapshot/route.ts):
+      --   con movil asignado  -> cuenta SIEMPRE, aunque arranque mas tarde
+      --   sin movil (SA)      -> cuenta solo si arranca dentro de la ventana
+      -- Un SA que arranca mas alla de la ventana "no existe" todavia para el
+      -- sistema, asi que tampoco debe empujar la demora hacia arriba.
+      -- fch_hora_para NULL no filtra: falta de dato no es motivo de exclusion.
+      AND (
+        (p.movil IS NOT NULL AND p.movil <> 0)
+        OR v_sa_mins IS NULL OR v_sa_mins = 0
+        OR p.fch_hora_para IS NULL
+        OR p.fch_hora_para <= p_corrida_at + (v_sa_mins * interval '1 minute')
+      )
     GROUP BY zona_nro, tipo
   ),
   -- Universo: todo par (zona activa, tipo) que tenga moviles asignados.

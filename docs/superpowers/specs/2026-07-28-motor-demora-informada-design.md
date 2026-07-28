@@ -89,7 +89,14 @@ porque no tienen oferta propia en `moviles_zonas`; eso inflaba artificialmente
 la demanda de URGENTE con pedidos que no compiten por los mismos móviles. Un
 pedido ESPECIAL no cuenta como demanda para ningún bucket.
 
-Se cuentan tanto los asignados a un móvil como los sin asignar de esa zona.
+Se cuentan tanto los asignados a un móvil como los sin asignar de esa zona,
+con una salvedad: **los sin asignar que arrancan más allá de la ventana de
+visibilidad no cuentan**. Es la regla canónica de la app (`lib/sa-window-filter.ts`,
+`isVisibleByWindow`), la misma que ya aplican la capa de capacidad de entrega y
+el mapa: un pedido sin móvil cuya `fch_hora_para` cae fuera de
+`escenario_settings.pedidos_sa_minutos_antes` (hoy 60 min) todavía "no existe"
+para el sistema, así que tampoco debe empujar la demora hacia arriba. Los que
+ya tienen móvil asignado cuentan siempre, aunque arranquen más tarde.
 
 **Trabajo atrapado:** los pedidos asignados a un móvil que hoy está inactivo
 cuentan como demanda pero su móvil no aporta capacidad. Es correcto: ese
