@@ -13,10 +13,11 @@ CREATE TABLE app_config (
 CREATE TABLE escenario_settings (
   escenario_id INTEGER PRIMARY KEY,
   peso_transito_alpha NUMERIC(3,2) NOT NULL DEFAULT 0.3,
-  nombre TEXT
+  nombre TEXT,
+  pedidos_sa_minutos_antes INTEGER
 );
-INSERT INTO escenario_settings (escenario_id, peso_transito_alpha, nombre)
-VALUES (1000, 0.3, 'Escenario 1000');
+INSERT INTO escenario_settings (escenario_id, peso_transito_alpha, nombre, pedidos_sa_minutos_antes)
+VALUES (1000, 0.3, 'Escenario 1000', 60);
 
 CREATE TABLE zonas (
   zona_id INTEGER, escenario_id INTEGER, nombre TEXT, activa BOOLEAN,

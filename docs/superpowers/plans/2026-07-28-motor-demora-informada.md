@@ -960,20 +960,20 @@ INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, pr
 VALUES ('10', 100, 1000, 'URGENTE', 1),
        ('11', 900, 1000, 'URGENTE', 1);
 INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
-VALUES (1000, 10, (now() AT TIME ZONE 'America/Montevideo')::date, true),
-       (1000, 11, (now() AT TIME ZONE 'America/Montevideo')::date, true);
+VALUES (1000, 10, date '2026-07-29', true),
+       (1000, 11, date '2026-07-29', true);
 
 -- 10 pedidos pendientes en zona 100 -> con ritmo global de 20 min y
 -- capacidad 1.0, el crudo da 200 -> clampea a 120.
 INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
 SELECT g, 1000, 'URGENTE', 10, 100, 1,
-       to_char((now() AT TIME ZONE 'America/Montevideo')::date, 'YYYYMMDD')
+       to_char(date '2026-07-29', 'YYYYMMDD')
 FROM generate_series(1,10) g;
 
 INSERT INTO metricas_cumplimiento
   (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
    fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
-SELECT 'PEDIDO', 1000+g, 1000, (now() AT TIME ZONE 'America/Montevideo')::date - 1,
+SELECT 'PEDIDO', 1000+g, 1000, date '2026-07-29' - 1,
        'URGENTE', 10, 100, 'ANA', now(), 20, 20, 'CAMPO'
 FROM generate_series(1,10) g;
 
@@ -1015,10 +1015,10 @@ BEGIN
   -- movil que tambien arranca en 4 horas.
   INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para, fch_hora_para)
   VALUES (5001, 1000, 'URGENTE', NULL, 100, 1,
-          to_char((now() AT TIME ZONE 'America/Montevideo')::date,'YYYYMMDD'),
+          to_char(date '2026-07-29','YYYYMMDD'),
           timestamptz '2026-07-29 19:00:00-03'),
          (5002, 1000, 'URGENTE', 10, 100, 1,
-          to_char((now() AT TIME ZONE 'America/Montevideo')::date,'YYYYMMDD'),
+          to_char(date '2026-07-29','YYYYMMDD'),
           timestamptz '2026-07-29 19:00:00-03');
 
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:05:00-03');
@@ -1051,9 +1051,9 @@ BEGIN
 
   INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
   VALUES (5101, 1000, 'ESPECIAL SIN FLETE', 10, 100, 1,
-          to_char((now() AT TIME ZONE 'America/Montevideo')::date,'YYYYMMDD')),
+          to_char(date '2026-07-29','YYYYMMDD')),
          (5102, 1000, 'LO QUE SEA', 10, 100, 1,
-          to_char((now() AT TIME ZONE 'America/Montevideo')::date,'YYYYMMDD'));
+          to_char(date '2026-07-29','YYYYMMDD'));
 
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:10:00-03');
   SELECT pendientes_asignados INTO r_desp FROM demoras_calculadas
