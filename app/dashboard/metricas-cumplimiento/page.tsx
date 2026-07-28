@@ -256,7 +256,12 @@ function MetricasCumplimientoContent() {
   }
 
   return (
-    <div data-theme={theme} className="min-h-screen bg-stats-background font-stats-sans text-stats-foreground">
+    // `h-full overflow-y-auto` y NO `min-h-screen`: el <body> del layout raíz
+    // es `overflow-hidden` (app/layout.tsx:42, porque la app es un mapa a
+    // pantalla completa), así que cada página tiene que crear su PROPIO
+    // contexto de scroll o el contenido queda cortado sin forma de bajar.
+    // Mismo patrón que app/dashboard/stats/page.tsx:1196.
+    <div data-theme={theme} className="h-full overflow-y-auto bg-stats-background font-stats-sans text-stats-foreground">
       <div className="mx-auto max-w-[1360px] px-4 pb-16 pt-6 sm:px-6">
         {/* ── Header ── */}
         <header className="flex flex-wrap items-start justify-between gap-4">
