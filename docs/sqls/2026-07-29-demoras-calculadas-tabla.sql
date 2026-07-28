@@ -35,7 +35,11 @@ CREATE TABLE IF NOT EXISTS demoras_calculadas (
   ritmo_p75              numeric,
   ritmo_p90              numeric,
   ritmo_usado            numeric,
-  ritmo_origen           text CHECK (ritmo_origen IN ('CHOFER','MOVIL','ZONA','GLOBAL')),
+  -- DEFECTO: no hubo ninguna estadistica disponible (ni zona ni global) y
+  -- ritmo_usado salio de demoras_config.ritmo_default_minutos. Sin esta
+  -- etiqueta, esas filas se veian como si vinieran de un calculo global
+  -- que nunca ocurrio.
+  ritmo_origen           text CHECK (ritmo_origen IN ('CHOFER','MOVIL','ZONA','GLOBAL','DEFECTO')),
   ritmo_muestras         integer,
 
   sin_capacidad          boolean     NOT NULL DEFAULT false,
@@ -81,6 +85,16 @@ CREATE TABLE IF NOT EXISTS demoras_config (
   PRIMARY KEY (escenario_id, tipo_servicio),
   CONSTRAINT demoras_config_rango CHECK (max_minutos >= min_minutos)
 );
+
+-- Idempotencia (fix round 2): si demoras_config ya existia porque una
+-- version anterior de esta migracion ya corrio (p.ej. la de fix round 1,
+-- antes de agregar esta columna), el CREATE TABLE IF NOT EXISTS de arriba
+-- la saltea entera y ritmo_default_minutos nunca se agrega -> el COMMENT ON
+-- COLUMN de mas abajo explota y, bajo --single-transaction, todo el
+-- apply hace rollback. Mismo patron que las 48 columnas ADD COLUMN IF NOT
+-- EXISTS del resto del repo.
+ALTER TABLE demoras_config
+  ADD COLUMN IF NOT EXISTS ritmo_default_minutos integer NOT NULL DEFAULT 30 CHECK (ritmo_default_minutos > 0);
 
 COMMENT ON TABLE demoras_config IS
   'Configuracion del motor de demora por (escenario, tipo de servicio). Editable desde Preferencias Globales. Si falta la fila de un tipo, ese tipo no se calcula.';

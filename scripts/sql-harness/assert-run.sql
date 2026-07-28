@@ -39,10 +39,10 @@ BEGIN
   SELECT * INTO r FROM demoras_calculadas
    WHERE zona_id=100 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 15:00:00-03';
   IF r IS NULL THEN RAISE EXCEPTION 'falta la fila de la zona 100'; END IF;
-  IF r.demora_informada <> 120 THEN RAISE EXCEPTION 'informada: % (esperaba 120)', r.demora_informada; END IF;
-  IF r.clampeado <> 'MAX' THEN RAISE EXCEPTION 'clampeado: % (esperaba MAX)', r.clampeado; END IF;
-  IF r.demora_as400 <> 35 THEN RAISE EXCEPTION 'snapshot as400: % (esperaba 35)', r.demora_as400; END IF;
-  IF r.pendientes_asignados <> 10 THEN RAISE EXCEPTION 'pendientes: %', r.pendientes_asignados; END IF;
+  IF r.demora_informada IS DISTINCT FROM 120 THEN RAISE EXCEPTION 'informada: % (esperaba 120)', r.demora_informada; END IF;
+  IF r.clampeado IS DISTINCT FROM 'MAX' THEN RAISE EXCEPTION 'clampeado: % (esperaba MAX)', r.clampeado; END IF;
+  IF r.demora_as400 IS DISTINCT FROM 35 THEN RAISE EXCEPTION 'snapshot as400: % (esperaba 35)', r.demora_as400; END IF;
+  IF r.pendientes_asignados IS DISTINCT FROM 10 THEN RAISE EXCEPTION 'pendientes: %', r.pendientes_asignados; END IF;
   RAISE NOTICE 'ok calculo y snapshot';
 
   -- La zona INACTIVA no debe emitir fila.
@@ -77,11 +77,11 @@ BEGIN
    WHERE zona_id=100 AND tipo_servicio='URGENTE'
      AND corrida_at = timestamptz '2026-07-29 15:05:00-03';
 
-  IF r_desp.pendientes_sin_asignar <> r_antes.pendientes_sin_asignar THEN
+  IF r_desp.pendientes_sin_asignar IS DISTINCT FROM r_antes.pendientes_sin_asignar THEN
     RAISE EXCEPTION 'el SA fuera de ventana no debe contar: % -> %',
       r_antes.pendientes_sin_asignar, r_desp.pendientes_sin_asignar;
   END IF;
-  IF r_desp.pendientes_asignados <> r_antes.pendientes_asignados + 1 THEN
+  IF r_desp.pendientes_asignados IS DISTINCT FROM r_antes.pendientes_asignados + 1 THEN
     RAISE EXCEPTION 'el asignado fuera de ventana SI debe contar: % -> %',
       r_antes.pendientes_asignados, r_desp.pendientes_asignados;
   END IF;
@@ -108,7 +108,7 @@ BEGIN
    WHERE zona_id=100 AND tipo_servicio='URGENTE'
      AND corrida_at = timestamptz '2026-07-29 15:10:00-03';
 
-  IF r_desp <> r_antes THEN
+  IF r_desp IS DISTINCT FROM r_antes THEN
     RAISE EXCEPTION 'ESPECIAL/OTROS no deben contar como demanda: % -> %', r_antes, r_desp;
   END IF;
   RAISE NOTICE 'ok ESPECIAL y OTROS excluidos';
@@ -137,7 +137,7 @@ BEGIN
    WHERE zona_id=100 AND tipo_servicio='URGENTE'
      AND corrida_at = timestamptz '2026-07-29 15:20:00-03';
 
-  IF r_desp <> r_antes + 1 THEN
+  IF r_desp IS DISTINCT FROM r_antes + 1 THEN
     RAISE EXCEPTION 'pedido con fch_para NULL no conto via fch_hora_para: % -> %', r_antes, r_desp;
   END IF;
   RAISE NOTICE 'ok fch_para NULL cuenta via COALESCE con fch_hora_para';
@@ -153,7 +153,7 @@ BEGIN
   SELECT count(*) INTO a FROM demoras_calculadas;
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:00:00-03');
   SELECT count(*) INTO b FROM demoras_calculadas;
-  IF a <> b THEN RAISE EXCEPTION 'no es idempotente: % -> %', a, b; END IF;
+  IF a IS DISTINCT FROM b THEN RAISE EXCEPTION 'no es idempotente: % -> %', a, b; END IF;
   RAISE NOTICE 'ok idempotente';
 END $$;
 
@@ -161,7 +161,7 @@ END $$;
 UPDATE demoras_config SET motor_activo=false WHERE escenario_id=1000;
 DO $$
 BEGIN
-  IF demoras_calcular_run(timestamptz '2026-07-29 16:00:00-03') <> 0 THEN
+  IF demoras_calcular_run(timestamptz '2026-07-29 16:00:00-03') IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'el interruptor no apago el motor';
   END IF;
   RAISE NOTICE 'ok interruptor';
@@ -172,7 +172,7 @@ UPDATE demoras_config SET motor_activo=true WHERE escenario_id=1000;
 UPDATE demoras_config SET hora_inicio='07:00', hora_fin='08:00' WHERE escenario_id=1000;
 DO $$
 BEGIN
-  IF demoras_calcular_run(timestamptz '2026-07-29 15:00:00-03') <> 0 THEN
+  IF demoras_calcular_run(timestamptz '2026-07-29 15:00:00-03') IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'corrio fuera de ventana';
   END IF;
   RAISE NOTICE 'ok ventana horaria';
@@ -270,4 +270,60 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'NOCTURNO debio calcular a las 19:00 (dentro de su ventana)'; END IF;
   RAISE NOTICE 'ok NOCTURNO calcula dentro de su propia ventana';
   DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 19:00:00-03';
+END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Precedencia capacidad > demanda: la falta de capacidad manda sobre la
+-- falta de demanda. Zona 200 nueva, dedicada, con movil ASIGNADO (para
+-- entrar al universo) pero sin pedidos ni services (demanda cero en las
+-- dos pruebas). Primero SIN activar el movil hoy (sin capacidad): la
+-- respuesta honesta no es el piso, nadie atiende. Despues, mismo movil ya
+-- activado (con capacidad) y demanda sigue en cero: ahi si es el caso
+-- bueno. Sin el segundo control, el primero podria pasar por el motivo
+-- equivocado (p.ej. si el CASE quedara mal armado de otra forma).
+-- ═══════════════════════════════════════════════════════════════════════
+INSERT INTO demoras (escenario_id, zona_id, zona_tipo, descripcion, minutos, activa)
+VALUES (1000, 200, 'Distribucion', 'URGENTE', 45, true);
+INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito)
+VALUES ('20', 200, 1000, 'URGENTE', 1);
+-- Sin fila en moviles_dia para el movil 20 todavia: no cuenta como activo.
+
+DO $$
+DECLARE r record;
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:10:00-03');
+  SELECT * INTO r FROM demoras_calculadas
+   WHERE zona_id=200 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 20:10:00-03';
+  IF r IS NULL THEN RAISE EXCEPTION 'falta la fila de la zona 200 (sin capacidad, sin demanda)'; END IF;
+  IF r.demora_informada IS DISTINCT FROM 120 THEN
+    RAISE EXCEPTION 'sin capacidad y sin demanda: informada % (esperaba 120 = max_minutos)', r.demora_informada;
+  END IF;
+  IF r.sin_capacidad IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'sin capacidad y sin demanda: sin_capacidad=% (esperaba true)', r.sin_capacidad;
+  END IF;
+  RAISE NOTICE 'ok sin capacidad y sin demanda -> informa el techo, sin_capacidad=true';
+END $$;
+
+-- Limpio la corrida anterior para que la proxima sea "primera corrida del
+-- dia" para la zona 200 y el suavizado no arrastre el 120 de recien.
+DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 20:10:00-03';
+
+-- Ahora activo el movil 20 (capacidad>0); la demanda sigue en cero.
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000, 20, date '2026-07-29', true);
+
+DO $$
+DECLARE r record;
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:15:00-03');
+  SELECT * INTO r FROM demoras_calculadas
+   WHERE zona_id=200 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 20:15:00-03';
+  IF r IS NULL THEN RAISE EXCEPTION 'falta la fila de la zona 200 (con capacidad, sin demanda)'; END IF;
+  IF r.demora_informada IS DISTINCT FROM 30 THEN
+    RAISE EXCEPTION 'con capacidad y sin demanda: informada % (esperaba 30 = min_minutos)', r.demora_informada;
+  END IF;
+  IF r.sin_capacidad IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'con capacidad y sin demanda: sin_capacidad=% (esperaba false)', r.sin_capacidad;
+  END IF;
+  RAISE NOTICE 'ok con capacidad y sin demanda -> informa el piso, sin_capacidad=false';
 END $$;

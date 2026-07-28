@@ -886,7 +886,11 @@ CREATE TABLE IF NOT EXISTS demoras_calculadas (
   ritmo_p75              numeric,
   ritmo_p90              numeric,
   ritmo_usado            numeric,
-  ritmo_origen           text CHECK (ritmo_origen IN ('CHOFER','MOVIL','ZONA','GLOBAL')),
+  -- DEFECTO: no hubo ninguna estadistica disponible (ni zona ni global) y
+  -- ritmo_usado salio de demoras_config.ritmo_default_minutos. Sin esta
+  -- etiqueta, esas filas se veian como si vinieran de un calculo global
+  -- que nunca ocurrio.
+  ritmo_origen           text CHECK (ritmo_origen IN ('CHOFER','MOVIL','ZONA','GLOBAL','DEFECTO')),
   ritmo_muestras         integer,
 
   sin_capacidad          boolean     NOT NULL DEFAULT false,
@@ -932,6 +936,16 @@ CREATE TABLE IF NOT EXISTS demoras_config (
   PRIMARY KEY (escenario_id, tipo_servicio),
   CONSTRAINT demoras_config_rango CHECK (max_minutos >= min_minutos)
 );
+
+-- Idempotencia (fix round 2): si demoras_config ya existia porque una
+-- version anterior de esta migracion ya corrio (p.ej. la de fix round 1,
+-- antes de agregar esta columna), el CREATE TABLE IF NOT EXISTS de arriba
+-- la saltea entera y ritmo_default_minutos nunca se agrega -> el COMMENT ON
+-- COLUMN de mas abajo explota y, bajo --single-transaction, todo el
+-- apply hace rollback. Mismo patron que las 48 columnas ADD COLUMN IF NOT
+-- EXISTS del resto del repo.
+ALTER TABLE demoras_config
+  ADD COLUMN IF NOT EXISTS ritmo_default_minutos integer NOT NULL DEFAULT 30 CHECK (ritmo_default_minutos > 0);
 
 COMMENT ON TABLE demoras_config IS
   'Configuracion del motor de demora por (escenario, tipo de servicio). Editable desde Preferencias Globales. Si falta la fila de un tipo, ese tipo no se calcula.';
@@ -998,10 +1012,10 @@ BEGIN
   SELECT * INTO r FROM demoras_calculadas
    WHERE zona_id=100 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 15:00:00-03';
   IF r IS NULL THEN RAISE EXCEPTION 'falta la fila de la zona 100'; END IF;
-  IF r.demora_informada <> 120 THEN RAISE EXCEPTION 'informada: % (esperaba 120)', r.demora_informada; END IF;
-  IF r.clampeado <> 'MAX' THEN RAISE EXCEPTION 'clampeado: % (esperaba MAX)', r.clampeado; END IF;
-  IF r.demora_as400 <> 35 THEN RAISE EXCEPTION 'snapshot as400: % (esperaba 35)', r.demora_as400; END IF;
-  IF r.pendientes_asignados <> 10 THEN RAISE EXCEPTION 'pendientes: %', r.pendientes_asignados; END IF;
+  IF r.demora_informada IS DISTINCT FROM 120 THEN RAISE EXCEPTION 'informada: % (esperaba 120)', r.demora_informada; END IF;
+  IF r.clampeado IS DISTINCT FROM 'MAX' THEN RAISE EXCEPTION 'clampeado: % (esperaba MAX)', r.clampeado; END IF;
+  IF r.demora_as400 IS DISTINCT FROM 35 THEN RAISE EXCEPTION 'snapshot as400: % (esperaba 35)', r.demora_as400; END IF;
+  IF r.pendientes_asignados IS DISTINCT FROM 10 THEN RAISE EXCEPTION 'pendientes: %', r.pendientes_asignados; END IF;
   RAISE NOTICE 'ok calculo y snapshot';
 
   -- La zona INACTIVA no debe emitir fila.
@@ -1036,11 +1050,11 @@ BEGIN
    WHERE zona_id=100 AND tipo_servicio='URGENTE'
      AND corrida_at = timestamptz '2026-07-29 15:05:00-03';
 
-  IF r_desp.pendientes_sin_asignar <> r_antes.pendientes_sin_asignar THEN
+  IF r_desp.pendientes_sin_asignar IS DISTINCT FROM r_antes.pendientes_sin_asignar THEN
     RAISE EXCEPTION 'el SA fuera de ventana no debe contar: % -> %',
       r_antes.pendientes_sin_asignar, r_desp.pendientes_sin_asignar;
   END IF;
-  IF r_desp.pendientes_asignados <> r_antes.pendientes_asignados + 1 THEN
+  IF r_desp.pendientes_asignados IS DISTINCT FROM r_antes.pendientes_asignados + 1 THEN
     RAISE EXCEPTION 'el asignado fuera de ventana SI debe contar: % -> %',
       r_antes.pendientes_asignados, r_desp.pendientes_asignados;
   END IF;
@@ -1067,7 +1081,7 @@ BEGIN
    WHERE zona_id=100 AND tipo_servicio='URGENTE'
      AND corrida_at = timestamptz '2026-07-29 15:10:00-03';
 
-  IF r_desp <> r_antes THEN
+  IF r_desp IS DISTINCT FROM r_antes THEN
     RAISE EXCEPTION 'ESPECIAL/OTROS no deben contar como demanda: % -> %', r_antes, r_desp;
   END IF;
   RAISE NOTICE 'ok ESPECIAL y OTROS excluidos';
@@ -1096,7 +1110,7 @@ BEGIN
    WHERE zona_id=100 AND tipo_servicio='URGENTE'
      AND corrida_at = timestamptz '2026-07-29 15:20:00-03';
 
-  IF r_desp <> r_antes + 1 THEN
+  IF r_desp IS DISTINCT FROM r_antes + 1 THEN
     RAISE EXCEPTION 'pedido con fch_para NULL no conto via fch_hora_para: % -> %', r_antes, r_desp;
   END IF;
   RAISE NOTICE 'ok fch_para NULL cuenta via COALESCE con fch_hora_para';
@@ -1112,7 +1126,7 @@ BEGIN
   SELECT count(*) INTO a FROM demoras_calculadas;
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:00:00-03');
   SELECT count(*) INTO b FROM demoras_calculadas;
-  IF a <> b THEN RAISE EXCEPTION 'no es idempotente: % -> %', a, b; END IF;
+  IF a IS DISTINCT FROM b THEN RAISE EXCEPTION 'no es idempotente: % -> %', a, b; END IF;
   RAISE NOTICE 'ok idempotente';
 END $$;
 
@@ -1120,7 +1134,7 @@ END $$;
 UPDATE demoras_config SET motor_activo=false WHERE escenario_id=1000;
 DO $$
 BEGIN
-  IF demoras_calcular_run(timestamptz '2026-07-29 16:00:00-03') <> 0 THEN
+  IF demoras_calcular_run(timestamptz '2026-07-29 16:00:00-03') IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'el interruptor no apago el motor';
   END IF;
   RAISE NOTICE 'ok interruptor';
@@ -1131,7 +1145,7 @@ UPDATE demoras_config SET motor_activo=true WHERE escenario_id=1000;
 UPDATE demoras_config SET hora_inicio='07:00', hora_fin='08:00' WHERE escenario_id=1000;
 DO $$
 BEGIN
-  IF demoras_calcular_run(timestamptz '2026-07-29 15:00:00-03') <> 0 THEN
+  IF demoras_calcular_run(timestamptz '2026-07-29 15:00:00-03') IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'corrio fuera de ventana';
   END IF;
   RAISE NOTICE 'ok ventana horaria';
@@ -1230,6 +1244,62 @@ BEGIN
   RAISE NOTICE 'ok NOCTURNO calcula dentro de su propia ventana';
   DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 19:00:00-03';
 END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Precedencia capacidad > demanda: la falta de capacidad manda sobre la
+-- falta de demanda. Zona 200 nueva, dedicada, con movil ASIGNADO (para
+-- entrar al universo) pero sin pedidos ni services (demanda cero en las
+-- dos pruebas). Primero SIN activar el movil hoy (sin capacidad): la
+-- respuesta honesta no es el piso, nadie atiende. Despues, mismo movil ya
+-- activado (con capacidad) y demanda sigue en cero: ahi si es el caso
+-- bueno. Sin el segundo control, el primero podria pasar por el motivo
+-- equivocado (p.ej. si el CASE quedara mal armado de otra forma).
+-- ═══════════════════════════════════════════════════════════════════════
+INSERT INTO demoras (escenario_id, zona_id, zona_tipo, descripcion, minutos, activa)
+VALUES (1000, 200, 'Distribucion', 'URGENTE', 45, true);
+INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito)
+VALUES ('20', 200, 1000, 'URGENTE', 1);
+-- Sin fila en moviles_dia para el movil 20 todavia: no cuenta como activo.
+
+DO $$
+DECLARE r record;
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:10:00-03');
+  SELECT * INTO r FROM demoras_calculadas
+   WHERE zona_id=200 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 20:10:00-03';
+  IF r IS NULL THEN RAISE EXCEPTION 'falta la fila de la zona 200 (sin capacidad, sin demanda)'; END IF;
+  IF r.demora_informada IS DISTINCT FROM 120 THEN
+    RAISE EXCEPTION 'sin capacidad y sin demanda: informada % (esperaba 120 = max_minutos)', r.demora_informada;
+  END IF;
+  IF r.sin_capacidad IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'sin capacidad y sin demanda: sin_capacidad=% (esperaba true)', r.sin_capacidad;
+  END IF;
+  RAISE NOTICE 'ok sin capacidad y sin demanda -> informa el techo, sin_capacidad=true';
+END $$;
+
+-- Limpio la corrida anterior para que la proxima sea "primera corrida del
+-- dia" para la zona 200 y el suavizado no arrastre el 120 de recien.
+DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 20:10:00-03';
+
+-- Ahora activo el movil 20 (capacidad>0); la demanda sigue en cero.
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000, 20, date '2026-07-29', true);
+
+DO $$
+DECLARE r record;
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:15:00-03');
+  SELECT * INTO r FROM demoras_calculadas
+   WHERE zona_id=200 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 20:15:00-03';
+  IF r IS NULL THEN RAISE EXCEPTION 'falta la fila de la zona 200 (con capacidad, sin demanda)'; END IF;
+  IF r.demora_informada IS DISTINCT FROM 30 THEN
+    RAISE EXCEPTION 'con capacidad y sin demanda: informada % (esperaba 30 = min_minutos)', r.demora_informada;
+  END IF;
+  IF r.sin_capacidad IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'con capacidad y sin demanda: sin_capacidad=% (esperaba false)', r.sin_capacidad;
+  END IF;
+  RAISE NOTICE 'ok con capacidad y sin demanda -> informa el piso, sin_capacidad=false';
+END $$;
 ```
 
 - [ ] **Step 3: Correr el assert para verificar que falla**
@@ -1270,6 +1340,29 @@ Expected: FALLA con `function demoras_calcular_run(...) does not exist`.
 --     ahora sale de moviles_zonas (igual que demoras_ritmo), y la
 --     capacidad se LEFT JOINea: sin moviles activos, capacidad=0 y
 --     sin_capacidad=true, pero la fila se escribe.
+--
+-- Fix round 2 (2026-07-28), sobre bugs encontrados en el fix round 1:
+--   - La migracion de tabla dejo de ser idempotente: ritmo_default_minutos
+--     se agrego solo dentro del CREATE TABLE IF NOT EXISTS, asi que sobre
+--     una base donde demoras_config ya existia (creada por una version
+--     anterior de la migracion) el CREATE se salteaba entero y la columna
+--     nunca se agregaba -> el COMMENT ON COLUMN de esa columna explotaba.
+--     Se agrego ALTER TABLE ... ADD COLUMN IF NOT EXISTS (ver la migracion
+--     de tabla), convencion que el repo ya usa 48 veces en 21 migraciones.
+--   - El CASE del crudo evaluaba "sin demanda" ANTES que "sin capacidad":
+--     una zona con moviles asignados pero CERO activos hoy Y sin pedidos
+--     pendientes informaba el PISO (30 min) en vez del TECHO. La respuesta
+--     honesta a "cuanto demora" cuando no hay nadie trabajando no es "poco":
+--     un pedido que entre ahora no tiene quien lo atienda. Se invirtio el
+--     orden: la falta de capacidad manda sobre la falta de demanda. Y
+--     sin_capacidad se ensancho a `capacidad <= 0` (antes exigia ademas
+--     pendientes_total > 0): la bandera describe el estado de la OFERTA,
+--     no la coincidencia entre oferta y demanda.
+--   - ritmo_origen seguia diciendo 'GLOBAL' cuando el valor en realidad
+--     salio de demoras_config.ritmo_default_minutos (ninguna estadistica
+--     disponible, ni zona ni global) — la fila ya era reconstruible pero la
+--     etiqueta de procedencia mentia. Se agrego 'DEFECTO' al CHECK de
+--     ritmo_origen (ver la migracion de tabla) y se usa cuando corresponde.
 -- =====================================================================
 CREATE OR REPLACE FUNCTION demoras_calcular_run(p_corrida_at timestamptz DEFAULT now())
 RETURNS bigint
@@ -1418,20 +1511,20 @@ BEGIN
       coalesce(c.moviles_transito,0) AS mov_tra,
       coalesce(c.alpha_usado,0.3) AS alpha,
       r.ritmo_media, r.ritmo_mediana, r.ritmo_p75, r.ritmo_p90,
-      r.ritmo_origen, r.ritmo_muestras,
+      r.ritmo_muestras,
       -- El estadistico configurado, con fallback a demoras_config.
       -- ritmo_default_minutos (antes un 30 hardcodeado que se usaba para
       -- calcular pero NO se persistia: la fila quedaba con ritmo_usado=NULL
       -- y un auditor no podia reconstruir demora_cruda desde las columnas
-      -- guardadas). Se calcula UNA sola vez aca y se usa tanto para el
-      -- crudo como para lo que se persiste.
-      coalesce(
-        CASE u.estadistico WHEN 'MEDIA' THEN r.ritmo_media
-                           WHEN 'P75'   THEN r.ritmo_p75
-                           WHEN 'P90'   THEN r.ritmo_p90
-                           ELSE r.ritmo_mediana END,
-        u.ritmo_default_minutos
-      ) AS ritmo_usado,
+      -- guardadas). rc.stat (LATERAL) se calcula UNA sola vez y de ahi
+      -- salen ritmo_usado Y ritmo_origen, para que ambos queden
+      -- consistentes entre si.
+      coalesce(rc.stat, u.ritmo_default_minutos) AS ritmo_usado,
+      -- 'DEFECTO': no hubo estadistica (ni zona ni global, rc.stat NULL) y
+      -- el valor salio de config. La etiqueta anterior ('GLOBAL' via
+      -- coalesce ciego) decia que vino de un calculo global que no existio.
+      CASE WHEN rc.stat IS NULL THEN 'DEFECTO'
+           ELSE coalesce(r.ritmo_origen, 'GLOBAL') END AS ritmo_origen,
       p.demora_suavizada AS prev_suav,
       -- ORDER BY determinista: la clave natural de demoras incluye
       -- zona_tipo, asi que pueden existir varias filas legales por
@@ -1448,13 +1541,25 @@ BEGIN
     LEFT JOIN dem  d ON d.zona_id = u.zona_id AND d.tipo         = u.tipo_servicio
     LEFT JOIN rit  r ON r.zona_id = u.zona_id AND r.tipo_servicio = u.tipo_servicio
     LEFT JOIN prev p ON p.zona_id = u.zona_id AND p.tipo_servicio = u.tipo_servicio
+    CROSS JOIN LATERAL (
+      SELECT CASE u.estadistico WHEN 'MEDIA' THEN r.ritmo_media
+                                WHEN 'P75'   THEN r.ritmo_p75
+                                WHEN 'P90'   THEN r.ritmo_p90
+                                ELSE r.ritmo_mediana END AS stat
+    ) rc
   ),
   crudo AS (
     SELECT a.*,
            (a.asignados + a.sin_asignar) AS pendientes_total,
+           -- Orden del CASE a proposito: la falta de capacidad manda sobre
+           -- la falta de demanda. Si no hay NADIE trabajando en la zona, la
+           -- respuesta honesta a "cuanto demora" no es el piso (30 min): un
+           -- pedido que entre ahora no tiene quien lo atienda. El piso solo
+           -- aplica cuando SI hay capacidad y la cola esta vacia (el caso
+           -- genuinamente bueno).
            CASE
-             WHEN (a.asignados + a.sin_asignar) = 0 THEN a.min_minutos::numeric
              WHEN a.capacidad <= 0                  THEN a.max_minutos::numeric
+             WHEN (a.asignados + a.sin_asignar) = 0 THEN a.min_minutos::numeric
              ELSE ((a.asignados + a.sin_asignar)::numeric / a.capacidad)
                   * a.ritmo_usado * a.factor_calibracion
            END AS demora_cruda
@@ -1483,8 +1588,12 @@ BEGIN
       f.asignados, f.sin_asignar, f.atrapados,
       f.capacidad, f.mov_act, f.mov_pri, f.mov_tra, f.alpha,
       f.ritmo_media, f.ritmo_mediana, f.ritmo_p75, f.ritmo_p90,
-      f.ritmo_usado, coalesce(f.ritmo_origen,'GLOBAL'), f.ritmo_muestras,
-      (f.capacidad <= 0 AND f.pendientes_total > 0), f.clampeado, f.suavizado_aplicado
+      f.ritmo_usado, f.ritmo_origen, f.ritmo_muestras,
+      -- sin_capacidad describe el estado de la OFERTA (hay o no hay quien
+      -- trabaje la zona), no la coincidencia entre oferta y demanda: antes
+      -- exigia ademas pendientes_total > 0 y por eso salia false en el caso
+      -- "sin capacidad y sin demanda", justo el peor caso operativo.
+      (f.capacidad <= 0), f.clampeado, f.suavizado_aplicado
     FROM final f
     -- DO UPDATE cubre las 22 columnas no-PK: una re-corrida con la misma
     -- corrida_at pero insumos distintos (p.ej. el AS400 piso demora_as400
@@ -1522,7 +1631,7 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION demoras_calcular_run(timestamptz) IS
-  'Motor de demora informada. Universo = zonas activas con moviles ASIGNADOS en moviles_zonas (no requiere moviles ACTIVOS hoy: una zona sin ningun movil activo escribe fila igual, con capacidad=0 y sin_capacidad=true, para poder auditar el peor caso operativo). La config vive en demoras_config por (escenario, tipo): el interruptor y la ventana horaria se evaluan POR TIPO, asi que NOCTURNO puede tener su propio horario. Un tipo sin fila de config no se calcula. fch_para tolera NULL via COALESCE con fch_hora_para. ritmo_usado persiste el valor efectivamente usado (con fallback a demoras_config.ritmo_default_minutos). demora_as400 es deterministico (ORDER BY updated_at, demora_id). Devuelve filas escritas.';
+  'Motor de demora informada. Universo = zonas activas con moviles ASIGNADOS en moviles_zonas (no requiere moviles ACTIVOS hoy: una zona sin ningun movil activo escribe fila igual, con capacidad=0 y sin_capacidad=true, para poder auditar el peor caso operativo). La falta de capacidad manda sobre la falta de demanda: sin capacidad informa el techo (max_minutos) aunque no haya demanda, porque un pedido que entre ahora no tiene quien lo atienda; el piso (min_minutos) solo aplica con capacidad y cola vacia. La config vive en demoras_config por (escenario, tipo): el interruptor y la ventana horaria se evaluan POR TIPO, asi que NOCTURNO puede tener su propio horario. Un tipo sin fila de config no se calcula. fch_para tolera NULL via COALESCE con fch_hora_para. ritmo_usado persiste el valor efectivamente usado, con fallback a demoras_config.ritmo_default_minutos etiquetado como ritmo_origen=DEFECTO (no GLOBAL: no hubo calculo global). demora_as400 es deterministico (ORDER BY updated_at, demora_id). Devuelve filas escritas.';
 ```
 
 - [ ] **Step 5: Correr el assert para verificar que pasa**
@@ -1593,6 +1702,45 @@ revertida a `to_char(...)` FALLA con `operator does not exist: date =
 text` — confirma que el stub ya no enmascara el Critical 1. Con todo
 corregido, el harness completo pasa con exit 0 (11 `NOTICE ok`, incluyendo
 los nuevos de fch_para NULL y aislamiento por tipo).
+
+**Fix round 2 (2026-07-28), sobre 2 Important + 2 Minor del fix round 1:**
+- Important: la migración de tabla dejó de ser idempotente —
+  `ritmo_default_minutos` se agregó solo dentro del `CREATE TABLE IF NOT
+  EXISTS demoras_config`, así que sobre una base donde la tabla ya existía
+  (creada por una versión anterior de esta misma migración) el `CREATE`
+  se salteaba entero, la columna nunca se agregaba, y el `COMMENT ON
+  COLUMN` siguiente explotaba con `column "ritmo_default_minutos" ...
+  does not exist` — con `--single-transaction`, rollback completo. Se
+  agrega `ALTER TABLE demoras_config ADD COLUMN IF NOT EXISTS
+  ritmo_default_minutos ...` después del `CREATE TABLE`, mismo patrón que
+  las 48 ocurrencias ya existentes en 21 migraciones del repo.
+- Important: el `CASE` del crudo evaluaba "sin demanda" ANTES que "sin
+  capacidad" — una zona con móviles asignados pero CERO activos hoy y sin
+  pedidos pendientes informaba el piso (30 min) en vez del techo, y
+  `sin_capacidad` salía `false` porque exigía además `pendientes_total >
+  0`. La respuesta honesta a "cuánto demora" cuando no hay nadie
+  trabajando no es "poco": un pedido que entre ahora no tiene quién lo
+  atienda. Se invierte el orden del `CASE` (capacidad manda sobre
+  demanda) y se ensancha `sin_capacidad` a `capacidad <= 0` solo,
+  quitando la condición de demanda: la bandera describe el estado de la
+  OFERTA, no la coincidencia entre oferta y demanda. Se agregan 2 asserts
+  con una zona dedicada (200): (a) sin capacidad y sin demanda → informa
+  el techo con `sin_capacidad=true`; (b) mismo movil ya activado, sin
+  demanda → informa el piso con `sin_capacidad=false` (control positivo,
+  para que (a) no pase por el motivo equivocado).
+- Minor: las 11 comparaciones `<>` de `assert-run.sql` pasan a `IS
+  DISTINCT FROM`, completando el ruling de la Task 4 ("todos los
+  asserts").
+- Minor: se agrega `'DEFECTO'` al `CHECK` de `ritmo_origen` (en la
+  migración de tabla) y se usa cuando `ritmo_usado` sale de
+  `ritmo_default_minutos` en vez de una estadística real — antes esas
+  filas quedaban etiquetadas `'GLOBAL'` sin que hubiera existido ningún
+  cálculo global.
+
+Verificado: aplicar la migración de tabla dos veces seguidas en el harness
+no aborta (segunda pasada solo emite `NOTICE ... already exists,
+skipping`, exit 0). Harness completo con todo corregido: exit 0, con los
+asserts viejos y los 2 nuevos de precedencia capacidad/demanda.
 
 ---
 
