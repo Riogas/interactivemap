@@ -831,6 +831,12 @@ asserts para cubrir edge cases."
   `pedidos_sa_minutos_antes INTEGER` (nullable, sin default; hoy vale 60 en el
   escenario 1000), y sembrarla en 60 en el INSERT del escenario 1000.
   `demoras_config` NO va al stub: la crea la propia migración de esta task.
+  **Fix round 1:** el stub declaraba `pedidos.fch_para TEXT`, pero en
+  producción es `DATE` (`docs/sqls/supabase-full-migration.sql:126`) — el
+  stub divergía justo en la columna que ya tumbó `moviles_dia` una vez (ver
+  `docs/sqls/2026-05-28-moviles-dia-functions-fix-fchpara-date.sql`). Se
+  corrige a `fch_para DATE`; `services` la hereda vía `LIKE pedidos INCLUDING
+  ALL`.
 
 **Interfaces:**
 - Consumes: `demoras_acabado`, `demoras_capacidad`, `demoras_ritmo`.
@@ -915,6 +921,7 @@ CREATE TABLE IF NOT EXISTS demoras_config (
   estadistico               text    NOT NULL DEFAULT 'MEDIANA'
                                     CHECK (estadistico IN ('MEDIA','MEDIANA','P75','P90')),
   ritmo_cascada             text    NOT NULL DEFAULT 'CHOFER,MOVIL,ZONA,GLOBAL',
+  ritmo_default_minutos     integer NOT NULL DEFAULT 30 CHECK (ritmo_default_minutos > 0),
   factor_calibracion        numeric NOT NULL DEFAULT 1.0 CHECK (factor_calibracion > 0),
   hora_inicio               time    NOT NULL DEFAULT '07:00',
   hora_fin                  time    NOT NULL DEFAULT '23:30',
@@ -932,6 +939,8 @@ COMMENT ON COLUMN demoras_config.ritmo_cascada IS
   'Orden de la cascada de atribucion del ritmo, CSV. Se recorre de izquierda a derecha y gana el primer nivel que llegue al minimo de muestras. Niveles validos: CHOFER, MOVIL, ZONA, GLOBAL. GLOBAL se evalua siempre ultimo aunque no figure: es la red final.';
 COMMENT ON COLUMN demoras_config.factor_calibracion IS
   'Multiplicador global del resultado crudo. Existe por el riesgo R1: demora_efectiva_mins ya incluye la espera en cola, asi que multiplicarla por los pendientes puede doble-contar. Permite corregir el nivel sin tocar codigo.';
+COMMENT ON COLUMN demoras_config.ritmo_default_minutos IS
+  'Piso del ritmo cuando no hay ninguna estadistica disponible (ni zona ni global): antes era un 30 hardcodeado en el orquestador que no quedaba registrado en la fila calculada. Ahora es un parametro del modelo, editable desde Preferencias Globales, y el valor efectivamente usado se persiste en demoras_calculadas.ritmo_usado (auditable).';
 
 -- Seed: los tres tipos del escenario 1000 con los defaults.
 -- NOCTURNO arranca con su propia ventana horaria, que es el caso que motivo
@@ -965,9 +974,9 @@ VALUES (1000, 10, date '2026-07-29', true),
 
 -- 10 pedidos pendientes en zona 100 -> con ritmo global de 20 min y
 -- capacidad 1.0, el crudo da 200 -> clampea a 120.
+-- fch_para es DATE en produccion (no TEXT): literal directo, sin to_char.
 INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
-SELECT g, 1000, 'URGENTE', 10, 100, 1,
-       to_char(date '2026-07-29', 'YYYYMMDD')
+SELECT g, 1000, 'URGENTE', 10, 100, 1, date '2026-07-29'
 FROM generate_series(1,10) g;
 
 INSERT INTO metricas_cumplimiento
@@ -1015,10 +1024,10 @@ BEGIN
   -- movil que tambien arranca en 4 horas.
   INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para, fch_hora_para)
   VALUES (5001, 1000, 'URGENTE', NULL, 100, 1,
-          to_char(date '2026-07-29','YYYYMMDD'),
+          date '2026-07-29',
           timestamptz '2026-07-29 19:00:00-03'),
          (5002, 1000, 'URGENTE', 10, 100, 1,
-          to_char(date '2026-07-29','YYYYMMDD'),
+          date '2026-07-29',
           timestamptz '2026-07-29 19:00:00-03');
 
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:05:00-03');
@@ -1050,10 +1059,8 @@ BEGIN
      AND corrida_at = timestamptz '2026-07-29 15:00:00-03';
 
   INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
-  VALUES (5101, 1000, 'ESPECIAL SIN FLETE', 10, 100, 1,
-          to_char(date '2026-07-29','YYYYMMDD')),
-         (5102, 1000, 'LO QUE SEA', 10, 100, 1,
-          to_char(date '2026-07-29','YYYYMMDD'));
+  VALUES (5101, 1000, 'ESPECIAL SIN FLETE', 10, 100, 1, date '2026-07-29'),
+         (5102, 1000, 'LO QUE SEA', 10, 100, 1, date '2026-07-29');
 
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:10:00-03');
   SELECT pendientes_asignados INTO r_desp FROM demoras_calculadas
@@ -1069,6 +1076,35 @@ BEGIN
   DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 15:10:00-03';
 END $$;
 
+-- fch_para llega NULL desde la ingesta en ~4% de los pedidos pendientes
+-- reales (medido contra produccion), aunque fch_hora_para si trae el valor
+-- correcto. Mismo gap que 2026-06-01-fix-pedidos-fch-para-null.sql: un
+-- pendiente con fch_para NULL debe contar via COALESCE con fch_hora_para,
+-- no desaparecer de la demanda.
+DO $$
+DECLARE r_antes int; r_desp int;
+BEGIN
+  SELECT pendientes_asignados INTO r_antes FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE'
+     AND corrida_at = timestamptz '2026-07-29 15:00:00-03';
+
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para, fch_hora_para)
+  VALUES (5201, 1000, 'URGENTE', 10, 100, 1, NULL, timestamptz '2026-07-29 10:00:00-03');
+
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:20:00-03');
+  SELECT pendientes_asignados INTO r_desp FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE'
+     AND corrida_at = timestamptz '2026-07-29 15:20:00-03';
+
+  IF r_desp <> r_antes + 1 THEN
+    RAISE EXCEPTION 'pedido con fch_para NULL no conto via fch_hora_para: % -> %', r_antes, r_desp;
+  END IF;
+  RAISE NOTICE 'ok fch_para NULL cuenta via COALESCE con fch_hora_para';
+
+  DELETE FROM pedidos WHERE id = 5201;
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 15:20:00-03';
+END $$;
+
 -- Idempotencia: la misma corrida_at dos veces no duplica ni cambia.
 DO $$
 DECLARE a bigint; b bigint;
@@ -1080,7 +1116,7 @@ BEGIN
   RAISE NOTICE 'ok idempotente';
 END $$;
 
--- Interruptor de emergencia.
+-- Interruptor de emergencia (global: apaga los 3 tipos a la vez).
 UPDATE demoras_config SET motor_activo=false WHERE escenario_id=1000;
 DO $$
 BEGIN
@@ -1091,7 +1127,7 @@ BEGIN
 END $$;
 UPDATE demoras_config SET motor_activo=true WHERE escenario_id=1000;
 
--- Fuera de ventana.
+-- Fuera de ventana (global: cierra los 3 tipos a la vez).
 UPDATE demoras_config SET hora_inicio='07:00', hora_fin='08:00' WHERE escenario_id=1000;
 DO $$
 BEGIN
@@ -1099,6 +1135,100 @@ BEGIN
     RAISE EXCEPTION 'corrio fuera de ventana';
   END IF;
   RAISE NOTICE 'ok ventana horaria';
+END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Aislamiento POR TIPO: la restriccion central de esta task es que el
+-- interruptor y la ventana horaria se evaluan por (escenario, tipo), no
+-- globalmente (NOCTURNO tiene su propia ventana 18:00-23:30). Los bloques
+-- de arriba solo pisan las 3 filas de demoras_config a la vez y prueban
+-- comportamiento GLOBAL; nunca demuestran el aislamiento. Hace falta
+-- sembrar NOCTURNO y SERVICE (hasta aca no habia ni una fila) y probar
+-- que apagar/cerrar UN tipo no afecta a los otros.
+-- ═══════════════════════════════════════════════════════════════════════
+UPDATE demoras_config SET motor_activo=true, hora_inicio='00:00', hora_fin='23:59' WHERE escenario_id=1000;
+
+INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito)
+VALUES ('10', 100, 1000, 'NOCTURNO', 1),
+       ('10', 100, 1000, 'SERVICE', 1);
+
+INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+VALUES (6001, 1000, 'NOCTURNO', 10, 100, 1, date '2026-07-29');
+INSERT INTO services (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+VALUES (7001, 1000, 'SERVICE', 10, 100, 1, date '2026-07-29');
+
+-- Control positivo: con el motor prendido y la ventana abierta para los 3
+-- tipos, NOCTURNO y SERVICE tienen que calcular igual que URGENTE. Esto
+-- prueba que el seed nuevo es valido ANTES de usarlo para probar
+-- aislamiento (si esto fallara, las ausencias de abajo serian falsos
+-- positivos por falta de datos, no por el interruptor/ventana).
+DO $$
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:00:00-03');
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 20:00:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOCTURNO debio calcular (control positivo)'; END IF;
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='SERVICE' AND corrida_at = timestamptz '2026-07-29 20:00:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'SERVICE debio calcular (control positivo)'; END IF;
+
+  RAISE NOTICE 'ok NOCTURNO y SERVICE calculan con datos propios (control positivo)';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 20:00:00-03';
+END $$;
+
+-- Interruptor POR TIPO: apagar solo NOCTURNO no debe afectar a URGENTE.
+UPDATE demoras_config SET motor_activo=false WHERE escenario_id=1000 AND tipo_servicio='NOCTURNO';
+DO $$
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:05:00-03');
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 20:05:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'URGENTE debio seguir calculando con NOCTURNO apagado'; END IF;
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 20:05:00-03';
+  IF FOUND THEN RAISE EXCEPTION 'NOCTURNO no debio calcular: el interruptor es por tipo, no global'; END IF;
+
+  RAISE NOTICE 'ok interruptor por tipo (apagar NOCTURNO no apaga URGENTE)';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 20:05:00-03';
+END $$;
+UPDATE demoras_config SET motor_activo=true WHERE escenario_id=1000 AND tipo_servicio='NOCTURNO';
+
+-- Ventana POR TIPO: URGENTE 07:00-23:30, NOCTURNO 18:00-23:30 (ventanas
+-- reales del seed). A las 15:30 -dentro de la de URGENTE, fuera de la de
+-- NOCTURNO- debe emitir URGENTE y NO NOCTURNO.
+UPDATE demoras_config SET hora_inicio='07:00', hora_fin='23:30' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
+UPDATE demoras_config SET hora_inicio='18:00', hora_fin='23:30' WHERE escenario_id=1000 AND tipo_servicio='NOCTURNO';
+DO $$
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:30:00-03');
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 15:30:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'URGENTE debio calcular a las 15:30 (dentro de su ventana)'; END IF;
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 15:30:00-03';
+  IF FOUND THEN RAISE EXCEPTION 'NOCTURNO no debio calcular a las 15:30 (fuera de su ventana 18:00-23:30)'; END IF;
+
+  RAISE NOTICE 'ok ventana horaria por tipo (15:30: URGENTE calcula, NOCTURNO no)';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 15:30:00-03';
+END $$;
+
+-- Y a las 19:00, ya dentro de la ventana de NOCTURNO, NOCTURNO SI calcula:
+-- prueba que la ausencia de arriba es por la ventana y no por falta de
+-- datos o algun otro bloqueo silencioso.
+DO $$
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 19:00:00-03');
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 19:00:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOCTURNO debio calcular a las 19:00 (dentro de su ventana)'; END IF;
+  RAISE NOTICE 'ok NOCTURNO calcula dentro de su propia ventana';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 19:00:00-03';
 END $$;
 ```
 
@@ -1123,6 +1253,23 @@ Expected: FALLA con `function demoras_calcular_run(...) does not exist`.
 --
 -- Devuelve la cantidad de filas escritas; 0 si el motor esta apagado o
 -- estamos fuera de ventana.
+--
+-- Fix round 1 (2026-07-28), sobre bugs encontrados en review:
+--   - fch_para es DATE en produccion, no TEXT: comparar con to_char(...)
+--     tira "operator does not exist: date = text" en CADA corrida. Mismo
+--     bug que ya tumbo moviles_dia (ver 2026-05-28-moviles-dia-functions-
+--     fix-fchpara-date.sql). Se compara date = date directo.
+--   - fch_para llega NULL desde la ingesta en ~4% de los pedidos reales
+--     aunque fch_hora_para si trae el valor. Mismo patron que
+--     2026-06-01-fix-pedidos-fch-para-null.sql: se tolera con
+--     COALESCE(fch_para, (fch_hora_para AT TIME ZONE 'America/Montevideo')::date).
+--   - El universo salia de demoras_capacidad(), que solo agrega moviles
+--     ACTIVOS: una zona con pedidos pendientes y CERO moviles activos hoy
+--     (el peor caso operativo — 72% de la flota esta inactiva en un
+--     momento dado) desaparecia sin dejar fila que auditar. El universo
+--     ahora sale de moviles_zonas (igual que demoras_ritmo), y la
+--     capacidad se LEFT JOINea: sin moviles activos, capacidad=0 y
+--     sin_capacidad=true, pero la fila se escribe.
 -- =====================================================================
 CREATE OR REPLACE FUNCTION demoras_calcular_run(p_corrida_at timestamptz DEFAULT now())
 RETURNS bigint
@@ -1194,12 +1341,18 @@ BEGIN
              END AS tipo
       FROM pedidos
       WHERE escenario = v_esc AND estado_nro = 1
-        AND fch_para = to_char(v_fecha, 'YYYYMMDD') AND zona_nro IS NOT NULL
+        -- fch_para (DATE) = v_fecha (DATE). fch_para llega NULL en ~4% de
+        -- los pedidos reales aunque fch_hora_para si tenga valor: mismo
+        -- gap que 2026-06-01-fix-pedidos-fch-para-null.sql, se tapa con el
+        -- mismo COALESCE para no subestimar la demanda.
+        AND COALESCE(fch_para, (fch_hora_para AT TIME ZONE 'America/Montevideo')::date) = v_fecha
+        AND zona_nro IS NOT NULL
       UNION ALL
       SELECT zona_nro, movil, fch_hora_para, 'SERVICE'
       FROM services
       WHERE escenario = v_esc AND estado_nro = 1
-        AND fch_para = to_char(v_fecha, 'YYYYMMDD') AND zona_nro IS NOT NULL
+        AND COALESCE(fch_para, (fch_hora_para AT TIME ZONE 'America/Montevideo')::date) = v_fecha
+        AND zona_nro IS NOT NULL
     ) p
     WHERE p.tipo IS NOT NULL
       -- Ventana SA (regla canonica de la app, ver lib/sa-window-filter.ts
@@ -1209,6 +1362,9 @@ BEGIN
       -- Un SA que arranca mas alla de la ventana "no existe" todavia para el
       -- sistema, asi que tampoco debe empujar la demora hacia arriba.
       -- fch_hora_para NULL no filtra: falta de dato no es motivo de exclusion.
+      -- OJO: este uso de fch_hora_para es la ventana SA, un concepto
+      -- distinto del COALESCE de arriba (que decide DE QUE DIA es el
+      -- pedido). Los dos usos del mismo campo conviven.
       AND (
         (p.movil IS NOT NULL AND p.movil <> 0)
         OR v_sa_mins IS NULL OR v_sa_mins = 0
@@ -1217,20 +1373,33 @@ BEGIN
       )
     GROUP BY zona_nro, tipo
   ),
-  -- Universo: zona activa + tipo con moviles asignados + config vigente
-  -- (motor prendido y dentro de la ventana horaria DE ESE TIPO).
+  -- Universo: zona activa + tipo con moviles ASIGNADOS (moviles_zonas, igual
+  -- que demoras_ritmo) + config vigente (motor prendido y dentro de la
+  -- ventana horaria DE ESE TIPO). A PROPOSITO no sale de `cap`: demoras_
+  -- capacidad solo agrega moviles ACTIVOS hoy, asi que una zona con pedidos
+  -- pendientes y CERO moviles activos (el peor caso operativo) quedaria sin
+  -- fila. `cap` se LEFT JOINea abajo: sin capacidad, capacidad=0 y
+  -- sin_capacidad=true, pero la fila se escribe igual.
   universo AS (
-    SELECT c.zona_id, c.tipo_servicio,
+    SELECT DISTINCT mz.zona_id, mz.tipo_de_servicio AS tipo_servicio,
            cf.min_minutos, cf.max_minutos, cf.escalon_minutos,
-           cf.subida_max, cf.bajada_max, cf.estadistico, cf.factor_calibracion
-    FROM cap c
-    JOIN zonas_activas za ON za.zona_id = c.zona_id
-    JOIN cfg cf          ON cf.tipo_servicio = c.tipo_servicio
+           cf.subida_max, cf.bajada_max, cf.estadistico, cf.factor_calibracion,
+           cf.ritmo_default_minutos
+    FROM moviles_zonas mz
+    JOIN zonas_activas za ON za.zona_id = mz.zona_id
+    JOIN cfg cf           ON cf.tipo_servicio = mz.tipo_de_servicio
+    WHERE mz.escenario_id = v_esc
+      AND coalesce(mz.activa, true)
+      AND mz.tipo_de_servicio IN ('URGENTE','NOCTURNO','SERVICE')
   ),
   prev AS (
     SELECT DISTINCT ON (zona_id, tipo_servicio) zona_id, tipo_servicio, demora_suavizada
     FROM demoras_calculadas
     WHERE escenario = v_esc
+      -- Cota inferior SARGABLE: sin esto el unico predicado usable es
+      -- corrida_at < p_corrida_at, que en regimen (retencion 180 dias)
+      -- selecciona ~4,5M filas y las deduplica 99 veces por dia.
+      AND corrida_at >= (v_fecha::timestamp AT TIME ZONE 'America/Montevideo')
       AND corrida_at < p_corrida_at
       AND (corrida_at AT TIME ZONE 'America/Montevideo')::date = v_fecha
     ORDER BY zona_id, tipo_servicio, corrida_at DESC
@@ -1250,14 +1419,30 @@ BEGIN
       coalesce(c.alpha_usado,0.3) AS alpha,
       r.ritmo_media, r.ritmo_mediana, r.ritmo_p75, r.ritmo_p90,
       r.ritmo_origen, r.ritmo_muestras,
-      CASE u.estadistico WHEN 'MEDIA' THEN r.ritmo_media
-                         WHEN 'P75'   THEN r.ritmo_p75
-                         WHEN 'P90'   THEN r.ritmo_p90
-                         ELSE r.ritmo_mediana END AS ritmo_usado,
+      -- El estadistico configurado, con fallback a demoras_config.
+      -- ritmo_default_minutos (antes un 30 hardcodeado que se usaba para
+      -- calcular pero NO se persistia: la fila quedaba con ritmo_usado=NULL
+      -- y un auditor no podia reconstruir demora_cruda desde las columnas
+      -- guardadas). Se calcula UNA sola vez aca y se usa tanto para el
+      -- crudo como para lo que se persiste.
+      coalesce(
+        CASE u.estadistico WHEN 'MEDIA' THEN r.ritmo_media
+                           WHEN 'P75'   THEN r.ritmo_p75
+                           WHEN 'P90'   THEN r.ritmo_p90
+                           ELSE r.ritmo_mediana END,
+        u.ritmo_default_minutos
+      ) AS ritmo_usado,
       p.demora_suavizada AS prev_suav,
+      -- ORDER BY determinista: la clave natural de demoras incluye
+      -- zona_tipo, asi que pueden existir varias filas legales por
+      -- (escenario, zona, descripcion). Sin ORDER BY, LIMIT 1 devuelve una
+      -- fila arbitraria y demora_as400 (la linea base de toda la fase 1)
+      -- deja de ser reproducible.
       (SELECT dd.minutos FROM demoras dd
         WHERE dd.escenario_id = v_esc AND dd.zona_id = u.zona_id
-          AND dd.descripcion = u.tipo_servicio LIMIT 1) AS as400
+          AND dd.descripcion = u.tipo_servicio
+        ORDER BY dd.updated_at DESC, dd.demora_id DESC
+        LIMIT 1) AS as400
     FROM universo u
     LEFT JOIN cap  c ON c.zona_id = u.zona_id AND c.tipo_servicio = u.tipo_servicio
     LEFT JOIN dem  d ON d.zona_id = u.zona_id AND d.tipo         = u.tipo_servicio
@@ -1271,7 +1456,7 @@ BEGIN
              WHEN (a.asignados + a.sin_asignar) = 0 THEN a.min_minutos::numeric
              WHEN a.capacidad <= 0                  THEN a.max_minutos::numeric
              ELSE ((a.asignados + a.sin_asignar)::numeric / a.capacidad)
-                  * coalesce(a.ritmo_usado, 30) * a.factor_calibracion
+                  * a.ritmo_usado * a.factor_calibracion
            END AS demora_cruda
     FROM arm a
   ),
@@ -1301,11 +1486,33 @@ BEGIN
       f.ritmo_usado, coalesce(f.ritmo_origen,'GLOBAL'), f.ritmo_muestras,
       (f.capacidad <= 0 AND f.pendientes_total > 0), f.clampeado, f.suavizado_aplicado
     FROM final f
+    -- DO UPDATE cubre las 22 columnas no-PK: una re-corrida con la misma
+    -- corrida_at pero insumos distintos (p.ej. el AS400 piso demora_as400
+    -- entre medio) tiene que dejar una fila consistente de punta a punta,
+    -- no una mezcla de "informada nueva" con "insumos viejos".
     ON CONFLICT (corrida_at, escenario, zona_id, tipo_servicio) DO UPDATE SET
-      demora_informada = EXCLUDED.demora_informada,
-      demora_suavizada = EXCLUDED.demora_suavizada,
-      demora_cruda     = EXCLUDED.demora_cruda,
-      demora_as400     = EXCLUDED.demora_as400
+      demora_informada        = EXCLUDED.demora_informada,
+      demora_suavizada        = EXCLUDED.demora_suavizada,
+      demora_cruda            = EXCLUDED.demora_cruda,
+      demora_as400            = EXCLUDED.demora_as400,
+      pendientes_asignados    = EXCLUDED.pendientes_asignados,
+      pendientes_sin_asignar  = EXCLUDED.pendientes_sin_asignar,
+      pendientes_atrapados    = EXCLUDED.pendientes_atrapados,
+      capacidad_efectiva      = EXCLUDED.capacidad_efectiva,
+      moviles_activos         = EXCLUDED.moviles_activos,
+      moviles_prioridad       = EXCLUDED.moviles_prioridad,
+      moviles_transito        = EXCLUDED.moviles_transito,
+      alpha_usado             = EXCLUDED.alpha_usado,
+      ritmo_media             = EXCLUDED.ritmo_media,
+      ritmo_mediana           = EXCLUDED.ritmo_mediana,
+      ritmo_p75               = EXCLUDED.ritmo_p75,
+      ritmo_p90               = EXCLUDED.ritmo_p90,
+      ritmo_usado             = EXCLUDED.ritmo_usado,
+      ritmo_origen            = EXCLUDED.ritmo_origen,
+      ritmo_muestras          = EXCLUDED.ritmo_muestras,
+      sin_capacidad           = EXCLUDED.sin_capacidad,
+      clampeado               = EXCLUDED.clampeado,
+      suavizado_aplicado      = EXCLUDED.suavizado_aplicado
     RETURNING 1
   )
   SELECT count(*) INTO v_escritas FROM ins;
@@ -1315,7 +1522,7 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION demoras_calcular_run(timestamptz) IS
-  'Motor de demora informada. Corre sobre zonas activas con moviles asignados, usando solo moviles activos. La config vive en demoras_config por (escenario, tipo): el interruptor y la ventana horaria se evaluan POR TIPO, asi que NOCTURNO puede tener su propio horario. Un tipo sin fila de config no se calcula. Devuelve filas escritas.';
+  'Motor de demora informada. Universo = zonas activas con moviles ASIGNADOS en moviles_zonas (no requiere moviles ACTIVOS hoy: una zona sin ningun movil activo escribe fila igual, con capacidad=0 y sin_capacidad=true, para poder auditar el peor caso operativo). La config vive en demoras_config por (escenario, tipo): el interruptor y la ventana horaria se evaluan POR TIPO, asi que NOCTURNO puede tener su propio horario. Un tipo sin fila de config no se calcula. fch_para tolera NULL via COALESCE con fch_hora_para. ritmo_usado persiste el valor efectivamente usado (con fallback a demoras_config.ritmo_default_minutos). demora_as400 es deterministico (ORDER BY updated_at, demora_id). Devuelve filas escritas.';
 ```
 
 - [ ] **Step 5: Correr el assert para verificar que pasa**
@@ -1340,6 +1547,52 @@ corre en UTC y 07:00-23:30 de Montevideo cruza la medianoche UTC.
 Validado en Postgres local: calculo, snapshot del AS400, zonas inactivas
 ignoradas, idempotencia, interruptor de emergencia y ventana horaria."
 ```
+
+**Fix round 1 (2026-07-28), sobre review con 2 Critical + 5 Important:**
+- Critical 1: `fch_para` es `DATE` en producción, no `TEXT` — comparar con
+  `to_char(...)` hace abortar la función en CADA corrida (mismo bug que ya
+  tumbó `moviles_dia`, ver `2026-05-28-moviles-dia-functions-fix-fchpara-
+  date.sql`). Se compara `date = date`. El stub tenía `fch_para TEXT`
+  (divergía de producción) y no lo detectaba; se corrige a `DATE`.
+- Addendum al Critical 1: `fch_para` llega NULL desde la ingesta en ~4% de
+  los pedidos pendientes reales aunque `fch_hora_para` sí trae el valor.
+  Mismo patrón que `2026-06-01-fix-pedidos-fch-para-null.sql`: se tolera
+  con `COALESCE(fch_para, (fch_hora_para AT TIME ZONE 'America/Montevideo')::date)`
+  en las dos ramas de la demanda (pedidos y services).
+- Critical 2: el universo salía de `demoras_capacidad()`, que solo agrega
+  móviles ACTIVOS hoy — una zona con pedidos pendientes y CERO móviles
+  activos (el peor caso operativo; 72% de la flota está inactiva en un
+  momento dado) desaparecía sin dejar fila que auditar. El universo ahora
+  sale de `moviles_zonas` (mismo universo que `demoras_ritmo`), y `cap` se
+  LEFT JOINea: sin capacidad, `capacidad=0` y `sin_capacidad=true`, pero la
+  fila se escribe.
+- Important 3: el `ON CONFLICT DO UPDATE` solo actualizaba 4 de 22 columnas
+  no-PK, dejando filas internamente inconsistentes en una re-corrida con
+  insumos distintos. Ahora actualiza las 22.
+- Important 4: el subselect de `demora_as400` tenía `LIMIT 1` sin
+  `ORDER BY` — no determinístico, dado que la clave natural de `demoras`
+  permite varias filas por `(escenario, zona, descripcion)`. Se agrega
+  `ORDER BY updated_at DESC, demora_id DESC`.
+- Important 5: el `30` de `coalesce(ritmo_usado, 30)` era mágico y no se
+  persistía (la fila quedaba con `ritmo_usado=NULL`). Se agrega
+  `demoras_config.ritmo_default_minutos` (parámetro del modelo, editable) y
+  se persiste el valor efectivamente usado.
+- Important 6: los asserts previos pisaban las 3 filas de `demoras_config`
+  a la vez y solo probaban comportamiento GLOBAL, sin cubrir la restricción
+  central de la task (interruptor y ventana POR TIPO). Se siembran
+  NOCTURNO y SERVICE (antes sin ninguna fila) y se agregan asserts de
+  aislamiento por tipo, con controles positivos para no confundir ausencia
+  por bloqueo con ausencia por falta de datos.
+- Important 7: el CTE `prev` no era sargable (único predicado usable
+  `corrida_at < p_corrida_at`, ~4,5M filas en régimen). Se agrega cota
+  inferior sargable `corrida_at >= (v_fecha::timestamp AT TIME ZONE
+  'America/Montevideo')`.
+
+Verificado: el harness con el stub corregido (`fch_para DATE`) y la función
+revertida a `to_char(...)` FALLA con `operator does not exist: date =
+text` — confirma que el stub ya no enmascara el Critical 1. Con todo
+corregido, el harness completo pasa con exit 0 (11 `NOTICE ok`, incluyendo
+los nuevos de fch_para NULL y aislamiento por tipo).
 
 ---
 

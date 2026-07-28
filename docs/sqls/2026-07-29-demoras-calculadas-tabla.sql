@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS demoras_config (
   estadistico               text    NOT NULL DEFAULT 'MEDIANA'
                                     CHECK (estadistico IN ('MEDIA','MEDIANA','P75','P90')),
   ritmo_cascada             text    NOT NULL DEFAULT 'CHOFER,MOVIL,ZONA,GLOBAL',
+  ritmo_default_minutos     integer NOT NULL DEFAULT 30 CHECK (ritmo_default_minutos > 0),
   factor_calibracion        numeric NOT NULL DEFAULT 1.0 CHECK (factor_calibracion > 0),
   hora_inicio               time    NOT NULL DEFAULT '07:00',
   hora_fin                  time    NOT NULL DEFAULT '23:30',
@@ -87,6 +88,8 @@ COMMENT ON COLUMN demoras_config.ritmo_cascada IS
   'Orden de la cascada de atribucion del ritmo, CSV. Se recorre de izquierda a derecha y gana el primer nivel que llegue al minimo de muestras. Niveles validos: CHOFER, MOVIL, ZONA, GLOBAL. GLOBAL se evalua siempre ultimo aunque no figure: es la red final.';
 COMMENT ON COLUMN demoras_config.factor_calibracion IS
   'Multiplicador global del resultado crudo. Existe por el riesgo R1: demora_efectiva_mins ya incluye la espera en cola, asi que multiplicarla por los pendientes puede doble-contar. Permite corregir el nivel sin tocar codigo.';
+COMMENT ON COLUMN demoras_config.ritmo_default_minutos IS
+  'Piso del ritmo cuando no hay ninguna estadistica disponible (ni zona ni global): antes era un 30 hardcodeado en el orquestador que no quedaba registrado en la fila calculada. Ahora es un parametro del modelo, editable desde Preferencias Globales, y el valor efectivamente usado se persiste en demoras_calculadas.ritmo_usado (auditable).';
 
 -- Seed: los tres tipos del escenario 1000 con los defaults.
 -- NOCTURNO arranca con su propia ventana horaria, que es el caso que motivo

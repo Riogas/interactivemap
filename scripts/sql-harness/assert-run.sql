@@ -15,9 +15,9 @@ VALUES (1000, 10, date '2026-07-29', true),
 
 -- 10 pedidos pendientes en zona 100 -> con ritmo global de 20 min y
 -- capacidad 1.0, el crudo da 200 -> clampea a 120.
+-- fch_para es DATE en produccion (no TEXT): literal directo, sin to_char.
 INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
-SELECT g, 1000, 'URGENTE', 10, 100, 1,
-       to_char(date '2026-07-29', 'YYYYMMDD')
+SELECT g, 1000, 'URGENTE', 10, 100, 1, date '2026-07-29'
 FROM generate_series(1,10) g;
 
 INSERT INTO metricas_cumplimiento
@@ -65,10 +65,10 @@ BEGIN
   -- movil que tambien arranca en 4 horas.
   INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para, fch_hora_para)
   VALUES (5001, 1000, 'URGENTE', NULL, 100, 1,
-          to_char(date '2026-07-29','YYYYMMDD'),
+          date '2026-07-29',
           timestamptz '2026-07-29 19:00:00-03'),
          (5002, 1000, 'URGENTE', 10, 100, 1,
-          to_char(date '2026-07-29','YYYYMMDD'),
+          date '2026-07-29',
           timestamptz '2026-07-29 19:00:00-03');
 
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:05:00-03');
@@ -100,10 +100,8 @@ BEGIN
      AND corrida_at = timestamptz '2026-07-29 15:00:00-03';
 
   INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
-  VALUES (5101, 1000, 'ESPECIAL SIN FLETE', 10, 100, 1,
-          to_char(date '2026-07-29','YYYYMMDD')),
-         (5102, 1000, 'LO QUE SEA', 10, 100, 1,
-          to_char(date '2026-07-29','YYYYMMDD'));
+  VALUES (5101, 1000, 'ESPECIAL SIN FLETE', 10, 100, 1, date '2026-07-29'),
+         (5102, 1000, 'LO QUE SEA', 10, 100, 1, date '2026-07-29');
 
   PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:10:00-03');
   SELECT pendientes_asignados INTO r_desp FROM demoras_calculadas
@@ -119,6 +117,35 @@ BEGIN
   DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 15:10:00-03';
 END $$;
 
+-- fch_para llega NULL desde la ingesta en ~4% de los pedidos pendientes
+-- reales (medido contra produccion), aunque fch_hora_para si trae el valor
+-- correcto. Mismo gap que 2026-06-01-fix-pedidos-fch-para-null.sql: un
+-- pendiente con fch_para NULL debe contar via COALESCE con fch_hora_para,
+-- no desaparecer de la demanda.
+DO $$
+DECLARE r_antes int; r_desp int;
+BEGIN
+  SELECT pendientes_asignados INTO r_antes FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE'
+     AND corrida_at = timestamptz '2026-07-29 15:00:00-03';
+
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para, fch_hora_para)
+  VALUES (5201, 1000, 'URGENTE', 10, 100, 1, NULL, timestamptz '2026-07-29 10:00:00-03');
+
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:20:00-03');
+  SELECT pendientes_asignados INTO r_desp FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE'
+     AND corrida_at = timestamptz '2026-07-29 15:20:00-03';
+
+  IF r_desp <> r_antes + 1 THEN
+    RAISE EXCEPTION 'pedido con fch_para NULL no conto via fch_hora_para: % -> %', r_antes, r_desp;
+  END IF;
+  RAISE NOTICE 'ok fch_para NULL cuenta via COALESCE con fch_hora_para';
+
+  DELETE FROM pedidos WHERE id = 5201;
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 15:20:00-03';
+END $$;
+
 -- Idempotencia: la misma corrida_at dos veces no duplica ni cambia.
 DO $$
 DECLARE a bigint; b bigint;
@@ -130,7 +157,7 @@ BEGIN
   RAISE NOTICE 'ok idempotente';
 END $$;
 
--- Interruptor de emergencia.
+-- Interruptor de emergencia (global: apaga los 3 tipos a la vez).
 UPDATE demoras_config SET motor_activo=false WHERE escenario_id=1000;
 DO $$
 BEGIN
@@ -141,7 +168,7 @@ BEGIN
 END $$;
 UPDATE demoras_config SET motor_activo=true WHERE escenario_id=1000;
 
--- Fuera de ventana.
+-- Fuera de ventana (global: cierra los 3 tipos a la vez).
 UPDATE demoras_config SET hora_inicio='07:00', hora_fin='08:00' WHERE escenario_id=1000;
 DO $$
 BEGIN
@@ -149,4 +176,98 @@ BEGIN
     RAISE EXCEPTION 'corrio fuera de ventana';
   END IF;
   RAISE NOTICE 'ok ventana horaria';
+END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Aislamiento POR TIPO: la restriccion central de esta task es que el
+-- interruptor y la ventana horaria se evaluan por (escenario, tipo), no
+-- globalmente (NOCTURNO tiene su propia ventana 18:00-23:30). Los bloques
+-- de arriba solo pisan las 3 filas de demoras_config a la vez y prueban
+-- comportamiento GLOBAL; nunca demuestran el aislamiento. Hace falta
+-- sembrar NOCTURNO y SERVICE (hasta aca no habia ni una fila) y probar
+-- que apagar/cerrar UN tipo no afecta a los otros.
+-- ═══════════════════════════════════════════════════════════════════════
+UPDATE demoras_config SET motor_activo=true, hora_inicio='00:00', hora_fin='23:59' WHERE escenario_id=1000;
+
+INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito)
+VALUES ('10', 100, 1000, 'NOCTURNO', 1),
+       ('10', 100, 1000, 'SERVICE', 1);
+
+INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+VALUES (6001, 1000, 'NOCTURNO', 10, 100, 1, date '2026-07-29');
+INSERT INTO services (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+VALUES (7001, 1000, 'SERVICE', 10, 100, 1, date '2026-07-29');
+
+-- Control positivo: con el motor prendido y la ventana abierta para los 3
+-- tipos, NOCTURNO y SERVICE tienen que calcular igual que URGENTE. Esto
+-- prueba que el seed nuevo es valido ANTES de usarlo para probar
+-- aislamiento (si esto fallara, las ausencias de abajo serian falsos
+-- positivos por falta de datos, no por el interruptor/ventana).
+DO $$
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:00:00-03');
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 20:00:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOCTURNO debio calcular (control positivo)'; END IF;
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='SERVICE' AND corrida_at = timestamptz '2026-07-29 20:00:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'SERVICE debio calcular (control positivo)'; END IF;
+
+  RAISE NOTICE 'ok NOCTURNO y SERVICE calculan con datos propios (control positivo)';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 20:00:00-03';
+END $$;
+
+-- Interruptor POR TIPO: apagar solo NOCTURNO no debe afectar a URGENTE.
+UPDATE demoras_config SET motor_activo=false WHERE escenario_id=1000 AND tipo_servicio='NOCTURNO';
+DO $$
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 20:05:00-03');
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 20:05:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'URGENTE debio seguir calculando con NOCTURNO apagado'; END IF;
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 20:05:00-03';
+  IF FOUND THEN RAISE EXCEPTION 'NOCTURNO no debio calcular: el interruptor es por tipo, no global'; END IF;
+
+  RAISE NOTICE 'ok interruptor por tipo (apagar NOCTURNO no apaga URGENTE)';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 20:05:00-03';
+END $$;
+UPDATE demoras_config SET motor_activo=true WHERE escenario_id=1000 AND tipo_servicio='NOCTURNO';
+
+-- Ventana POR TIPO: URGENTE 07:00-23:30, NOCTURNO 18:00-23:30 (ventanas
+-- reales del seed). A las 15:30 -dentro de la de URGENTE, fuera de la de
+-- NOCTURNO- debe emitir URGENTE y NO NOCTURNO.
+UPDATE demoras_config SET hora_inicio='07:00', hora_fin='23:30' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
+UPDATE demoras_config SET hora_inicio='18:00', hora_fin='23:30' WHERE escenario_id=1000 AND tipo_servicio='NOCTURNO';
+DO $$
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 15:30:00-03');
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='URGENTE' AND corrida_at = timestamptz '2026-07-29 15:30:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'URGENTE debio calcular a las 15:30 (dentro de su ventana)'; END IF;
+
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 15:30:00-03';
+  IF FOUND THEN RAISE EXCEPTION 'NOCTURNO no debio calcular a las 15:30 (fuera de su ventana 18:00-23:30)'; END IF;
+
+  RAISE NOTICE 'ok ventana horaria por tipo (15:30: URGENTE calcula, NOCTURNO no)';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 15:30:00-03';
+END $$;
+
+-- Y a las 19:00, ya dentro de la ventana de NOCTURNO, NOCTURNO SI calcula:
+-- prueba que la ausencia de arriba es por la ventana y no por falta de
+-- datos o algun otro bloqueo silencioso.
+DO $$
+BEGIN
+  PERFORM demoras_calcular_run(timestamptz '2026-07-29 19:00:00-03');
+  PERFORM 1 FROM demoras_calculadas
+   WHERE zona_id=100 AND tipo_servicio='NOCTURNO' AND corrida_at = timestamptz '2026-07-29 19:00:00-03';
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOCTURNO debio calcular a las 19:00 (dentro de su ventana)'; END IF;
+  RAISE NOTICE 'ok NOCTURNO calcula dentro de su propia ventana';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 19:00:00-03';
 END $$;

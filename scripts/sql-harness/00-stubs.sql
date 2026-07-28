@@ -55,7 +55,7 @@ CREATE TABLE pedidos (
   fch_hora_para TIMESTAMPTZ, fch_hora_max_ent_comp TIMESTAMPTZ,
   demora_movil_desde_asignacion_mins NUMERIC,
   estado_nro INTEGER, sub_estado_nro INTEGER, orden_cancelacion TEXT,
-  fch_para TEXT,
+  fch_para DATE,
   PRIMARY KEY (id, escenario)
 );
 CREATE TABLE services (LIKE pedidos INCLUDING ALL);
