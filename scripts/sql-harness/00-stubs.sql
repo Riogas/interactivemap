@@ -5,6 +5,16 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF;
 END $$;
 
+-- Default privileges al estilo Supabase: en un proyecto de Supabase, las
+-- tablas nuevas del schema public nacen accesibles para `anon` y
+-- `authenticated` (las dos claves que viajan al browser). Un Postgres vanilla
+-- NO hace eso, y esa diferencia volvia intestable cualquier REVOKE: un assert
+-- de "anon no puede escribir esta tabla" pasaba solo porque anon nunca tuvo
+-- el privilegio, no porque la migracion lo hubiera revocado -- otro test que
+-- no puede fallar. Con esto, el REVOKE de una migracion es lo unico que hace
+-- pasar el assert, igual que en produccion.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+
 CREATE TABLE app_config (
   key TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_by TEXT

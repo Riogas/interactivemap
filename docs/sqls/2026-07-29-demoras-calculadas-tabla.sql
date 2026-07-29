@@ -112,6 +112,33 @@ CREATE TABLE IF NOT EXISTS demoras_config (
 ALTER TABLE demoras_config
   ADD COLUMN IF NOT EXISTS ritmo_default_minutos integer NOT NULL DEFAULT 30 CHECK (ritmo_default_minutos > 0);
 
+-- ─── Ventana horaria: hora_fin TIENE que ser posterior a hora_inicio ──────
+-- El motor filtra con `v_hora BETWEEN dc.hora_inicio AND dc.hora_fin`, un
+-- rango CERRADO sobre un time: si alguien configura una ventana que cruza la
+-- medianoche (el candidato obvio es NOCTURNO con '20:30'-'06:00'), la
+-- condicion NUNCA es cierta y ese tipo deja de escribir filas PARA SIEMPRE,
+-- sin error, sin log y sin que el cron falle -- el peor modo de falla
+-- posible. La guia (docs/DEMORA_INFORMADA.md §5) ensena a editar esta config
+-- en caliente, asi que la base tiene que rechazar la ventana envuelta en el
+-- momento del UPDATE, no seis semanas despues.
+--
+-- Ventanas que cruzan medianoche NO estan soportadas: soportarlas requiere
+-- cambiar el BETWEEN por una condicion partida en dos en demoras_calcular_run
+-- (y en cualquier consumidor futuro de estas columnas). Esta fuera de alcance
+-- hoy; el CHECK hace explicito el limite en vez de dejar un pozo silencioso.
+--
+-- DROP + ADD (no un CHECK inline en el CREATE TABLE) porque la tabla puede ya
+-- existir de un apply anterior: mismo patron idempotente que el swap del
+-- CHECK de ritmo_origen de mas arriba. Si la tabla ya tuviera una fila con
+-- ventana envuelta, el ADD CONSTRAINT falla RUIDOSAMENTE y hay que corregir
+-- esa fila antes de seguir -- que es exactamente lo que queremos.
+ALTER TABLE demoras_config DROP CONSTRAINT IF EXISTS demoras_config_ventana_horaria;
+ALTER TABLE demoras_config ADD  CONSTRAINT demoras_config_ventana_horaria
+  CHECK (hora_fin > hora_inicio);
+
+COMMENT ON CONSTRAINT demoras_config_ventana_horaria ON demoras_config IS
+  'La ventana operativa de un tipo no puede cruzar la medianoche: demoras_calcular_run evalua v_hora BETWEEN hora_inicio AND hora_fin, que con hora_fin < hora_inicio nunca es cierto y apaga ese tipo en silencio.';
+
 COMMENT ON TABLE demoras_config IS
   'Configuracion del motor de demora por (escenario, tipo de servicio). Editable desde Preferencias Globales. Si falta la fila de un tipo, ese tipo no se calcula.';
 COMMENT ON COLUMN demoras_config.ritmo_cascada IS
@@ -129,3 +156,35 @@ INSERT INTO demoras_config (escenario_id, tipo_servicio, hora_inicio, hora_fin) 
   (1000, 'NOCTURNO', '18:00', '23:30'),
   (1000, 'SERVICE',  '07:00', '23:30')
 ON CONFLICT (escenario_id, tipo_servicio) DO NOTHING;
+
+-- =====================================================================
+-- Grants: las dos tablas son EXCLUSIVAS de service_role
+-- =====================================================================
+-- Las tablas se creaban sin RLS y sin grants explicitos, confiando en los
+-- default privileges del proyecto. Eso es una apuesta: si `anon` tiene
+-- privilegios por defecto sobre el schema public, `demoras_config` queda
+-- ESCRIBIBLE con la anon key -- la que vive en el bundle del browser. Y
+-- demoras_config no es una tabla mas: es la que decide que calcula el motor
+-- (motor_activo, ventanas, topes, factor de calibracion). Un UPDATE desde
+-- afuera apaga el motor o le cambia el resultado sin dejar rastro.
+--
+-- Nadie las lee con la anon key: el unico consumidor de lectura es
+-- app/api/demoras/comparativa, que usa getServerSupabaseClient()
+-- (service_role, server-side), y el unico escritor es demoras_calcular_run
+-- via pg_cron. Asi que revocar no rompe ningun camino real.
+--
+-- Misma forma que docs/sqls/2026-07-24-metricas-dashboard-rpc.sql:313-315.
+-- Idempotente: REVOKE/GRANT se pueden repetir sin efecto adicional.
+REVOKE ALL ON TABLE demoras_calculadas FROM PUBLIC;
+REVOKE ALL ON TABLE demoras_calculadas FROM anon, authenticated;
+GRANT  ALL ON TABLE demoras_calculadas TO service_role;
+
+REVOKE ALL ON TABLE demoras_config FROM PUBLIC;
+REVOKE ALL ON TABLE demoras_config FROM anon, authenticated;
+GRANT  ALL ON TABLE demoras_config TO service_role;
+
+-- Verificacion post-apply (las cuatro tienen que dar `f`):
+--   SELECT has_table_privilege('anon','demoras_config','UPDATE');
+--   SELECT has_table_privilege('anon','demoras_config','SELECT');
+--   SELECT has_table_privilege('anon','demoras_calculadas','UPDATE');
+--   SELECT has_table_privilege('authenticated','demoras_config','UPDATE');
