@@ -80,3 +80,67 @@ BEGIN
   IF r.ritmo_muestras IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'zona 100 NOCTURNO: muestras debe ser 0, es %', r.ritmo_muestras; END IF;
   RAISE NOTICE 'ok tipo sin hechos globales: estadisticas=NULL, muestras=0';
 END $$;
+
+-- =====================================================================
+-- Cascada de 4 niveles (Task 10): CHOFER -> MOVIL -> ZONA -> GLOBAL.
+--
+-- IMPORTANTE: estos fixtures van DESPUES de los asserts de arriba a
+-- proposito. Los asserts viejos ya corrieron contra un movil_id NULL en
+-- moviles_zonas (nadie matchea moviles_dia), asi que CHOFER y MOVIL
+-- salen con 0 muestras y la cascada por defecto sigue resolviendo por
+-- ZONA/GLOBAL como antes. Si estos INSERT se movieran antes, la zona
+-- 100 URGENTE pasaria a resolver por CHOFER y los asserts viejos (que
+-- exigen origen='ZONA') fallarian sin que la funcion este mal: el chofer
+-- ANA maneja el movil 10 y sus 5 hechos son exactamente los mismos 5 de
+-- la zona 100, asi que media/mediana coinciden entre ZONA y CHOFER.
+--
+-- Movil 10 ya aparece en metricas_cumplimiento (5 hechos, chofer ANA,
+-- zona 100, URGENTE) desde el fixture de arriba. Lo activamos como
+-- movil real en moviles_zonas/moviles_dia para que el aporte ponderado
+-- (el mismo prorrateo de demoras_capacidad) tenga algo que ponderar.
+-- Unica zona/tipo del movil -> su aporte normalizado es 1 (peso/w=1/1).
+-- =====================================================================
+INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito)
+VALUES ('10', 100, 1000, 'URGENTE', 1);
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000, 10, DATE '2026-07-29', true);
+
+-- Cascada por defecto: con datos suficientes de chofer, gana CHOFER.
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen <> 'CHOFER' THEN RAISE EXCEPTION 'esperaba CHOFER, obtuvo %', r.ritmo_origen; END IF;
+  RAISE NOTICE 'ok cascada default gana CHOFER';
+END $$;
+
+-- Sacando CHOFER de la lista, el mismo dato debe resolver por MOVIL.
+UPDATE demoras_config SET ritmo_cascada='MOVIL,ZONA,GLOBAL' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen <> 'MOVIL' THEN RAISE EXCEPTION 'esperaba MOVIL, obtuvo %', r.ritmo_origen; END IF;
+  RAISE NOTICE 'ok orden configurable saltea CHOFER';
+END $$;
+
+-- Lista solo con ZONA: debe resolver por ZONA, y caer a GLOBAL si no alcanza.
+UPDATE demoras_config SET ritmo_cascada='ZONA' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=200 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen <> 'GLOBAL' THEN RAISE EXCEPTION 'GLOBAL debe ser la red final, obtuvo %', r.ritmo_origen; END IF;
+  RAISE NOTICE 'ok GLOBAL es red final aunque no este en la lista';
+END $$;
+
+-- Lista basura: cae al default sin romper.
+UPDATE demoras_config SET ritmo_cascada='FRUTA,,XX' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29') WHERE zona_id=100 AND tipo_servicio='URGENTE';
+  IF r.ritmo_origen IS NULL THEN RAISE EXCEPTION 'lista basura no debe romper'; END IF;
+  RAISE NOTICE 'ok lista invalida cae al default';
+END $$;
+UPDATE demoras_config SET ritmo_cascada='CHOFER,MOVIL,ZONA,GLOBAL' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
