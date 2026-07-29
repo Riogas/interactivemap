@@ -64,8 +64,12 @@ DECLARE
 BEGIN
   -- Un solo motor a la vez. pg_cron no serializa ejecuciones del mismo job:
   -- si una corrida tarda mas de 10 minutos, la siguiente arranca encima. El
-  -- lock es de sesion y se libera solo al terminar la funcion.
-  IF NOT pg_try_advisory_lock(hashtext('demoras_calcular_run')::bigint) THEN
+  -- lock de transaccion se libera automaticamente al terminar la transaccion
+  -- por cualquier motivo: commit, rollback por excepcion, o abort por
+  -- cancelacion (statement_timeout, pg_cancel_backend). Esto evita el caso
+  -- en que QUERY_CANCELED no sea capturado por EXCEPTION WHEN OTHERS y deje
+  -- el lock pegado para la sesion entera.
+  IF NOT pg_try_advisory_xact_lock(2180637405::bigint) THEN
     RAISE NOTICE 'demoras_calcular_run: ya hay una corrida en curso, salteando';
     RETURN 0;
   END IF;
@@ -321,10 +325,9 @@ BEGIN
   )
     SELECT count(*) INTO v_escritas FROM ins;
 
-    PERFORM pg_advisory_unlock(hashtext('demoras_calcular_run')::bigint);
     RETURN v_escritas;
   EXCEPTION WHEN OTHERS THEN
-    PERFORM pg_advisory_unlock(hashtext('demoras_calcular_run')::bigint);
+    -- El lock de transaccion se libera automaticamente aunque hagamos RAISE.
     RAISE;
   END;
 END;

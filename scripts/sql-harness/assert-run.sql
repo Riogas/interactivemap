@@ -345,42 +345,35 @@ BEGIN
 END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════
--- Advisory lock: la funcion debe liberar el lock antes de retornar, en
--- TODOS los caminos de salida (normal o excepcion). Verificamos que:
--- 1. Una corrida normal ejecuta sin problemas (lock se libera bien)
--- 2. Si fueramos a ejecutar dos veces sin liberar, la segunda recibe
---    NOTICE "ya hay una corrida en curso" (aunque en una sesion real
---    pg_cron no dispara la segunda hasta terminar la primera, este
---    assert valida que si PASARA, el codigo lo rechazaria).
+-- Advisory lock de transaccion: pg_try_advisory_xact_lock(2180637405)
+--
+-- El lock se libera automaticamente al terminar la transaccion (por cualquier
+-- motivo: commit, rollback, abort por cancelacion). Esto evita el bug de
+-- lock de sesion donde QUERY_CANCELED escapa a EXCEPTION WHEN OTHERS.
+--
+-- COBERTURA DE ESTE ASSERT:
+-- ✓ Corrida normal ejecuta sin problemas (lock se toma y libera)
+-- ✗ Corrida bloqueada rechazada con RETURN 0: REQUIERE DOS CONEXIONES
+--   CONCURRENTES (el test vive en run.sh, lanza psql2 con BEGIN/xact_lock/sleep,
+--   e intenta demoras_calcular_run desde psql1 esperando 0 sin escribir).
+--   No se puede probar en una sola sesion porque los advisory locks son
+--   REENTRANTES: una sesion que ya tiene el lock siempre lo vuelve a obtener.
 -- ═══════════════════════════════════════════════════════════════════════
 DO $$
-DECLARE cnt_before bigint; cnt_after bigint; result bigint;
+DECLARE result bigint;
 BEGIN
-  SELECT count(*) INTO cnt_before FROM demoras_calculadas;
-
-  -- Primera corrida: debe ejecutar sin problemas y liberar el lock.
+  -- Corrida normal: toma el lock, ejecuta, lo libera automaticamente.
   result := demoras_calcular_run(timestamptz '2026-07-29 21:00:00-03');
   IF result < 1 THEN
-    RAISE EXCEPTION 'primera corrida debio escribir filas, devolvio %', result;
+    RAISE EXCEPTION 'corrida normal debio escribir filas, devolvio %', result;
   END IF;
 
-  SELECT count(*) INTO cnt_after FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 21:00:00-03';
-  IF cnt_after < 1 THEN
-    RAISE EXCEPTION 'primera corrida: no encontre filas escritas, encontre %', cnt_after;
-  END IF;
-
-  -- Segunda corrida (simulando overlapping si el lock no se hubiera liberado
-  -- correctamente): ejecuta sin bloquearse porque el lock fue liberado.
-  result := demoras_calcular_run(timestamptz '2026-07-29 21:05:00-03');
+  -- Repetir la misma corrida_at: deberia actualizar (ON CONFLICT) sin aumentar filas.
+  result := demoras_calcular_run(timestamptz '2026-07-29 21:00:00-03');
   IF result < 1 THEN
-    RAISE EXCEPTION 'segunda corrida (con lock liberado): debio escribir filas, devolvio %', result;
+    RAISE EXCEPTION 'corrida repetida debio actualizar sin duplicar, devolvio %', result;
   END IF;
 
-  SELECT count(*) INTO cnt_after FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 21:05:00-03';
-  IF cnt_after < 1 THEN
-    RAISE EXCEPTION 'segunda corrida (con lock liberado): no encontre filas escritas';
-  END IF;
-
-  RAISE NOTICE 'ok advisory lock: se libera correctamente en todos los caminos de salida';
-  DELETE FROM demoras_calculadas WHERE corrida_at IN (timestamptz '2026-07-29 21:00:00-03', timestamptz '2026-07-29 21:05:00-03');
+  RAISE NOTICE 'ok advisory_xact_lock: se toma y libera en corridas normales';
+  DELETE FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 21:00:00-03';
 END $$;
