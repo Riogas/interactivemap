@@ -68,3 +68,4 @@ zona-*.svg
 .claude/runs/
 .claude/MEMORY.md
 .claude/lessons.db.yaml
+.superpowers/

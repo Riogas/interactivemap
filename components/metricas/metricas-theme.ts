@@ -117,6 +117,10 @@ export const INFO_TEXTS = {
     title: 'Detalle',
     text: 'Detalle completo de la dimensión elegida: cantidad de cumplidos, promedio, mediana, p90 y atraso promedio (con signo). Ordenable por columna (click en el encabezado) y filtrable por nombre. Sirve como alternativa accesible a la codificación por color del ranking.',
   },
+  demora_comparativa: {
+    title: 'Demora calculada vs. informada',
+    text: 'Cada 10 minutos TrackMovil calcula, para cada zona activa, cuánto debería demorar un pedido según la demanda pendiente, los móviles realmente activos y el ritmo real de cumplimiento de la última semana. Esa línea se compara contra la que informa el AS400. La nuestra es escalonada porque redondea a 15 minutos; la del AS400 usa escalones de 5. El AS400 solo informa URGENTE: para NOCTURNO y SERVICE se muestra únicamente nuestra línea. Este número NO se le informa a ningún cliente — es solo para validar el modelo.',
+  },
 } as const satisfies Record<string, InfoText>;
 
 export type InfoTextKey = keyof typeof INFO_TEXTS;

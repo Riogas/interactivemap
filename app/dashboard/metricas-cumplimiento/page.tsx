@@ -28,9 +28,10 @@ import { RankingList } from '@/components/metricas/RankingList';
 import { DetalleTable } from '@/components/metricas/DetalleTable';
 import { ExpandModal } from '@/components/metricas/ExpandModal';
 import { EscenarioComparativa } from '@/components/metricas/EscenarioComparativa';
+import { DemoraComparativa } from '@/components/metricas/DemoraComparativa';
 import { INFO_TEXTS, DIMENSION_LABEL, COLOR_TIPO, TIPO_LABEL, formatMin, formatPct } from '@/components/metricas/metricas-theme';
 
-type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | null;
+type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | null;
 
 // ─── Sub-tablas chicas usadas SOLO dentro del ExpandModal (E2: "tabla completa
 // de datos de esa sección" para tendencia/por-tipo, complementando el chart). ──
@@ -194,6 +195,12 @@ function MetricasCumplimientoContent() {
   // ── Auth-scope (mismo patrón que app/dashboard/stats/page.tsx) ──────────
   const unrestricted = canSeeAllEmpresas(user);
   const empresasIdsForHeader = user?.allowedEmpresas ?? [];
+  // Funcionalidades de todos los roles del usuario -> header x-track-funcs.
+  // Tanto /api/metricas/dashboard como /api/demoras/comparativa corren
+  // requireFuncionalidad('Estadisticas Cumplimiento'): sin esto, todo caller
+  // no-root recibía 403 aunque tuviera la funcionalidad asignada (B5).
+  // Mismo patrón que app/dashboard/page.tsx:1213.
+  const funcionalidades = (user?.roles ?? []).flatMap((r) => (r.funcionalidades ?? []).map((f) => f.nombre));
 
   // ── Empresas para el selector (fetch on mount; filtradas al scope del caller) ──
   const [empresas, setEmpresas] = useState<EmpresaOption[]>([]);
@@ -229,6 +236,7 @@ function MetricasCumplimientoContent() {
     empresaSel,
     isRoot: unrestricted,
     empresasIds: empresasIdsForHeader,
+    funcionalidades,
   });
 
   const kpis = data?.kpis;
@@ -537,6 +545,21 @@ function MetricasCumplimientoContent() {
               />
             )}
           </CardShell>
+
+          {/* ── Demora informada vs. calculada ──
+              Última card: mira un dato distinto del resto de la pantalla
+              (demora prospectiva, no cumplimiento histórico). */}
+          <CardShell
+            title="Demora calculada vs. informada"
+            hint="cada 10 min · por zona"
+            infoTitle={INFO_TEXTS.demora_comparativa.title}
+            infoText={INFO_TEXTS.demora_comparativa.text}
+            onExpand={() => setExpandedSection('demora')}
+            className="col-span-12"
+            style={{ animationDelay: '380ms' }}
+          >
+            <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
+          </CardShell>
         </div>
 
         <div className="mt-4 text-[0.76rem] text-stats-muted-fg">
@@ -558,7 +581,9 @@ function MetricasCumplimientoContent() {
                 ? `Ranking · ${dimLabel.plural}`
                 : expandedSection === 'escenarios'
                   ? 'Comparativa entre escenarios'
-                  : `Detalle por ${dimLabel.singular}`
+                  : expandedSection === 'demora'
+                    ? 'Demora calculada vs. informada'
+                    : `Detalle por ${dimLabel.singular}`
         }
       >
         {data && expandedSection === 'tendencia' && (
@@ -591,6 +616,9 @@ function MetricasCumplimientoContent() {
               setExpandedSection(null); // cambiar de escenario recarga todo: el modal ya no aplica
             }}
           />
+        )}
+        {expandedSection === 'demora' && (
+          <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
         )}
       </ExpandModal>
     </div>
