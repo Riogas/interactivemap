@@ -195,6 +195,12 @@ function MetricasCumplimientoContent() {
   // ── Auth-scope (mismo patrón que app/dashboard/stats/page.tsx) ──────────
   const unrestricted = canSeeAllEmpresas(user);
   const empresasIdsForHeader = user?.allowedEmpresas ?? [];
+  // Funcionalidades de todos los roles del usuario -> header x-track-funcs.
+  // Tanto /api/metricas/dashboard como /api/demoras/comparativa corren
+  // requireFuncionalidad('Estadisticas Cumplimiento'): sin esto, todo caller
+  // no-root recibía 403 aunque tuviera la funcionalidad asignada (B5).
+  // Mismo patrón que app/dashboard/page.tsx:1213.
+  const funcionalidades = (user?.roles ?? []).flatMap((r) => (r.funcionalidades ?? []).map((f) => f.nombre));
 
   // ── Empresas para el selector (fetch on mount; filtradas al scope del caller) ──
   const [empresas, setEmpresas] = useState<EmpresaOption[]>([]);
@@ -230,6 +236,7 @@ function MetricasCumplimientoContent() {
     empresaSel,
     isRoot: unrestricted,
     empresasIds: empresasIdsForHeader,
+    funcionalidades,
   });
 
   const kpis = data?.kpis;
@@ -551,7 +558,7 @@ function MetricasCumplimientoContent() {
             className="col-span-12"
             style={{ animationDelay: '380ms' }}
           >
-            <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} />
+            <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
           </CardShell>
         </div>
 
@@ -611,7 +618,7 @@ function MetricasCumplimientoContent() {
           />
         )}
         {expandedSection === 'demora' && (
-          <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} />
+          <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
         )}
       </ExpandModal>
     </div>

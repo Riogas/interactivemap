@@ -26,6 +26,15 @@ export interface UseMetricasDashboardParams {
   // ─── Auth-scope del caller (enviados como headers) ─────────────────────
   isRoot: boolean;
   empresasIds: number[];
+  /**
+   * Nombres de funcionalidades de los roles del caller. Viajan en
+   * `x-track-funcs`: /api/metricas/dashboard corre
+   * `requireFuncionalidad(request, 'Estadisticas Cumplimiento')`, así que sin
+   * este header NINGÚN caller no-root pasaba el gate — recibía 403 aunque
+   * tuviera la funcionalidad asignada (B5). Patrón de
+   * app/dashboard/page.tsx:1213 y lib/hooks/use-zona-capacidad-snapshot.ts.
+   */
+  funcionalidades: string[];
 }
 
 export interface UseMetricasDashboardResult {
@@ -53,7 +62,37 @@ function buildCacheKey(p: UseMetricasDashboardParams): string {
     (p.tipos ?? []).slice().sort().join(','),
     p.empresaSel ?? '',
     p.isRoot ? 'root' : p.empresasIds.slice().sort((a, b) => a - b).join(','),
+    // Las funcionalidades cambian la respuesta del endpoint (el gate puede
+    // pasar o dar 403), así que forman parte de la clave: sin esto, un
+    // cambio de rol serviría la respuesta cacheada del rol anterior.
+    p.funcionalidades.slice().sort().join(','),
   ].join('|');
+}
+
+/**
+ * Headers de auth-scope de /api/metricas/dashboard. Exportada para poder
+ * testear el contrato sin renderizar el hook (vitest corre en environment
+ * 'node', sin jsdom — mismo patrón que components/metricas/
+ * demora-comparativa-logic.ts).
+ */
+export function buildMetricasDashboardHeaders(
+  p: Pick<UseMetricasDashboardParams, 'isRoot' | 'empresasIds' | 'funcionalidades'>,
+): Record<string, string> {
+  // x-track-funcs SIEMPRE (también para root, que igual bypassea el gate):
+  // /api/metricas/dashboard corre requireFuncionalidad('Estadisticas
+  // Cumplimiento') y sin este header ningún no-root pasaba (B5).
+  const headers: Record<string, string> = {
+    'x-track-funcs': p.funcionalidades
+      .map((f) => String(f).trim())
+      .filter((f) => f.length > 0)
+      .join(','),
+  };
+  if (p.isRoot) {
+    headers['x-track-isroot'] = 'S';
+  } else if (p.empresasIds.length > 0) {
+    headers['x-track-empresas-ids'] = p.empresasIds.join(',');
+  }
+  return headers;
 }
 
 async function fetchDashboard(p: UseMetricasDashboardParams, signal: AbortSignal): Promise<MetricasDashboardData> {
@@ -66,12 +105,7 @@ async function fetchDashboard(p: UseMetricasDashboardParams, signal: AbortSignal
   if (p.tipos && p.tipos.length > 0) sp.set('tipos', p.tipos.join(','));
   if (p.empresaSel != null) sp.set('empresa', String(p.empresaSel));
 
-  const headers: Record<string, string> = {};
-  if (p.isRoot) {
-    headers['x-track-isroot'] = 'S';
-  } else if (p.empresasIds.length > 0) {
-    headers['x-track-empresas-ids'] = p.empresasIds.join(',');
-  }
+  const headers = buildMetricasDashboardHeaders(p);
 
   const res = await fetch(`/api/metricas/dashboard?${sp.toString()}`, { method: 'GET', headers, signal });
 
