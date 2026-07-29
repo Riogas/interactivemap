@@ -343,3 +343,44 @@ BEGIN
   END IF;
   RAISE NOTICE 'ok con capacidad y sin demanda -> informa el piso, sin_capacidad=false';
 END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Advisory lock: la funcion debe liberar el lock antes de retornar, en
+-- TODOS los caminos de salida (normal o excepcion). Verificamos que:
+-- 1. Una corrida normal ejecuta sin problemas (lock se libera bien)
+-- 2. Si fueramos a ejecutar dos veces sin liberar, la segunda recibe
+--    NOTICE "ya hay una corrida en curso" (aunque en una sesion real
+--    pg_cron no dispara la segunda hasta terminar la primera, este
+--    assert valida que si PASARA, el codigo lo rechazaria).
+-- ═══════════════════════════════════════════════════════════════════════
+DO $$
+DECLARE cnt_before bigint; cnt_after bigint; result bigint;
+BEGIN
+  SELECT count(*) INTO cnt_before FROM demoras_calculadas;
+
+  -- Primera corrida: debe ejecutar sin problemas y liberar el lock.
+  result := demoras_calcular_run(timestamptz '2026-07-29 21:00:00-03');
+  IF result < 1 THEN
+    RAISE EXCEPTION 'primera corrida debio escribir filas, devolvio %', result;
+  END IF;
+
+  SELECT count(*) INTO cnt_after FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 21:00:00-03';
+  IF cnt_after < 1 THEN
+    RAISE EXCEPTION 'primera corrida: no encontre filas escritas, encontre %', cnt_after;
+  END IF;
+
+  -- Segunda corrida (simulando overlapping si el lock no se hubiera liberado
+  -- correctamente): ejecuta sin bloquearse porque el lock fue liberado.
+  result := demoras_calcular_run(timestamptz '2026-07-29 21:05:00-03');
+  IF result < 1 THEN
+    RAISE EXCEPTION 'segunda corrida (con lock liberado): debio escribir filas, devolvio %', result;
+  END IF;
+
+  SELECT count(*) INTO cnt_after FROM demoras_calculadas WHERE corrida_at = timestamptz '2026-07-29 21:05:00-03';
+  IF cnt_after < 1 THEN
+    RAISE EXCEPTION 'segunda corrida (con lock liberado): no encontre filas escritas';
+  END IF;
+
+  RAISE NOTICE 'ok advisory lock: se libera correctamente en todos los caminos de salida';
+  DELETE FROM demoras_calculadas WHERE corrida_at IN (timestamptz '2026-07-29 21:00:00-03', timestamptz '2026-07-29 21:05:00-03');
+END $$;

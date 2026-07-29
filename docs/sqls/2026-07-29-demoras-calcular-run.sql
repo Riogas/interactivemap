@@ -62,12 +62,21 @@ DECLARE
   v_sa_mins  integer;
   v_escritas bigint;
 BEGIN
-  -- La ventana horaria y el interruptor se evaluan POR TIPO, no globalmente:
-  -- NOCTURNO tiene su propio horario. Por eso no hay early return aca; el
-  -- filtro vive en el CTE `cfg` y se propaga por el JOIN de `universo`.
-  v_local := p_corrida_at AT TIME ZONE 'America/Montevideo';
-  v_fecha := v_local::date;
-  v_hora  := v_local::time;
+  -- Un solo motor a la vez. pg_cron no serializa ejecuciones del mismo job:
+  -- si una corrida tarda mas de 10 minutos, la siguiente arranca encima. El
+  -- lock es de sesion y se libera solo al terminar la funcion.
+  IF NOT pg_try_advisory_lock(hashtext('demoras_calcular_run')::bigint) THEN
+    RAISE NOTICE 'demoras_calcular_run: ya hay una corrida en curso, salteando';
+    RETURN 0;
+  END IF;
+
+  BEGIN
+    -- La ventana horaria y el interruptor se evaluan POR TIPO, no globalmente:
+    -- NOCTURNO tiene su propio horario. Por eso no hay early return aca; el
+    -- filtro vive en el CTE `cfg` y se propaga por el JOIN de `universo`.
+    v_local := p_corrida_at AT TIME ZONE 'America/Montevideo';
+    v_fecha := v_local::date;
+    v_hora  := v_local::time;
 
   -- Ventana de visibilidad de los sin-asignar. NO es config del motor: es la
   -- misma que ya usan la capa de capacidad de entrega y el mapa, y vive por
@@ -310,9 +319,14 @@ BEGIN
       suavizado_aplicado      = EXCLUDED.suavizado_aplicado
     RETURNING 1
   )
-  SELECT count(*) INTO v_escritas FROM ins;
+    SELECT count(*) INTO v_escritas FROM ins;
 
-  RETURN v_escritas;
+    PERFORM pg_advisory_unlock(hashtext('demoras_calcular_run')::bigint);
+    RETURN v_escritas;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM pg_advisory_unlock(hashtext('demoras_calcular_run')::bigint);
+    RAISE;
+  END;
 END;
 $fn$;
 

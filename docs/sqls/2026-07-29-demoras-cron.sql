@@ -16,7 +16,7 @@ SELECT cron.schedule('demoras-calcular', '*/10 * * * *',
 -- temporada, no sobre un mes suelto.
 SELECT cron.unschedule('demoras-purga')
   WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'demoras-purga');
-SELECT cron.schedule('demoras-purga', '40 4 * * *',
+SELECT cron.schedule('demoras-purga', '43 4 * * *',
   $cron$ DELETE FROM demoras_calculadas WHERE corrida_at < now() - interval '180 days'; $cron$);
 
 -- ─── Verificacion ────────────────────────────────────────────────────
