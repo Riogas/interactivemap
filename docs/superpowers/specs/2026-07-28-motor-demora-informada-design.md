@@ -145,15 +145,22 @@ ritmos de sus móviles activos. Si ninguno tiene dato suficiente, cae a la zona;
 si la zona tampoco, al global del tipo.
 
 Se persiste `ritmo_origen` (`CHOFER|MOVIL|ZONA|GLOBAL|DEFECTO`) para poder
-auditar de dónde salió cada número. Como distintos móviles de la misma zona
-pueden resolverse a niveles distintos, `ritmo_origen` registra el **nivel más
-específico que se pudo usar para al menos un móvil** de esa zona: si al menos
-uno resolvió por chofer, la fila dice `CHOFER`.
+auditar de dónde salió cada número.
 
-**El orden de la cascada es configurable** (`demora_ritmo_cascada`, default
-`CHOFER,MOVIL,ZONA,GLOBAL`): se recorre de izquierda a derecha y gana el primer
-nivel que llegue al mínimo de muestras. Se pueden omitir niveles; `GLOBAL` se
-evalúa siempre último aunque no figure, como red final.
+**La resolución es por (zona, tipo) y es todo-o-nada, no por móvil.** Para
+cada nivel de la cascada se calcula el agregado de TODOS los móviles activos
+de esa zona+tipo y se **suman sus muestras**; gana el primer nivel cuya suma
+llegue a `RITMO_MIN_MUESTRAS`. La fila resultante sale entera de ese nivel, y
+`ritmo_origen` nombra ese nivel. No hay mezcla de niveles dentro de una misma
+fila: no ocurre que unos móviles aporten su ritmo de chofer y otros el de la
+zona. Un móvil sin datos propios no "cae" a otro nivel por su cuenta —
+simplemente no aporta muestras a ese nivel, y si la suma no alcanza, la zona
+entera baja al nivel siguiente.
+
+**El orden de la cascada es configurable** (`demoras_config.ritmo_cascada`,
+default `CHOFER,MOVIL,ZONA,GLOBAL`): se recorre de izquierda a derecha y gana
+el primer nivel que llegue al mínimo de muestras. Se pueden omitir niveles;
+`GLOBAL` se evalúa siempre último aunque no figure, como red final.
 
 Si ni siquiera `GLOBAL` tiene una muestra (el tipo de servicio no tiene un solo
 hecho en la ventana de días), no hay ninguna estadística real que usar.
@@ -166,21 +173,24 @@ móviles, cada uno con su chofer—, así que se resuelven como **promedio ponde
 por el aporte de cada móvil**, el mismo que usa la capacidad: un móvil de
 tránsito pesa menos que uno de prioridad.
 
-Cuál de las cuatro estadísticas alimenta el cálculo lo decide `demora_estadistico`
-(default `MEDIANA`). Las otras tres quedan guardadas, así se puede reprocesar
-el histórico con otra sin recalcular nada.
+Cuál de las cuatro estadísticas alimenta el cálculo lo decide
+`demoras_config.estadistico` (default `MEDIANA`). Las otras tres quedan
+guardadas, así se puede reprocesar el histórico con otra sin recalcular nada.
 
 ### 3.4 El acabado
 
 En este orden exacto:
 
+Todos los parámetros salen de la fila de `demoras_config` de ese
+`(escenario, tipo_servicio)`:
+
 ```
 1. crudo       →  (pendientes / capacidad) × ritmo × factor_calibracion
-2. clamp       →  max(demora_min, min(demora_max, crudo))
+2. clamp       →  max(min_minutos, min(max_minutos, crudo))
 3. suavizado   →  vs. `demora_suavizada` de la corrida anterior:
-                    sube como máximo demora_subida_max
-                    baja como máximo demora_bajada_max
-4. redondeo    →  hacia arriba al múltiplo de demora_escalon  → demora_informada
+                    sube como máximo subida_max
+                    baja como máximo bajada_max
+4. redondeo    →  hacia arriba al múltiplo de escalon_minutos  → demora_informada
 ```
 
 **El orden no es negociable.** Si se redondea antes de suavizar, el suavizado
@@ -213,7 +223,21 @@ informa  30  60  60  60  45       informa  30  60  90 120 120
 | NOCTURNO/SERVICE (sin bandera propia) | Hereda `demoras.activa` de la fila URGENTE de esa zona |
 | Zona+tipo sin ningún móvil en `moviles_zonas` | No se emite fila (el servicio no existe ahí) |
 | Primera corrida del día (07:00) | El suavizado **no** arrastra del día anterior: `demora_suavizada = clamp(crudo)`. Entre las 23:30 y las 07:00 la operación cambia por completo; arrastrar el estado de anoche informaría una demora que ya no significa nada. |
-| Fuera de ventana horaria | La función no hace nada y retorna 0 |
+| Fuera de la ventana horaria **de un tipo** | Ese tipo no emite fila; los otros dos siguen calculando normalmente. |
+| Fuera de ventana (o `motor_activo = false`) para **los tres** tipos | Recién ahí la función no escribe nada y retorna 0. |
+
+La ventana horaria y el interruptor se evalúan **por tipo**, no globalmente
+(es el motivo por el que `demoras_config` pasó a tener PK
+`(escenario_id, tipo_servicio)`): a las 15:30 URGENTE calcula y NOCTURNO no,
+en la misma corrida. `demoras_calcular_run` no tiene early-return por
+ventana — el filtro vive en el CTE `cfg` y se propaga por el JOIN del
+universo, así que "retorna 0" es la consecuencia de que no quedó ningún tipo
+elegible, no una rama aparte.
+
+**Las ventanas no pueden cruzar la medianoche** (`CHECK (hora_fin >
+hora_inicio)`): el filtro es `v_hora BETWEEN hora_inicio AND hora_fin` sobre
+un `time`, y una ventana envuelta (`20:30`–`06:00`) nunca es cierta —
+apagaría ese tipo para siempre, sin error ni log.
 
 **La falta de capacidad manda sobre la falta de demanda.** Si no hay ningún
 móvil activo en la zona, la respuesta honesta a "¿cuánto demora?" no es el
@@ -308,6 +332,7 @@ forma de apagar un tipo entero sin borrar histórico.
 | `bajada_max` | 15 | Cuánto baja por corrida |
 | `estadistico` | `MEDIANA` | Cuál de las cuatro manda |
 | `ritmo_cascada` | `CHOFER,MOVIL,ZONA,GLOBAL` | Orden de la cascada |
+| `ritmo_default_minutos` | 30 | Piso del ritmo cuando **ninguna** estadística está disponible (ni zona ni global). El valor usado se persiste en `demoras_calculadas.ritmo_usado` con `ritmo_origen = DEFECTO` — antes era un 30 hardcodeado en el orquestador que no quedaba registrado en la fila. |
 | `factor_calibracion` | 1.0 | Ajuste global (ver R1) |
 | `hora_inicio` / `hora_fin` | 07:00 / 23:30 | Ventana operativa **de ese tipo** |
 
@@ -316,8 +341,16 @@ config a por-tipo: calcular demora de nocturnos a las 8 de la mañana no
 significa nada.
 
 Constraints en la tabla: `max_minutos >= min_minutos`, `escalon_minutos > 0`,
-`factor_calibracion > 0`, y `estadistico` restringido a los cuatro válidos. Es
-config editable por gente, así que la base la valida en vez de confiar.
+`ritmo_default_minutos > 0`, `factor_calibracion > 0`, `estadistico`
+restringido a los cuatro válidos, y **`hora_fin > hora_inicio`** (las ventanas
+no pueden cruzar la medianoche — ver §3.5). Es config editable por gente, así
+que la base la valida en vez de confiar.
+
+Las dos tablas (`demoras_calculadas` y `demoras_config`) son **exclusivas de
+`service_role`**: `REVOKE ALL ... FROM anon, authenticated` + `GRANT ALL ... TO
+service_role`, mismo patrón que la RPC de métricas. `demoras_config` decide qué
+calcula el motor; dejarla al alcance de la anon key (que vive en el browser)
+sería dejar el interruptor del motor en la vía pública.
 
 ## 5. El motor
 

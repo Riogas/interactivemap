@@ -4,7 +4,8 @@
 --
 -- Se calculan y devuelven LAS CUATRO estadisticas sobre
 -- demora_efectiva_mins de los ultimos p_dias. Cual alimenta el calculo lo
--- decide la config (demora_estadistico); guardar las cuatro permite
+-- decide la config (demoras_config.estadistico, por escenario y tipo);
+-- guardar las cuatro permite
 -- reprocesar el historico con otra sin recalcular nada.
 --
 -- Si la zona no llega a p_min_muestras hechos, cae al global del tipo.

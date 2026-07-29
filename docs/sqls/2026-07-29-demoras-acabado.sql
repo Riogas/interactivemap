@@ -57,7 +57,8 @@ BEGIN
 
   -- 4. redondeo hacia arriba al escalon, acotado por piso y techo
   -- El suavizado puede mover el valor fuera del rango si p_prev estaba fuera;
-  -- la config es editable en caliente (demora_min_minutos, demora_max_minutos),
+  -- la config es editable en caliente (demoras_config.min_minutos /
+  -- demoras_config.max_minutos, por escenario y tipo),
   -- asi que volvemos a acotar aqui. La informada nunca sale del rango configurado.
   RETURN QUERY SELECT
     v_suav,

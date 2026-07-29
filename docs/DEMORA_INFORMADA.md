@@ -59,8 +59,17 @@ Los 7 archivos, **en este orden exacto**:
    **requiere `pg_cron` habilitado** en el proyecto de Supabase (Database →
    Extensions → `pg_cron`).
 
-Las 7 son idempotentes: se pueden volver a pegar sin romper nada si hay dudas
-sobre si ya se aplicaron.
+Las 7 son idempotentes en el sentido estricto: volver a pegarlas no da error
+ni duplica nada, así que si hay dudas sobre si una se aplicó, se puede repetir.
+
+**Con una excepción que sí importa: el archivo 3.** `2026-07-29-demoras-ritmo.sql`
+es la versión vieja de `demoras_ritmo` (cascada `ZONA → GLOBAL`) y el archivo 6
+la reemplaza por la de 4 niveles. Re-pegar el archivo 3 **después** del 6
+—porque "no rompe nada"— hace exactamente eso: un `CREATE OR REPLACE` exitoso,
+sin error ni warning, que **degrada la cascada de vuelta a `ZONA → GLOBAL`** y
+deja `ritmo_cascada` sin efecto. Si hay que re-aplicar por las dudas, repetir
+la secuencia completa **en orden**, o directamente saltear el 3 y aplicar el 6
+(que es autosuficiente — ver §13). Nunca el 3 suelto.
 
 ---
 
@@ -108,6 +117,17 @@ borrar histórico: basta con `DELETE FROM demoras_config WHERE escenario_id=1000
 AND tipo_servicio='NOCTURNO'` y ese tipo deja de escribir filas nuevas (las
 viejas quedan intactas para auditoría).
 
+**El motor solo calcula el escenario 1000.** `demoras_calcular_run` lo tiene
+hardcodeado (`v_esc integer := 1000`) y el seed siembra solo ese escenario, así
+que agregar filas de `demoras_config` para otro escenario **no** hace que se
+calcule: haría falta generalizar la función, que está fuera de alcance (spec
+§9). La pantalla de métricas sí tiene selector de escenario: con cualquier otro,
+la card de comparativa dice explícitamente *"El motor de demora no está
+configurado para este escenario"* — el endpoint devuelve `escenario_configurado:
+false` cuando el escenario no tiene ninguna fila acá. Antes decía "todavía no
+hay corridas del motor para hoy", que invitaba a esperar algo que no iba a pasar
+nunca.
+
 El seed inicial siembra los tres tipos del escenario 1000:
 
 | escenario_id | tipo_servicio | hora_inicio | hora_fin |
@@ -144,7 +164,29 @@ editable por gente): `min_minutos >= 0`, `max_minutos >= 0`, `max_minutos >=
 min_minutos`, `escalon_minutos > 0`, `subida_max >= 0`, `bajada_max >= 0`,
 `ritmo_default_minutos > 0`, `factor_calibracion > 0`, `estadistico IN
 ('MEDIA','MEDIANA','P75','P90')`, `tipo_servicio IN
-('URGENTE','NOCTURNO','SERVICE')`.
+('URGENTE','NOCTURNO','SERVICE')`, **`hora_fin > hora_inicio`** (ver §5.1).
+
+### Permisos: las dos tablas son solo de `service_role`
+
+`demoras_calculadas` y `demoras_config` tienen `REVOKE ALL ... FROM anon,
+authenticated` + `GRANT ALL ... TO service_role` (mismo patrón que la RPC de
+métricas). El motivo es `demoras_config`: es la tabla que decide **qué calcula
+el motor** (interruptor, ventanas, topes, factor de calibración), y la anon key
+de Supabase vive en el bundle del browser. Sin los grants explícitos, si los
+default privileges del proyecto alcanzan a `anon`, cualquiera con la anon key
+puede apagar el motor o cambiarle el resultado.
+
+Verificación post-apply — las cuatro tienen que dar `f`:
+
+```sql
+SELECT has_table_privilege('anon','demoras_config','UPDATE');
+SELECT has_table_privilege('anon','demoras_config','SELECT');
+SELECT has_table_privilege('anon','demoras_calculadas','UPDATE');
+SELECT has_table_privilege('authenticated','demoras_config','UPDATE');
+```
+
+Si alguna da `t`, la migración de la tabla (archivo 4) no se aplicó completa:
+volver a pegarla (los REVOKE/GRANT son idempotentes).
 
 ### 3.1 `ritmo_cascada`: cómo se resuelve
 
@@ -211,6 +253,36 @@ UPDATE demoras_config SET ritmo_cascada = 'MOVIL,ZONA,GLOBAL'
 Ningún cambio en `demoras_config` requiere deploy ni reinicio: la próxima
 corrida del cron (máximo 10 minutos después) ya lo toma.
 
+### 5.1 Las ventanas horarias NO pueden cruzar la medianoche
+
+Cambiar la ventana de un tipo es el mismo `UPDATE`:
+
+```sql
+UPDATE demoras_config SET hora_inicio = '19:00', hora_fin = '23:59'
+ WHERE escenario_id = 1000 AND tipo_servicio = 'NOCTURNO';
+```
+
+**Pero `hora_fin` tiene que ser posterior a `hora_inicio`.** El motor filtra
+con `v_hora BETWEEN dc.hora_inicio AND dc.hora_fin` sobre un `time`: una
+ventana envuelta como `20:30`–`06:00` **nunca** es cierta, así que ese tipo
+dejaría de escribir filas **para siempre**, sin error, sin log, y con el cron
+reportando `succeeded` cada 10 minutos. NOCTURNO es justo el tipo donde a
+alguien se le va a ocurrir escribir `20:30`–`06:00`.
+
+Por eso la tabla tiene `CHECK (hora_fin > hora_inicio)`: el `UPDATE` falla en
+el momento, con mensaje, en vez de apagar el tipo en silencio.
+
+```
+ERROR: new row for relation "demoras_config" violates check constraint
+       "demoras_config_ventana_horaria"
+```
+
+Si de verdad hace falta una ventana que cruce la medianoche, **no alcanza con
+sacar el CHECK**: hay que cambiar el `BETWEEN` de `demoras_calcular_run` por
+una condición partida en dos (`v_hora >= hora_inicio OR v_hora <= hora_fin`) y
+revisar todo consumidor de esas columnas. Está fuera del alcance de hoy; el
+tope real de NOCTURNO es `23:59`.
+
 ### Advertencia sobre el blend de CHOFER y MOVIL
 
 **En los niveles `CHOFER` y `MOVIL`, las cuatro estadísticas (`media`,
@@ -259,6 +331,39 @@ lo nombra `demora_factor_calibracion` en prosa. Es la misma columna.)
 que la brecha contra el AS400 esté calibrada.** Hoy el motor es solo
 comparativa (§ arriba). Bajar el factor de calibración sin haber mirado la
 serie de brecha en el dashboard es exactamente el escenario que R1 advierte.
+
+### 6.1 Las corridas sin capacidad no entran en la calibración
+
+Una fila con `sin_capacidad = true` (`capacidad_efectiva <= 0`) informa el
+**techo** (`max_minutos`, hoy 120) por definición: no había un solo móvil
+activo en la zona. Ese 120 no salió del modelo, así que promediarlo contra el
+AS400 no mide nada — y a las 07:00, con el 72% de la flota todavía inactiva,
+esas filas son la mayoría del tramo.
+
+Por eso el endpoint de comparativa **las excluye del promedio y de la brecha**
+(las dos puntas: también saca el `demora_as400` de esas mismas corridas, para
+que los dos promedios salgan de la misma población). La card las conserva en el
+gráfico, marcadas con un punto amarillo, y muestra cuántas se excluyeron —
+tanto en total como por zona (columna `s/cap.`).
+
+Una zona cuya columna dice `70 / 99` tiene un promedio apoyado en 29 corridas:
+sirve para mirar, no para calibrar. Si TODAS las corridas de una zona fueron
+sin capacidad, su promedio queda en `—` (null), no en 120.
+
+Para reproducir el mismo recorte por SQL:
+
+```sql
+SELECT zona_id,
+       count(*) FILTER (WHERE NOT sin_capacidad)             AS muestras,
+       count(*) FILTER (WHERE sin_capacidad)                 AS excluidas,
+       round(avg(demora_informada) FILTER (WHERE NOT sin_capacidad), 2) AS prom_calculada,
+       round(avg(demora_as400)     FILTER (WHERE NOT sin_capacidad), 2) AS prom_as400
+  FROM demoras_calculadas
+ WHERE escenario = 1000 AND tipo_servicio = 'URGENTE'
+   AND corrida_at >= date_trunc('day', now() AT TIME ZONE 'America/Montevideo')
+ GROUP BY zona_id
+ ORDER BY excluidas DESC;
+```
 
 ---
 
@@ -400,10 +505,17 @@ El script (`scripts/sql-harness/run.sh`) levanta un Postgres 15 descartable
 en Docker, aplica `scripts/sql-harness/00-stubs.sql` (tablas mínimas que
 imitan el esquema real), aplica las migraciones pasadas **con
 `--single-transaction`** (si algo falla, rollback completo, igual que el SQL
-Editor de Supabase), y corre el archivo de asserts. Si el assert menciona
-`advisory_xact_lock`, además lanza dos conexiones concurrentes para probar
-que el lock efectivamente serializa. Al terminar (éxito o falla) tira abajo
-el contenedor.
+Editor de Supabase), y corre los archivos de asserts. Si **alguno de los
+asserts pasados** menciona `advisory_xact_lock`, además lanza dos conexiones
+concurrentes para probar que el lock efectivamente serializa. Al terminar
+(éxito o falla) tira abajo el contenedor.
+
+> Hasta el 2026-07-29 ese `grep` iba contra `assert-run.sql` **hardcodeado**,
+> que existe siempre — así que el test de lock corría en toda invocación,
+> incluso sin haber aplicado la migración de `demoras_calcular_run`. Validar
+> solo `demoras_acabado` con su assert daba `exit 1` con "function
+> demoras_calcular_run does not exist": el harness reprobaba una migración
+> correcta. Ahora mira los asserts que se le pasaron.
 
 Ejemplo, para revalidar la cascada del ritmo:
 
@@ -419,7 +531,14 @@ bash scripts/sql-harness/run.sh \
 ```
 
 Asserts existentes: `assert-acabado.sql`, `assert-capacidad.sql`,
-`assert-ritmo.sql`, `assert-run.sql`.
+`assert-ritmo.sql`, `assert-config.sql`, `assert-run.sql`.
+
+`assert-config.sql` cubre la migración de tablas: el `CHECK (hora_fin >
+hora_inicio)` (§5.1) y los grants (§3). Los asserts de privilegios significan
+algo porque `00-stubs.sql` replica los **default privileges de Supabase**
+(`anon` y `authenticated` con `ALL` sobre las tablas nuevas del schema
+`public`): en un Postgres vanilla, `anon` nunca tiene privilegios, así que un
+assert de "anon no puede escribir" pasaría por omisión sin probar el `REVOKE`.
 
 ### Por qué existe
 
