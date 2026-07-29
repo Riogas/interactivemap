@@ -28,10 +28,23 @@
  *     válidos, o si el set de zonas resuelto queda vacío, se devuelve
  *     payload vacío SIN tocar `demoras_calculadas` (ni siquiera se pide el
  *     cliente de Supabase). `serie` y `zonas` quedan acotados a ese set.
+ *
+ * Gates de autorización (Task 8 — la card de esta comparativa vive en la
+ * misma pantalla que /api/metricas/dashboard, así que comparte su mismo
+ * umbral de acceso, en el mismo orden):
+ *   - requireAllowlistedEmail(auth.user?.email, METRICAS_DASHBOARD_ALLOWED_EMAILS):
+ *     chequea el email de la sesión AUTENTICADA (no spoofeable) contra la
+ *     misma allowlist que metricas/dashboard.
+ *   - requireFuncionalidad('Estadisticas Cumplimiento'): mismo gate por
+ *     header x-track-funcs que metricas/dashboard (root bypassea siempre).
+ *   Los headers x-track-isroot / x-track-empresas-ids que resuelven el scope
+ *   de zonas más abajo son forjables por el cliente — estos dos gates previos
+ *   son la defensa real para datos sensibles.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
+import { requireFuncionalidad, requireAllowlistedEmail } from '@/lib/api-auth-gates';
 import { todayMontevideo, montevideoRangeToUtc } from '@/lib/date-utils';
 import { parseZonasJsonb } from '@/lib/auth-scope';
 import { TIPOS_DEMORA } from '@/types/demoras-comparativa';
@@ -148,6 +161,16 @@ async function resolverNombresZona(
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAuth(request);
   if (auth instanceof NextResponse) return auth;
+
+  // Allowlist server-side por EMAIL (defensa contra headers spoofeables) —
+  // mismo gate y misma env que app/api/metricas/dashboard/route.ts.
+  const allowGate = requireAllowlistedEmail(auth.user?.email, process.env.METRICAS_DASHBOARD_ALLOWED_EMAILS);
+  if (allowGate !== true) return allowGate;
+
+  // Gate de funcionalidad — mismo patrón que metricas/dashboard (root
+  // bypassea siempre).
+  const funcGate = requireFuncionalidad(request, 'Estadisticas Cumplimiento');
+  if (funcGate !== true) return funcGate;
 
   const sp = request.nextUrl.searchParams;
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 vi.mock('@/lib/auth-middleware', () => ({ requireAuth: vi.fn() }));
@@ -55,6 +55,15 @@ function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
 function req(qs: string, headers: Record<string, string> = { 'x-track-isroot': 'S' }) {
   return new NextRequest(`http://localhost/api/demoras/comparativa?${qs}`, { method: 'GET', headers });
 }
+
+/** Funcionalidad requerida por el gate server-side (`lib/api-auth-gates.ts`),
+ * mismo nombre que exige app/api/metricas/dashboard/route.ts. */
+const FUNC = 'Estadisticas Cumplimiento';
+
+/** Headers de un caller no-root que YA pasó el gate de funcionalidad — usar
+ * en los tests de scope por empresa, que quieren ejercitar la lógica de
+ * `fleteras_zonas` y no el gate en sí (ese se cubre aparte). */
+const NON_ROOT_OK: Record<string, string> = { 'x-track-funcs': FUNC };
 
 describe('GET /api/demoras/comparativa', () => {
   beforeEach(() => {
@@ -175,7 +184,7 @@ describe('GET /api/demoras/comparativa', () => {
 
   describe('auth-scope por empresa', () => {
     it('no-root SIN empresaIds -> payload vacio, sin tocar la base', async () => {
-      const res = await GET(req('escenario=1000&tipo=URGENTE', {}));
+      const res = await GET(req('escenario=1000&tipo=URGENTE', NON_ROOT_OK));
       const body = await res.json();
       expect(res.status).toBe(200);
       expect(body.data).toEqual({ serie: [], zonas: [] });
@@ -183,7 +192,7 @@ describe('GET /api/demoras/comparativa', () => {
     });
 
     it('no-root con empresaIds que no parsean a numero -> payload vacio, sin tocar la base', async () => {
-      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=abc,', {}));
+      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=abc,', NON_ROOT_OK));
       const body = await res.json();
       expect(res.status).toBe(200);
       expect(body.data).toEqual({ serie: [], zonas: [] });
@@ -192,7 +201,7 @@ describe('GET /api/demoras/comparativa', () => {
 
     it('no-root cuyas empresas no cubren ninguna zona en fleteras_zonas -> payload vacio', async () => {
       mockDb.mockReturnValue(makeDb({ fleteras_zonas: [] }) as never);
-      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', {}));
+      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', NON_ROOT_OK));
       const body = await res.json();
       expect(res.status).toBe(200);
       expect(body.data).toEqual({ serie: [], zonas: [] });
@@ -200,7 +209,7 @@ describe('GET /api/demoras/comparativa', () => {
 
     it('no-root con empresas validas -> solo ve las zonas de su scope', async () => {
       mockDb.mockReturnValue(makeDb({ fleteras_zonas: [{ zonas: [100] }] }) as never);
-      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', {}));
+      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', NON_ROOT_OK));
       const body = await res.json();
       expect(res.status).toBe(200);
       expect(body.data.zonas.map((z: { zona_id: number }) => z.zona_id)).toEqual([100]);
@@ -216,11 +225,83 @@ describe('GET /api/demoras/comparativa', () => {
 
     it('pedir una zona fuera del scope no la devuelve', async () => {
       mockDb.mockReturnValue(makeDb({ fleteras_zonas: [{ zonas: [100] }] }) as never);
-      const res = await GET(req('escenario=1000&tipo=URGENTE&zona=200&empresaIds=5', {}));
+      const res = await GET(req('escenario=1000&tipo=URGENTE&zona=200&empresaIds=5', NON_ROOT_OK));
       const body = await res.json();
       expect(res.status).toBe(200);
       expect(body.data.serie).toEqual([]);
       expect(body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 200)).toBeUndefined();
+    });
+  });
+
+  // ─── Task 8 — gates compartidos con app/api/metricas/dashboard/route.ts ──
+  // Los headers x-track-isroot / empresaIds (query) que resuelven el scope de
+  // zonas son forjables por el cliente. Estos dos gates (mismo orden, mismos
+  // helpers de lib/api-auth-gates.ts que metricas/dashboard) son la defensa
+  // real: email de sesión verificado server-side + funcionalidad requerida.
+
+  describe('gate de funcionalidad (Estadisticas Cumplimiento)', () => {
+    it('403 NO_FUNCIONALIDAD: no-root sin la funcionalidad, sin tocar la base', async () => {
+      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', {})); // sin x-track-funcs
+      const body = await res.json();
+      expect(res.status).toBe(403);
+      expect(body.code).toBe('NO_FUNCIONALIDAD');
+      expect(mockDb).not.toHaveBeenCalled();
+    });
+
+    it('200: no-root CON la funcionalidad pasa el gate y llega a la lógica de scope', async () => {
+      mockDb.mockReturnValue(makeDb({ fleteras_zonas: [{ zonas: [100] }] }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', NON_ROOT_OK));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+    });
+
+    it('200: isRoot pasa el gate aunque no tenga la funcionalidad (bypass de root)', async () => {
+      const res = await GET(req('escenario=1000&tipo=URGENTE')); // header root por default, sin x-track-funcs
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+    });
+  });
+
+  describe('allowlist por email (METRICAS_DASHBOARD_ALLOWED_EMAILS, compartida con metricas/dashboard)', () => {
+    const ENV_KEY = 'METRICAS_DASHBOARD_ALLOWED_EMAILS';
+    const prev = process.env[ENV_KEY];
+    afterEach(() => {
+      if (prev === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = prev;
+    });
+
+    it('email autenticado en la lista pasa (200), aunque el scope venga por header root', async () => {
+      process.env[ENV_KEY] = 'admin@riogas.com.uy, otro@riogas.com.uy';
+      mockAuth.mockResolvedValue({ session: {}, user: { id: 'u1', email: 'Admin@Riogas.com.uy' } } as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      expect(res.status).toBe(200);
+      expect((await res.json()).success).toBe(true);
+    });
+
+    it('email FUERA de la lista -> 403 NOT_ALLOWLISTED aunque forje x-track-isroot + funcionalidad, sin tocar la base', async () => {
+      process.env[ENV_KEY] = 'admin@riogas.com.uy';
+      mockAuth.mockResolvedValue({ session: {}, user: { id: 'u2', email: 'intruso@gmail.com' } } as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE', { 'x-track-isroot': 'S', 'x-track-funcs': FUNC }));
+      const body = await res.json();
+      expect(res.status).toBe(403);
+      expect(body.code).toBe('NOT_ALLOWLISTED');
+      expect(mockDb).not.toHaveBeenCalled();
+    });
+
+    it('sesión sin email + allowlist seteada -> 403 NOT_ALLOWLISTED', async () => {
+      process.env[ENV_KEY] = 'admin@riogas.com.uy';
+      mockAuth.mockResolvedValue({ session: {}, user: { id: 'u3' } } as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe('NOT_ALLOWLISTED');
+    });
+
+    it('sin allowlist (env ausente): no bloquea, cae al gate por headers (comportamiento previo)', async () => {
+      delete process.env[ENV_KEY];
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      expect(res.status).toBe(200);
     });
   });
 });
