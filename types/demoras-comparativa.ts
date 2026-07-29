@@ -4,6 +4,9 @@ export const TIPOS_DEMORA: TipoDemora[] = ['URGENTE', 'NOCTURNO', 'SERVICE'];
 
 export interface PuntoComparativa {
   corrida_at: string;
+  /** Fix round 1: sin esto, la serie sin filtro de zona mezcla puntos de
+   * TODAS las zonas ordenados solo por hora — un gráfico en zigzag. */
+  zona_id: number;
   calculada: number;
   /** null cuando el AS400 no informa ese tipo (solo informa URGENTE). */
   as400: number | null;

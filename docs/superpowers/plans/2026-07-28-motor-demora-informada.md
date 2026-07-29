@@ -1883,12 +1883,16 @@ medianoche UTC."
 - Create: `types/demoras-comparativa.ts`
 
 **Interfaces:**
-- Consumes: tabla `demoras_calculadas`.
-- Produces: `GET /api/demoras/comparativa?escenario=&fecha=&tipo=&zona=` →
+- Consumes: tabla `demoras_calculadas`; `fleteras_zonas` (scope no-root);
+  `zonas` y `demoras` (nombre real de zona, ver fix round 1).
+- Produces: `GET /api/demoras/comparativa?escenario=&fecha=&tipo=&zona=&empresaIds=` →
   `{ success: true, data: ComparativaData }` con
   `ComparativaData = { serie: PuntoComparativa[]; zonas: ZonaBrecha[] }`,
-  `PuntoComparativa = { corrida_at: string; calculada: number; as400: number | null }`,
+  `PuntoComparativa = { corrida_at: string; zona_id: number; calculada: number; as400: number | null }`,
   `ZonaBrecha = { zona_id: number; zona_nombre: string; prom_calculada: number; prom_as400: number | null; brecha: number | null }`.
+  Auth-scope por header `x-track-isroot: S` (root, sin restricción) o
+  query param `empresaIds` CSV (no-root, resuelto vía `fleteras_zonas`,
+  fail-closed). Ver fix round 1.
 
 - [ ] **Step 1: Escribir los tipos**
 
@@ -1901,6 +1905,9 @@ export const TIPOS_DEMORA: TipoDemora[] = ['URGENTE', 'NOCTURNO', 'SERVICE'];
 
 export interface PuntoComparativa {
   corrida_at: string;
+  /** Fix round 1: sin esto, la serie sin filtro de zona mezcla puntos de
+   * TODAS las zonas ordenados solo por hora — un gráfico en zigzag. */
+  zona_id: number;
   calculada: number;
   /** null cuando el AS400 no informa ese tipo (solo informa URGENTE). */
   as400: number | null;
@@ -1923,7 +1930,8 @@ export interface ComparativaData {
 
 - [ ] **Step 2: Escribir el test que falla**
 
-`app/api/demoras/comparativa/route.test.ts`:
+`app/api/demoras/comparativa/route.test.ts` (contenido final, con los tests
+del fix round 1 ya incluidos — ver más abajo):
 
 ```typescript
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -1945,17 +1953,43 @@ const FILAS = [
   { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 200, tipo_servicio: 'URGENTE', demora_informada: 30, demora_as400: null },
 ];
 
-function makeDb(rows: unknown[] = FILAS) {
-  const q: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'gte', 'lte', 'order']) {
-    q[m] = vi.fn(() => q);
-  }
-  q.then = (res: (v: unknown) => unknown) => res({ data: rows, error: null });
-  return { from: vi.fn(() => q) };
+/**
+ * Mock del cliente Supabase, por tabla. `.in('zona_id', ids)` FILTRA de
+ * verdad las filas configuradas — necesario para que los tests de scope
+ * (fix round 1) prueben la respuesta real del endpoint, no solo con qué
+ * argumentos se llamó `.in()`. El resto de los métodos son passthrough.
+ */
+function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
+  const fixtures: Record<string, unknown[]> = {
+    demoras_calculadas: FILAS,
+    fleteras_zonas: [],
+    zonas: [],
+    demoras: [],
+    ...tables,
+  };
+  const from = vi.fn((table: string) => {
+    let rows = fixtures[table] ?? [];
+    const q: Record<string, unknown> = {};
+    for (const m of ['select', 'eq', 'gte', 'lt', 'lte', 'order']) {
+      q[m] = vi.fn(() => q);
+    }
+    q.in = vi.fn((col: string, vals: unknown[]) => {
+      if (col === 'zona_id') {
+        const set = new Set(vals.map((v) => Number(v)));
+        rows = (rows as { zona_id: number }[]).filter((r) => set.has(r.zona_id));
+      }
+      return q;
+    });
+    q.then = (res: (v: unknown) => unknown) => res({ data: rows, error: null });
+    return q;
+  });
+  return { from };
 }
 
-function req(qs: string) {
-  return new NextRequest(`http://localhost/api/demoras/comparativa?${qs}`, { method: 'GET' });
+/** Headers root por default: preserva el comportamiento de los tests que no
+ * ejercitan auth-scope. Pasar `{}` explícito para simular un caller no-root. */
+function req(qs: string, headers: Record<string, string> = { 'x-track-isroot': 'S' }) {
+  return new NextRequest(`http://localhost/api/demoras/comparativa?${qs}`, { method: 'GET', headers });
 }
 
 describe('GET /api/demoras/comparativa', () => {
@@ -2009,6 +2043,122 @@ describe('GET /api/demoras/comparativa', () => {
     expect(body.data.serie[0].calculada).toBe(45);
     expect(body.data.serie[1].calculada).toBe(60);
   });
+
+  // ─── Fix round 1: PuntoComparativa trae zona_id ──────────────────────────
+  // Sin esto, la serie sin filtro de zona mezcla puntos de TODAS las zonas
+  // ordenados solo por hora — un LineChart con eso zigzaguea.
+
+  it('cada punto de la serie trae su zona_id', async () => {
+    const res = await GET(req('escenario=1000&tipo=URGENTE'));
+    const body = await res.json();
+    expect(body.data.serie.map((p: { zona_id: number }) => p.zona_id)).toEqual([100, 100, 200]);
+  });
+
+  // ─── Fix round 1: orden con null al final (no como "brecha grande") ─────
+
+  it('el orden empuja los null al final; entre brechas reales, mayor |brecha| primero', async () => {
+    const filas = [
+      { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 1, tipo_servicio: 'URGENTE', demora_informada: 50, demora_as400: 45 }, // brecha 5
+      { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 2, tipo_servicio: 'URGENTE', demora_informada: 30, demora_as400: 29.5 }, // brecha 0.5
+      { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 3, tipo_servicio: 'URGENTE', demora_informada: 30, demora_as400: null }, // brecha null
+    ];
+    mockDb.mockReturnValue(makeDb({ demoras_calculadas: filas }) as never);
+    const res = await GET(req('escenario=1000&tipo=URGENTE'));
+    const body = await res.json();
+    // Con el comparador viejo (abs(null??-1)=1) el orden salia [1, 3, 2]:
+    // la zona sin dato colaba ANTES que la de brecha real 0.5.
+    expect(body.data.zonas.map((z: { zona_id: number }) => z.zona_id)).toEqual([1, 2, 3]);
+  });
+
+  // ─── Fix round 1: nombre real de zona ────────────────────────────────────
+
+  describe('nombre real de zona', () => {
+    it('usa zonas.nombre cuando esta disponible', async () => {
+      mockDb.mockReturnValue(makeDb({ zonas: [{ zona_id: 100, nombre: 'IBERICA I VILLA MUÑOZ' }] }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+      expect(z100.zona_nombre).toBe('IBERICA I VILLA MUÑOZ');
+    });
+
+    it('si zonas.nombre viene vacio (string vacio, no null) cae a demoras.zona_nombre (AS400)', async () => {
+      mockDb.mockReturnValue(
+        makeDb({
+          zonas: [{ zona_id: 100, nombre: '' }],
+          demoras: [{ zona_id: 100, zona_nombre: 'Nombre AS400' }],
+        }) as never,
+      );
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+      expect(z100.zona_nombre).toBe('Nombre AS400');
+    });
+
+    it('sin nombre en ninguna fuente, usa el placeholder "Zona N"', async () => {
+      const res = await GET(req('escenario=1000&tipo=URGENTE')); // zonas/demoras vacios por default
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+      expect(z100.zona_nombre).toBe('Zona 100');
+    });
+  });
+
+  // ─── Fix round 1 — CRITICAL: auth-scope por empresa ──────────────────────
+  // El endpoint no acotaba por empresa (getServerSupabaseClient usa
+  // service_role, bypass total de RLS): cualquier usuario logueado podia
+  // pedir cualquier escenario/zona. Mismo patron que app/api/demoras/route.ts
+  // y app/api/zonas/route.ts (empresaIds CSV -> fleteras_zonas), con el
+  // bypass de root vía header x-track-isroot (como metricas/dashboard).
+
+  describe('auth-scope por empresa', () => {
+    it('no-root SIN empresaIds -> payload vacio, sin tocar la base', async () => {
+      const res = await GET(req('escenario=1000&tipo=URGENTE', {}));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.data).toEqual({ serie: [], zonas: [] });
+      expect(mockDb).not.toHaveBeenCalled();
+    });
+
+    it('no-root con empresaIds que no parsean a numero -> payload vacio, sin tocar la base', async () => {
+      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=abc,', {}));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.data).toEqual({ serie: [], zonas: [] });
+      expect(mockDb).not.toHaveBeenCalled();
+    });
+
+    it('no-root cuyas empresas no cubren ninguna zona en fleteras_zonas -> payload vacio', async () => {
+      mockDb.mockReturnValue(makeDb({ fleteras_zonas: [] }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', {}));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.data).toEqual({ serie: [], zonas: [] });
+    });
+
+    it('no-root con empresas validas -> solo ve las zonas de su scope', async () => {
+      mockDb.mockReturnValue(makeDb({ fleteras_zonas: [{ zonas: [100] }] }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', {}));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.data.zonas.map((z: { zona_id: number }) => z.zona_id)).toEqual([100]);
+      expect(body.data.serie).toHaveLength(2);
+      expect(body.data.serie.every((p: { zona_id: number }) => p.zona_id === 100)).toBe(true);
+    });
+
+    it('root ve todas las zonas sin necesitar empresaIds', async () => {
+      const res = await GET(req('escenario=1000&tipo=URGENTE')); // header root por default
+      const body = await res.json();
+      expect(body.data.zonas.map((z: { zona_id: number }) => z.zona_id).sort()).toEqual([100, 200]);
+    });
+
+    it('pedir una zona fuera del scope no la devuelve', async () => {
+      mockDb.mockReturnValue(makeDb({ fleteras_zonas: [{ zonas: [100] }] }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE&zona=200&empresaIds=5', {}));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.data.serie).toEqual([]);
+      expect(body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 200)).toBeUndefined();
+    });
+  });
 });
 ```
 
@@ -2019,7 +2169,7 @@ Expected: FALLA — el módulo `./route` no existe.
 
 - [ ] **Step 4: Escribir el endpoint**
 
-`app/api/demoras/comparativa/route.ts`:
+`app/api/demoras/comparativa/route.ts` (contenido final, fix round 1 incluido):
 
 ```typescript
 /**
@@ -2031,17 +2181,33 @@ Expected: FALLA — el módulo `./route` no existe.
  * que sin ese snapshot no habría con qué comparar.
  *
  * Query params:
- *   - escenario (requerido, int)
- *   - fecha     (opcional, YYYY-MM-DD; default hoy en Montevideo)
- *   - tipo      (opcional, URGENTE|NOCTURNO|SERVICE; default URGENTE)
- *   - zona      (opcional, int) — si viene, `serie` es de esa zona
+ *   - escenario  (requerido, int)
+ *   - fecha      (opcional, YYYY-MM-DD; default hoy en Montevideo)
+ *   - tipo       (opcional, URGENTE|NOCTURNO|SERVICE; default URGENTE)
+ *   - zona       (opcional, int) — si viene, `serie` es de esa zona
+ *   - empresaIds (opcional, CSV de empresa_fletera_id) — scope de zonas del
+ *     caller no-root, resuelto vía `fleteras_zonas` (mismo patrón que
+ *     app/api/demoras/route.ts y app/api/zonas/route.ts).
  *
  * OJO: el AS400 solo informa URGENTE. Para NOCTURNO y SERVICE `as400` viene
  * null y la brecha no se puede calcular; la UI lo dice explícitamente.
+ *
+ * Auth-scope (fix round 1 — gap Critical del review: el endpoint no acotaba
+ * por empresa y getServerSupabaseClient() usa service_role, bypass total de
+ * RLS):
+ *   - x-track-isroot : 'S' → sin restricción, ve todas las zonas (mismo
+ *     header que app/api/metricas/dashboard/route.ts).
+ *   - No-root: requiere `empresaIds` con al menos una empresa cuyo scope en
+ *     `fleteras_zonas` resuelva a >=1 zona. Fail-closed: sin empresaIds
+ *     válidos, o si el set de zonas resuelto queda vacío, se devuelve
+ *     payload vacío SIN tocar `demoras_calculadas` (ni siquiera se pide el
+ *     cliente de Supabase). `serie` y `zonas` quedan acotados a ese set.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-middleware';
+import { todayMontevideo, montevideoRangeToUtc } from '@/lib/date-utils';
+import { parseZonasJsonb } from '@/lib/auth-scope';
 import { TIPOS_DEMORA } from '@/types/demoras-comparativa';
 import type { TipoDemora, ComparativaData, PuntoComparativa, ZonaBrecha } from '@/types/demoras-comparativa';
 
@@ -2057,12 +2223,100 @@ interface Fila {
   demora_as400: number | null;
 }
 
-function hoyMontevideo(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Montevideo' }).format(new Date());
+interface ZonaNombreRow {
+  zona_id: number;
+  nombre: string | null;
 }
+
+interface DemorasAs400NombreRow {
+  zona_id: number;
+  zona_nombre: string | null;
+}
+
+const EMPTY_DATA: ComparativaData = { serie: [], zonas: [] };
+
+// ─── Supabase query builder type helper (demoras_calculadas, fleteras_zonas,
+// zonas y demoras no están en types/supabase.ts) ────────────────────────────
+// Cada método devuelve el propio builder (igual que el cliente real de
+// Supabase), así se puede encadenar cualquier combinación en cualquier orden
+// sin pelear con TypeScript — mismo patrón que app/api/zonas/capacidad-snapshot/route.ts.
+type SQB = {
+  select: (cols: string) => SQB;
+  eq: (col: string, val: unknown) => SQB;
+  in: (col: string, vals: unknown[]) => SQB;
+  gte: (col: string, val: unknown) => SQB;
+  lt: (col: string, val: unknown) => SQB;
+  order: (col: string, opts: { ascending: boolean }) => SQB;
+  then: Promise<{ data: unknown[] | null; error: { message: string } | null }>['then'];
+};
+type SupabaseCompat = { from: (table: string) => SQB };
 
 function prom(xs: number[]): number {
   return Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100;
+}
+
+/**
+ * Ordena de mayor a menor brecha absoluta. Los null (AS400 no informa ese
+ * tipo) van SIEMPRE al final: no son "brecha grande", son ausencia de dato.
+ * Fix round 1: el `?? -1` original tenía abs=1, que colaba zonas sin dato
+ * ANTES de zonas con brecha real menor a 1 minuto.
+ */
+function compararBrechaDesc(a: ZonaBrecha, b: ZonaBrecha): number {
+  if (a.brecha === null && b.brecha === null) return 0;
+  if (a.brecha === null) return 1;
+  if (b.brecha === null) return -1;
+  return Math.abs(b.brecha) - Math.abs(a.brecha);
+}
+
+/**
+ * Nombre real de zona: `zonas.nombre` primero (fuente canónica, tiene el
+ * escenario en el filtro); si viene vacío ('' — no solo null), fallback a
+ * `demoras.zona_nombre` (el nombre que informa el AS400 vía
+ * app/api/import/demoras, ver transformAS400). Placeholder `Zona N` si
+ * ninguna de las dos fuentes tiene nombre. Solo consulta lo que falta.
+ */
+async function resolverNombresZona(
+  db: SupabaseCompat,
+  escenario: number,
+  zonaIds: number[],
+): Promise<Map<number, string>> {
+  const nombres = new Map<number, string>();
+  if (zonaIds.length === 0) return nombres;
+
+  const { data: zonasData, error: zonasError } = (await db
+    .from('zonas')
+    .select('zona_id, nombre')
+    .eq('escenario_id', escenario)
+    .in('zona_id', zonaIds)) as { data: ZonaNombreRow[] | null; error: { message: string } | null };
+
+  if (zonasError) {
+    console.error('[demoras/comparativa] error al resolver nombres de zona:', zonasError.message);
+  } else {
+    for (const row of zonasData ?? []) {
+      if (row?.nombre != null && row.nombre.trim() !== '') nombres.set(row.zona_id, row.nombre);
+    }
+  }
+
+  const faltantes = zonaIds.filter((id) => !nombres.has(id));
+  if (faltantes.length === 0) return nombres;
+
+  const { data: as400Data, error: as400Error } = (await db
+    .from('demoras')
+    .select('zona_id, zona_nombre')
+    .eq('escenario_id', escenario)
+    .in('zona_id', faltantes)) as { data: DemorasAs400NombreRow[] | null; error: { message: string } | null };
+
+  if (as400Error) {
+    console.error('[demoras/comparativa] error al resolver nombres de zona (fallback AS400):', as400Error.message);
+    return nombres;
+  }
+  for (const row of as400Data ?? []) {
+    if (row?.zona_nombre != null && row.zona_nombre.trim() !== '' && !nombres.has(row.zona_id)) {
+      nombres.set(row.zona_id, row.zona_nombre);
+    }
+  }
+
+  return nombres;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -2095,23 +2349,72 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { status: 400 },
     );
   }
-  const fecha = fechaRaw ?? hoyMontevideo();
+  const fecha = fechaRaw ?? todayMontevideo();
 
   const zonaRaw = sp.get('zona');
   const zonaSel = zonaRaw !== null ? Number.parseInt(zonaRaw, 10) : null;
 
-  const db = getServerSupabaseClient() as unknown as {
-    from: (t: string) => Record<string, (...a: unknown[]) => unknown>;
-  };
+  // ─── Auth-scope: root ve todo; no-root necesita empresaIds cuyo scope en
+  // fleteras_zonas resuelva a >=1 zona (fail-closed, sin tocar la base). ────
+  const isRootCaller = (request.headers.get('x-track-isroot') ?? '').trim() === 'S';
 
-  const { data, error } = (await db
+  let allowedZonaIds: Set<number> | null = null; // null = sin restricción (root)
+
+  if (!isRootCaller) {
+    const empresaIds = (sp.get('empresaIds') ?? '')
+      .split(',')
+      .map((v) => Number.parseInt(v, 10))
+      .filter((n) => Number.isFinite(n));
+
+    if (empresaIds.length === 0) {
+      return NextResponse.json({ success: true, data: EMPTY_DATA });
+    }
+
+    const dbScope = getServerSupabaseClient() as unknown as SupabaseCompat;
+    const { data: fzData, error: fzError } = (await dbScope
+      .from('fleteras_zonas')
+      .select('zonas')
+      .eq('escenario_id', escenario)
+      .in('empresa_fletera_id', empresaIds)) as {
+      data: { zonas: unknown }[] | null;
+      error: { message: string } | null;
+    };
+
+    if (fzError) {
+      console.error('[demoras/comparativa] error al resolver scope de zonas:', fzError.message);
+      return NextResponse.json(
+        { success: false, error: 'Error al resolver el scope de zonas', details: fzError.message },
+        { status: 500 },
+      );
+    }
+
+    allowedZonaIds = new Set<number>();
+    for (const row of fzData ?? []) {
+      for (const z of parseZonasJsonb(row?.zonas)) allowedZonaIds.add(z);
+    }
+
+    if (allowedZonaIds.size === 0) {
+      return NextResponse.json({ success: true, data: EMPTY_DATA });
+    }
+  }
+
+  const db = getServerSupabaseClient() as unknown as SupabaseCompat;
+
+  const { gte, ltExclusive } = montevideoRangeToUtc(fecha, fecha);
+
+  let query = db
     .from('demoras_calculadas')
     .select('corrida_at, zona_id, tipo_servicio, demora_informada, demora_as400')
     .eq('escenario', escenario)
     .eq('tipo_servicio', tipo)
-    .gte('corrida_at', `${fecha}T00:00:00-03:00`)
-    .lte('corrida_at', `${fecha}T23:59:59-03:00`)
-    .order('corrida_at', { ascending: true })) as unknown as {
+    .gte('corrida_at', gte)
+    .lt('corrida_at', ltExclusive);
+
+  if (allowedZonaIds !== null) {
+    query = query.in('zona_id', [...allowedZonaIds]);
+  }
+
+  const { data, error } = (await query.order('corrida_at', { ascending: true })) as {
     data: Fila[] | null;
     error: { message: string } | null;
   };
@@ -2126,9 +2429,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const filas = data ?? [];
 
+  const zonaIdsPresentes = [...new Set(filas.map((f) => f.zona_id))];
+  const nombresPorZona = await resolverNombresZona(db, escenario, zonaIdsPresentes);
+
   const serie: PuntoComparativa[] = filas
     .filter((f) => zonaSel === null || f.zona_id === zonaSel)
-    .map((f) => ({ corrida_at: f.corrida_at, calculada: f.demora_informada, as400: f.demora_as400 }));
+    .map((f) => ({ corrida_at: f.corrida_at, zona_id: f.zona_id, calculada: f.demora_informada, as400: f.demora_as400 }));
 
   const porZona = new Map<number, { calc: number[]; as400: number[] }>();
   for (const f of filas) {
@@ -2144,23 +2450,69 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const pa = e.as400.length > 0 ? prom(e.as400) : null;
       return {
         zona_id,
-        zona_nombre: `Zona ${zona_id}`,
+        zona_nombre: nombresPorZona.get(zona_id) ?? `Zona ${zona_id}`,
         prom_calculada: pc,
         prom_as400: pa,
         brecha: pa === null ? null : Math.round((pc - pa) * 100) / 100,
       };
     })
-    .sort((a, b) => Math.abs(b.brecha ?? -1) - Math.abs(a.brecha ?? -1));
+    .sort(compararBrechaDesc);
 
   const payload: ComparativaData = { serie, zonas };
   return NextResponse.json({ success: true, data: payload });
 }
 ```
 
+**Fix round 1 (2026-07-29), sobre review con 1 Critical + 3 Important:**
+- Critical: el endpoint no acotaba por empresa — solo `requireAuth`
+  (sesión válida, nada más) y `getServerSupabaseClient()` usa
+  `service_role_key` (bypass total de RLS), así que cualquier usuario
+  logueado podía pedir cualquier `escenario`/`zona`, incluidas zonas de
+  empresas fleteras competidoras. Se replica el patrón ya usado por
+  `app/api/demoras/route.ts` y `app/api/zonas/route.ts` (`empresaIds` CSV →
+  `fleteras_zonas` → set de `zona_id` permitidos, fail-closed si el set
+  resuelve vacío o si no hay `empresaIds`), sumando el bypass de root vía
+  header `x-track-isroot: S` (mismo header que
+  `app/api/metricas/dashboard/route.ts`, para no romper a los usuarios
+  internos). `serie` y `zonas` quedan acotados al set resuelto — pedir una
+  `zona` fuera de scope no devuelve nada porque ni siquiera está en las
+  filas consultadas (el filtro `.in('zona_id', ...)` va contra la propia
+  query de `demoras_calculadas`).
+- Important: el comparador de orden usaba `Math.abs(b.brecha ?? -1) -
+  Math.abs(a.brecha ?? -1)`, y `abs(-1)=1` colaba zonas SIN dato AS400
+  antes de zonas CON brecha real menor a 1 minuto. Se reemplaza por un
+  comparador explícito (`compararBrechaDesc`) que empuja los `null`
+  siempre al final, sin usar un valor centinela dentro de la misma escala.
+- Important: `PuntoComparativa` no llevaba `zona_id`. Cuando no se pasa
+  `zona` (estado por defecto de la card de la Task 8), la serie mezclaba
+  puntos de TODAS las zonas ordenados solo por `corrida_at` — un
+  `LineChart` alimentado con eso zigzaguea entre zonas distintas. Se agrega
+  `zona_id: number` a cada punto (aditivo, no rompe los 6 tests
+  originales).
+- Important: `zona_nombre` era el placeholder `Zona ${zona_id}` siempre. Se
+  agrega `resolverNombresZona()`: primero `zonas.nombre` (filtrado por
+  `escenario_id` + `zona_id IN (...)`, solo las zonas presentes en el
+  resultado), con fallback a `demoras.zona_nombre` (el nombre que informa
+  el AS400 vía `app/api/import/demoras`, columna real confirmada en
+  `scripts/sql-harness/00-stubs.sql:30`) para las que sigan sin nombre, y
+  el placeholder solo como último recurso. `''` se trata como ausente en
+  ambas fuentes (no solo `null`).
+- Minor: `.lte('corrida_at', ...T23:59:59-03:00)` pierde el último segundo
+  del día. Se reemplaza por `.lt('corrida_at', ...)` contra la medianoche
+  del día siguiente, usando `montevideoRangeToUtc()` de `lib/date-utils.ts`
+  (ya existente y documentada como la regla canónica de rango de fecha en
+  UTC) en vez de reinventar la aritmética de "día siguiente".
+- Minor: `hoyMontevideo()` duplicaba `todayMontevideo()` de
+  `lib/date-utils.ts:41`. Se importa esa función en vez de reimplementarla.
+
+Verificado: 17 tests (6 originales + 11 nuevos) PASS; `npx tsc --noEmit`
+limpio; suite completa 84 archivos / 1660 tests, sin regresiones.
+
 - [ ] **Step 5: Correr el test para verificar que pasa**
 
 Run: `npx vitest run app/api/demoras/comparativa/route.test.ts`
-Expected: 6 tests PASS.
+Expected: 17 tests PASS (6 originales + 11 del fix round 1: zona_id en la
+serie, orden con null al final, 3 de nombre real de zona, 6 de auth-scope).
 
 - [ ] **Step 6: Verificar tipos y suite completa**
 
@@ -2178,6 +2530,10 @@ Para NOCTURNO y SERVICE la brecha viene null porque el AS400 no informa
 esos tipos; la UI lo dice en vez de dibujar un hueco."
 ```
 
+Fix round 1 commiteado aparte (ver `task-7-report.md`): auth-scope por
+empresa (Critical), orden null-last, `zona_id` en la serie y nombre real de
+zona (3 Important), más los dos Minor de fecha/timezone.
+
 ---
 
 ### Task 8: Card de comparativa en el dashboard
@@ -2191,6 +2547,28 @@ esos tipos; la UI lo dice en vez de dibujar un hueco."
 - Consumes: `GET /api/demoras/comparativa`, tipos de `types/demoras-comparativa.ts`,
   `CardShell` y `ExpandModal` de `components/metricas/`.
 - Produces: componente `<DemoraComparativa escenario={number} />`.
+
+**NOTA (post fix round 1 de Task 7 — pendiente de resolver cuando arranque
+esta task, NO implementado todavía):**
+1. `PuntoComparativa` ahora trae `zona_id: number`. El `Step 2` de abajo
+   (escrito antes del fix round 1) sigue alimentando el `LineChart`
+   directo con `data?.serie` sin agrupar por zona. Con `zona = null`
+   (estado por defecto de la card) y más de una zona con corridas hoy, eso
+   mezcla puntos de zonas distintas en la misma serie — un zigzag, no un
+   bug del fetch. El implementador de esta task tiene que usar `zona_id`
+   antes de dar la card por terminada: la opción más simple es no permitir
+   `zona = null` en el fetch (elegir la primera zona de `data.zonas` como
+   default en vez de "Todas las zonas"); la alternativa es agrupar `serie`
+   por `zona_id` y dibujar una `<Line>` por zona. Cualquiera de las dos es
+   aceptable, pero el `Step 2` tal como está escrito no resuelve el
+   problema por sí solo.
+2. El fetch de `Step 2` (`fetch('/api/demoras/comparativa?...')`) no manda
+   ni `x-track-isroot` ni `empresaIds`. Fix round 1 de Task 7 hizo el
+   endpoint fail-closed para no-root sin `empresaIds`: un usuario no-root
+   va a ver la card siempre vacía si el fetch no se actualiza para mandar
+   esos headers/params (mismo patrón que `lib/hooks/use-metricas-
+   dashboard.ts`, que ya arma ese header a partir del estado de
+   `AuthContext`). Esto también queda pendiente de resolver en esta task.
 
 - [ ] **Step 1: Agregar el texto informativo**
 
