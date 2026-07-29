@@ -3133,7 +3133,10 @@ git commit -m "fix(demoras): comparativa - distinguir sin alcance de sin corrida
   3. `docs/sqls/2026-07-29-demoras-ritmo.sql`
   4. `docs/sqls/2026-07-29-demoras-calculadas-tabla.sql`
   5. `docs/sqls/2026-07-29-demoras-calcular-run.sql`
-  6. `docs/sqls/2026-07-29-demoras-cron.sql` (requiere `pg_cron` habilitado)
+  6. `docs/sqls/2026-07-30-demoras-ritmo-cascada.sql` — sube el ritmo a la
+     cascada de 4 niveles con orden configurable. **Supersede la versión de
+     `2026-07-29-demoras-ritmo.sql`**, que resolvía solo `ZONA → GLOBAL`.
+  7. `docs/sqls/2026-07-29-demoras-cron.sql` (requiere `pg_cron` habilitado)
 - **Verificación post-apply**:
   ```sql
   -- 1) Una corrida manual fuera del cron
@@ -3153,7 +3156,8 @@ git commit -m "fix(demoras): comparativa - distinguir sin alcance de sin corrida
   `UPDATE demoras_config SET estadistico='P75' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';`
 - **El riesgo R1 copiado íntegro** desde la spec, con el recordatorio de que el
   número no debe informarse a un cliente hasta que la brecha esté calibrada.
-- **Tabla de las columnas de `demoras_config`** con sus defaults, aclarando que la config es por (escenario, tipo de servicio) y que un tipo sin fila no se calcula.
+- **Tabla de las columnas de `demoras_config`** con sus defaults, aclarando que la config es por (escenario, tipo de servicio) y que un tipo sin fila no se calcula. Incluir **`ritmo_cascada`** con los niveles válidos (`CHOFER,MOVIL,ZONA,GLOBAL`), la regla de que gana el primero que llega al mínimo de muestras, y que **`GLOBAL` se evalúa siempre último aunque no figure** (red final).
+- **Advertencia sobre el blend**: en los niveles CHOFER y MOVIL las cuatro estadísticas son **promedios ponderados por el aporte de cada móvil**, no percentiles de una población. Promediar medianas no es la mediana del pool, y con `P75`/`P90` el sesgo es asimétrico: aplasta la cola, justo el estadístico que se elige para ser conservador. No comparar esas columnas entre filas resueltas a distinto nivel sin tenerlo en cuenta.
 
 - [ ] **Step 2: Marcar la spec como implementada**
 
