@@ -2612,7 +2612,17 @@ function horaDe(iso: string): string {
   }).format(new Date(iso));
 }
 
-export function DemoraComparativa({ escenario }: { escenario: number | null }) {
+export function DemoraComparativa({
+  escenario,
+  isRoot,
+  empresasIds,
+}: {
+  escenario: number | null;
+  /** true = ve todas las empresas (root). Viene de canSeeAllEmpresas(user). */
+  isRoot: boolean;
+  /** Empresas fleteras del scope del usuario. Vacio + no root = card vacia. */
+  empresasIds: number[];
+}) {
   const [tipo, setTipo] = useState<TipoDemora>('URGENTE');
   const [zona, setZona] = useState<number | null>(null);
   const [data, setData] = useState<ComparativaData | null>(null);
@@ -2626,7 +2636,18 @@ export function DemoraComparativa({ escenario }: { escenario: number | null }) {
     setError(null);
     const sp = new URLSearchParams({ escenario: String(escenario), tipo });
     if (zona != null) sp.set('zona', String(zona));
-    fetch(`/api/demoras/comparativa?${sp.toString()}`, { signal: ac.signal })
+
+    // Auth-scope: el endpoint es fail-closed. Sin estos headers un usuario
+    // no-root recibe payload vacio SIEMPRE. Mismo patron que
+    // lib/hooks/use-metricas-dashboard.ts.
+    const headers: Record<string, string> = {};
+    if (isRoot) {
+      headers['x-track-isroot'] = 'S';
+    } else if (empresasIds.length > 0) {
+      headers['x-track-empresas-ids'] = empresasIds.join(',');
+    }
+
+    fetch(`/api/demoras/comparativa?${sp.toString()}`, { headers, signal: ac.signal })
       .then((r) => r.json())
       .then((j) => {
         if (ac.signal.aborted) return;
@@ -2641,10 +2662,39 @@ export function DemoraComparativa({ escenario }: { escenario: number | null }) {
         if (!ac.signal.aborted) setCargando(false);
       });
     return () => ac.abort();
-  }, [escenario, tipo, zona]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escenario, tipo, zona, isRoot, empresasIds.join(',')]);
 
   const hayAs400 = tipo === 'URGENTE';
-  const serie = (data?.serie ?? []).map((p) => ({ ...p, hora: horaDe(p.corrida_at) }));
+
+  // La serie viene con puntos de TODAS las zonas cuando no hay una elegida.
+  // Dibujarla tal cual da una linea en zigzag saltando entre zonas en el mismo
+  // timestamp. Con zona elegida se grafica esa; sin zona, se promedia por
+  // timestamp para que la linea signifique "el escenario en conjunto".
+  const serie = (() => {
+    const puntos = data?.serie ?? [];
+    if (zona != null) {
+      return puntos.map((p) => ({ ...p, hora: horaDe(p.corrida_at) }));
+    }
+    const porHora = new Map<string, { c: number[]; a: number[] }>();
+    for (const p of puntos) {
+      const e = porHora.get(p.corrida_at) ?? { c: [], a: [] };
+      e.c.push(p.calculada);
+      if (p.as400 !== null) e.a.push(p.as400);
+      porHora.set(p.corrida_at, e);
+    }
+    const prom = (xs: number[]) =>
+      xs.length === 0 ? null : Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10;
+    return [...porHora.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([corrida_at, e]) => ({
+        corrida_at,
+        zona_id: -1,
+        calculada: prom(e.c) ?? 0,
+        as400: prom(e.a),
+        hora: horaDe(corrida_at),
+      }));
+  })();
 
   if (error) {
     return <p className="py-6 text-center text-sm text-stats-destructive">No se pudo cargar la comparativa: {error}</p>;
@@ -2766,7 +2816,7 @@ type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios'
             className="col-span-12"
             style={{ animationDelay: '380ms' }}
           >
-            <DemoraComparativa escenario={escenarioSel} />
+            <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} />
           </CardShell>
 ```
 
@@ -2780,7 +2830,9 @@ type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios'
 5. Antes del cierre del `<ExpandModal>`:
 
 ```tsx
-        {expandedSection === 'demora' && <DemoraComparativa escenario={escenarioSel} />}
+        {expandedSection === 'demora' && (
+          <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} />
+        )}
 ```
 
 - [ ] **Step 4: Verificar tipos, lint y build**
