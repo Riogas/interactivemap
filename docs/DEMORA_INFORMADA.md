@@ -17,6 +17,12 @@ Diseño completo: `docs/superpowers/specs/2026-07-28-motor-demora-informada-desi
 
 ## 1. Orden de aplicación en el SQL Editor de Supabase
 
+Todo se aplica pegando el contenido del archivo en el **SQL Editor de
+Supabase**, no con un script de migración normal (`psql`, herramienta de
+migraciones, CI): el Postgres de producción está firewalleado y no hay
+acceso directo desde fuera de Supabase. Es el mismo mecanismo que ya usa el
+resto de `docs/sqls/` en este repo.
+
 Los 7 archivos, **en este orden exacto**:
 
 1. `docs/sqls/2026-07-29-demoras-acabado.sql` — función `demoras_acabado`:
@@ -30,9 +36,12 @@ Los 7 archivos, **en este orden exacto**:
    dentro de cada tipo).
 3. `docs/sqls/2026-07-29-demoras-ritmo.sql` — primera versión de
    `demoras_ritmo` (cascada `ZONA → GLOBAL`). **Queda superseded por el
-   archivo 6**; se aplica igual porque el archivo 6 hace `CREATE OR REPLACE`
-   sobre la misma función y varias migraciones posteriores asumen que
-   `demoras_ritmo` ya existe con esta firma.
+   archivo 6**, que la reemplaza con `CREATE OR REPLACE FUNCTION` — que NO
+   requiere que la función preexista, la crea si falta y la reemplaza si
+   está. Este archivo se mantiene en la secuencia por prolijidad histórica
+   (así se aplicó la primera vez) y porque aplicarlo no rompe nada, **no**
+   porque el archivo 6 lo necesite: la dependencia real del archivo 6 es la
+   tabla `demoras_config`, creada en el archivo 4.
 4. `docs/sqls/2026-07-29-demoras-calculadas-tabla.sql` — crea
    `demoras_calculadas` (los hechos) y `demoras_config` (la configuración),
    con el seed de los tres tipos del escenario 1000.
@@ -304,7 +313,48 @@ trabada.
 
 ---
 
-## 10. Qué falta fuera de las migraciones para que la card se vea
+## 10. Diagnóstico: ¿el cron viene corriendo bien?
+
+Que `cron.job` liste el job con `active=true` (§2) solo confirma que quedó
+**programado** — no que siga **corriendo con éxito**. Como los cuerpos
+`plpgsql` no se validan al crearse (§12), un error que no se disparó en la
+corrida manual de la verificación post-apply puede aparecer recién con datos
+reales seis semanas después, y el cron **falla en silencio** cada 10 minutos
+hasta que alguien lo nota. Estas queries son la forma de notarlo antes:
+
+```sql
+-- ¿El cron de calculo viene corriendo bien? (status, duracion, ultimo error)
+SELECT runid, status, start_time, end_time, return_message
+  FROM cron.job_run_details
+ WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'demoras-calcular')
+ ORDER BY start_time DESC LIMIT 20;
+
+-- Lo mismo para la purga diaria
+SELECT runid, status, start_time, end_time, return_message
+  FROM cron.job_run_details
+ WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'demoras-purga')
+ ORDER BY start_time DESC LIMIT 10;
+
+-- ¿La retencion de 180 dias esta funcionando? (la fila mas vieja no deberia
+-- superar esa antiguedad; si la supera, la purga diaria no esta corriendo)
+SELECT min(corrida_at) AS mas_vieja, now() - min(corrida_at) AS antiguedad
+  FROM demoras_calculadas;
+```
+
+`status = 'succeeded'` es lo esperado; `'failed'` con `return_message` no
+vacío es la señal de que algo rompió (mismo patrón de diagnóstico que ya usa
+el repo en `docs/sqls/2026-05-27-moviles-dia-rollover.sql` y
+`docs/sqls/2026-07-22-metricas-cumplimiento-cron.sql`). Si `demoras-calcular`
+viene en `'succeeded'` pero hace horas que `demoras_calculadas` no crece,
+sospechá primero de la ventana horaria y de `motor_activo` (§4) antes que de
+un bug — es el comportamiento esperado fuera de ventana (§8).
+
+Estas mismas tres queries están comentadas al final de
+`docs/sqls/2026-07-29-demoras-cron.sql`, junto a las del §2.
+
+---
+
+## 11. Qué falta fuera de las migraciones para que la card se vea
 
 Aplicar las 7 migraciones deja el motor calculando y escribiendo en
 `demoras_calculadas`, pero la card de comparativa en
@@ -336,7 +386,7 @@ Sin estos dos, la parte SQL corre igual (el cron sigue escribiendo
 
 ---
 
-## 11. Cómo validar cambios futuros con el harness
+## 12. Cómo validar cambios futuros con el harness
 
 Cualquier cambio a estas funciones (`demoras_acabado`, `demoras_capacidad`,
 `demoras_ritmo`, `demoras_calcular_run`) se valida antes de aplicar en
@@ -387,7 +437,7 @@ laptop, antes del commit".
 
 ---
 
-## 12. Preguntas frecuentes rápidas
+## 13. Preguntas frecuentes rápidas
 
 - **¿Por qué hay dos números, `demora_suavizada` y `demora_informada`?**
   `demora_suavizada` es continua (sin redondear) y es el estado que arrastra
@@ -399,8 +449,11 @@ laptop, antes del commit".
   honesta a "¿cuánto demora?" no es "poco": un pedido que entre ahora no
   tiene quién lo atienda. El piso solo aplica cuando SÍ hay capacidad y la
   cola está vacía — el caso genuinamente bueno.
-- **¿Puedo aplicar solo el archivo 6 sin el 3?** No — el 6 hace `CREATE OR
-  REPLACE` sobre `demoras_ritmo`, y varias migraciones posteriores (la 4 y la
-  5, `demoras_calculadas` / `demoras_calcular_run`) no la crean, solo la
-  invocan. El archivo 3 tiene que existir primero para que la función exista
-  antes del `REPLACE`.
+- **¿Puedo aplicar solo el archivo 6 sin el 3?** En términos de dependencias,
+  sí: `CREATE OR REPLACE FUNCTION` no requiere que la función preexista — la
+  crea si falta, la reemplaza si está. El archivo 6 es una definición
+  autosuficiente (mismo `RETURNS TABLE`, cuerpo completo, su propio
+  `COMMENT`); su única dependencia real es la tabla `demoras_config`, que
+  crea el archivo 4, no el 3. El archivo 3 se mantiene en el orden de
+  aplicación por prolijidad histórica y porque es inofensivo aplicarlo, no
+  porque el 6 lo necesite.

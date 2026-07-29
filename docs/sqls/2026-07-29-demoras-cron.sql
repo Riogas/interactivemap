@@ -22,3 +22,22 @@ SELECT cron.schedule('demoras-purga', '43 4 * * *',
 -- ─── Verificacion ────────────────────────────────────────────────────
 -- SELECT jobname, schedule, active FROM cron.job WHERE jobname LIKE 'demoras-%';
 -- SELECT count(*), min(corrida_at), max(corrida_at) FROM demoras_calculadas;
+
+-- ─── Diagnostico: que el cron siga corriendo con exito, no solo programado ──
+-- Un job en cron.job con active=true puede estar fallando en silencio cada
+-- 10 minutos (los cuerpos plpgsql no se validan al crearse, solo al
+-- ejecutar). Estas queries son la forma de notarlo:
+--
+-- SELECT runid, status, start_time, end_time, return_message
+--   FROM cron.job_run_details
+--  WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'demoras-calcular')
+--  ORDER BY start_time DESC LIMIT 20;
+--
+-- SELECT runid, status, start_time, end_time, return_message
+--   FROM cron.job_run_details
+--  WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'demoras-purga')
+--  ORDER BY start_time DESC LIMIT 10;
+--
+-- -- La retencion de 180 dias esta funcionando si la fila mas vieja no la supera:
+-- SELECT min(corrida_at) AS mas_vieja, now() - min(corrida_at) AS antiguedad
+--   FROM demoras_calculadas;
