@@ -2540,35 +2540,43 @@ zona (3 Important), más los dos Minor de fecha/timezone.
 
 **Files:**
 - Create: `components/metricas/DemoraComparativa.tsx`
+- Create: `components/metricas/demora-comparativa-logic.ts` (fix round 1 —
+  lógica pura de fetch/scope/mensaje extraída del componente para poder
+  testearla sin jsdom, ver más abajo).
+- Create: `components/metricas/demora-comparativa-logic.test.ts`.
 - Modify: `app/dashboard/metricas-cumplimiento/page.tsx`
 - Modify: `components/metricas/metricas-theme.ts` (agregar `INFO_TEXTS.demora_comparativa`)
+- Modify: `app/api/demoras/comparativa/route.ts` (requisito extra fuera del
+  brief original — gates de autorización, ver más abajo).
+- Modify: `app/api/demoras/comparativa/route.test.ts` (tests de los gates
+  nuevos + ajuste de los tests de scope de Task 7).
 
 **Interfaces:**
 - Consumes: `GET /api/demoras/comparativa`, tipos de `types/demoras-comparativa.ts`,
   `CardShell` y `ExpandModal` de `components/metricas/`.
-- Produces: componente `<DemoraComparativa escenario={number} />`.
+- Produces: componente `<DemoraComparativa escenario={number | null} isRoot={boolean} empresasIds={number[]} />`.
+- El scope de no-root viaja como query param `empresaIds` (CSV) — mismo
+  patrón que `app/api/demoras` y `app/api/zonas` — NO como header (ver "Fix
+  round 0" más abajo, es una desviación del texto original del brief).
 
-**NOTA (post fix round 1 de Task 7 — pendiente de resolver cuando arranque
-esta task, NO implementado todavía):**
-1. `PuntoComparativa` ahora trae `zona_id: number`. El `Step 2` de abajo
-   (escrito antes del fix round 1) sigue alimentando el `LineChart`
-   directo con `data?.serie` sin agrupar por zona. Con `zona = null`
+**NOTA (post fix round 1 de Task 7 — RESUELTA en esta task, ver "Fix round
+0" y el Step 2 final más abajo):**
+1. `PuntoComparativa` ahora trae `zona_id: number`. El `Step 2` original
+   (escrito antes del fix round 1 de Task 7) alimentaba el `LineChart`
+   directo con `data?.serie` sin agrupar por zona — con `zona = null`
    (estado por defecto de la card) y más de una zona con corridas hoy, eso
-   mezcla puntos de zonas distintas en la misma serie — un zigzag, no un
-   bug del fetch. El implementador de esta task tiene que usar `zona_id`
-   antes de dar la card por terminada: la opción más simple es no permitir
-   `zona = null` en el fetch (elegir la primera zona de `data.zonas` como
-   default en vez de "Todas las zonas"); la alternativa es agrupar `serie`
-   por `zona_id` y dibujar una `<Line>` por zona. Cualquiera de las dos es
-   aceptable, pero el `Step 2` tal como está escrito no resuelve el
-   problema por sí solo.
-2. El fetch de `Step 2` (`fetch('/api/demoras/comparativa?...')`) no manda
-   ni `x-track-isroot` ni `empresaIds`. Fix round 1 de Task 7 hizo el
-   endpoint fail-closed para no-root sin `empresaIds`: un usuario no-root
-   va a ver la card siempre vacía si el fetch no se actualiza para mandar
-   esos headers/params (mismo patrón que `lib/hooks/use-metricas-
-   dashboard.ts`, que ya arma ese header a partir del estado de
-   `AuthContext`). Esto también queda pendiente de resolver en esta task.
+   mezclaba puntos de zonas distintas en la misma serie (zigzag). **Resuelto**:
+   con `zona = null` se promedia por `corrida_at` (no se elige una zona
+   default ni se dibuja una `<Line>` por zona) — ver el `serie` del Step 2
+   final.
+2. El fetch original no mandaba headers/params de auth-scope. **Resuelto**,
+   pero con una corrección sobre lo que decía esta misma nota: el mecanismo
+   real NO es el header `x-track-empresas-ids` de `use-metricas-
+   dashboard.ts` (así lo armó el fix de plan `docs(plan): corregir la task 8
+   antes de implementarla` sin verificar contra el endpoint) — es el query
+   param `empresaIds` (CSV), igual que `app/api/demoras` y `app/api/zonas`.
+   Transcribir el header tal cual dejaba la card SIEMPRE vacía para todo
+   usuario no-root. Ver "Fix round 0" abajo.
 
 - [ ] **Step 1: Agregar el texto informativo**
 
@@ -2581,7 +2589,95 @@ En `components/metricas/metricas-theme.ts`, dentro de `INFO_TEXTS`:
   },
 ```
 
-- [ ] **Step 2: Escribir el componente**
+- [ ] **Step 2: Escribir el componente (contenido FINAL, post fix round 0 y
+  fix round 1 — ver las notas de desviación más abajo)**
+
+`components/metricas/demora-comparativa-logic.ts` (nuevo — lógica pura sin
+React/recharts, extraída para poder testearse sin jsdom, mismo patrón que
+`lib/scope-filter.ts`):
+
+```typescript
+/**
+ * Lógica pura de components/metricas/DemoraComparativa.tsx, extraída para
+ * poder testearse sin infraestructura de render de componentes (el repo no
+ * tiene jsdom/@testing-library/react, vitest.config.ts usa environment:
+ * 'node') — mismo patrón que lib/scope-filter.ts y
+ * components/metricas/metricas-theme.ts (ver __tests__/metricas-dashboard-
+ * theme.test.ts).
+ */
+
+import type { TipoDemora } from '@/types/demoras-comparativa';
+
+/**
+ * True si un caller no-root no tiene NINGUNA empresa en su scope.
+ *
+ * Fix round 1 (Important): antes de esto, la card no distinguía "el motor
+ * no corrió" de "no tenés zonas asignadas" — las dos caían en el mismo
+ * mensaje ("Todavía no hay corridas del motor para hoy."), porque el
+ * endpoint devuelve 200 con arrays vacíos en ambos casos (fail-closed).
+ * Acá el resultado (EMPTY_DATA) ya se sabe de antemano sin llamar al
+ * endpoint: root nunca está "sin alcance" (ve todo).
+ */
+export function sinAlcanceNoRoot(isRoot: boolean, empresasIds: number[]): boolean {
+  return !isRoot && empresasIds.length === 0;
+}
+
+/**
+ * Mensaje mostrado cuando `sinAlcanceNoRoot` es true. Constante exportada
+ * (en vez de un literal inline en el componente) para que el test pueda
+ * verificar el texto exacto sin renderizar JSX — única fuente de verdad,
+ * sin riesgo de que el texto probado y el texto mostrado diverjan. Hablado
+ * desde el lado del usuario, no del sistema: nada de "fail-closed"/"scope
+ * vacío" en pantalla.
+ */
+export const MENSAJE_SIN_ALCANCE = 'No tenés zonas asignadas para ver esta comparativa. Consultá con el administrador.';
+
+/**
+ * Intención de fetch a /api/demoras/comparativa: o se saltea la llamada
+ * (`skip: true`, sin construir URL ni headers), o trae la URL + headers
+ * listos para pasarle a `fetch()`.
+ */
+export type ComparativaFetchIntent =
+  | { skip: true }
+  | { skip: false; url: string; headers: Record<string, string> };
+
+/**
+ * Arma el pedido a /api/demoras/comparativa, o decide no pedir nada.
+ * `skip=true` cuando no hay escenario elegido, o cuando un no-root no tiene
+ * empresas en su scope (`sinAlcanceNoRoot`) — en ambos casos el componente
+ * no debe tocar la red.
+ */
+export function buildComparativaFetch(params: {
+  escenario: number | null;
+  tipo: TipoDemora;
+  zona: number | null;
+  isRoot: boolean;
+  empresasIds: number[];
+}): ComparativaFetchIntent {
+  const { escenario, tipo, zona, isRoot, empresasIds } = params;
+  if (escenario == null) return { skip: true };
+  if (sinAlcanceNoRoot(isRoot, empresasIds)) return { skip: true };
+
+  const sp = new URLSearchParams({ escenario: String(escenario), tipo });
+  if (zona != null) sp.set('zona', String(zona));
+
+  // Root se anuncia con el header x-track-isroot (igual que
+  // metricas/dashboard); no-root manda su scope como query param
+  // `empresaIds` (CSV) — /api/demoras/comparativa sigue el mismo patron que
+  // app/api/demoras y app/api/zonas, NO el de
+  // lib/hooks/use-metricas-dashboard.ts, que usa un header. A esta altura
+  // sinAlcanceNoRoot ya garantiza empresasIds.length > 0 para el caso
+  // no-root (si estuviera vacío, ya volvimos arriba con skip:true).
+  const headers: Record<string, string> = {};
+  if (isRoot) {
+    headers['x-track-isroot'] = 'S';
+  } else {
+    sp.set('empresaIds', empresasIds.join(','));
+  }
+
+  return { skip: false, url: `/api/demoras/comparativa?${sp.toString()}`, headers };
+}
+```
 
 `components/metricas/DemoraComparativa.tsx`:
 
@@ -2602,6 +2698,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TIPOS_DEMORA } from '@/types/demoras-comparativa';
 import type { TipoDemora, ComparativaData } from '@/types/demoras-comparativa';
 import { formatMin } from './metricas-theme';
+import { sinAlcanceNoRoot, buildComparativaFetch, MENSAJE_SIN_ALCANCE } from './demora-comparativa-logic';
 
 const COLOR_CALC = 'var(--color-metricas-serie)';
 const COLOR_AS400 = 'var(--color-metricas-nocturno)';
@@ -2629,25 +2726,21 @@ export function DemoraComparativa({
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
+  // Fix round 1 (Important): un no-root sin ninguna empresa en su scope NO
+  // tiene ninguna zona posible que ver — el fail-closed del endpoint
+  // (EMPTY_DATA) ya se sabe de antemano, así que ni se llama. Distinto del
+  // caso "el motor no corrió" (con scope, pero sin corridas hoy).
+  const sinAlcance = sinAlcanceNoRoot(isRoot, empresasIds);
+
   useEffect(() => {
-    if (escenario == null) return;
+    const intent = buildComparativaFetch({ escenario, tipo, zona, isRoot, empresasIds });
+    if (intent.skip) return;
+
     const ac = new AbortController();
     setCargando(true);
     setError(null);
-    const sp = new URLSearchParams({ escenario: String(escenario), tipo });
-    if (zona != null) sp.set('zona', String(zona));
 
-    // Auth-scope: el endpoint es fail-closed. Sin estos headers un usuario
-    // no-root recibe payload vacio SIEMPRE. Mismo patron que
-    // lib/hooks/use-metricas-dashboard.ts.
-    const headers: Record<string, string> = {};
-    if (isRoot) {
-      headers['x-track-isroot'] = 'S';
-    } else if (empresasIds.length > 0) {
-      headers['x-track-empresas-ids'] = empresasIds.join(',');
-    }
-
-    fetch(`/api/demoras/comparativa?${sp.toString()}`, { headers, signal: ac.signal })
+    fetch(intent.url, { headers: intent.headers, signal: ac.signal })
       .then((r) => r.json())
       .then((j) => {
         if (ac.signal.aborted) return;
@@ -2690,11 +2783,21 @@ export function DemoraComparativa({
       .map(([corrida_at, e]) => ({
         corrida_at,
         zona_id: -1,
-        calculada: prom(e.c) ?? 0,
+        // Fix round 1 (Minor): e.c nunca está vacío acá (se puebla al crear
+        // la entrada del Map, arriba), así que el `?? 0` original era rama
+        // muerta hoy — pero si la acumulación cambia alguna vez y un
+        // promedio queda sin dato, preferimos un hueco visible en el
+        // gráfico (null, sin connectNulls en esta Line) a un 0 falso y
+        // creíble. Mismo tipo que as400.
+        calculada: prom(e.c),
         as400: prom(e.a),
         hora: horaDe(corrida_at),
       }));
   })();
+
+  if (sinAlcance) {
+    return <p className="py-6 text-center text-sm text-stats-muted-fg">{MENSAJE_SIN_ALCANCE}</p>;
+  }
 
   if (error) {
     return <p className="py-6 text-center text-sm text-stats-destructive">No se pudo cargar la comparativa: {error}</p>;
@@ -2745,7 +2848,10 @@ export function DemoraComparativa({
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-stats-border)" vertical={false} />
             <XAxis dataKey="hora" tick={{ fontSize: 11 }} stroke="var(--color-stats-muted-fg)" />
             <YAxis unit="'" tick={{ fontSize: 11 }} stroke="var(--color-stats-muted-fg)" />
-            <Tooltip formatter={(v: number | null) => (v == null ? '—' : `${formatMin(v)} min`)} />
+            {/* Fix round 0: Recharts 3.10 tipa Formatter con `ValueType |
+                undefined` (unknown a efectos prácticos), no `number | null`
+                — mismo ajuste que TipoBarChart.tsx:80 (LabelList formatter). */}
+            <Tooltip formatter={(v: unknown) => (v == null ? '—' : `${formatMin(v as number)} min`)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line type="stepAfter" dataKey="calculada" name="Calculada" stroke={COLOR_CALC} strokeWidth={2.4} dot={false} />
             {hayAs400 && (
@@ -2783,6 +2889,148 @@ export function DemoraComparativa({
   );
 }
 ```
+
+`components/metricas/demora-comparativa-logic.test.ts` (nuevo, fix round 1
+— 13 tests):
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { sinAlcanceNoRoot, buildComparativaFetch, MENSAJE_SIN_ALCANCE } from './demora-comparativa-logic';
+
+describe('sinAlcanceNoRoot()', () => {
+  it('no-root sin empresas -> true (sin alcance)', () => {
+    expect(sinAlcanceNoRoot(false, [])).toBe(true);
+  });
+  it('no-root con empresas -> false', () => {
+    expect(sinAlcanceNoRoot(false, [70])).toBe(false);
+  });
+  it('root sin empresas -> false (root ve todo igual)', () => {
+    expect(sinAlcanceNoRoot(true, [])).toBe(false);
+  });
+  it('root con empresas -> false', () => {
+    expect(sinAlcanceNoRoot(true, [70, 80])).toBe(false);
+  });
+});
+
+describe('MENSAJE_SIN_ALCANCE', () => {
+  it('no menciona jerga interna (fail-closed / scope) — hablado desde el usuario', () => {
+    expect(MENSAJE_SIN_ALCANCE.toLowerCase()).not.toMatch(/fail-closed|scope/);
+  });
+  it('distingue el texto del mensaje genérico de "sin corridas"', () => {
+    expect(MENSAJE_SIN_ALCANCE).not.toBe('Todavía no hay corridas del motor para hoy.');
+  });
+});
+
+describe('buildComparativaFetch()', () => {
+  const base = { escenario: 1000, tipo: 'URGENTE' as const, zona: null };
+
+  it('no-root SIN empresas -> skip:true, sin construir url ni headers (no se llama al endpoint)', () => {
+    const intent = buildComparativaFetch({ ...base, isRoot: false, empresasIds: [] });
+    expect(intent.skip).toBe(true);
+    expect('url' in intent).toBe(false);
+    expect('headers' in intent).toBe(false);
+  });
+  it('sin escenario elegido -> skip:true (root)', () => {
+    expect(buildComparativaFetch({ ...base, escenario: null, isRoot: true, empresasIds: [] }).skip).toBe(true);
+  });
+  it('sin escenario elegido -> skip:true (no-root con empresas)', () => {
+    expect(buildComparativaFetch({ ...base, escenario: null, isRoot: false, empresasIds: [70] }).skip).toBe(true);
+  });
+  it('root -> skip:false, header x-track-isroot, sin query param empresaIds', () => {
+    const intent = buildComparativaFetch({ ...base, isRoot: true, empresasIds: [] });
+    expect(intent.skip).toBe(false);
+    if (intent.skip) throw new Error('unreachable');
+    expect(intent.headers).toEqual({ 'x-track-isroot': 'S' });
+    expect(intent.url).toBe('/api/demoras/comparativa?escenario=1000&tipo=URGENTE');
+  });
+  it('no-root CON empresas -> skip:false, query param empresaIds (CSV), sin header x-track-isroot', () => {
+    const intent = buildComparativaFetch({ ...base, isRoot: false, empresasIds: [70, 80] });
+    expect(intent.skip).toBe(false);
+    if (intent.skip) throw new Error('unreachable');
+    expect(intent.headers).toEqual({});
+    const url = new URL(intent.url, 'http://localhost');
+    expect(url.searchParams.get('empresaIds')).toBe('70,80');
+  });
+  it('zona elegida -> viaja en la url', () => {
+    const intent = buildComparativaFetch({ ...base, zona: 42, isRoot: true, empresasIds: [] });
+    if (intent.skip) throw new Error('unreachable');
+    expect(new URL(intent.url, 'http://localhost').searchParams.get('zona')).toBe('42');
+  });
+  it('sin zona elegida -> no viaja el param "zona"', () => {
+    const intent = buildComparativaFetch({ ...base, isRoot: true, empresasIds: [] });
+    if (intent.skip) throw new Error('unreachable');
+    expect(new URL(intent.url, 'http://localhost').searchParams.has('zona')).toBe(false);
+  });
+});
+```
+
+**Requisito extra fuera del brief original** (pedido del orquestador al
+cerrar round 0): `app/api/demoras/comparativa/route.ts` solo tenía
+`requireAuth` + scope por headers/query forjables. Se agregan los mismos dos
+gates que protegen `app/api/metricas/dashboard/route.ts`, en el mismo orden,
+justo después de `requireAuth` y antes de parsear cualquier query param:
+
+```typescript
+const auth = await requireAuth(request);
+if (auth instanceof NextResponse) return auth;
+
+// Allowlist server-side por EMAIL (defensa contra headers spoofeables) —
+// mismo gate y misma env que app/api/metricas/dashboard/route.ts.
+const allowGate = requireAllowlistedEmail(auth.user?.email, process.env.METRICAS_DASHBOARD_ALLOWED_EMAILS);
+if (allowGate !== true) return allowGate;
+
+// Gate de funcionalidad — mismo patrón que metricas/dashboard (root
+// bypassea siempre).
+const funcGate = requireFuncionalidad(request, 'Estadisticas Cumplimiento');
+if (funcGate !== true) return funcGate;
+```
+
+7 tests nuevos en `route.test.ts` (`describe('gate de funcionalidad...')` +
+`describe('allowlist por email...')`), y los 6 tests preexistentes de
+`describe('auth-scope por empresa')` (Task 7) se ajustan para pasar el
+header `x-track-funcs: 'Estadisticas Cumplimiento'` (constante `NON_ROOT_OK`)
+y seguir probando lo que probaban (scope por `fleteras_zonas`), no el gate
+nuevo.
+
+**Fix round 0 — 2 desviaciones del brief original (verificadas, ambas
+necesarias para que la card compile/funcione):**
+
+1. El Step 2 original armaba el scope de no-root con
+   `headers['x-track-empresas-ids'] = empresasIds.join(',')`, pero
+   `app/api/demoras/comparativa/route.ts` (Task 7, ya revisado) nunca lee
+   ese header — lee `sp.get('empresaIds')` (query param), mismo patrón que
+   `app/api/demoras/route.ts` y `app/api/zonas/route.ts` (citados
+   textualmente en el propio docstring del endpoint), y que consume
+   `hooks/dashboard/useMapDataView.ts` con `` `?empresaIds=${scopedEmpresas
+   .join(',')}` ``. Transcribir el header tal cual dejaba la card SIEMPRE
+   vacía para todo usuario no-root — el origen del error fue el commit
+   `docs(plan): corregir la task 8 antes de implementarla`, que modeló el
+   fix sobre `use-metricas-dashboard.ts` (header) sin verificar contra el
+   mecanismo real del endpoint (query param). Corregido a `sp.set('empresaIds', ...)`.
+2. El `Tooltip formatter` tipado `(v: number | null) => string` no compila
+   con Recharts 3.10 (`Formatter` espera `ValueType | undefined`). Ajustado
+   a `unknown` + cast, mismo patrón que `TipoBarChart.tsx:80`.
+
+**Fix round 1 — 1 Important + 1 Minor del review:**
+
+1. **Important** — la card no distinguía "el motor no corrió" de "no tenés
+   zonas asignadas": el mensaje "Todavía no hay corridas del motor para
+   hoy." aparecía en los dos casos, porque `EMPTY_DATA` (200, arrays
+   vacíos) es la respuesta tanto de un escenario genuinamente sin corridas
+   como del fail-closed de un no-root sin empresas en su scope. Resuelto
+   extrayendo `sinAlcanceNoRoot(isRoot, empresasIds)` a
+   `demora-comparativa-logic.ts`: si es true, el componente ni llama al
+   endpoint (`buildComparativaFetch` retorna `skip:true` antes de construir
+   la URL) y muestra `MENSAJE_SIN_ALCANCE` ("No tenés zonas asignadas para
+   ver esta comparativa. Consultá con el administrador.") en vez del
+   mensaje genérico.
+2. **Minor** — `calculada: prom(e.c) ?? 0` era una rama muerta hoy (`e.c`
+   nunca está vacío en ese punto), pero un default silencioso que mañana,
+   si la acumulación cambiara, mostraría un promedio faltante como "0
+   minutos" (dato falso y creíble) en vez de un hueco. Sacado el `?? 0`;
+   `calculada` queda `number | null` como `as400` — un `null` futuro se
+   dibuja como hueco real en el gráfico (la `Line` de "Calculada" no tiene
+   `connectNulls`).
 
 - [ ] **Step 3: Montar la card en la página**
 
@@ -2835,26 +3083,32 @@ type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios'
         )}
 ```
 
-- [ ] **Step 4: Verificar tipos, lint y build**
+- [x] **Step 4: Verificar tipos, lint y build**
 
-Run: `npx tsc --noEmit && npx eslint app/dashboard/metricas-cumplimiento components/metricas && npx next build`
-Expected: tsc exit 0, eslint 0 errores, build `✓ Compiled successfully`.
+Run: `npx tsc --noEmit && npx eslint app/dashboard/metricas-cumplimiento components/metricas app/api/demoras/comparativa && npx next build`
+Resultado (round 0 y fix round 1, ambos limpios): tsc exit 0, eslint 0
+errores, build `✓ Compiled successfully`.
 
-- [ ] **Step 5: Correr la suite completa**
+- [x] **Step 5: Correr la suite completa**
 
 Run: `npx vitest run`
-Expected: toda la suite verde, sin regresiones.
+Resultado round 0: 84 → 85 test files, 1660 → 1667 tests, sin regresiones.
+Resultado fix round 1: 85 test files, 1667 → 1680 tests (13 nuevos de
+`demora-comparativa-logic.test.ts`), sin regresiones.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
+Round 0:
 ```bash
-git add components/metricas/DemoraComparativa.tsx components/metricas/metricas-theme.ts app/dashboard/metricas-cumplimiento/page.tsx
-git commit -m "feat(demoras): card de comparativa calculada vs AS400 en el dashboard
+git add components/metricas/DemoraComparativa.tsx components/metricas/metricas-theme.ts app/dashboard/metricas-cumplimiento/page.tsx app/api/demoras/comparativa/route.ts app/api/demoras/comparativa/route.test.ts
+git commit -m "feat(demoras): card de comparativa calculada vs AS400 en el dashboard ..."
+# commit a5bc17f
+```
 
-Serie del dia por zona y tabla de brecha ordenada por diferencia. Nuestra
-linea va escalonada (redondeamos a 15) y la del AS400 punteada (usan 5).
-Para NOCTURNO y SERVICE se dibuja solo la nuestra y la card explica por que:
-el AS400 no informa esos tipos."
+Fix round 1:
+```bash
+git add components/metricas/DemoraComparativa.tsx components/metricas/demora-comparativa-logic.ts components/metricas/demora-comparativa-logic.test.ts docs/superpowers/plans/2026-07-28-motor-demora-informada.md
+git commit -m "fix(demoras): comparativa - distinguir sin alcance de sin corridas, sacar 0 por defecto ..."
 ```
 
 ---

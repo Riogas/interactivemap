@@ -14,6 +14,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TIPOS_DEMORA } from '@/types/demoras-comparativa';
 import type { TipoDemora, ComparativaData } from '@/types/demoras-comparativa';
 import { formatMin } from './metricas-theme';
+import { sinAlcanceNoRoot, buildComparativaFetch, MENSAJE_SIN_ALCANCE } from './demora-comparativa-logic';
 
 const COLOR_CALC = 'var(--color-metricas-serie)';
 const COLOR_AS400 = 'var(--color-metricas-nocturno)';
@@ -41,29 +42,21 @@ export function DemoraComparativa({
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
+  // Fix round 1 (Important): un no-root sin ninguna empresa en su scope NO
+  // tiene ninguna zona posible que ver — el fail-closed del endpoint
+  // (EMPTY_DATA) ya se sabe de antemano, así que ni se llama. Distinto del
+  // caso "el motor no corrió" (con scope, pero sin corridas hoy).
+  const sinAlcance = sinAlcanceNoRoot(isRoot, empresasIds);
+
   useEffect(() => {
-    if (escenario == null) return;
+    const intent = buildComparativaFetch({ escenario, tipo, zona, isRoot, empresasIds });
+    if (intent.skip) return;
+
     const ac = new AbortController();
     setCargando(true);
     setError(null);
-    const sp = new URLSearchParams({ escenario: String(escenario), tipo });
-    if (zona != null) sp.set('zona', String(zona));
 
-    // Auth-scope: el endpoint es fail-closed. Root se anuncia con el header
-    // x-track-isroot (igual que metricas/dashboard); no-root manda su scope
-    // como query param `empresaIds` (CSV) — /api/demoras/comparativa sigue
-    // el mismo patron que app/api/demoras y app/api/zonas (ver sus propios
-    // hooks, ej. hooks/dashboard/useMapDataView.ts), NO el de
-    // lib/hooks/use-metricas-dashboard.ts, que usa un header. Sin esto, un
-    // usuario no-root recibe payload vacio SIEMPRE aunque el fetch "ande".
-    const headers: Record<string, string> = {};
-    if (isRoot) {
-      headers['x-track-isroot'] = 'S';
-    } else if (empresasIds.length > 0) {
-      sp.set('empresaIds', empresasIds.join(','));
-    }
-
-    fetch(`/api/demoras/comparativa?${sp.toString()}`, { headers, signal: ac.signal })
+    fetch(intent.url, { headers: intent.headers, signal: ac.signal })
       .then((r) => r.json())
       .then((j) => {
         if (ac.signal.aborted) return;
@@ -106,11 +99,21 @@ export function DemoraComparativa({
       .map(([corrida_at, e]) => ({
         corrida_at,
         zona_id: -1,
-        calculada: prom(e.c) ?? 0,
+        // Fix round 1 (Minor): e.c nunca está vacío acá (se puebla al crear
+        // la entrada del Map, arriba), así que el `?? 0` original era rama
+        // muerta hoy — pero si la acumulación cambia alguna vez y un
+        // promedio queda sin dato, preferimos un hueco visible en el
+        // gráfico (null, sin connectNulls en esta Line) a un 0 falso y
+        // creíble. Mismo tipo que as400.
+        calculada: prom(e.c),
         as400: prom(e.a),
         hora: horaDe(corrida_at),
       }));
   })();
+
+  if (sinAlcance) {
+    return <p className="py-6 text-center text-sm text-stats-muted-fg">{MENSAJE_SIN_ALCANCE}</p>;
+  }
 
   if (error) {
     return <p className="py-6 text-center text-sm text-stats-destructive">No se pudo cargar la comparativa: {error}</p>;
