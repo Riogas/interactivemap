@@ -1,7 +1,7 @@
 # Motor de demora informada por zona — Diseño
 
 **Fecha:** 2026-07-28
-**Estado:** Aprobado, pendiente de plan de implementación
+**Estado:** Implementado — ver `docs/DEMORA_INFORMADA.md` para la guía de aplicación
 **Alcance:** TrackMovil (repo `interactivemap`), escenario 1000
 
 ---
