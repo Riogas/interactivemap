@@ -18,6 +18,31 @@
  * OJO: el AS400 solo informa URGENTE. Para NOCTURNO y SERVICE `as400` viene
  * null y la brecha no se puede calcular; la UI lo dice explícitamente.
  *
+ * Paginación (B1 — bloqueante de la revisión final): un día entero de
+ * `demoras_calculadas` son ~10.500 filas SOLO de URGENTE (106 zonas × 99
+ * corridas). Supabase/PostgREST corta en 1000 filas por request SIN avisar,
+ * y como el `.order('corrida_at')` va antes del corte sobrevivían las
+ * corridas MÁS VIEJAS: el gráfico terminaba a las 08:30 y la tabla de brecha
+ * promediaba solo la primera hora y media del día. Se pagina con `.range()`
+ * en bloques de PAGE_SIZE, mismo patrón que
+ * app/api/metricas/cumplimiento/run/route.ts (fetchCumplidos/fetchExistentes).
+ *
+ * Filas sin capacidad (B2): `sin_capacidad = true` significa que la zona no
+ * tenía NINGÚN móvil activo y la fila informó el techo (`max_minutos`) por
+ * definición, no por cálculo. A las 07:00 el 72% de la flota está inactiva,
+ * así que el arranque del día produce una masa de filas con 120 fijo que, si
+ * entran al promedio, arruinan la calibración contra el AS400. Se traen las
+ * banderas que explican un 120 (`sin_capacidad`, `clampeado`, `ritmo_origen`)
+ * y se EXCLUYEN esas filas del promedio de brecha, informando cuántas se
+ * excluyeron. La serie las conserva (la card las marca en el gráfico).
+ *
+ * `escenario_configurado` (B3): el motor solo calcula el escenario 1000
+ * (`v_esc integer := 1000` hardcodeado en demoras_calcular_run, y el seed de
+ * `demoras_config` es solo de ese escenario), pero la pantalla tiene selector
+ * de escenario. Este flag deja que la card diga "el motor no está configurado
+ * para este escenario" en vez de "todavía no hay corridas para hoy", que es
+ * una explicación falsa de una condición permanente.
+ *
  * Auth-scope (fix round 1 — gap Critical del review: el endpoint no acotaba
  * por empresa y getServerSupabaseClient() usa service_role, bypass total de
  * RLS):
@@ -48,11 +73,34 @@ import { requireFuncionalidad, requireAllowlistedEmail } from '@/lib/api-auth-ga
 import { todayMontevideo, montevideoRangeToUtc } from '@/lib/date-utils';
 import { parseZonasJsonb } from '@/lib/auth-scope';
 import { TIPOS_DEMORA } from '@/types/demoras-comparativa';
-import type { TipoDemora, ComparativaData, PuntoComparativa, ZonaBrecha } from '@/types/demoras-comparativa';
+import type {
+  TipoDemora,
+  ComparativaData,
+  PuntoComparativa,
+  ZonaBrecha,
+  ClampeadoDemora,
+  RitmoOrigen,
+} from '@/types/demoras-comparativa';
 
 export const dynamic = 'force-dynamic';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Límite implícito de filas por request de PostgREST/Supabase. */
+const PAGE_SIZE = 1000;
+
+/**
+ * Tope de páginas. Un día son ~10.500 filas por tipo (106 zonas × 99
+ * corridas), así que 30 páginas (30.000 filas) es ~3× el peor caso previsto.
+ * Existe para que un `.range()` que no filtre (driver cambiado, mock mal
+ * armado) no deje el handler en un bucle infinito comiéndose la memoria del
+ * proceso: preferimos un log ruidoso y un resultado incompleto a un cuelgue.
+ */
+const MAX_PAGES = 30;
+
+/** Columnas leídas de `demoras_calculadas` (una sola fuente de verdad). */
+const FILA_COLS =
+  'corrida_at, zona_id, tipo_servicio, demora_informada, demora_as400, sin_capacidad, clampeado, ritmo_origen';
 
 interface Fila {
   corrida_at: string;
@@ -60,6 +108,9 @@ interface Fila {
   tipo_servicio: string;
   demora_informada: number;
   demora_as400: number | null;
+  sin_capacidad: boolean | null;
+  clampeado: ClampeadoDemora | null;
+  ritmo_origen: RitmoOrigen | null;
 }
 
 interface ZonaNombreRow {
@@ -72,10 +123,26 @@ interface DemorasAs400NombreRow {
   zona_nombre: string | null;
 }
 
-const EMPTY_DATA: ComparativaData = { serie: [], zonas: [] };
+/**
+ * Payload de los caminos fail-closed (caller no-root sin scope resuelto).
+ *
+ * `escenario_configurado: true` acá NO es una afirmación sobre
+ * `demoras_config`: en estos caminos el flag no se evalúa (dos de los tres ni
+ * siquiera tocan la base, que es parte del contrato fail-closed). Se elige
+ * `true` para no inventar un "el motor no está configurado" que nadie
+ * verificó; el motivo real —el caller no tiene zonas— lo dice la card con su
+ * propio mensaje, que tiene prioridad sobre el de configuración.
+ */
+const EMPTY_DATA: ComparativaData = {
+  serie: [],
+  zonas: [],
+  excluidas_sin_capacidad: 0,
+  total_filas: 0,
+  escenario_configurado: true,
+};
 
-// ─── Supabase query builder type helper (demoras_calculadas, fleteras_zonas,
-// zonas y demoras no están en types/supabase.ts) ────────────────────────────
+// ─── Supabase query builder type helper (demoras_calculadas, demoras_config,
+// fleteras_zonas, zonas y demoras no están en types/supabase.ts) ────────────
 // Cada método devuelve el propio builder (igual que el cliente real de
 // Supabase), así se puede encadenar cualquier combinación en cualquier orden
 // sin pelear con TypeScript — mismo patrón que app/api/zonas/capacidad-snapshot/route.ts.
@@ -86,12 +153,97 @@ type SQB = {
   gte: (col: string, val: unknown) => SQB;
   lt: (col: string, val: unknown) => SQB;
   order: (col: string, opts: { ascending: boolean }) => SQB;
+  range: (from: number, to: number) => SQB;
   then: Promise<{ data: unknown[] | null; error: { message: string } | null }>['then'];
 };
 type SupabaseCompat = { from: (table: string) => SQB };
 
 function prom(xs: number[]): number {
   return Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100;
+}
+
+/**
+ * B3 — ¿el motor está configurado para este escenario?
+ *
+ * `demoras_calcular_run` tiene el escenario 1000 hardcodeado y el seed de
+ * `demoras_config` solo siembra ese escenario, pero la pantalla tiene
+ * selector de escenario. Con cualquier otro la card queda vacía PARA SIEMPRE:
+ * sin este flag, la UI explicaba esa condición permanente con "todavía no hay
+ * corridas del motor para hoy" — una explicación falsa que invita a esperar.
+ *
+ * Un error leyendo `demoras_config` (el caso más probable: la migración
+ * todavía no se aplicó y la tabla no existe) se trata como "no configurado",
+ * que a los efectos del usuario es exactamente lo mismo.
+ */
+async function escenarioEstaConfigurado(db: SupabaseCompat, escenario: number): Promise<boolean> {
+  const { data, error } = (await db
+    .from('demoras_config')
+    .select('tipo_servicio')
+    .eq('escenario_id', escenario)) as {
+    data: { tipo_servicio: string }[] | null;
+    error: { message: string } | null;
+  };
+
+  if (error) {
+    console.error('[demoras/comparativa] error al leer demoras_config:', error.message);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Lee TODAS las filas del día para (escenario, tipo), paginando en bloques de
+ * PAGE_SIZE. Sin esto Supabase devuelve las primeras 1000 y calla (B1).
+ * Mismo patrón que app/api/metricas/cumplimiento/run/route.ts:42.
+ */
+async function fetchFilas(
+  db: SupabaseCompat,
+  escenario: number,
+  tipo: TipoDemora,
+  gte: string,
+  ltExclusive: string,
+  allowedZonaIds: Set<number> | null,
+): Promise<{ filas: Fila[]; error: string | null }> {
+  const filas: Fila[] = [];
+  let page = 0;
+
+  for (; page < MAX_PAGES; page += 1) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    let query = db
+      .from('demoras_calculadas')
+      .select(FILA_COLS)
+      .eq('escenario', escenario)
+      .eq('tipo_servicio', tipo)
+      .gte('corrida_at', gte)
+      .lt('corrida_at', ltExclusive);
+
+    if (allowedZonaIds !== null) {
+      query = query.in('zona_id', [...allowedZonaIds]);
+    }
+
+    const { data, error } = (await query.order('corrida_at', { ascending: true }).range(from, to)) as {
+      data: Fila[] | null;
+      error: { message: string } | null;
+    };
+
+    if (error) return { filas, error: error.message };
+
+    const batch = data ?? [];
+    filas.push(...batch);
+    if (batch.length < PAGE_SIZE) return { filas, error: null };
+  }
+
+  // Techo alcanzado: el día tiene más filas de las que este endpoint está
+  // dispuesto a traer. Se devuelve lo leído, pero se loguea fuerte — un
+  // truncado silencioso es exactamente el bug que este fix vino a arreglar.
+  console.error(
+    `[demoras/comparativa] tope de paginacion alcanzado (${MAX_PAGES} paginas x ${PAGE_SIZE}): ` +
+      `escenario=${escenario} tipo=${tipo} rango=[${gte}, ${ltExclusive}). El resultado esta truncado.`,
+  );
+
+  return { filas, error: null };
 }
 
 /**
@@ -251,62 +403,74 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const { gte, ltExclusive } = montevideoRangeToUtc(fecha, fecha);
 
-  let query = db
-    .from('demoras_calculadas')
-    .select('corrida_at, zona_id, tipo_servicio, demora_informada, demora_as400')
-    .eq('escenario', escenario)
-    .eq('tipo_servicio', tipo)
-    .gte('corrida_at', gte)
-    .lt('corrida_at', ltExclusive);
-
-  if (allowedZonaIds !== null) {
-    query = query.in('zona_id', [...allowedZonaIds]);
-  }
-
-  const { data, error } = (await query.order('corrida_at', { ascending: true })) as {
-    data: Fila[] | null;
-    error: { message: string } | null;
-  };
+  const { filas, error } = await fetchFilas(db, escenario, tipo, gte, ltExclusive, allowedZonaIds);
 
   if (error) {
-    console.error('[demoras/comparativa] error:', error.message);
+    console.error('[demoras/comparativa] error:', error);
     return NextResponse.json(
-      { success: false, error: 'Error al obtener la comparativa', details: error.message },
+      { success: false, error: 'Error al obtener la comparativa', details: error },
       { status: 500 },
     );
   }
 
-  const filas = data ?? [];
+  const escenarioConfigurado = await escenarioEstaConfigurado(db, escenario);
 
   const zonaIdsPresentes = [...new Set(filas.map((f) => f.zona_id))];
   const nombresPorZona = await resolverNombresZona(db, escenario, zonaIdsPresentes);
 
   const serie: PuntoComparativa[] = filas
     .filter((f) => zonaSel === null || f.zona_id === zonaSel)
-    .map((f) => ({ corrida_at: f.corrida_at, zona_id: f.zona_id, calculada: f.demora_informada, as400: f.demora_as400 }));
+    .map((f) => ({
+      corrida_at: f.corrida_at,
+      zona_id: f.zona_id,
+      calculada: f.demora_informada,
+      as400: f.demora_as400,
+      sin_capacidad: f.sin_capacidad === true,
+      clampeado: f.clampeado ?? null,
+      ritmo_origen: f.ritmo_origen ?? null,
+    }));
 
-  const porZona = new Map<number, { calc: number[]; as400: number[] }>();
+  // Brecha: las filas con sin_capacidad=true NO promedian (B2). Esa fila
+  // informa el techo por definición (no había un solo móvil activo), no por
+  // el modelo; mezclarlas con las filas calculadas de verdad es exactamente
+  // lo que descalibra la comparación contra el AS400 — y a las 07:00, con el
+  // 72% de la flota inactiva, son la mayoría del tramo.
+  const porZona = new Map<number, { calc: number[]; as400: number[]; excluidas: number }>();
   for (const f of filas) {
-    const e = porZona.get(f.zona_id) ?? { calc: [], as400: [] };
-    e.calc.push(f.demora_informada);
-    if (f.demora_as400 !== null) e.as400.push(f.demora_as400);
+    const e = porZona.get(f.zona_id) ?? { calc: [], as400: [], excluidas: 0 };
+    if (f.sin_capacidad === true) {
+      e.excluidas += 1;
+    } else {
+      e.calc.push(f.demora_informada);
+      // El AS400 se promedia sobre las MISMAS corridas que la calculada: una
+      // brecha entre poblaciones distintas no significa nada.
+      if (f.demora_as400 !== null) e.as400.push(f.demora_as400);
+    }
     porZona.set(f.zona_id, e);
   }
 
   const zonas: ZonaBrecha[] = [...porZona.entries()]
     .map(([zona_id, e]) => {
-      const pc = prom(e.calc);
+      const pc = e.calc.length > 0 ? prom(e.calc) : null;
       const pa = e.as400.length > 0 ? prom(e.as400) : null;
       return {
         zona_id,
         zona_nombre: nombresPorZona.get(zona_id) ?? `Zona ${zona_id}`,
         prom_calculada: pc,
         prom_as400: pa,
-        brecha: pa === null ? null : Math.round((pc - pa) * 100) / 100,
+        brecha: pc === null || pa === null ? null : Math.round((pc - pa) * 100) / 100,
+        muestras: e.calc.length,
+        excluidas_sin_capacidad: e.excluidas,
       };
     })
     .sort(compararBrechaDesc);
 
-  const payload: ComparativaData = { serie, zonas };
+  const payload: ComparativaData = {
+    serie,
+    zonas,
+    excluidas_sin_capacidad: zonas.reduce((acc, z) => acc + z.excluidas_sin_capacidad, 0),
+    total_filas: filas.length,
+    escenario_configurado: escenarioConfigurado,
+  };
   return NextResponse.json({ success: true, data: payload });
 }

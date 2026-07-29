@@ -11,21 +11,37 @@ import { GET } from './route';
 const mockAuth = vi.mocked(requireAuth);
 const mockDb = vi.mocked(getServerSupabaseClient);
 
+/** `sin_capacidad: false` en las filas base: son corridas con capacidad real. */
 const FILAS = [
-  { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 45, demora_as400: 35 },
-  { corrida_at: '2026-07-29T10:10:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 60, demora_as400: 40 },
-  { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 200, tipo_servicio: 'URGENTE', demora_informada: 30, demora_as400: null },
+  { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 45, demora_as400: 35, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA' },
+  { corrida_at: '2026-07-29T10:10:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 60, demora_as400: 40, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA' },
+  { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 200, tipo_servicio: 'URGENTE', demora_informada: 30, demora_as400: null, sin_capacidad: false, clampeado: 'MIN', ritmo_origen: 'GLOBAL' },
 ];
+
+/** Config sembrada: el escenario 1000 es el único que el motor calcula. */
+const CONFIG_1000 = [{ tipo_servicio: 'URGENTE' }, { tipo_servicio: 'NOCTURNO' }, { tipo_servicio: 'SERVICE' }];
 
 /**
  * Mock del cliente Supabase, por tabla. `.in('zona_id', ids)` FILTRA de
  * verdad las filas configuradas — necesario para que los tests de scope
  * (fix round 1) prueben la respuesta real del endpoint, no solo con qué
- * argumentos se llamó `.in()`. El resto de los métodos son passthrough.
+ * argumentos se llamó `.in()`.
+ *
+ * B1 — el mock reproduce el TECHO DE 1000 FILAS de Supabase/PostgREST, que es
+ * el bug entero: sin `.range()`, la respuesta se trunca en 1000 filas y el
+ * cliente no se entera. Si el mock devolviera siempre todo, el test de
+ * paginación pasaría igual con un endpoint sin paginar — un test que no puede
+ * fallar. Acá, un endpoint que no llame `.range()` recibe 1000 filas y punto;
+ * uno que pagine recibe cada bloque como en producción.
+ *
+ * El resto de los métodos son passthrough.
  */
+const SUPABASE_MAX_ROWS = 1000;
+
 function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
   const fixtures: Record<string, unknown[]> = {
     demoras_calculadas: FILAS,
+    demoras_config: CONFIG_1000,
     fleteras_zonas: [],
     zonas: [],
     demoras: [],
@@ -33,6 +49,7 @@ function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
   };
   const from = vi.fn((table: string) => {
     let rows = fixtures[table] ?? [];
+    let ranged = false;
     const q: Record<string, unknown> = {};
     for (const m of ['select', 'eq', 'gte', 'lt', 'lte', 'order']) {
       q[m] = vi.fn(() => q);
@@ -44,7 +61,14 @@ function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
       }
       return q;
     });
-    q.then = (res: (v: unknown) => unknown) => res({ data: rows, error: null });
+    q.range = vi.fn((from_: number, to: number) => {
+      ranged = true;
+      // Ni con un .range() enorme PostgREST devuelve más de 1000 filas.
+      rows = rows.slice(from_, Math.min(to + 1, from_ + SUPABASE_MAX_ROWS));
+      return q;
+    });
+    q.then = (res: (v: unknown) => unknown) =>
+      res({ data: ranged ? rows : rows.slice(0, SUPABASE_MAX_ROWS), error: null });
     return q;
   });
   return { from };
@@ -187,7 +211,8 @@ describe('GET /api/demoras/comparativa', () => {
       const res = await GET(req('escenario=1000&tipo=URGENTE', NON_ROOT_OK));
       const body = await res.json();
       expect(res.status).toBe(200);
-      expect(body.data).toEqual({ serie: [], zonas: [] });
+      expect(body.data.serie).toEqual([]);
+      expect(body.data.zonas).toEqual([]);
       expect(mockDb).not.toHaveBeenCalled();
     });
 
@@ -195,7 +220,8 @@ describe('GET /api/demoras/comparativa', () => {
       const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=abc,', NON_ROOT_OK));
       const body = await res.json();
       expect(res.status).toBe(200);
-      expect(body.data).toEqual({ serie: [], zonas: [] });
+      expect(body.data.serie).toEqual([]);
+      expect(body.data.zonas).toEqual([]);
       expect(mockDb).not.toHaveBeenCalled();
     });
 
@@ -204,7 +230,8 @@ describe('GET /api/demoras/comparativa', () => {
       const res = await GET(req('escenario=1000&tipo=URGENTE&empresaIds=5', NON_ROOT_OK));
       const body = await res.json();
       expect(res.status).toBe(200);
-      expect(body.data).toEqual({ serie: [], zonas: [] });
+      expect(body.data.serie).toEqual([]);
+      expect(body.data.zonas).toEqual([]);
     });
 
     it('no-root con empresas validas -> solo ve las zonas de su scope', async () => {
@@ -302,6 +329,186 @@ describe('GET /api/demoras/comparativa', () => {
       delete process.env[ENV_KEY];
       const res = await GET(req('escenario=1000&tipo=URGENTE'));
       expect(res.status).toBe(200);
+    });
+  });
+
+  // ─── B1 — paginacion: Supabase corta en 1000 filas SIN avisar ────────────
+  // Un dia entero son ~10.500 filas solo de URGENTE (106 zonas x 99 corridas).
+  // Sin .range(), el endpoint recibia las primeras 1000 y no se enteraba; y
+  // como el .order('corrida_at') va ANTES del corte, las que sobrevivian eran
+  // las corridas MAS VIEJAS: el grafico terminaba a las 08:30 y la brecha
+  // promediaba solo la primera hora y media del dia.
+
+  describe('paginacion (mas de 1000 filas por dia)', () => {
+    /** N corridas de 2 zonas, ordenadas por corrida_at como las devuelve la BD. */
+    function filasMasivas(corridas: number) {
+      const filas: Record<string, unknown>[] = [];
+      for (let i = 0; i < corridas; i += 1) {
+        const t = new Date(Date.UTC(2026, 6, 29, 10, 0, 0) + i * 600_000).toISOString();
+        filas.push({ corrida_at: t, zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 40, demora_as400: 35, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA' });
+        filas.push({ corrida_at: t, zona_id: 200, tipo_servicio: 'URGENTE', demora_informada: 60, demora_as400: 35, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA' });
+      }
+      return filas;
+    }
+
+    it('trae TODAS las filas cuando hay mas de 1000 (no se corta en la primera pagina)', async () => {
+      const filas = filasMasivas(1500); // 3000 filas: 3 paginas (1000 + 1000 + 1000)
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: filas }) as never);
+
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.data.total_filas).toBe(3000);
+      expect(body.data.serie).toHaveLength(3000);
+    });
+
+    it('la ultima corrida del dia llega al payload (el truncado se comia la tarde)', async () => {
+      const filas = filasMasivas(1500);
+      const ultima = filas[filas.length - 1].corrida_at as string;
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: filas }) as never);
+
+      const res = await GET(req('escenario=1000&tipo=URGENTE&zona=100'));
+      const body = await res.json();
+
+      const horas = body.data.serie.map((p: { corrida_at: string }) => p.corrida_at);
+      expect(horas).toContain(ultima);
+      expect(body.data.serie).toHaveLength(1500);
+    });
+
+    it('un dia con exactamente 1000 filas no dispara una pagina extra vacia', async () => {
+      const filas = filasMasivas(500); // exactamente 1000
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: filas }) as never);
+
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+
+      expect(body.data.total_filas).toBe(1000);
+    });
+
+    it('el promedio por zona usa todo el dia, no solo la primera pagina', async () => {
+      // 1500 corridas: la zona 100 informa 40 en las primeras 1000 filas
+      // (las primeras 500 corridas) y 100 de ahi en adelante. Con truncado en
+      // 1000 filas el promedio daria 40; con todo el dia, 60.
+      const filas: Record<string, unknown>[] = [];
+      for (let i = 0; i < 1500; i += 1) {
+        const t = new Date(Date.UTC(2026, 6, 29, 10, 0, 0) + i * 600_000).toISOString();
+        filas.push({ corrida_at: t, zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: i < 500 ? 40 : 100, demora_as400: 35, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA' });
+        filas.push({ corrida_at: t, zona_id: 200, tipo_servicio: 'URGENTE', demora_informada: 60, demora_as400: 35, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA' });
+      }
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: filas }) as never);
+
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+
+      // (500*40 + 1000*100) / 1500 = 80
+      expect(z100.prom_calculada).toBe(80);
+      expect(z100.muestras).toBe(1500);
+    });
+  });
+
+  // ─── B2 — las filas sin capacidad no promedian ───────────────────────────
+  // A las 07:00 el 72% de la flota esta inactiva: capacidad<=0 y la fila
+  // informa el techo (120) por definicion, no por calculo. Promediarlas
+  // arruina la calibracion contra el AS400.
+
+  describe('filas sin capacidad (sin_capacidad = true)', () => {
+    const CON_SIN_CAP = [
+      { corrida_at: '2026-07-29T07:00:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 120, demora_as400: 35, sin_capacidad: true, clampeado: 'MAX', ritmo_origen: 'DEFECTO' },
+      { corrida_at: '2026-07-29T07:10:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 120, demora_as400: 35, sin_capacidad: true, clampeado: 'MAX', ritmo_origen: 'DEFECTO' },
+      { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 45, demora_as400: 35, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA' },
+      { corrida_at: '2026-07-29T10:10:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 55, demora_as400: 45, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA' },
+    ];
+
+    it('el promedio y la brecha ignoran las corridas sin capacidad', async () => {
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: CON_SIN_CAP }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+
+      // Con las 4 filas el promedio daria (120+120+45+55)/4 = 85; con solo
+      // las 2 que tienen capacidad, 50.
+      expect(z100.prom_calculada).toBe(50);
+      expect(z100.prom_as400).toBe(40); // (35+45)/2, NO (35+35+35+45)/4
+      expect(z100.brecha).toBe(10);
+    });
+
+    it('informa cuantas corridas se excluyeron, por zona y en total', async () => {
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: CON_SIN_CAP }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+
+      expect(z100.excluidas_sin_capacidad).toBe(2);
+      expect(z100.muestras).toBe(2);
+      expect(body.data.excluidas_sin_capacidad).toBe(2);
+      expect(body.data.total_filas).toBe(4);
+    });
+
+    it('una zona con TODAS las corridas sin capacidad queda con promedio null (no con 120)', async () => {
+      const filas = [
+        { corrida_at: '2026-07-29T07:00:00-03:00', zona_id: 300, tipo_servicio: 'URGENTE', demora_informada: 120, demora_as400: 35, sin_capacidad: true, clampeado: 'MAX', ritmo_origen: 'DEFECTO' },
+        { corrida_at: '2026-07-29T07:10:00-03:00', zona_id: 300, tipo_servicio: 'URGENTE', demora_informada: 120, demora_as400: 35, sin_capacidad: true, clampeado: 'MAX', ritmo_origen: 'DEFECTO' },
+      ];
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: filas }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z300 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 300);
+
+      expect(z300.prom_calculada).toBeNull();
+      expect(z300.brecha).toBeNull();
+      expect(z300.muestras).toBe(0);
+      expect(z300.excluidas_sin_capacidad).toBe(2);
+    });
+
+    it('la SERIE conserva los puntos sin capacidad, marcados (la card los dibuja)', async () => {
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: CON_SIN_CAP }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE&zona=100'));
+      const body = await res.json();
+
+      expect(body.data.serie).toHaveLength(4);
+      expect(body.data.serie.map((p: { sin_capacidad: boolean }) => p.sin_capacidad)).toEqual([true, true, false, false]);
+    });
+
+    it('la serie trae las banderas que explican un 120 (clampeado y ritmo_origen)', async () => {
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: CON_SIN_CAP }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE&zona=100'));
+      const body = await res.json();
+
+      expect(body.data.serie[0].clampeado).toBe('MAX');
+      expect(body.data.serie[0].ritmo_origen).toBe('DEFECTO');
+      expect(body.data.serie[2].clampeado).toBeNull();
+      expect(body.data.serie[2].ritmo_origen).toBe('ZONA');
+    });
+
+    it('sin ninguna fila sin capacidad, el contador es 0 (no se inventa exclusion)', async () => {
+      const res = await GET(req('escenario=1000&tipo=URGENTE')); // FILAS base
+      const body = await res.json();
+      expect(body.data.excluidas_sin_capacidad).toBe(0);
+      expect(body.data.total_filas).toBe(3);
+    });
+  });
+
+  // ─── B3 — el motor solo esta configurado para el escenario 1000 ──────────
+  // demoras_calcular_run tiene `v_esc integer := 1000` hardcodeado y el seed
+  // de demoras_config es solo de ese escenario, pero la pantalla tiene
+  // selector: con cualquier otro la card queda vacia PARA SIEMPRE.
+
+  describe('escenario_configurado', () => {
+    it('true cuando el escenario tiene filas en demoras_config', async () => {
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      expect(body.data.escenario_configurado).toBe(true);
+    });
+
+    it('false cuando el escenario no tiene NINGUNA fila en demoras_config', async () => {
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: [], demoras_config: [] }) as never);
+      const res = await GET(req('escenario=2000&tipo=URGENTE'));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.data.serie).toEqual([]);
+      expect(body.data.escenario_configurado).toBe(false);
     });
   });
 });
