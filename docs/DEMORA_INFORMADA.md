@@ -134,7 +134,7 @@ nada.
 | `estadistico` | `MEDIANA` | Cuál de las cuatro estadísticas del ritmo (`MEDIA`, `MEDIANA`, `P75`, `P90`) alimenta el cálculo. Las otras tres quedan guardadas igual, para reprocesar histórico sin recalcular. |
 | `ritmo_cascada` | `CHOFER,MOVIL,ZONA,GLOBAL` | Orden de atribución del ritmo. Ver §3.1. |
 | `ritmo_default_minutos` | `30` | Piso cuando no hay ninguna estadística disponible (ni zona ni global). Se persiste en `demoras_calculadas.ritmo_usado` con `ritmo_origen='DEFECTO'`. |
-| `factor_calibracion` | `1.0` | Multiplicador global del resultado crudo. Existe por el riesgo R1 — ver §5. |
+| `factor_calibracion` | `1.0` | Multiplicador global del resultado crudo. Existe por el riesgo R1 — ver §6. |
 | `hora_inicio` / `hora_fin` | `07:00` / `23:30` | Ventana operativa **de ese tipo**. Fuera de ventana, ese tipo no escribe fila. |
 | `updated_at` | `now()` | Bookkeeping, no la actualiza el motor — es para auditar ediciones manuales de la config. |
 | `updated_by` | `NULL` | Bookkeeping, texto libre; nadie la setea automáticamente hoy. |
