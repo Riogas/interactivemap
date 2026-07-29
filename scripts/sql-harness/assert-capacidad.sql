@@ -73,11 +73,23 @@ INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, pr
 INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo) VALUES
   (1000, 30, DATE '2026-07-29', true);
 UPDATE escenario_settings SET peso_transito_alpha = 0.33 WHERE escenario_id = 1000;
+-- Fix round 1 de Task 10 (Important 5): si este chequeo fallara, el
+-- ON_ERROR_STOP aborta el script ENTERO antes de llegar al "restaurar
+-- alpha a default" de mas abajo, dejando peso_transito_alpha=0.33 pegado
+-- para lo que corra despues en la misma invocacion del harness (otros
+-- assert-*.sql comparten la base). El BEGIN/EXCEPTION anidado restaura
+-- alpha ANTES de re-lanzar, asi el fallo sigue siendo fatal (correcto)
+-- pero no ensucia el estado para archivos posteriores.
 DO $$
 DECLARE v numeric;
 BEGIN
-  SELECT sum(capacidad_efectiva) INTO v FROM demoras_capacidad(1000, DATE '2026-07-29');
-  IF abs(v - 1.0) >= 0.001 THEN RAISE EXCEPTION 'alpha=0.33 suma: obtuvo % (fuera de tolerancia)', v; END IF;
+  BEGIN
+    SELECT sum(capacidad_efectiva) INTO v FROM demoras_capacidad(1000, DATE '2026-07-29');
+    IF abs(v - 1.0) >= 0.001 THEN RAISE EXCEPTION 'alpha=0.33 suma: obtuvo % (fuera de tolerancia)', v; END IF;
+  EXCEPTION WHEN OTHERS THEN
+    UPDATE escenario_settings SET peso_transito_alpha = 0.3 WHERE escenario_id = 1000;
+    RAISE;
+  END;
   RAISE NOTICE 'ok alpha=0.33 6zonas suma dentro de tolerancia';
 END $$;
 

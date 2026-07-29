@@ -3343,3 +3343,68 @@ prioridad. Gana el primer nivel que llegue al minimo de muestras.
 GLOBAL se evalua siempre ultimo aunque no este en la lista: es la red
 final. Una lista vacia o mal formada cae al default sin romper."
 ```
+
+**Fix round 1 (2026-07-29), sobre 2 Critical + 5 Important de la revision:**
+
+- **Critical 1** — `'GLOBAL'` sola caía al default completo (`CHOFER,MOVIL,
+  ZONA,GLOBAL`) en vez de evaluar solo GLOBAL: el filtro de niveles válidos
+  excluía `GLOBAL`, así que una lista de solo `GLOBAL` no producía fila y el
+  `coalesce` la reemplazaba por el default — justo lo opuesto de lo
+  configurado, y en el peor momento (congelar el motor en una línea base
+  estable cuando los datos de chofer no son confiables). Fix: `GLOBAL` ahora
+  es un nivel válido en el filtro; se saca de la lista resultante y se
+  reagrega una sola vez al final (`array_remove` + `append`), así una lista
+  de solo `GLOBAL` da `cascada=[GLOBAL]` y no se duplica si el operador la
+  puso en el medio de la lista.
+- **Critical 2** — ningún assert verificaba un número, solo el string
+  `ritmo_origen`; los cuatro asserts originales usan un único móvil de peso 1
+  cuyos hechos son exactamente los de la zona, así que CHOFER=MOVIL=ZONA daban
+  la misma media/mediana y un blend mal armado pasaba igual. Fix: nuevo assert
+  con dos móviles de pesos distintos (uno prioridad peso 1, uno tránsito
+  repartido en 4 zonas peso_norm=0.25) y choferes con ritmos bien distintos
+  (100 y 20), verificando el valor exacto del blend ponderado (84.00 = (1.00×
+  100 + 0.25×20)/1.25) a mano. Se demostró que el assert puede fallar rompiendo
+  la normalización a propósito (peso_norm=1 fijo da 60.00, no 84.00).
+- **Important 3** — `ritmo_muestras` de CHOFER contaba el mismo chofer una vez
+  por móvil que lo maneja (texto libre del AS400, se repite entre camiones de
+  una fletera tercerizada): dos móviles con el mismo chofer top duplicaban sus
+  muestras. Fix: se colapsa por chofer (`GROUP BY chofer`) antes de sumar — el
+  peso se acumula (aportes reales de móviles distintos) pero las muestras del
+  chofer se cuentan una sola vez.
+- **Important 4** — con `peso_transito_alpha=0` (soportado por el CHECK y
+  documentado), un nivel podía ganar la cascada (`n >= mínimo`) con las cuatro
+  estadísticas en NULL, porque `n` se sumaba sin mirar si el móvil aportaba
+  peso real. Río abajo, `demoras_calcular_run` informaba el DEFECTO
+  (`ritmo_default_minutos`) habiendo descartado una estadística de un nivel
+  inferior con datos reales. Fix: `n`, igual que las estadísticas, solo cuenta
+  el peso efectivamente aportado (`peso_chofer > 0` / `peso_norm > 0`).
+- **Important 5** — `assert-ritmo.sql` no truncaba `moviles_dia`, así que
+  corriendo `assert-run.sql` antes en la misma invocación del harness (que
+  deja una fila con la misma PK sin limpiar al final) el `INSERT` de este
+  archivo chocaba con `duplicate key`. Fix: se agregó `moviles_dia` al
+  `TRUNCATE` inicial y un reset defensivo de `peso_transito_alpha=0.3` (el
+  assert de blend numérico depende de ese valor). También se hizo robusto el
+  restore de alpha en `assert-capacidad.sql`: si el chequeo de `alpha=0.33`
+  fallara, `ON_ERROR_STOP` abortaba el script antes de restaurar a 0.3,
+  dejando el valor pisado para archivos que corran después.
+- **Important 6** — la resolución es por (escenario, tipo), pero ningún
+  assert lo fijaba: los 8 asserts originales solo probaban URGENTE, así que
+  sacar el filtro por tipo de la lectura de `demoras_config` no rompía nada.
+  Fix: nuevo assert con URGENTE y SERVICE configurados con cascadas distintas,
+  resolviendo distinto en la misma corrida (mismo llamado a la función).
+- **Important 7** — el assert de "lista basura" solo chequeaba
+  `ritmo_origen IS NULL`, algo que nunca puede pasar porque GLOBAL se agrega
+  siempre: era el único test de "cae al default" y no probaba nada. Fix: se
+  cambió a `= 'CHOFER'` (el resultado real del default completo con el
+  fixture existente), que sí puede fallar.
+
+Verificación: los 3 bugs (Critical 1, Important 3, Important 4) se
+reprodujeron primero contra la función pre-fix (confirmando que los asserts
+nuevos detectan el estado real, no uno hipotético) y luego se confirmó que la
+versión corregida los resuelve, con los mismos datos, en el mismo contenedor.
+El blend de Critical 2 se probó además rompiendo la normalización a propósito.
+Corrida combinada `assert-capacidad.sql` + `assert-ritmo.sql` +
+`assert-run.sql` en una sola invocación del harness: exit 0, incluyendo el
+test de lock concurrente. Detalle completo en
+`.superpowers/sdd/2026-07-28-motor-demora-informada/task-10-report.md`
+(gitignored, no versionado).
