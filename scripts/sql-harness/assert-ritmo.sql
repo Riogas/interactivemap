@@ -50,7 +50,16 @@ BEGIN
   IF r.ritmo_muestras IS DISTINCT FROM 5 THEN RAISE EXCEPTION 'zona 100 muestras: %', r.ritmo_muestras; END IF;
   IF round(r.ritmo_mediana,2) IS DISTINCT FROM 30.00 THEN RAISE EXCEPTION 'mediana: % (esperaba 30)', r.ritmo_mediana; END IF;
   IF round(r.ritmo_media,2) IS DISTINCT FROM 40.00 THEN RAISE EXCEPTION 'media: % (esperaba 40)', r.ritmo_media; END IF;
-  IF r.ritmo_p90 IS DISTINCT FROM NULL AND r.ritmo_p90 <= r.ritmo_mediana THEN RAISE EXCEPTION 'p90 debe superar la mediana'; END IF;
+  -- Con 5 muestras (10,20,30,40,100) el p90 es un numero real (76) y TIENE
+  -- que superar la mediana (30). El guard anterior era `IS DISTINCT FROM
+  -- NULL AND ...`: si el dia de manana la funcion devolviera NULL en
+  -- ritmo_p90 para una zona con muestras suficientes, el assert lo dejaba
+  -- pasar en silencio en vez de reprobarlo. Un NULL aca es exactamente el
+  -- bug que este assert existe para atrapar, asi que se afirma, no se
+  -- enmascara.
+  IF r.ritmo_p90 IS NULL OR r.ritmo_p90 <= r.ritmo_mediana THEN
+    RAISE EXCEPTION 'p90 debe existir y superar la mediana: p90=% mediana=%', r.ritmo_p90, r.ritmo_mediana;
+  END IF;
   RAISE NOTICE 'ok zona con muestras suficientes';
 END $$;
 

@@ -31,8 +31,22 @@ for t in "${ASSERTS[@]:-}"; do
   docker exec -i $C psql -U postgres -v ON_ERROR_STOP=1 < "$t" || FAIL=1
 done
 
-# Test de lock con dos conexiones concurrentes (si el archivo de asserts menciona advisory_xact_lock)
-if grep -q "advisory_xact_lock" "$HERE/assert-run.sql" 2>/dev/null; then
+# Test de lock con dos conexiones concurrentes.
+#
+# Se decide mirando los asserts QUE SE PASARON, no un archivo fijo. Antes esto
+# hacia grep sobre "$HERE/assert-run.sql" hardcodeado, que existe siempre: el
+# test de lock corria en TODA invocacion, aunque no se hubiera aplicado la
+# migracion de demoras_calcular_run. Efecto real medido: validar solo
+# demoras_acabado con su assert daba exit 1 con "function
+# demoras_calcular_run does not exist" — el harness reprobaba una migracion
+# correcta, que es la peor forma de fallar para una herramienta de validacion.
+LOCK_TEST=0
+for t in "${ASSERTS[@]:-}"; do
+  [ -z "$t" ] && continue
+  if grep -q "advisory_xact_lock" "$t" 2>/dev/null; then LOCK_TEST=1; fi
+done
+
+if [ "$LOCK_TEST" = 1 ]; then
   echo "── test lock concurrente (dos conexiones)"
 
   # Lanzar conexion 2 en background: toma el lock y espera
