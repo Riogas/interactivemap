@@ -671,11 +671,129 @@ incluye los viajes de recarga que hubo en los días medidos.
 
 ---
 
-## 9. Cómo saber si la fórmula sirve
+## 9. Todo el cálculo es parámetro
+
+Ninguna de las decisiones de la sección 8 se resuelve discutiéndola: se
+resuelve **corriendo las dos opciones y mirando cuál acierta**. Para que eso
+sea posible, todo lo que el cálculo decide tiene que ser un valor editable,
+no una línea de código.
+
+### 9.1 Dónde vive cada cosa
+
+La configuración se parte en dos, con criterios distintos:
+
+| Tabla | Qué guarda | Una fila por |
+|---|---|---|
+| **`demoras_modelo`** *(nueva)* | Todo el cálculo | **escenario** |
+| `demoras_config` *(existente)* | Solo lo operativo: `motor_activo`, `hora_inicio`, `hora_fin` | escenario + tipo |
+
+El cálculo es **global**: no tiene sentido que URGENTE mida el ritmo de una
+manera y SERVICE de otra mientras estamos buscando la fórmula correcta. Lo
+operativo sí es por tipo, porque NOCTURNO tiene su propia ventana horaria
+(18:00–23:30) y eso no cambia.
+
+Las columnas de cálculo que hoy viven en `demoras_config`
+(`min_minutos`, `max_minutos`, `escalon_minutos`, `subida_max`, `bajada_max`,
+`estadistico`, `ritmo_cascada`, `ritmo_default_minutos`,
+`factor_calibracion`) **se migran a `demoras_modelo` y se eliminan de
+`demoras_config`**. Dejar el mismo parámetro en dos tablas es garantizar que
+algún día tengan valores distintos y nadie sepa cuál manda.
+
+### 9.2 El inventario completo
+
+**Lo que se informa**
+
+| Parámetro | Valores | Hoy |
+|---|---|---|
+| `min_minutos` / `max_minutos` | enteros | 30 / 120 |
+| `escalon_minutos` | entero | 15 |
+| `incluir_entrega_propia` | sí / no | **nuevo** — si la demora llega hasta la entrega o hasta que sale el móvil |
+
+**Estabilidad entre corridas**
+
+| Parámetro | Valores | Hoy |
+|---|---|---|
+| `subida_max` / `bajada_max` | minutos por corrida | 30 / 15 |
+| `suavizado_bypass_cambio_capacidad` | sí / no | **nuevo** — decisión 8.4 |
+
+**El ritmo** — el bloque que más se va a tocar
+
+| Parámetro | Valores | Hoy |
+|---|---|---|
+| `ritmo_metrica` | `ENTRE_ENTREGAS` · `ASIGNADO_A_ENTREGA` | **nuevo** |
+| `estadistico` | `MEDIA` · `MEDIANA` · `P75` · `P90` | MEDIANA |
+| `ritmo_cascada` | CSV de `CHOFER,MOVIL,ZONA,GLOBAL` | los cuatro |
+| `ritmo_dias_ventana` | entero — 7 es semanal | **nuevo**, hoy clavado en 7 |
+| `ritmo_min_muestras` | entero | **nuevo**, hoy clavado en 5 |
+| `ritmo_hueco_max_minutos` | minutos | **nuevo** — decisión 8.5 |
+| `ritmo_solo_con_cola` | sí / no | **nuevo** — decisión 8.5 |
+| `ritmo_default_minutos` | minutos | 30 |
+
+**Quién atiende el pedido**
+
+| Parámetro | Valores | Hoy |
+|---|---|---|
+| `modelo` | `PROXIMO_HUECO` · `CAPACIDAD_PROMEDIO` | **nuevo** |
+| `transito_modo` | `IGUAL` · `CASTIGO` · `SOLO_SI_NO_HAY` · `ALPHA` | **nuevo** — decisión 8.1 |
+| `transito_castigo_minutos` | minutos, si el modo es `CASTIGO` | **nuevo** |
+| `transito_margen_minutos` | minutos, si el modo es `SOLO_SI_NO_HAY` | **nuevo** |
+
+**La cola**
+
+| Parámetro | Valores | Hoy |
+|---|---|---|
+| `vecinas_modo` | `IGNORAR` · `TODOS` · `PONDERADO` | **nuevo** — decisión 8.2 |
+| `atrapados_modo` | `EXCLUIR` · `COMO_SIN_ASIGNAR` · `EN_COLA` | **nuevo** — decisión 8.3 |
+| `factor_calibracion` | multiplicador | 1.0 |
+
+`peso_transito_alpha` y `pedidos_sa_minutos_antes` siguen donde están
+(`escenario_settings`): los usa toda la aplicación, no solo este motor.
+
+### 9.3 Los dos parámetros que valen oro
+
+**`modelo`** y **`ritmo_metrica`**. Con esos dos se puede correr el modelo
+viejo y el nuevo sobre exactamente los mismos datos y medir la diferencia,
+en vez de discutirla. Son lo que convierte la sección 8 de una lista de
+opiniones en una lista de experimentos.
+
+### 9.4 Sin versionado, probar ensucia el histórico
+
+Hoy `demoras_calculadas` guarda los insumos de cada corrida, pero **no con
+qué configuración se calcularon**. Si el martes se cambia el estadístico, las
+filas del lunes y las del miércoles dejan de ser comparables — y no hay forma
+de darse cuenta mirando la tabla.
+
+En cuanto la configuración se vuelve algo que se toca seguido, eso pasa de
+ser un detalle a ser el problema principal. Por eso:
+
+- Cada edición de `demoras_modelo` escribe una fila en
+  **`demoras_modelo_historial`** con los valores anteriores, quién los cambió
+  y cuándo.
+- Cada fila de `demoras_calculadas` estampa **qué versión de configuración**
+  la produjo.
+
+Así una corrida de hace seis semanas se puede reconstruir entera, y una
+comparación entre dos períodos puede avisar «ojo, acá cambió la config» en
+vez de mentir en silencio.
+
+### 9.5 La pantalla
+
+Los parámetros se editan desde **Preferencias Globales**, no por SQL: la
+gracia de parametrizar es poder probar sin depender de nadie. La pantalla
+tiene que apagar los campos que no aplican —`transito_castigo_minutos` no
+significa nada si `transito_modo` no es `CASTIGO`— y ofrecer volver a los
+valores por defecto de una sola vez.
+
+Los cambios no requieren deploy ni reinicio: la corrida siguiente del cron,
+como máximo 10 minutos después, ya los toma.
+
+---
+
+## 10. Cómo saber si la fórmula sirve
 
 Acá hay un cambio de criterio importante respecto del plan original.
 
-### 9.1 El AS400 no es la verdad
+### 10.1 El AS400 no es la verdad
 
 El plan actual compara nuestro número contra el que informa el AS400 y ajusta
 hasta que se parezcan. **Eso mide si nos parecemos al AS400, no si acertamos.**
@@ -685,7 +803,7 @@ hay ninguna razón para suponer que está bien.
 Sirve como referencia y para detectar diferencias groseras, pero no como
 objetivo.
 
-### 9.2 La verdad la tenemos: el backtest
+### 10.2 La verdad la tenemos: el backtest
 
 Tenemos 168.000 entregas reales con su hora exacta. Se puede reconstruir el
 pasado y ver si la fórmula habría acertado:
@@ -712,7 +830,7 @@ Repitiéndolo sobre miles de pedidos salen las respuestas que importan:
   de la sección 8: en vez de discutir si el tránsito cuenta igual, se corren
   las dos y gana la que acierta.
 
-### 9.3 Requisito para poder hacerlo
+### 10.3 Requisito para poder hacerlo
 
 Para reconstruir el estado de un momento pasado hace falta que el estado
 quede grabado. `demoras_calculadas` ya guarda los insumos de cada corrida,
@@ -723,7 +841,7 @@ calibrar.
 
 ---
 
-## 10. Resumen para el apurado
+## 11. Resumen para el apurado
 
 | | Modelo de hoy | Modelo propuesto |
 |---|---|---|
