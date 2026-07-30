@@ -1041,6 +1041,31 @@ BEGIN
   RAISE NOTICE 'ok ventana SA';
 END $$;
 
+-- 5) Un escenario SIN fila en escenario_settings no puede hacer desaparecer
+--    la demanda. Es el peor modo de falla posible: la funcion devolveria
+--    cero filas, el motor informaria el piso, y una zona con cola real
+--    saldria como si estuviera vacia. Los ASIGNADOS cuentan siempre, y sin
+--    configuracion de ventana los SIN ASIGNAR tambien (NULL = sin filtro).
+DO $$
+DECLARE r record; v_mins integer;
+BEGIN
+  SELECT pedidos_sa_minutos_antes INTO v_mins FROM escenario_settings WHERE escenario_id = 1000;
+  DELETE FROM escenario_settings WHERE escenario_id = 1000;
+
+  SELECT * INTO r FROM demoras_cola(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
+   WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'sin fila en escenario_settings la funcion devolvio CERO filas: la demanda desaparecio';
+  END IF;
+  IF r.asignados = 0 THEN
+    RAISE EXCEPTION 'sin fila en escenario_settings se perdieron los asignados, que cuentan siempre';
+  END IF;
+
+  INSERT INTO escenario_settings (escenario_id, peso_transito_alpha, nombre, pedidos_sa_minutos_antes)
+  VALUES (1000, 0.3, 'Escenario 1000', v_mins);
+  RAISE NOTICE 'ok sin escenario_settings degrada a "sin filtro", no a cero filas';
+END $$;
+
 TRUNCATE pedidos, services, moviles_dia;
 ```
 
@@ -1106,8 +1131,20 @@ AS $fn$
     -- Ventana de visibilidad de los sin-asignar. NO es config del motor: es
     -- la misma que usan la capa de capacidad de entrega y el mapa, y vive
     -- por escenario. NULL o 0 = sin filtro.
-    SELECT es.pedidos_sa_minutos_antes AS mins
-      FROM escenario_settings es WHERE es.escenario_id = p_escenario
+    --
+    -- La subconsulta escalar es DELIBERADA y no un `FROM escenario_settings`:
+    -- si el escenario no tiene fila en esa tabla, un FROM deja este CTE
+    -- vacio, y el CROSS JOIN de `visible` mas abajo colapsa la funcion
+    -- entera a cero filas -- incluidos los pedidos ASIGNADOS, que por regla
+    -- cuentan SIEMPRE. O sea: una tabla de configuracion incompleta hacia
+    -- desaparecer la demanda en vez de degradar a "sin filtro", y el motor
+    -- informaba el piso en zonas con cola real. Un SELECT sin FROM siempre
+    -- devuelve exactamente una fila, con mins NULL cuando no hay
+    -- configuracion, que es justo el caso "sin filtro". Mismo patron
+    -- defensivo que usa demoras_ritmo v2 sobre la misma tabla.
+    SELECT (SELECT es.pedidos_sa_minutos_antes
+              FROM escenario_settings es
+             WHERE es.escenario_id = p_escenario) AS mins
   ),
   crudo AS (
     -- Solo URGENTE y NOCTURNO exactos desde pedidos; cualquier otro
