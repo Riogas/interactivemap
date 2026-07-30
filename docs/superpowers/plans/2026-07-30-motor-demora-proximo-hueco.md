@@ -30,6 +30,7 @@
 | `docs/sqls/2026-07-31-demoras-ritmo-muestras.sql` | `demoras_ritmo_muestras` — las muestras crudas del ritmo, con las dos métricas |
 | `docs/sqls/2026-07-31-demoras-ritmo-v2.sql` | `demoras_ritmo` leyendo sus parámetros de `demoras_modelo` |
 | `docs/sqls/2026-07-31-demoras-cola.sql` | `demoras_cola` — demanda por (zona, tipo), honrando `atrapados_modo` |
+| `docs/sqls/2026-07-31-demoras-ritmo-movil.sql` | `demoras_ritmo_movil` — el ritmo **propio de cada móvil** (cascada CHOFER → MOVIL) |
 | `docs/sqls/2026-07-31-demoras-servidores.sql` | `demoras_servidores` — `libre_en` por móvil, honrando `transito_modo` |
 | `docs/sqls/2026-07-31-demoras-proximo-hueco.sql` | `demoras_proximo_hueco` — la simulación |
 | `docs/sqls/2026-07-31-demoras-calcular-run-v2.sql` | Despacho por `modelo`, sello de versión, y baja de las columnas migradas |
@@ -1254,19 +1255,44 @@ medir su impacto en el backtest en vez de asumirla."
 ### Task 5: `demoras_servidores` — cuándo se libera cada móvil
 
 **Files:**
+- Create: `docs/sqls/2026-07-31-demoras-ritmo-movil.sql`
 - Create: `docs/sqls/2026-07-31-demoras-servidores.sql`
 - Create: `scripts/sql-harness/assert-servidores.sql`
 
 **Interfaces:**
-- Consumes: `demoras_modelo` (Task 1), `demoras_ritmo` (Task 3).
+- Consumes: `demoras_modelo` (Task 1), `demoras_ritmo_muestras` (Task 2), `demoras_ritmo` (Task 3).
 - Produces:
   ```sql
+  demoras_ritmo_movil(p_escenario integer, p_hasta date)
+  RETURNS TABLE (movil integer, tipo_servicio text,
+                 ritmo_media numeric, ritmo_mediana numeric,
+                 ritmo_p75 numeric, ritmo_p90 numeric,
+                 ritmo_origen text, ritmo_muestras integer)
+
   demoras_servidores(p_escenario integer, p_fecha date)
   RETURNS TABLE (zona_id integer, tipo_servicio text, movil integer,
-                 carga integer, ritmo numeric, libre_en numeric,
-                 es_transito boolean, descartado boolean)
+                 carga integer, ritmo numeric, ritmo_origen text,
+                 libre_en numeric, es_transito boolean, descartado boolean)
   ```
   Una fila por (zona, tipo, móvil **activo**). `libre_en` son minutos desde ahora, ya con `transito_modo` aplicado. `descartado = true` cuando `transito_modo='SOLO_SI_NO_HAY'` deja el móvil afuera.
+
+> **Por qué hace falta `demoras_ritmo_movil`.** `demoras_ritmo` (Task 3)
+> devuelve **un ritmo por (zona, tipo)**: los niveles CHOFER y MOVIL de su
+> cascada ya vienen mezclados en un promedio ponderado por el aporte de cada
+> móvil a la zona. Sirve para el modelo viejo, que multiplica un solo ritmo
+> por la cola de la zona.
+>
+> El modelo del próximo hueco necesita otra cosa: **el ritmo propio de cada
+> móvil**, porque `libre_en = carga × ritmo` y el pedido nuevo va al que se
+> libera primero. Con un ritmo compartido, dos móviles solo se diferencian
+> por cuántos pedidos llevan, y el ejemplo publicado en `DEMORA_MODELO.md`
+> § 7.3 —M1 a 20 min y M2 a 15, que es lo que hace que Centro dé 60— se
+> vuelve irreproducible.
+>
+> Las muestras por móvil ya existen: `demoras_ritmo_muestras` devuelve la
+> columna `movil`. Solo faltaba agruparlas por móvil en vez de por zona.
+> `demoras_servidores` usa el ritmo propio del móvil si lo tiene, cae al de
+> la zona si no, y al piso configurado si tampoco.
 
 - [ ] **Step 1: Escribir el assert**
 
@@ -1310,6 +1336,39 @@ SELECT 'PEDIDO', 1000 + g*10 + m.movil, 1000, DATE '2026-07-29', 'URGENTE',
 FROM (VALUES (1,100,20.0),(2,100,15.0),(3,200,25.0)) AS m(movil, zona, r),
      generate_series(1,5) g;
 
+-- 0) El ritmo es PROPIO de cada movil, no el blend de la zona. Sin esto, M1
+--    y M2 (que comparten la zona 100) tendrian el mismo numero y el modelo
+--    perderia lo unico que distingue un movil rapido de uno lento.
+DO $$
+DECLARE r1 record; r2 record;
+BEGIN
+  SELECT * INTO r1 FROM demoras_ritmo_movil(1000, DATE '2026-07-30')
+   WHERE movil = 1 AND tipo_servicio = 'URGENTE';
+  SELECT * INTO r2 FROM demoras_ritmo_movil(1000, DATE '2026-07-30')
+   WHERE movil = 2 AND tipo_servicio = 'URGENTE';
+  IF round(r1.ritmo_mediana) IS DISTINCT FROM 20 THEN
+    RAISE EXCEPTION 'ritmo propio de M1: % (esperaba 20)', r1.ritmo_mediana;
+  END IF;
+  IF round(r2.ritmo_mediana) IS DISTINCT FROM 15 THEN
+    RAISE EXCEPTION 'ritmo propio de M2: % (esperaba 15)', r2.ritmo_mediana;
+  END IF;
+  IF r1.ritmo_mediana = r2.ritmo_mediana THEN
+    RAISE EXCEPTION 'M1 y M2 comparten ritmo (%): el ritmo no es por movil', r1.ritmo_mediana;
+  END IF;
+  RAISE NOTICE 'ok ritmo propio por movil (M1=%, M2=%)', r1.ritmo_mediana, r2.ritmo_mediana;
+END $$;
+
+-- 0b) Un movil SIN historial propio no devuelve fila, para que el llamador
+--     pueda caer al ritmo de la zona en vez de recibir un NULL ambiguo.
+DO $$
+DECLARE v_n integer;
+BEGIN
+  SELECT count(*) INTO v_n FROM demoras_ritmo_movil(1000, DATE '2026-07-30')
+   WHERE movil = 4;
+  IF v_n <> 0 THEN RAISE EXCEPTION 'un movil sin historial devolvio % filas', v_n; END IF;
+  RAISE NOTICE 'ok movil sin historial no devuelve fila';
+END $$;
+
 -- 1) libre_en = carga x ritmo, con la carga contada en TODAS las zonas.
 DO $$
 DECLARE r record;
@@ -1318,6 +1377,9 @@ BEGIN
    WHERE zona_id = 100 AND tipo_servicio = 'URGENTE' AND movil = 1;
   IF r.carga IS DISTINCT FROM 3 THEN RAISE EXCEPTION 'M1 carga: % (esperaba 3)', r.carga; END IF;
   IF round(r.ritmo) IS DISTINCT FROM 20 THEN RAISE EXCEPTION 'M1 ritmo: % (esperaba 20)', r.ritmo; END IF;
+  IF r.ritmo_origen IS DISTINCT FROM 'MOVIL' THEN
+    RAISE EXCEPTION 'M1 ritmo_origen: % (esperaba MOVIL, tiene historial propio)', r.ritmo_origen;
+  END IF;
   IF round(r.libre_en) IS DISTINCT FROM 60 THEN RAISE EXCEPTION 'M1 libre_en: % (esperaba 60)', r.libre_en; END IF;
 
   -- M2 tiene su unico pedido en la zona 200, pero en la zona 100 su
@@ -1422,9 +1484,145 @@ bash scripts/sql-harness/run.sh \
   --assert scripts/sql-harness/assert-servidores.sql
 ```
 
-Esperado: `FAIL` con `function demoras_servidores(...) does not exist`.
+Esperado: `FAIL` con `function demoras_ritmo_movil(...) does not exist`.
 
-- [ ] **Step 3: Escribir la migración**
+- [ ] **Step 3a: Escribir la migración del ritmo por móvil**
+
+Crear `docs/sqls/2026-07-31-demoras-ritmo-movil.sql`:
+
+```sql
+-- =====================================================================
+-- demoras_ritmo_movil — el ritmo PROPIO de cada movil
+-- Fecha: 2026-07-31 | Idempotente
+--
+-- demoras_ritmo devuelve un ritmo por (zona, tipo): sus niveles CHOFER y
+-- MOVIL vienen ya mezclados en un promedio ponderado por el aporte de cada
+-- movil a la zona. Eso alcanza para el modelo viejo, que multiplica un solo
+-- ritmo por la cola de la zona.
+--
+-- El modelo del proximo hueco necesita otra cosa: cuanto tarda CADA movil,
+-- porque libre_en = carga x ritmo y el pedido nuevo va al que se libera
+-- primero. Con un ritmo compartido, dos moviles solo se diferencian por
+-- cuantos pedidos llevan -- y se pierde justo lo que hace al modelo.
+--
+-- Cascada de dos niveles, en el orden configurado en
+-- demoras_modelo.ritmo_cascada (se leen solo las entradas CHOFER y MOVIL;
+-- ZONA y GLOBAL no aplican a un movil suelto y las resuelve el llamador
+-- cayendo a demoras_ritmo):
+--
+--   CHOFER  el historial propio del chofer que mas veces manejo ese movil
+--           en la ventana. Un chofer rapido lo es en cualquier camion.
+--   MOVIL   el historial del movil en si.
+--
+-- Un movil sin muestras suficientes en ningun nivel NO devuelve fila: el
+-- llamador (demoras_servidores) cae al ritmo de la zona, y si tampoco hay,
+-- al piso configurado. Devolver una fila con las cuatro estadisticas en
+-- NULL obligaria a cada consumidor a distinguir "no hay dato" de "hay dato
+-- nulo", que es exactamente el tipo de ambiguedad que ya rompio este motor.
+-- =====================================================================
+CREATE OR REPLACE FUNCTION demoras_ritmo_movil(p_escenario integer, p_hasta date)
+RETURNS TABLE (
+  movil          integer,
+  tipo_servicio  text,
+  ritmo_media    numeric,
+  ritmo_mediana  numeric,
+  ritmo_p75      numeric,
+  ritmo_p90      numeric,
+  ritmo_origen   text,
+  ritmo_muestras integer
+)
+LANGUAGE sql
+STABLE
+AS $fn$
+  WITH cfg AS (
+    -- Subconsulta escalar y no FROM: si falta la fila del escenario, un FROM
+    -- deja este CTE vacio y los CROSS JOIN de abajo colapsan la funcion a
+    -- cero filas. Mismo patron defensivo que demoras_cola y demoras_ritmo v2.
+    SELECT coalesce((SELECT dm.ritmo_dias_ventana      FROM demoras_modelo dm WHERE dm.escenario_id = p_escenario), 7)                AS dias,
+           coalesce((SELECT dm.ritmo_min_muestras      FROM demoras_modelo dm WHERE dm.escenario_id = p_escenario), 5)                AS min_muestras,
+           coalesce((SELECT dm.ritmo_metrica           FROM demoras_modelo dm WHERE dm.escenario_id = p_escenario), 'ENTRE_ENTREGAS') AS metrica,
+           coalesce((SELECT dm.ritmo_hueco_max_minutos FROM demoras_modelo dm WHERE dm.escenario_id = p_escenario), 90)               AS hueco_max,
+           coalesce((SELECT dm.ritmo_solo_con_cola     FROM demoras_modelo dm WHERE dm.escenario_id = p_escenario), false)            AS solo_con_cola,
+           coalesce((SELECT dm.ritmo_cascada           FROM demoras_modelo dm WHERE dm.escenario_id = p_escenario), 'CHOFER,MOVIL')   AS cascada
+  ),
+  base AS (
+    SELECT m.tipo, m.movil, m.chofer, m.v
+    FROM cfg c,
+         LATERAL demoras_ritmo_muestras(
+           p_escenario, p_hasta, c.dias, c.metrica, c.hueco_max, c.solo_con_cola
+         ) m
+    WHERE m.movil IS NOT NULL
+  ),
+  -- Estadisticas propias del movil.
+  por_movil AS (
+    SELECT b.movil, b.tipo,
+           round(avg(b.v), 2) AS media,
+           round(percentile_cont(0.5)  WITHIN GROUP (ORDER BY b.v)::numeric, 2) AS mediana,
+           round(percentile_cont(0.75) WITHIN GROUP (ORDER BY b.v)::numeric, 2) AS p75,
+           round(percentile_cont(0.9)  WITHIN GROUP (ORDER BY b.v)::numeric, 2) AS p90,
+           count(*)::integer AS n
+    FROM base b
+    GROUP BY b.movil, b.tipo
+  ),
+  -- El chofer que mas veces manejo cada movil en la ventana. Empate:
+  -- alfabetico, para que el resultado sea reproducible.
+  chofer_top AS (
+    SELECT DISTINCT ON (movil, tipo) movil, tipo, chofer
+    FROM (
+      SELECT b.movil, b.tipo, b.chofer, count(*) AS n
+      FROM base b WHERE b.chofer IS NOT NULL
+      GROUP BY b.movil, b.tipo, b.chofer
+    ) c
+    ORDER BY movil, tipo, n DESC, chofer
+  ),
+  -- Estadisticas propias del chofer, sin importar que movil manejo.
+  por_chofer AS (
+    SELECT b.chofer, b.tipo,
+           round(avg(b.v), 2) AS media,
+           round(percentile_cont(0.5)  WITHIN GROUP (ORDER BY b.v)::numeric, 2) AS mediana,
+           round(percentile_cont(0.75) WITHIN GROUP (ORDER BY b.v)::numeric, 2) AS p75,
+           round(percentile_cont(0.9)  WITHIN GROUP (ORDER BY b.v)::numeric, 2) AS p90,
+           count(*)::integer AS n
+    FROM base b WHERE b.chofer IS NOT NULL
+    GROUP BY b.chofer, b.tipo
+  ),
+  -- Orden de la cascada, quedandose solo con los niveles que aplican a un
+  -- movil. Una lista sin ninguno de los dos cae al default CHOFER,MOVIL.
+  niveles AS (
+    SELECT coalesce(
+             nullif(array_agg(lvl ORDER BY ord) FILTER (WHERE lvl IN ('CHOFER','MOVIL')), '{}'),
+             ARRAY['CHOFER','MOVIL']) AS lista
+    FROM cfg c,
+         LATERAL unnest(string_to_array(upper(c.cascada), ',')) WITH ORDINALITY AS u(lvl_raw, ord),
+         LATERAL (SELECT trim(u.lvl_raw) AS lvl) t
+  ),
+  candidatos AS (
+    SELECT pm.movil, pm.tipo, lv.ord, lv.nivel,
+           CASE lv.nivel WHEN 'CHOFER' THEN pc.media   ELSE pm.media   END AS media,
+           CASE lv.nivel WHEN 'CHOFER' THEN pc.mediana ELSE pm.mediana END AS mediana,
+           CASE lv.nivel WHEN 'CHOFER' THEN pc.p75     ELSE pm.p75     END AS p75,
+           CASE lv.nivel WHEN 'CHOFER' THEN pc.p90     ELSE pm.p90     END AS p90,
+           coalesce(CASE lv.nivel WHEN 'CHOFER' THEN pc.n ELSE pm.n END, 0) AS n
+    FROM por_movil pm
+    CROSS JOIN niveles nv
+    CROSS JOIN LATERAL unnest(nv.lista) WITH ORDINALITY AS lv(nivel, ord)
+    LEFT JOIN chofer_top ct ON ct.movil = pm.movil AND ct.tipo = pm.tipo
+    LEFT JOIN por_chofer pc ON pc.chofer = ct.chofer AND pc.tipo = pm.tipo
+  )
+  -- Gana el primer nivel que llegue al minimo. Si NINGUNO llega, el movil no
+  -- devuelve fila y el llamador cae al ritmo de la zona.
+  SELECT DISTINCT ON (movil, tipo)
+         movil, tipo, media, mediana, p75, p90, nivel, n
+  FROM candidatos c, cfg
+  WHERE c.n >= cfg.min_muestras
+  ORDER BY movil, tipo, ord;
+$fn$;
+
+COMMENT ON FUNCTION demoras_ritmo_movil(integer, date) IS
+  'Ritmo propio de cada movil por tipo de servicio, con cascada CHOFER -> MOVIL en el orden configurado en demoras_modelo.ritmo_cascada. Existe porque demoras_ritmo devuelve un ritmo por ZONA (los niveles CHOFER y MOVIL ya vienen mezclados en un promedio ponderado), y el modelo del proximo hueco necesita cuanto tarda CADA movil: libre_en = carga x ritmo, y el pedido nuevo va al que se libera primero. Un movil sin muestras suficientes en ningun nivel NO devuelve fila, para que el llamador pueda distinguir "no hay dato" de "hay dato nulo" y caer al ritmo de la zona.';
+```
+
+- [ ] **Step 3b: Escribir la migración de los servidores**
 
 Crear `docs/sqls/2026-07-31-demoras-servidores.sql`:
 
@@ -1530,29 +1728,65 @@ AS $fn$
     ) p
     GROUP BY p.movil
   ),
-  rit AS (
+  -- Ritmo de la ZONA: el blend ponderado de toda la cascada. Es el fallback
+  -- para un movil sin historial propio.
+  rit_zona AS (
     SELECT r.zona_id, r.tipo_servicio, r.ritmo_media, r.ritmo_mediana,
            r.ritmo_p75, r.ritmo_p90
     FROM demoras_ritmo(p_escenario, p_fecha) r
   ),
+  -- Ritmo PROPIO de cada movil. Es el que manda: el pedido nuevo va al que
+  -- se libera primero, y sin ritmo por movil dos moviles solo se
+  -- diferenciarian por cuantos pedidos llevan.
+  rit_movil AS (
+    SELECT m.movil, m.tipo_servicio, m.ritmo_media, m.ritmo_mediana,
+           m.ritmo_p75, m.ritmo_p90
+    FROM demoras_ritmo_movil(p_escenario, p_fecha) m
+  ),
   crudo AS (
     SELECT a.zona_id, a.tipo, a.movil, a.es_transito,
            coalesce(cm.n, 0) AS carga,
-           -- El estadistico configurado, con piso en ritmo_default_minutos:
-           -- una zona sin historial no puede quedar con ritmo NULL, porque
-           -- entonces libre_en seria NULL y el movil desapareceria de la
-           -- simulacion sin dejar rastro.
+           -- Cascada de tres pasos, en este orden:
+           --   1. El ritmo PROPIO del movil (chofer o movil, segun resolvio
+           --      demoras_ritmo_movil).
+           --   2. Si no tiene historial propio, el de la ZONA (blend).
+           --   3. Si la zona tampoco tiene, el piso configurado.
+           -- El piso no es opcional: con ritmo NULL, libre_en seria NULL y el
+           -- movil desapareceria de la simulacion sin dejar rastro.
            coalesce(
              CASE c.estadistico
-               WHEN 'MEDIA' THEN r.ritmo_media
-               WHEN 'P75'   THEN r.ritmo_p75
-               WHEN 'P90'   THEN r.ritmo_p90
-               ELSE r.ritmo_mediana
-             END, c.ritmo_defecto) AS ritmo
+               WHEN 'MEDIA' THEN rm.ritmo_media
+               WHEN 'P75'   THEN rm.ritmo_p75
+               WHEN 'P90'   THEN rm.ritmo_p90
+               ELSE rm.ritmo_mediana
+             END,
+             CASE c.estadistico
+               WHEN 'MEDIA' THEN rz.ritmo_media
+               WHEN 'P75'   THEN rz.ritmo_p75
+               WHEN 'P90'   THEN rz.ritmo_p90
+               ELSE rz.ritmo_mediana
+             END,
+             c.ritmo_defecto) AS ritmo,
+           -- De donde salio el ritmo de ESTE movil. Sin esto no se puede
+           -- contestar "por que este movil se libera antes que el otro".
+           CASE
+             WHEN (CASE c.estadistico
+                     WHEN 'MEDIA' THEN rm.ritmo_media
+                     WHEN 'P75'   THEN rm.ritmo_p75
+                     WHEN 'P90'   THEN rm.ritmo_p90
+                     ELSE rm.ritmo_mediana END) IS NOT NULL THEN 'MOVIL'
+             WHEN (CASE c.estadistico
+                     WHEN 'MEDIA' THEN rz.ritmo_media
+                     WHEN 'P75'   THEN rz.ritmo_p75
+                     WHEN 'P90'   THEN rz.ritmo_p90
+                     ELSE rz.ritmo_mediana END) IS NOT NULL THEN 'ZONA'
+             ELSE 'DEFECTO'
+           END AS ritmo_origen
     FROM asign a
     CROSS JOIN cfg c
     LEFT JOIN carga_movil cm ON cm.movil = a.movil
-    LEFT JOIN rit r ON r.zona_id = a.zona_id AND r.tipo_servicio = a.tipo
+    LEFT JOIN rit_zona  rz ON rz.zona_id = a.zona_id AND rz.tipo_servicio = a.tipo
+    LEFT JOIN rit_movil rm ON rm.movil   = a.movil   AND rm.tipo_servicio = a.tipo
   ),
   con_libre AS (
     SELECT k.*,
@@ -1572,7 +1806,8 @@ AS $fn$
     WHERE NOT es_transito
     GROUP BY zona_id, tipo
   )
-  SELECT l.zona_id, l.tipo, l.movil, l.carga, l.ritmo, l.libre_en, l.es_transito,
+  SELECT l.zona_id, l.tipo, l.movil, l.carga, l.ritmo, l.ritmo_origen,
+         l.libre_en, l.es_transito,
          (l.es_transito
           AND c.modo = 'SOLO_SI_NO_HAY'
           AND mp.libre_min IS NOT NULL
@@ -1594,11 +1829,12 @@ bash scripts/sql-harness/run.sh \
   docs/sqls/2026-07-31-demoras-modelo-tabla.sql \
   docs/sqls/2026-07-31-demoras-ritmo-muestras.sql \
   docs/sqls/2026-07-31-demoras-ritmo-v2.sql \
+  docs/sqls/2026-07-31-demoras-ritmo-movil.sql \
   docs/sqls/2026-07-31-demoras-servidores.sql \
   --assert scripts/sql-harness/assert-servidores.sql
 ```
 
-Esperado: los seis `ok`. Exit 0.
+Esperado: los ocho `ok` — los dos del ritmo por móvil (`ok ritmo propio por movil`, `ok movil sin historial no devuelve fila`) más los seis de los servidores. Exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1822,6 +2058,7 @@ bash scripts/sql-harness/run.sh \
   docs/sqls/2026-07-31-demoras-ritmo-muestras.sql \
   docs/sqls/2026-07-31-demoras-ritmo-v2.sql \
   docs/sqls/2026-07-31-demoras-cola.sql \
+  docs/sqls/2026-07-31-demoras-ritmo-movil.sql \
   docs/sqls/2026-07-31-demoras-servidores.sql \
   --assert scripts/sql-harness/assert-hueco.sql
 ```
@@ -2018,6 +2255,7 @@ bash scripts/sql-harness/run.sh \
   docs/sqls/2026-07-31-demoras-ritmo-muestras.sql \
   docs/sqls/2026-07-31-demoras-ritmo-v2.sql \
   docs/sqls/2026-07-31-demoras-cola.sql \
+  docs/sqls/2026-07-31-demoras-ritmo-movil.sql \
   docs/sqls/2026-07-31-demoras-servidores.sql \
   docs/sqls/2026-07-31-demoras-proximo-hueco.sql \
   --assert scripts/sql-harness/assert-hueco.sql
@@ -2198,6 +2436,7 @@ bash scripts/sql-harness/run.sh \
   docs/sqls/2026-07-31-demoras-ritmo-muestras.sql \
   docs/sqls/2026-07-31-demoras-ritmo-v2.sql \
   docs/sqls/2026-07-31-demoras-cola.sql \
+  docs/sqls/2026-07-31-demoras-ritmo-movil.sql \
   docs/sqls/2026-07-31-demoras-servidores.sql \
   docs/sqls/2026-07-31-demoras-proximo-hueco.sql \
   docs/sqls/2026-07-29-demoras-calcular-run.sql \
@@ -2467,6 +2706,7 @@ bash scripts/sql-harness/run.sh \
   docs/sqls/2026-07-31-demoras-ritmo-muestras.sql \
   docs/sqls/2026-07-31-demoras-ritmo-v2.sql \
   docs/sqls/2026-07-31-demoras-cola.sql \
+  docs/sqls/2026-07-31-demoras-ritmo-movil.sql \
   docs/sqls/2026-07-31-demoras-servidores.sql \
   docs/sqls/2026-07-31-demoras-proximo-hueco.sql \
   docs/sqls/2026-07-31-demoras-calcular-run-v2.sql \
@@ -2486,6 +2726,7 @@ bash scripts/sql-harness/run.sh \
   docs/sqls/2026-07-31-demoras-ritmo-muestras.sql \
   docs/sqls/2026-07-31-demoras-ritmo-v2.sql \
   docs/sqls/2026-07-31-demoras-cola.sql \
+  docs/sqls/2026-07-31-demoras-ritmo-movil.sql \
   docs/sqls/2026-07-31-demoras-servidores.sql \
   docs/sqls/2026-07-31-demoras-proximo-hueco.sql \
   docs/sqls/2026-07-31-demoras-calcular-run-v2.sql \
