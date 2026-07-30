@@ -714,28 +714,45 @@ BEGIN
   RAISE NOTICE 'ok ritmo_min_muestras es parametro';
 END $$;
 
--- ritmo_dias_ventana es parametro: con la ventana en 1 dia solo entra el
--- 2026-07-28, y los hechos de la zona 100 son de ese dia, asi que sigue
--- resolviendo por ZONA; con la ventana en 1 y p_hasta corrido un dia mas,
--- no queda ningun hecho y tiene que caer a DEFECTO.
+-- ritmo_dias_ventana es parametro. Se afirma sobre ritmo_MUESTRAS y NO sobre
+-- ritmo_origen, a proposito: para cuando corren estos bloques el archivo ya
+-- sembro moviles_dia (movil 10, chofer ANA, zona 100), asi que los niveles
+-- CHOFER y MOVIL tienen aporte y ganan la cascada antes que ZONA. Que nivel
+-- gane es asunto del bloque de cascada, no de este.
+--
+-- Y hay una razon mas fuerte: los 5 hechos de ANA caen todos en el 2026-07-28,
+-- el unico dia que entra en una ventana de 1, asi que CHOFER gana igual con
+-- la ventana recortada. Un assert sobre el origen daria el mismo resultado
+-- aunque ritmo_dias_ventana no fuera parametrizable en absoluto -- seria un
+-- test que no puede fallar. Lo que este bloque tiene que probar es que mover
+-- la ventana cambia QUE HECHOS VE la funcion, y eso se ve en las muestras.
 DO $$
-DECLARE r record;
+DECLARE r_dentro record; r_fuera record;
 BEGIN
   UPDATE demoras_modelo SET ritmo_dias_ventana = 1 WHERE escenario_id = 1000;
-  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29')
+
+  -- Ventana de 1 dia sobre 2026-07-29 = [2026-07-28, 2026-07-28], que es
+  -- justo donde estan los hechos: tiene que verlos.
+  SELECT * INTO r_dentro FROM demoras_ritmo(1000, DATE '2026-07-29')
    WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
-  IF r.ritmo_origen IS DISTINCT FROM 'ZONA' THEN
-    RAISE EXCEPTION 'ventana 1 dia sobre 2026-07-29 debio ver el 28: dio %', r.ritmo_origen;
+  IF coalesce(r_dentro.ritmo_muestras, 0) = 0 THEN
+    RAISE EXCEPTION 'ventana 1 dia sobre 2026-07-29 debio ver los hechos del 28, dio % muestras',
+                    r_dentro.ritmo_muestras;
   END IF;
 
-  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-31')
+  -- La MISMA ventana de 1 dia, corrida dos dias = [2026-07-30, 2026-07-30],
+  -- donde no hay ningun hecho. Si la ventana no se estuviera aplicando, este
+  -- chequeo veria los mismos hechos que el anterior.
+  SELECT * INTO r_fuera FROM demoras_ritmo(1000, DATE '2026-07-31')
    WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
-  IF r.ritmo_muestras IS DISTINCT FROM 0 THEN
-    RAISE EXCEPTION 'ventana 1 dia sobre 2026-07-31 no debio ver nada, dio % muestras', r.ritmo_muestras;
+  IF r_fuera.ritmo_muestras IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'ventana 1 dia sobre 2026-07-31 no debio ver nada, dio % muestras',
+                    r_fuera.ritmo_muestras;
   END IF;
 
   UPDATE demoras_modelo SET ritmo_dias_ventana = 7 WHERE escenario_id = 1000;
-  RAISE NOTICE 'ok ritmo_dias_ventana es parametro';
+  RAISE NOTICE 'ok ritmo_dias_ventana es parametro (% muestras dentro, % fuera)',
+               r_dentro.ritmo_muestras, r_fuera.ritmo_muestras;
 END $$;
 
 -- ritmo_metrica es parametro: con ENTRE_ENTREGAS los hechos de este assert
