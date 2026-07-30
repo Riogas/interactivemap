@@ -13,6 +13,14 @@ compara contra el número que informa el AS400.
 
 Diseño completo: `docs/superpowers/specs/2026-07-28-motor-demora-informada-design.md`.
 
+> **El modelo de esta guía está en revisión.** Se le encontraron tres errores
+> estructurales (el ritmo mide asignación→entrega, que ya incluye la cola; el
+> prorrateo castiga dos veces los pedidos ya asignados; y el promedio no
+> puede expresar "el primer móvil que se libera"). El planteo del problema y
+> el modelo propuesto para reemplazarlo están en
+> [`DEMORA_MODELO.md`](DEMORA_MODELO.md). Esta guía sigue describiendo lo que
+> está corriendo hoy.
+
 ---
 
 ## 1. Orden de aplicación en el SQL Editor de Supabase
