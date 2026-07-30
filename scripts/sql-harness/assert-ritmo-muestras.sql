@@ -82,4 +82,41 @@ BEGIN
   RAISE NOTICE 'ok no cruza dias';
 END $$;
 
+-- 6) Regresion: el intervalo NO cruza de un dia local a otro AUNQUE sea
+--    corto. El bloque 5 de arriba usa un salto de 600 minutos, que
+--    p_hueco_max=90 ya filtra por su cuenta: si la particion por fecha
+--    local del lag() se rompiera, ese assert seguiria pasando igual (test
+--    que no puede fallar). Aca el salto es de 15 minutos, bien por debajo
+--    del corte, asi que la UNICA razon posible para excluirlo es la
+--    particion por dia local. Si el dia de manana se sube p_hueco_max, este
+--    bloque sigue significando algo. Movil 20 (no 10) para no mezclarse con
+--    las muestras de los otros bloques.
+DO $$
+DECLARE v_total integer; v_cruce integer;
+BEGIN
+  INSERT INTO metricas_cumplimiento
+    (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+     fch_hora_asignado, fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+  VALUES
+    ('PEDIDO', 6, 1000, DATE '2026-07-28', 'URGENTE', 20, 100, 'BETO',
+     timestamptz '2026-07-28 23:20:00-03', timestamptz '2026-07-28 23:50:00-03', 30, 30, 'CAMPO'),
+    ('PEDIDO', 7, 1000, DATE '2026-07-29', 'URGENTE', 20, 100, 'BETO',
+     timestamptz '2026-07-28 23:55:00-03', timestamptz '2026-07-29 00:05:00-03', 10, 10, 'CAMPO');
+
+  -- p_hasta se corre a 2026-07-30 para que la ventana (p_hasta - p_dias)..
+  -- (p_hasta - 1) = 2026-07-23..2026-07-29 incluya el 29, donde cae la
+  -- segunda entrega del par.
+  SELECT count(*) FILTER (WHERE v = 15), count(*)
+    INTO v_cruce, v_total
+    FROM demoras_ritmo_muestras(1000, DATE '2026-07-30', 7, 'ENTRE_ENTREGAS', 90, false);
+
+  IF v_cruce IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'cruce de dia: % muestras de 15min (esperaba 0; 28-jul 23:50 -> 29-jul 00:05 no es un intervalo)', v_cruce;
+  END IF;
+  IF v_total IS DISTINCT FROM 2 THEN
+    RAISE EXCEPTION 'total: % (esperaba 2, los de siempre; el par nuevo no debe aportar ninguna muestra)', v_total;
+  END IF;
+  RAISE NOTICE 'ok no cruza dias (aislado del corte de huecos)';
+END $$;
+
 TRUNCATE metricas_cumplimiento;
