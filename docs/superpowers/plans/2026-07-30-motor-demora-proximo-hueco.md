@@ -2031,14 +2031,22 @@ END $$;
 -- 7) Una zona con capacidad y cola vacia da el minimo posible, no cero.
 --    (El piso duro lo aplica demoras_acabado; aca solo verificamos que el
 --    crudo sea el tiempo real y no un 0 enmascarado.)
+--    Vaciamos la carga de M2 -el mas rapido, ritmo 15- que vive en la
+--    zona 200 (pedido 6), no la de M1: M2 queda libre YA (0) mientras M1
+--    sigue ocupado (60, sus 3 pedidos de zona 100 siguen en pie), asi que
+--    el minimo no es ambiguo. Vaciar en cambio zona_nro=100 deja a M1 -el
+--    mas LENTO, ritmo 20- en 0 y a M2 en 15 (su pedido de zona 200 sigue
+--    contando: la carga es global, no por zona): el minimo pasa a ser M1
+--    y el resultado da 20, no 15 -- ese fue justamente el bug que este
+--    bloque encontro contra la version original del assert.
 DO $$
 DECLARE r record;
 BEGIN
-  DELETE FROM pedidos WHERE zona_nro = 100;
+  DELETE FROM pedidos WHERE movil = 2;
   SELECT * INTO r FROM demoras_proximo_hueco(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
    WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
   IF round(r.demora_cruda) IS DISTINCT FROM 15 THEN
-    RAISE EXCEPTION 'zona vacia: % (esperaba 15 = el ritmo del mejor movil, libre ya)', r.demora_cruda;
+    RAISE EXCEPTION 'zona vacia: % (esperaba 15 = el ritmo de M2, libre ya)', r.demora_cruda;
   END IF;
   IF r.sin_capacidad THEN RAISE EXCEPTION 'con moviles activos no puede decir sin_capacidad'; END IF;
   RAISE NOTICE 'ok zona con capacidad y cola vacia';
