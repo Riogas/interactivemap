@@ -68,6 +68,75 @@ BEGIN
   RAISE NOTICE 'ok movil sin historial no devuelve fila';
 END $$;
 
+-- 0c) ritmo_min_muestras se aplica de verdad, no solo cuando no hay
+--     historial: M5 con 4 muestras (una menos que el minimo default de 5)
+--     NO debe devolver fila; subiendolo a 5 SI debe aparecer. Zona 999 y
+--     movil 5 son exclusivos de este bloque -- no tocan zona 100/200 ni
+--     los moviles 1-4 que usan los demas bloques.
+DO $$
+DECLARE v_n integer;
+BEGIN
+  INSERT INTO metricas_cumplimiento
+    (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+     fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+  SELECT 'PEDIDO', 7000 + g, 1000, DATE '2026-07-29', 'URGENTE',
+         5, 999, NULL, now(), 22.0, 22.0, 'CAMPO'
+  FROM generate_series(1,4) g;
+
+  SELECT count(*) INTO v_n FROM demoras_ritmo_movil(1000, DATE '2026-07-30')
+   WHERE movil = 5;
+  IF v_n <> 0 THEN
+    RAISE EXCEPTION 'M5 con 4 muestras (bajo el minimo) devolvio % filas', v_n;
+  END IF;
+
+  INSERT INTO metricas_cumplimiento
+    (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+     fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+  VALUES ('PEDIDO', 7005, 1000, DATE '2026-07-29', 'URGENTE', 5, 999, NULL,
+          now(), 22.0, 22.0, 'CAMPO');
+
+  SELECT count(*) INTO v_n FROM demoras_ritmo_movil(1000, DATE '2026-07-30')
+   WHERE movil = 5;
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION 'M5 con 5 muestras (alcanza el minimo) devolvio % filas', v_n;
+  END IF;
+  RAISE NOTICE 'ok ritmo_min_muestras se aplica (4 no alcanza, 5 si)';
+END $$;
+
+-- 0d) El primer nivel de la cascada, CHOFER, tiene que poder ganar. La
+--     chofer ANA maneja el movil 6 (5 muestras a 20) y tambien el movil 8
+--     (5 muestras a 40): su ritmo propio (blend de ambos, mediana 30) tiene
+--     que ganarle al ritmo propio de M6 solo (20) y distinguirse de el --
+--     si dieran lo mismo, el assert no podria saber que nivel gano.
+--     Movil 6/8 y zona 999 son exclusivos de este bloque.
+DO $$
+DECLARE r record;
+BEGIN
+  INSERT INTO metricas_cumplimiento
+    (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+     fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+  SELECT 'PEDIDO', 7100 + g, 1000, DATE '2026-07-29', 'URGENTE',
+         6, 999, 'ANA', now(), 20.0, 20.0, 'CAMPO'
+  FROM generate_series(1,5) g;
+
+  INSERT INTO metricas_cumplimiento
+    (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+     fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+  SELECT 'PEDIDO', 7200 + g, 1000, DATE '2026-07-29', 'URGENTE',
+         8, 999, 'ANA', now(), 40.0, 40.0, 'CAMPO'
+  FROM generate_series(1,5) g;
+
+  SELECT * INTO r FROM demoras_ritmo_movil(1000, DATE '2026-07-30')
+   WHERE movil = 6 AND tipo_servicio = 'URGENTE';
+  IF r.ritmo_origen IS DISTINCT FROM 'CHOFER' THEN
+    RAISE EXCEPTION 'M6 ritmo_origen: % (esperaba CHOFER, ANA tiene historial propio suficiente)', r.ritmo_origen;
+  END IF;
+  IF round(r.ritmo_mediana) IS DISTINCT FROM 30 THEN
+    RAISE EXCEPTION 'M6 ritmo via CHOFER: % (esperaba 30, el blend de ANA en M6+M8)', r.ritmo_mediana;
+  END IF;
+  RAISE NOTICE 'ok nivel CHOFER gana con historial propio (M6 via ANA = %)', r.ritmo_mediana;
+END $$;
+
 -- 1) libre_en = carga x ritmo, con la carga contada en TODAS las zonas.
 DO $$
 DECLARE r record;
