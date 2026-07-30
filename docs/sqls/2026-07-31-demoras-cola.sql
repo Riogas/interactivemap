@@ -44,8 +44,20 @@ AS $fn$
     -- Ventana de visibilidad de los sin-asignar. NO es config del motor: es
     -- la misma que usan la capa de capacidad de entrega y el mapa, y vive
     -- por escenario. NULL o 0 = sin filtro.
-    SELECT es.pedidos_sa_minutos_antes AS mins
-      FROM escenario_settings es WHERE es.escenario_id = p_escenario
+    --
+    -- La subconsulta escalar es DELIBERADA y no un `FROM escenario_settings`:
+    -- si el escenario no tiene fila en esa tabla, un FROM deja este CTE
+    -- vacio, y el CROSS JOIN de `visible` mas abajo colapsa la funcion
+    -- entera a cero filas -- incluidos los pedidos ASIGNADOS, que por regla
+    -- cuentan SIEMPRE. O sea: una tabla de configuracion incompleta hacia
+    -- desaparecer la demanda en vez de degradar a "sin filtro", y el motor
+    -- informaba el piso en zonas con cola real. Un SELECT sin FROM siempre
+    -- devuelve exactamente una fila, con mins NULL cuando no hay
+    -- configuracion, que es justo el caso "sin filtro". Mismo patron
+    -- defensivo que usa demoras_ritmo v2 sobre la misma tabla.
+    SELECT (SELECT es.pedidos_sa_minutos_antes
+              FROM escenario_settings es
+             WHERE es.escenario_id = p_escenario) AS mins
   ),
   crudo AS (
     -- Solo URGENTE y NOCTURNO exactos desde pedidos; cualquier otro
