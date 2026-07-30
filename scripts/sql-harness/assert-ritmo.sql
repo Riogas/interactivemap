@@ -12,6 +12,10 @@ TRUNCATE metricas_cumplimiento;
 -- restauro peso_transito_alpha a 0.3. El assert de blend ponderado de
 -- mas abajo calcula el numero esperado a mano asumiendo alpha=0.3.
 UPDATE escenario_settings SET peso_transito_alpha = 0.3 WHERE escenario_id = 1000;
+-- Los asserts historicos de este archivo afirman estadisticas sobre
+-- demora_efectiva_mins, asi que fijan la metrica vieja explicitamente en vez
+-- de depender del default (que es ENTRE_ENTREGAS).
+UPDATE demoras_modelo SET ritmo_metrica = 'ASIGNADO_A_ENTREGA' WHERE escenario_id = 1000;
 
 -- Poblamos el universo de moviles_zonas: zonas 100, 200, 300 con tipos URGENTE, NOCTURNO, SERVICE.
 INSERT INTO moviles_zonas (escenario_id, zona_id, tipo_de_servicio, activa)
@@ -322,3 +326,81 @@ BEGIN
   RAISE NOTICE 'ok cascada aislada por tipo: URGENTE y SERVICE resuelven distinto en la misma corrida';
 END $$;
 UPDATE demoras_config SET ritmo_cascada='CHOFER,MOVIL,ZONA,GLOBAL' WHERE escenario_id=1000 AND tipo_servicio='URGENTE';
+
+-- ─── Los parametros salen de demoras_modelo, no de la firma ──────────
+
+-- ritmo_min_muestras es parametro: con el minimo en 2, la zona 200 (que
+-- tiene 2 hechos y hoy cae a GLOBAL) tiene que resolverse por ZONA.
+DO $$
+DECLARE r record;
+BEGIN
+  UPDATE demoras_modelo SET ritmo_min_muestras = 2 WHERE escenario_id = 1000;
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29')
+   WHERE zona_id = 200 AND tipo_servicio = 'URGENTE';
+  IF r.ritmo_origen IS DISTINCT FROM 'ZONA' THEN
+    RAISE EXCEPTION 'con min_muestras=2 la zona 200 debio resolver por ZONA, dio %', r.ritmo_origen;
+  END IF;
+  UPDATE demoras_modelo SET ritmo_min_muestras = 5 WHERE escenario_id = 1000;
+  RAISE NOTICE 'ok ritmo_min_muestras es parametro';
+END $$;
+
+-- ritmo_dias_ventana es parametro. Se afirma sobre ritmo_MUESTRAS y NO sobre
+-- ritmo_origen, a proposito: para cuando corren estos bloques el archivo ya
+-- sembro moviles_dia (movil 10, chofer ANA, zona 100), asi que los niveles
+-- CHOFER y MOVIL tienen aporte y ganan la cascada antes que ZONA. Que nivel
+-- gane es asunto del bloque de cascada, no de este.
+--
+-- Y hay una razon mas fuerte: los 5 hechos de ANA caen todos en el 2026-07-28,
+-- el unico dia que entra en una ventana de 1, asi que CHOFER gana igual con
+-- la ventana recortada. Un assert sobre el origen daria el mismo resultado
+-- aunque ritmo_dias_ventana no fuera parametrizable en absoluto -- seria un
+-- test que no puede fallar. Lo que este bloque tiene que probar es que mover
+-- la ventana cambia QUE HECHOS VE la funcion, y eso se ve en las muestras.
+DO $$
+DECLARE r_dentro record; r_fuera record;
+BEGIN
+  UPDATE demoras_modelo SET ritmo_dias_ventana = 1 WHERE escenario_id = 1000;
+
+  -- Ventana de 1 dia sobre 2026-07-29 = [2026-07-28, 2026-07-28], que es
+  -- justo donde estan los hechos: tiene que verlos.
+  SELECT * INTO r_dentro FROM demoras_ritmo(1000, DATE '2026-07-29')
+   WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
+  IF coalesce(r_dentro.ritmo_muestras, 0) = 0 THEN
+    RAISE EXCEPTION 'ventana 1 dia sobre 2026-07-29 debio ver los hechos del 28, dio % muestras',
+                    r_dentro.ritmo_muestras;
+  END IF;
+
+  -- La MISMA ventana de 1 dia, corrida dos dias = [2026-07-30, 2026-07-30],
+  -- donde no hay ningun hecho. Si la ventana no se estuviera aplicando, este
+  -- chequeo veria los mismos hechos que el anterior.
+  SELECT * INTO r_fuera FROM demoras_ritmo(1000, DATE '2026-07-31')
+   WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
+  IF r_fuera.ritmo_muestras IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'ventana 1 dia sobre 2026-07-31 no debio ver nada, dio % muestras',
+                    r_fuera.ritmo_muestras;
+  END IF;
+
+  UPDATE demoras_modelo SET ritmo_dias_ventana = 7 WHERE escenario_id = 1000;
+  RAISE NOTICE 'ok ritmo_dias_ventana es parametro (% muestras dentro, % fuera)',
+               r_dentro.ritmo_muestras, r_fuera.ritmo_muestras;
+END $$;
+
+-- ritmo_metrica es parametro: con ENTRE_ENTREGAS los hechos de este assert
+-- (todos con la misma fch_hora_finalizacion) no producen ningun intervalo
+-- valido, asi que no hay muestras y cae a DEFECTO. Es la prueba de que la
+-- funcion realmente cambia de fuente y no ignora el parametro.
+DO $$
+DECLARE r record;
+BEGIN
+  UPDATE demoras_modelo SET ritmo_metrica = 'ENTRE_ENTREGAS' WHERE escenario_id = 1000;
+  SELECT * INTO r FROM demoras_ritmo(1000, DATE '2026-07-29')
+   WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
+  IF r.ritmo_muestras <> 0 THEN
+    RAISE EXCEPTION 'con ENTRE_ENTREGAS no debia haber muestras, dio %', r.ritmo_muestras;
+  END IF;
+  UPDATE demoras_modelo SET ritmo_metrica = 'ASIGNADO_A_ENTREGA' WHERE escenario_id = 1000;
+  RAISE NOTICE 'ok ritmo_metrica es parametro';
+END $$;
+
+-- Restaurar el default para no ensuciar asserts posteriores.
+UPDATE demoras_modelo SET ritmo_metrica = 'ENTRE_ENTREGAS' WHERE escenario_id = 1000;
