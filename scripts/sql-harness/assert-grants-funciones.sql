@@ -13,11 +13,18 @@
 --
 -- Firma exacta de cada una (tiene que coincidir con el REVOKE/GRANT de su
 -- propia migracion -- un REVOKE con la firma equivocada no revoca nada):
---   demoras_ritmo_muestras(integer, date, integer, text, integer, boolean)
+--   demoras_ritmo_muestras(integer, date, integer, text, integer, integer, boolean)
 --   demoras_cola(integer, date, timestamptz)
 --   demoras_ritmo_movil(integer, date)
 --   demoras_servidores(integer, date)
 --   demoras_proximo_hueco(integer, date, timestamptz)
+--
+-- demoras_ritmo_muestras gano un septimo parametro (p_hueco_min) en
+-- docs/sqls/2026-08-01-demoras-ritmo-muestras-v2.sql (piso del ritmo, Task 2
+-- de la tanda CONSUMO_TRAMOS), que dropea la firma vieja de 6. Sin este
+-- update, has_function_privilege sobre la firma vieja no reprueba el
+-- assert -- directamente lo hace abortar con "function ... does not exist",
+-- porque la firma ya no existe en el catalogo.
 --
 -- demoras_ritmo(integer, date) queda deliberadamente FUERA de este assert:
 -- no es una funcion nueva de esta tanda (reemplaza, con firma distinta, a
@@ -34,7 +41,7 @@ BEGIN
   FOR r IN
     SELECT f.fn, g.rol
       FROM (VALUES
-        ('demoras_ritmo_muestras(integer, date, integer, text, integer, boolean)'),
+        ('demoras_ritmo_muestras(integer, date, integer, text, integer, integer, boolean)'),
         ('demoras_cola(integer, date, timestamptz)'),
         ('demoras_ritmo_movil(integer, date)'),
         ('demoras_servidores(integer, date)'),
@@ -63,7 +70,7 @@ DECLARE r record; falta text := '';
 BEGIN
   FOR r IN
     SELECT unnest(ARRAY[
-      'demoras_ritmo_muestras(integer, date, integer, text, integer, boolean)',
+      'demoras_ritmo_muestras(integer, date, integer, text, integer, integer, boolean)',
       'demoras_cola(integer, date, timestamptz)',
       'demoras_ritmo_movil(integer, date)',
       'demoras_servidores(integer, date)',

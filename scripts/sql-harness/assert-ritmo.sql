@@ -404,3 +404,57 @@ END $$;
 
 -- Restaurar el default para no ensuciar asserts posteriores.
 UPDATE demoras_modelo SET ritmo_metrica = 'ENTRE_ENTREGAS' WHERE escenario_id = 1000;
+
+-- =====================================================================
+-- Fix round 1 (Task 2, piso del ritmo): probar que el piso llega de PUNTA A
+-- PUNTA, no solo que demoras_ritmo_muestras lo respeta. No alcanza con que
+-- la funcion de muestras filtre si demoras_ritmo_movil no lee
+-- demoras_modelo.ritmo_hueco_min_minutos y lo pasa -- eso es justo lo que
+-- rompio el fix round 1 de la Task 2 (demoras_ritmo y demoras_ritmo_movil
+-- seguian llamando con 6 argumentos).
+--
+-- Movil 90, chofer GARCIA, zona 900 URGENTE (zona/movil/chofer nuevos, sin
+-- pisar los fixtures de arriba): dos entregas separadas por 1 minuto -> un
+-- unico intervalo de 1 minuto.
+--
+-- ritmo_min_muestras baja a 1 para que ESE unico intervalo alcance para
+-- tener "ritmo propio" cuando el piso lo deja pasar -- lo que este bloque
+-- prueba es el piso, no el minimo de muestras.
+-- =====================================================================
+INSERT INTO metricas_cumplimiento
+  (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+   fch_hora_asignado, fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+VALUES
+  ('PEDIDO', 9000, 1000, DATE '2026-07-28', 'URGENTE', 90, 900, 'GARCIA',
+   timestamptz '2026-07-28 10:00:00-03', timestamptz '2026-07-28 10:00:00-03', 0, 0, 'CAMPO'),
+  ('PEDIDO', 9001, 1000, DATE '2026-07-28', 'URGENTE', 90, 900, 'GARCIA',
+   timestamptz '2026-07-28 10:00:00-03', timestamptz '2026-07-28 10:01:00-03', 1, 1, 'CAMPO');
+
+DO $$
+DECLARE v_con_piso_0 integer; v_con_piso_5 integer;
+BEGIN
+  UPDATE demoras_modelo SET ritmo_min_muestras = 1 WHERE escenario_id = 1000;
+
+  -- Piso 0: el intervalo de 1 minuto entra -> el movil 90 tiene ritmo propio.
+  UPDATE demoras_modelo SET ritmo_hueco_min_minutos = 0 WHERE escenario_id = 1000;
+  SELECT count(*) INTO v_con_piso_0
+    FROM demoras_ritmo_movil(1000, DATE '2026-07-29')
+   WHERE movil = 90 AND tipo_servicio = 'URGENTE';
+  IF v_con_piso_0 <> 1 THEN
+    RAISE EXCEPTION 'con ritmo_hueco_min_minutos=0 el movil 90 debio tener ritmo propio (1 fila), dio %', v_con_piso_0;
+  END IF;
+
+  -- Piso 5: el mismo intervalo de 1 minuto queda descartado -> el movil se
+  -- queda sin muestras, deja de tener ritmo propio, y el llamador real
+  -- (demoras_servidores) cae al ritmo de la zona.
+  UPDATE demoras_modelo SET ritmo_hueco_min_minutos = 5 WHERE escenario_id = 1000;
+  SELECT count(*) INTO v_con_piso_5
+    FROM demoras_ritmo_movil(1000, DATE '2026-07-29')
+   WHERE movil = 90 AND tipo_servicio = 'URGENTE';
+  IF v_con_piso_5 <> 0 THEN
+    RAISE EXCEPTION 'con ritmo_hueco_min_minutos=5 el movil 90 no debio tener ritmo propio (0 filas), dio %', v_con_piso_5;
+  END IF;
+
+  UPDATE demoras_modelo SET ritmo_min_muestras = 5, ritmo_hueco_min_minutos = 5 WHERE escenario_id = 1000;
+  RAISE NOTICE 'ok el piso viaja de punta a punta: demoras_modelo -> demoras_ritmo_movil -> demoras_ritmo_muestras (piso 0 = ritmo propio, piso 5 = cae a la zona)';
+END $$;

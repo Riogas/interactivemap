@@ -275,11 +275,34 @@ normalizan ANTES del ADD CONSTRAINT, o el apply entero hace rollback."
 
 **Files:**
 - Create: `docs/sqls/2026-08-01-demoras-ritmo-muestras-v2.sql`
+- Create: `docs/sqls/2026-08-01-demoras-ritmo-callers-v2.sql` — **actualiza a los dos llamadores**
 - Modify: `scripts/sql-harness/assert-ritmo-muestras.sql` (agregar un bloque al final)
+- Modify: `scripts/sql-harness/assert-grants-funciones.sql` (la firma cambió)
 
 **Interfaces:**
-- Consumes: nada nuevo.
+- Consumes: `demoras_modelo.ritmo_hueco_min_minutos` (Task 1).
 - Produces: `demoras_ritmo_muestras(p_escenario, p_hasta, p_dias, p_metrica, p_hueco_max, p_hueco_min, p_solo_con_cola)` — **la firma gana `p_hueco_min` en la sexta posición**, antes de `p_solo_con_cola`. Hay que `DROP FUNCTION` la de 6 parámetros.
+
+> **Un cambio de firma no está terminado hasta que sus llamadores compilan.**
+> `demoras_ritmo` (en `2026-07-31-demoras-ritmo-v2.sql`) y `demoras_ritmo_movil`
+> (en `2026-07-31-demoras-ritmo-movil.sql`) llaman a `demoras_ritmo_muestras`
+> con **6 argumentos**. Después del `DROP FUNCTION` las dos quedan rotas en
+> runtime: `function demoras_ritmo_muestras(integer, date, integer, text,
+> integer, boolean) does not exist`.
+>
+> Y a diferencia del caso de la Task 1 —donde la Task 4 terminaba reemplazando
+> a `demoras_servidores`— acá **ninguna task posterior las toca**. La rotura
+> sobreviviría hasta que alguien prenda el motor.
+>
+> Por eso esta task incluye un archivo que **recrea las dos funciones**
+> pasándoles el parámetro nuevo, que ya leen de `demoras_modelo` junto al
+> `ritmo_hueco_max_minutos`. Es un cambio de una línea en cada una: agregar
+> `ritmo_hueco_min_minutos` al CTE `cfg` y pasarlo en la llamada.
+>
+> `scripts/sql-harness/assert-grants-funciones.sql` también hardcodea la firma
+> de 6 argumentos y falla apenas se aplica esta migración. Hay que
+> actualizarlo acá, no en la Task 7: dejarlo roto seis tasks vuelve inútil la
+> corrida de regresión mientras tanto.
 
 - [ ] **Step 1: Agregar el bloque al assert existente**
 
