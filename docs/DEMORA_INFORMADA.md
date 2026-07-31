@@ -11,15 +11,19 @@ compara contra el número que informa el AS400.
 > **no se informa a ningún cliente todavía** — ver el riesgo R1 más abajo
 > antes de considerarlo.
 
-Diseño completo: `docs/superpowers/specs/2026-07-28-motor-demora-informada-design.md`.
+Diseño completo: `docs/superpowers/specs/2026-07-28-motor-demora-informada-design.md`
+y [`DEMORA_MODELO.md`](DEMORA_MODELO.md) (el modelo nuevo).
 
-> **El modelo de esta guía está en revisión.** Se le encontraron tres errores
-> estructurales (el ritmo mide asignación→entrega, que ya incluye la cola; el
-> prorrateo castiga dos veces los pedidos ya asignados; y el promedio no
-> puede expresar "el primer móvil que se libera"). El planteo del problema y
-> el modelo propuesto para reemplazarlo están en
-> [`DEMORA_MODELO.md`](DEMORA_MODELO.md). Esta guía sigue describiendo lo que
-> está corriendo hoy.
+> **El modelo nuevo (`PROXIMO_HUECO`) está implementado y es el default.**
+> Reemplaza los tres errores estructurales del modelo anterior: el ritmo
+> medía asignación→entrega (ya incluye la espera en cola), el prorrateo
+> castigaba dos veces los pedidos ya asignados, y un promedio no puede
+> expresar "el primer móvil que se libera" — el nuevo modelo simula la cola
+> en vez de promediarla (diseño completo en `DEMORA_MODELO.md`). El modelo
+> viejo (`CAPACIDAD_PROMEDIO`) se conserva intacto, no como respaldo sino
+> para poder correr los dos sobre los mismos datos y medir la diferencia en
+> vez de discutirla: `demoras_modelo.modelo` elige cuál corre, y los dos
+> escriben las mismas columnas de `demoras_calculadas` — ver §3.
 
 ---
 
@@ -31,53 +35,99 @@ migraciones, CI): el Postgres de producción está firewalleado y no hay
 acceso directo desde fuera de Supabase. Es el mismo mecanismo que ya usa el
 resto de `docs/sqls/` en este repo.
 
-Los 7 archivos, **en este orden exacto**:
+Los 12 archivos, **en este orden exacto**:
 
 1. `docs/sqls/2026-07-29-demoras-acabado.sql` — función `demoras_acabado`:
    clamp → suavizado asimétrico → redondeo hacia arriba al escalón. El orden
    interno (crudo → clamp → suavizado → redondeo) es parte del contrato: si se
    redondea antes de suavizar, el suavizado opera sobre escalones y se traba
-   en falso.
+   en falso. Sin cambios desde la versión original.
 2. `docs/sqls/2026-07-29-demoras-capacidad.sql` — función `demoras_capacidad`:
    capacidad efectiva por (zona, tipo), prorrateando la presencia de cada
    móvil activo (peso 1 prioridad / `alpha` tránsito, normalizado por móvil
-   dentro de cada tipo).
-3. `docs/sqls/2026-07-29-demoras-ritmo.sql` — primera versión de
-   `demoras_ritmo` (cascada `ZONA → GLOBAL`). **Queda superseded por el
-   archivo 6**, que la reemplaza con `CREATE OR REPLACE FUNCTION` — que NO
-   requiere que la función preexista, la crea si falta y la reemplaza si
-   está. Este archivo se mantiene en la secuencia por prolijidad histórica
-   (así se aplicó la primera vez) y porque aplicarlo no rompe nada, **no**
-   porque el archivo 6 lo necesite: la dependencia real del archivo 6 es la
-   tabla `demoras_config`, creada en el archivo 4.
-4. `docs/sqls/2026-07-29-demoras-calculadas-tabla.sql` — crea
-   `demoras_calculadas` (los hechos) y `demoras_config` (la configuración),
-   con el seed de los tres tipos del escenario 1000.
-5. `docs/sqls/2026-07-29-demoras-calcular-run.sql` — función
-   `demoras_calcular_run`, el orquestador. Consume las tres funciones
-   anteriores y escribe en `demoras_calculadas`.
-6. `docs/sqls/2026-07-30-demoras-ritmo-cascada.sql` — **supersede** la
-   versión del archivo 3. Sube `demoras_ritmo` de la cascada `ZONA → GLOBAL`
-   a la cascada completa de 4 niveles `CHOFER → MOVIL → ZONA → GLOBAL`, con
-   orden configurable desde `demoras_config.ritmo_cascada`. `CREATE OR
-   REPLACE FUNCTION` sobre la misma firma, así que no requiere tocar nada
-   que ya la llame.
-7. `docs/sqls/2026-07-29-demoras-cron.sql` — programa los dos jobs de
-   `pg_cron` (`demoras-calcular` cada 10 min, `demoras-purga` diario) y
-   **requiere `pg_cron` habilitado** en el proyecto de Supabase (Database →
-   Extensions → `pg_cron`).
+   dentro de cada tipo). Se sigue usando para el modelo viejo
+   (`CAPACIDAD_PROMEDIO`) y para los conteos `moviles_activos` /
+   `moviles_prioridad` / `moviles_transito` que se persisten sea cual sea el
+   modelo. Sin cambios.
+3. `docs/sqls/2026-07-29-demoras-calculadas-tabla.sql` — crea
+   `demoras_calculadas` (los hechos) y `demoras_config` (la configuración
+   **operativa**), con el seed de los tres tipos del escenario 1000.
+4. `docs/sqls/2026-07-31-demoras-modelo-tabla.sql` — crea `demoras_modelo`
+   (todos los parámetros del **cálculo**, una fila por escenario) y
+   `demoras_modelo_historial` (versionado con trigger), y agrega
+   `demoras_calculadas.modelo_version`. Ver §3.
+5. `docs/sqls/2026-07-31-demoras-ritmo-muestras.sql` — función
+   `demoras_ritmo_muestras`: resuelve qué muestras alimentan el ritmo
+   (`ENTRE_ENTREGAS`, minutos entre cumplimientos consecutivos del mismo
+   móvil — lo correcto —, o `ASIGNADO_A_ENTREGA`, la métrica vieja que ya
+   incluye la cola) y aplica el corte de huecos largos (almuerzo, recarga).
+6. `docs/sqls/2026-07-31-demoras-ritmo-v2.sql` — **supersede** a las dos
+   versiones anteriores de `demoras_ritmo`: `2026-07-29-demoras-ritmo.sql`
+   (cascada `ZONA → GLOBAL`) y `2026-07-30-demoras-ritmo-cascada.sql`
+   (cascada de 4 niveles, pero leyendo `metricas_cumplimiento` directo).
+   Ninguna de las dos entra en esta secuencia — ver la advertencia más abajo.
+   Misma cascada `CHOFER → MOVIL → ZONA → GLOBAL`; cambia que la firma pierde
+   `p_dias`/`p_min_muestras` (ahora salen de `demoras_modelo.ritmo_dias_ventana`
+   / `ritmo_min_muestras`) y que las muestras vienen de
+   `demoras_ritmo_muestras` (archivo 5).
+7. `docs/sqls/2026-07-31-demoras-cola.sql` — función `demoras_cola`: extrae
+   la demanda pendiente por (zona, tipo) que antes vivía como CTE inline en
+   el orquestador, con `atrapados_modo` configurable (qué hacer con un
+   pedido asignado a un móvil que hoy no salió).
+8. `docs/sqls/2026-07-31-demoras-ritmo-movil.sql` — función
+   `demoras_ritmo_movil`: ritmo propio de cada móvil (o del chofer que más
+   lo manejó, si no tiene historial propio suficiente). Sin esto, dos
+   móviles de la misma zona no se distinguirían entre sí en la simulación.
+9. `docs/sqls/2026-07-31-demoras-servidores.sql` — función
+   `demoras_servidores`: a qué hora queda libre cada móvil activo
+   (`libre_en = carga × ritmo`, la carga contada en TODAS las zonas del
+   móvil), con `transito_modo` configurable.
+10. `docs/sqls/2026-07-31-demoras-proximo-hueco.sql` — función
+    `demoras_proximo_hueco`: la simulación de cola en sí — reparte los
+    pendientes entre los móviles activos y ubica el pedido nuevo en el
+    primer hueco. Reemplaza al cálculo de promedio para el modelo
+    `PROXIMO_HUECO`.
+11. `docs/sqls/2026-07-31-demoras-calcular-run-v2.sql` — función
+    `demoras_calcular_run` (el orquestador), **última a propósito**: esta
+    migración también **da de baja columnas de `demoras_config`**
+    (`min_minutos`, `max_minutos`, `escalon_minutos`, `subida_max`,
+    `bajada_max`, `estadistico`, `ritmo_default_minutos`,
+    `factor_calibracion` — ver §3). Aplicarla antes de que las diez
+    anteriores estén puestas deja al motor **viejo** (que lee esas mismas
+    columnas) sin nada que leer, fallando callado cada 10 minutos — el mismo
+    modo de falla que ya motivó separar esta baja de la primera migración.
+12. `docs/sqls/2026-07-29-demoras-cron.sql` — programa los dos jobs de
+    `pg_cron` (`demoras-calcular` cada 10 min, `demoras-purga` diario) y
+    **requiere `pg_cron` habilitado** en el proyecto de Supabase (Database →
+    Extensions → `pg_cron`). Sin cambios: la firma de `demoras_calcular_run`
+    no cambió. Si ya estaba aplicado antes de esta tanda, no hace falta
+    repetirlo (es idempotente igual).
 
-Las 7 son idempotentes en el sentido estricto: volver a pegarlas no da error
-ni duplica nada, así que si hay dudas sobre si una se aplicó, se puede repetir.
+Todos son idempotentes en el sentido estricto: volver a pegarlos no da error
+ni duplica nada, así que si hay dudas sobre si uno se aplicó, se puede repetir.
 
-**Con una excepción que sí importa: el archivo 3.** `2026-07-29-demoras-ritmo.sql`
-es la versión vieja de `demoras_ritmo` (cascada `ZONA → GLOBAL`) y el archivo 6
-la reemplaza por la de 4 niveles. Re-pegar el archivo 3 **después** del 6
-—porque "no rompe nada"— hace exactamente eso: un `CREATE OR REPLACE` exitoso,
-sin error ni warning, que **degrada la cascada de vuelta a `ZONA → GLOBAL`** y
-deja `ritmo_cascada` sin efecto. Si hay que re-aplicar por las dudas, repetir
-la secuencia completa **en orden**, o directamente saltear el 3 y aplicar el 6
-(que es autosuficiente — ver §13). Nunca el 3 suelto.
+**Con dos excepciones que sí importan.**
+
+La primera ya existía y ahora tiene un candidato más: **`2026-07-29-demoras-ritmo.sql`
+y `2026-07-30-demoras-ritmo-cascada.sql` quedan los dos superseded por el
+archivo 6** (`2026-07-31-demoras-ritmo-v2.sql`) y **ninguno de los dos entra
+en esta secuencia**. Re-pegar cualquiera de los dos **después** del archivo 6
+—porque "no rompe nada"— hace un `CREATE OR REPLACE` exitoso, sin error ni
+warning, que degrada `demoras_ritmo` a una versión vieja (cascada de 2
+niveles, o la de 4 niveles pero sin el corte de huecos ni la elección de
+métrica) y deja `ritmo_dias_ventana` / `ritmo_min_muestras` /
+`ritmo_hueco_max_minutos` de `demoras_modelo` sin efecto real. Si hay que
+re-aplicar por las dudas, repetir la secuencia completa **en orden**
+empezando en el archivo 1, o saltear directamente al archivo 6 (autosuficiente
+— ver §13). Nunca sueltos.
+
+La segunda es nueva de esta tanda: **`docs/sqls/2026-07-29-demoras-calcular-run.sql`
+(la versión vieja del orquestador) queda fuera de esta secuencia.** A
+diferencia del caso de arriba, re-pegarlo después del archivo 11 no degrada
+en silencio: como el archivo 11 ya borró columnas de `demoras_config` que esa
+versión vieja necesita (hace `SELECT dc.*` sobre la tabla entera), la
+próxima corrida falla con `column "min_minutos" does not exist` y el motor
+deja de escribir filas hasta que alguien vuelva a pegar el archivo 11.
 
 ---
 
@@ -113,12 +163,24 @@ SELECT count(*), min(corrida_at), max(corrida_at) FROM demoras_calculadas;
 
 ---
 
-## 3. La tabla `demoras_config`
+## 3. `demoras_config` (operativa) y `demoras_modelo` (cálculo)
 
-Vive en `docs/sqls/2026-07-29-demoras-calculadas-tabla.sql`. La configuración
-es **por `(escenario_id, tipo_servicio)`**, PK compuesta. Editable en caliente
-por SQL (la pantalla en Preferencias Globales es un incremento posterior, una
-vez que el motor haya corrido unos días).
+Desde la Task 7 (`2026-07-31-demoras-calcular-run-v2.sql`), los parámetros
+del motor viven partidos en dos tablas por responsabilidad, no por
+casualidad histórica:
+
+- **`demoras_config`** (`docs/sqls/2026-07-29-demoras-calculadas-tabla.sql`),
+  por `(escenario_id, tipo_servicio)` — lo **operativo**: el interruptor, la
+  ventana horaria y (con una excepción documentada más abajo) el orden de la
+  cascada del ritmo.
+- **`demoras_modelo`** (`docs/sqls/2026-07-31-demoras-modelo-tabla.sql`), una
+  fila **por escenario** — todo lo del **cálculo**: topes, suavizado, ritmo,
+  el modo de tránsito/vecinas/atrapados, el factor de calibración y **qué
+  modelo corre** (`modelo`).
+
+Las dos son editables en caliente por SQL (la pantalla en Preferencias
+Globales es un incremento posterior, una vez que el motor nuevo haya corrido
+unos días — Plan 2, fuera de esta tanda).
 
 **Un tipo sin fila no se calcula.** Es la forma de apagar un tipo entero sin
 borrar histórico: basta con `DELETE FROM demoras_config WHERE escenario_id=1000
@@ -149,40 +211,86 @@ SERVICE (07:00–23:30) — es el caso que motivó que la config fuera por-tipo 
 vez de global: calcular demora de nocturnos a las 8 de la mañana no significa
 nada.
 
-### Columnas y defaults
+### Columnas de `demoras_config` (lo operativo, por tipo)
 
 | Columna | Default | Para qué |
 |---|---|---|
 | `motor_activo` | `true` | Interruptor del tipo. `false` = no se calcula, sin borrar histórico. |
-| `min_minutos` | `30` | Piso del clamp. |
-| `max_minutos` | `120` | Techo del clamp. También es lo que se informa cuando `capacidad_efectiva <= 0` (sin nadie trabajando la zona). |
-| `escalon_minutos` | `15` | Redondeo hacia **arriba** al múltiplo, después del suavizado. |
-| `subida_max` | `30` | Cuánto puede subir `demora_suavizada` por corrida (cada 10 min) respecto de la corrida anterior. |
-| `bajada_max` | `15` | Cuánto puede bajar por corrida. Asimétrico a propósito: bajar es más lento que subir, para no informar una mejora que todavía no es real. |
-| `estadistico` | `MEDIANA` | Cuál de las cuatro estadísticas del ritmo (`MEDIA`, `MEDIANA`, `P75`, `P90`) alimenta el cálculo. Las otras tres quedan guardadas igual, para reprocesar histórico sin recalcular. |
-| `ritmo_cascada` | `CHOFER,MOVIL,ZONA,GLOBAL` | Orden de atribución del ritmo. Ver §3.1. |
-| `ritmo_default_minutos` | `30` | Piso cuando no hay ninguna estadística disponible (ni zona ni global). Se persiste en `demoras_calculadas.ritmo_usado` con `ritmo_origen='DEFECTO'`. |
-| `factor_calibracion` | `1.0` | Multiplicador global del resultado crudo. Existe por el riesgo R1 — ver §6. |
-| `hora_inicio` / `hora_fin` | `07:00` / `23:30` | Ventana operativa **de ese tipo**. Fuera de ventana, ese tipo no escribe fila. |
+| `hora_inicio` / `hora_fin` | `07:00` / `23:30` | Ventana operativa **de ese tipo**. Fuera de ventana, ese tipo no escribe fila. Ver §5.1. |
+| `ritmo_cascada` | `CHOFER,MOVIL,ZONA,GLOBAL` | Orden de atribución del ritmo, **por tipo**. Ver §3.1 — es la única columna de cálculo que se queda acá; el resto vive en `demoras_modelo`. |
 | `updated_at` | `now()` | Bookkeeping, no la actualiza el motor — es para auditar ediciones manuales de la config. |
 | `updated_by` | `NULL` | Bookkeeping, texto libre; nadie la setea automáticamente hoy. |
 
-Constraints en la tabla (la base valida en vez de confiar, porque es config
-editable por gente): `min_minutos >= 0`, `max_minutos >= 0`, `max_minutos >=
-min_minutos`, `escalon_minutos > 0`, `subida_max >= 0`, `bajada_max >= 0`,
-`ritmo_default_minutos > 0`, `factor_calibracion > 0`, `estadistico IN
-('MEDIA','MEDIANA','P75','P90')`, `tipo_servicio IN
+`min_minutos`, `max_minutos`, `escalon_minutos`, `subida_max`, `bajada_max`,
+`estadistico`, `ritmo_default_minutos` y `factor_calibracion` se dieron de
+baja en `2026-07-31-demoras-calcular-run-v2.sql` (archivo 11 de §1): ya no
+están en `demoras_config`, viven en `demoras_modelo` (una fila por
+escenario, no por tipo — ver la tabla de abajo). Dejarlas duplicadas en las
+dos tablas hubiera garantizado que algún día `demoras_config.estadistico` y
+`demoras_modelo.estadistico` valieran distinto sin que nadie supiera cuál
+manda.
+
+**`ritmo_cascada` es la excepción, y es deliberada — no un olvido.**
+`demoras_ritmo` (`docs/sqls/2026-07-31-demoras-ritmo-v2.sql`) sigue
+leyéndola de `demoras_config`, **por tipo** (`URGENTE` puede tener una
+cascada distinta de `SERVICE`); `demoras_modelo` tiene su propia columna
+`ritmo_cascada`, pero es una fila por *escenario* y hoy **no se lee en
+ningún lado** — es la que en teoría reemplazaría a ésta si algún día se
+decide que la cascada debe ser global en vez de por tipo, un cambio de
+diseño de `demoras_ritmo` que quedó fuera del alcance de la Task 7 (que es
+solo el orquestador). Migrarla junto con las otras ocho rompe
+`demoras_ritmo` en producción con `column "ritmo_cascada" does not exist`
+la primera vez que corre — verificado con el harness — porque
+`demoras_servidores`, `demoras_proximo_hueco` y el propio orquestador
+llaman a `demoras_ritmo`.
+
+Constraints que quedan en la tabla: `tipo_servicio IN
 ('URGENTE','NOCTURNO','SERVICE')`, **`hora_fin > hora_inicio`** (ver §5.1).
+`demoras_config_rango` (`max_minutos >= min_minutos`) se dio de baja junto
+con esas dos columnas.
 
-### Permisos: las dos tablas son solo de `service_role`
+### Columnas de `demoras_modelo` (el cálculo, por escenario)
 
-`demoras_calculadas` y `demoras_config` tienen `REVOKE ALL ... FROM anon,
-authenticated` + `GRANT ALL ... TO service_role` (mismo patrón que la RPC de
-métricas). El motivo es `demoras_config`: es la tabla que decide **qué calcula
-el motor** (interruptor, ventanas, topes, factor de calibración), y la anon key
-de Supabase vive en el bundle del browser. Sin los grants explícitos, si los
-default privileges del proyecto alcanzan a `anon`, cualquiera con la anon key
-puede apagar el motor o cambiarle el resultado.
+`docs/sqls/2026-07-31-demoras-modelo-tabla.sql`. Una fila por
+`escenario_id` — el cálculo es global a propósito mientras se está buscando
+la fórmula correcta: no tiene sentido que `URGENTE` mida el ritmo de una
+manera y `SERVICE` de otra.
+
+| Columna | Default | Para qué |
+|---|---|---|
+| `modelo` | `PROXIMO_HUECO` | Qué modelo corre: `PROXIMO_HUECO` (simulación de cola, nuevo) o `CAPACIDAD_PROMEDIO` (pendientes/capacidad × ritmo, el viejo — se conserva para poder comparar). |
+| `min_minutos` / `max_minutos` | `30` / `120` | Piso y techo del clamp. `max_minutos` también es lo que se informa sin capacidad (sin nadie trabajando la zona). |
+| `escalon_minutos` | `15` | Redondeo hacia **arriba** al múltiplo, después del suavizado. |
+| `incluir_entrega_propia` | `true` | Solo aplica a `PROXIMO_HUECO`: si la demora llega hasta que el móvil sale (`false`) o hasta que entrega (`true`). |
+| `subida_max` / `bajada_max` | `30` / `15` | Cuánto puede subir/bajar `demora_suavizada` por corrida. Asimétrico a propósito. |
+| `suavizado_bypass_cambio_capacidad` | `false` | Si cambió la cantidad de móviles activos respecto de la corrida anterior, se saltea el suavizado (`p_prev = NULL`): esa baja/subida es estructural (entró o salió un móvil), no ruido, y frenarla es informar de más cuando el refuerzo ya está en la calle. Ver `DEMORA_MODELO.md` §8.4. |
+| `ritmo_metrica` | `ENTRE_ENTREGAS` | `ENTRE_ENTREGAS` (minutos entre cumplimientos consecutivos del mismo móvil, lo correcto) o `ASIGNADO_A_ENTREGA` (la métrica vieja, ya incluye la cola — solo para correr el modelo viejo). |
+| `estadistico` | `MEDIANA` | Cuál de las cuatro estadísticas del ritmo (`MEDIA`, `MEDIANA`, `P75`, `P90`) alimenta el cálculo. |
+| `ritmo_dias_ventana` / `ritmo_min_muestras` | `7` / `5` | Ventana de días y muestras mínimas para que un nivel de la cascada (§3.1) gane. |
+| `ritmo_hueco_max_minutos` | `90` | Corte de huecos: un intervalo más largo que esto es almuerzo/recarga, no ritmo de trabajo. |
+| `ritmo_solo_con_cola` | `false` | Contar solo los intervalos en que el móvil ya tenía el próximo pedido asignado al terminar el anterior. |
+| `ritmo_default_minutos` | `30` | Piso cuando no hay ninguna estadística disponible. `ritmo_origen='DEFECTO'`. |
+| `transito_modo` | `SOLO_SI_NO_HAY` | Cómo compite un móvil de tránsito: `IGUAL`, `CASTIGO` (+`transito_castigo_minutos`), `SOLO_SI_NO_HAY` (solo si ninguna prioridad se libera dentro de `transito_margen_minutos`) o `ALPHA` (estira `libre_en` dividiendo por `peso_transito_alpha`). |
+| `vecinas_modo` | `IGNORAR` | **No implementado todavía**: `TODOS`/`PONDERADO` no cambian nada hoy (ver el `COMMENT ON COLUMN` en la migración). |
+| `atrapados_modo` | `EXCLUIR` | Qué hacer con un pedido asignado a un móvil que hoy no salió: `EXCLUIR` (no compite), `COMO_SIN_ASIGNAR`/`EN_COLA` (sí compite). |
+| `factor_calibracion` | `1.0` | Multiplicador global del resultado crudo. Riesgo R1 — ver §6. |
+| `version` | `1` | Bumpea en cada `UPDATE` que cambia algo real (no bookkeeping). `demoras_calculadas.modelo_version` apunta acá o a `demoras_modelo_historial` si ya cambió. |
+
+Un `UPDATE` que cambia cualquiera de estos parámetros queda en
+`demoras_modelo_historial` con el estado **anterior** completo (trigger
+`trg_demoras_modelo_versionar`); un `UPDATE` que no cambia nada (guardar sin
+editar) no versiona.
+
+### Permisos: las cuatro tablas son solo de `service_role`
+
+`demoras_calculadas`, `demoras_config`, `demoras_modelo` y
+`demoras_modelo_historial` tienen `REVOKE ALL ... FROM anon, authenticated`
++ `GRANT ALL ... TO service_role` (mismo patrón que la RPC de métricas). El
+motivo es que estas tablas deciden **qué calcula el motor** (interruptor,
+ventanas, topes, qué modelo corre, factor de calibración), y la anon key de
+Supabase vive en el bundle del browser. Sin los grants explícitos, si los
+default privileges del proyecto alcanzan a `anon`, cualquiera con la anon
+key puede apagar el motor o cambiarle el resultado.
 
 Verificación post-apply — las cuatro tienen que dar `f`:
 
@@ -193,13 +301,17 @@ SELECT has_table_privilege('anon','demoras_calculadas','UPDATE');
 SELECT has_table_privilege('authenticated','demoras_config','UPDATE');
 ```
 
-Si alguna da `t`, la migración de la tabla (archivo 4) no se aplicó completa:
-volver a pegarla (los REVOKE/GRANT son idempotentes).
+Si alguna da `t`, la migración de la tabla (archivo 3) no se aplicó
+completa: volver a pegarla (los REVOKE/GRANT son idempotentes). Para
+`demoras_modelo` / `demoras_modelo_historial`, lo mismo con el archivo 4.
 
 ### 3.1 `ritmo_cascada`: cómo se resuelve
 
-CSV, se recorre de izquierda a derecha. **Gana el primer nivel que llegue al
-mínimo de muestras** (`p_min_muestras`, default 5 en `demoras_ritmo`).
+Vive en `demoras_config`, **por tipo** (ver la excepción documentada más
+arriba). CSV, se recorre de izquierda a derecha. **Gana el primer nivel que
+llegue al mínimo de muestras** (`demoras_modelo.ritmo_min_muestras`, default
+`5` — antes era un parámetro posicional de `demoras_ritmo`, ahora sale de
+`demoras_modelo` igual que el resto de los parámetros del cálculo).
 Niveles válidos: `CHOFER`, `MOVIL`, `ZONA`, `GLOBAL`. Niveles desconocidos en
 el CSV se ignoran; una lista vacía o toda inválida cae al default completo.
 
@@ -240,26 +352,31 @@ escribe filas para el/los tipo(s) apagado(s), y el histórico queda intacto.
 
 ---
 
-## 5. Cómo cambiar el estadístico o la cascada, por tipo
+## 5. Cómo cambiar el estadístico o la cascada
 
-Cambiar cuál estadística alimenta el cálculo (por ejemplo, pasar URGENTE a
-`P75` para ser más conservador):
+Cambiar cuál estadística alimenta el cálculo (por ejemplo, pasar a `P75`
+para ser más conservador). Es una fila **por escenario** en `demoras_modelo`,
+no por tipo — a diferencia de la guía anterior a la Task 7, **sin** `AND
+tipo_servicio = ...`:
 
 ```sql
-UPDATE demoras_config SET estadistico = 'P75'
- WHERE escenario_id = 1000 AND tipo_servicio = 'URGENTE';
+UPDATE demoras_modelo SET estadistico = 'P75' WHERE escenario_id = 1000;
 ```
 
 Cambiar el orden de la cascada (por ejemplo, saltear CHOFER si el dato de
-chofer no es confiable para ese tipo):
+chofer no es confiable para ese tipo) sigue siendo por tipo, en
+`demoras_config` — `ritmo_cascada` es la única columna de cálculo que no se
+movió a `demoras_modelo` (ver §3, la excepción documentada):
 
 ```sql
 UPDATE demoras_config SET ritmo_cascada = 'MOVIL,ZONA,GLOBAL'
  WHERE escenario_id = 1000 AND tipo_servicio = 'NOCTURNO';
 ```
 
-Ningún cambio en `demoras_config` requiere deploy ni reinicio: la próxima
-corrida del cron (máximo 10 minutos después) ya lo toma.
+Ningún cambio en `demoras_config` ni en `demoras_modelo` requiere deploy ni
+reinicio: la próxima corrida del cron (máximo 10 minutos después) ya lo
+toma. Un cambio real en `demoras_modelo` además queda en
+`demoras_modelo_historial` (ver §3).
 
 ### 5.1 Las ventanas horarias NO pueden cruzar la medianoche
 
@@ -311,8 +428,9 @@ nivel (una `ZONA` real contra un blend `CHOFER`) tiene que saber que no está
 comparando lo mismo.**
 
 Texto fuente completo en el `COMMENT ON FUNCTION demoras_ritmo(...)` de
-`docs/sqls/2026-07-30-demoras-ritmo-cascada.sql`, y en el bloque de comentarios
-sobre las CTEs `por_zona_movil` / `por_zona_chofer` del mismo archivo.
+`docs/sqls/2026-07-31-demoras-ritmo-v2.sql`, y en el bloque de comentarios
+sobre las CTEs `por_zona_movil` / `por_zona_chofer` del mismo archivo (el
+archivo `2026-07-30-demoras-ritmo-cascada.sql` queda superseded — ver §1).
 
 ---
 
@@ -539,14 +657,21 @@ bash scripts/sql-harness/run.sh \
 ```
 
 Asserts existentes: `assert-acabado.sql`, `assert-capacidad.sql`,
-`assert-ritmo.sql`, `assert-config.sql`, `assert-run.sql`.
+`assert-config.sql`, `assert-modelo.sql`, `assert-ritmo-muestras.sql`,
+`assert-ritmo.sql`, `assert-cola.sql`, `assert-servidores.sql`,
+`assert-hueco.sql`, `assert-run-v2.sql`. (`assert-run.sql`, que probaba la
+versión vieja de `demoras_calcular_run` como único modelo posible, queda
+fuera de la regresión desde la Task 7 — `assert-run-v2.sql` la reemplaza.)
 
 `assert-config.sql` cubre la migración de tablas: el `CHECK (hora_fin >
-hora_inicio)` (§5.1) y los grants (§3). Los asserts de privilegios significan
-algo porque `00-stubs.sql` replica los **default privileges de Supabase**
-(`anon` y `authenticated` con `ALL` sobre las tablas nuevas del schema
-`public`): en un Postgres vanilla, `anon` nunca tiene privilegios, así que un
-assert de "anon no puede escribir" pasaría por omisión sin probar el `REVOKE`.
+hora_inicio)` (§5.1) y los grants (§3) — las dos reglas siguen vigentes
+después de la Task 7; no afirma nada sobre las columnas de cálculo que esa
+migración da de baja de `demoras_config` (eso lo cubre `assert-run-v2.sql`).
+Los asserts de privilegios significan algo porque `00-stubs.sql` replica los
+**default privileges de Supabase** (`anon` y `authenticated` con `ALL` sobre
+las tablas nuevas del schema `public`): en un Postgres vanilla, `anon` nunca
+tiene privilegios, así que un assert de "anon no puede escribir" pasaría por
+omisión sin probar el `REVOKE`.
 
 ### Por qué existe
 
@@ -576,11 +701,14 @@ laptop, antes del commit".
   honesta a "¿cuánto demora?" no es "poco": un pedido que entre ahora no
   tiene quién lo atienda. El piso solo aplica cuando SÍ hay capacidad y la
   cola está vacía — el caso genuinamente bueno.
-- **¿Puedo aplicar solo el archivo 6 sin el 3?** En términos de dependencias,
-  sí: `CREATE OR REPLACE FUNCTION` no requiere que la función preexista — la
-  crea si falta, la reemplaza si está. El archivo 6 es una definición
-  autosuficiente (mismo `RETURNS TABLE`, cuerpo completo, su propio
-  `COMMENT`); su única dependencia real es la tabla `demoras_config`, que
-  crea el archivo 4, no el 3. El archivo 3 se mantiene en el orden de
-  aplicación por prolijidad histórica y porque es inofensivo aplicarlo, no
-  porque el 6 lo necesite.
+- **¿Puedo aplicar solo el archivo 6 (`demoras-ritmo-v2.sql`), sin los dos
+  archivos viejos de `demoras_ritmo` que quedaron fuera de la secuencia?**
+  Sí, y de hecho es lo correcto: `CREATE OR REPLACE FUNCTION` no requiere
+  que la función preexista — la crea si falta, la reemplaza si está. El
+  archivo 6 es una definición autosuficiente (mismo `RETURNS TABLE`, cuerpo
+  completo, su propio `COMMENT`); sus dependencias reales son
+  `demoras_config` (archivo 3) y `demoras_ritmo_muestras` (archivo 5), no
+  los dos archivos viejos. Esos dos (`2026-07-29-demoras-ritmo.sql` y
+  `2026-07-30-demoras-ritmo-cascada.sql`) no hace falta aplicarlos nunca en
+  una instalación nueva — solo importan como advertencia para quien tenga
+  una base ya migrada con ellos puestos (§1: no re-pegarlos después del 6).
