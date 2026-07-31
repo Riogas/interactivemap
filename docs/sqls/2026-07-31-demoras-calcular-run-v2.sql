@@ -21,6 +21,15 @@
 --     demoras_acabado, o sea se saltea el suavizado. La baja que produce un
 --     refuerzo que acaba de entrar es real, y frenarla 50 minutos es
 --     informar de mas cuando el movil ya esta en la calle.
+--   - sin_capacidad describe el ESTADO DEL MUNDO en los DOS modelos: ningun
+--     movil activo en la zona (a.mov_act <= 0), no la capacidad PRORRATEADA
+--     que usa el modelo viejo para su propio atajo del techo. Con moviles
+--     de transito y peso_transito_alpha=0, demoras_capacidad da
+--     capacidad_efectiva=0 aunque haya moviles activos: sin este cuidado,
+--     el modelo viejo marcaba sin_capacidad=true ahi y el nuevo no, y el
+--     endpoint de comparativa EXCLUYE del promedio las filas con
+--     sin_capacidad=true -- los dos modelos terminaban comparandose sobre
+--     poblaciones distintas. Ver el comentario junto al CASE de sin_cap.
 --
 -- ORDEN DE APLICACION: este archivo BORRA columnas de demoras_config, asi
 -- que tiene que aplicarse DESPUES de que las seis migraciones anteriores
@@ -151,9 +160,37 @@ BEGIN
              ELSE ((a.asignados + a.sin_asignar)::numeric / a.capacidad)
                   * a.ritmo_usado * m.factor_calibracion
            END AS demora_cruda,
+           -- sin_cap describe el ESTADO DEL MUNDO (¿habia algun movil
+           -- activo en la zona?), no un atajo interno de un modelo en
+           -- particular. Por eso la rama CAPACIDAD_PROMEDIO usa a.mov_act
+           -- <= 0 y NO a.capacidad <= 0 (que si sigue usando la rama de
+           -- demora_cruda de arriba, sin tocar: esa es la logica genuina
+           -- del modelo viejo, no la bandera).
+           --
+           -- Con moviles de TRANSITO y peso_transito_alpha = 0 (config
+           -- soportada por el CHECK de demoras_modelo y documentada en
+           -- transito_modo=ALPHA), demoras_capacidad da capacidad_efectiva
+           -- = 0 aunque haya moviles activos trabajando la zona. Antes de
+           -- este fix, ese caso salia sin_capacidad=true en el modelo
+           -- viejo y sin_capacidad=false en el nuevo (que solo mira si hay
+           -- ALGUN movil activo, sin importar el prorrateo): el mismo dato
+           -- quedaba en poblaciones distintas para el endpoint de
+           -- comparativa, que EXCLUYE del promedio y de la brecha las
+           -- filas con sin_capacidad=true. Comparar los dos modelos sobre
+           -- los mismos datos -el punto de esta task- se rompe si cada
+           -- modelo decide con una regla distinta cuales filas cuentan.
+           --
+           -- Con este fix, ese caso (transito puro, alpha=0) queda
+           -- sin_capacidad=false en los DOS modelos, y el modelo viejo va
+           -- a informar el techo igual (via a.capacidad <= 0 en
+           -- demora_cruda) pero SIN la bandera puesta: eso es un defecto
+           -- REAL del modelo viejo (el atajo del techo no coincide con
+           -- "no habia nadie"), y que aparezca como una brecha grande en
+           -- la comparacion es exactamente lo que se quiere ver, no algo
+           -- para tapar.
            CASE WHEN m.modelo = 'PROXIMO_HUECO'
                 THEN coalesce(a.hueco_sin_cap, true)
-                ELSE (a.capacidad <= 0) END AS sin_cap,
+                ELSE (a.mov_act <= 0) END AS sin_cap,
            -- Bypass del suavizado: si cambio la cantidad de moviles activos
            -- respecto de la corrida anterior, la variacion es estructural
            -- (entro o salio un movil), no ruido. Frenarla es informar de mas
@@ -222,7 +259,7 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION demoras_calcular_run(timestamptz) IS
-  'Motor de demora. Despacha entre PROXIMO_HUECO (simulacion de cola sobre tiempos de liberacion por movil) y CAPACIDAD_PROMEDIO (el modelo viejo) segun demoras_modelo.modelo, escribiendo las MISMAS columnas en los dos casos para poder compararlos. Los parametros del calculo salen de demoras_modelo (una fila por escenario); demoras_config queda solo con lo operativo por tipo (motor_activo, ventana horaria), asi que NOCTURNO conserva su horario propio. Cada fila sella modelo_version para que una corrida vieja se pueda reconstruir. Con suavizado_bypass_cambio_capacidad, un cambio en la cantidad de moviles activos saltea el suavizado: esa variacion es estructural, no ruido.';
+  'Motor de demora. Despacha entre PROXIMO_HUECO (simulacion de cola sobre tiempos de liberacion por movil) y CAPACIDAD_PROMEDIO (el modelo viejo) segun demoras_modelo.modelo, escribiendo las MISMAS columnas en los dos casos para poder compararlos. Los parametros del calculo salen de demoras_modelo (una fila por escenario); demoras_config queda solo con lo operativo por tipo (motor_activo, ventana horaria), asi que NOCTURNO conserva su horario propio. Cada fila sella modelo_version para que una corrida vieja se pueda reconstruir. Con suavizado_bypass_cambio_capacidad, un cambio en la cantidad de moviles activos saltea el suavizado: esa variacion es estructural, no ruido. sin_capacidad es igual en los dos modelos (ningun movil activo en la zona), no la capacidad prorrateada que usa el modelo viejo para su propio atajo del techo: los dos tienen que marcar las mismas filas, porque el endpoint de comparativa las excluye del promedio.';
 
 -- ─── Baja de las columnas migradas ───────────────────────────────────
 -- Recien ahora nadie las lee. Dejarlas seria garantizar que algun dia

@@ -184,6 +184,63 @@ BEGIN
   RAISE NOTICE 'ok reparto de columnas entre las dos tablas (ritmo_cascada se queda, ver desvio documentado)';
 END $$;
 
+-- ─── sin_capacidad describe el ESTADO DEL MUNDO, no un atajo del modelo ──
+-- Fix round 1 (reviewer, Critical): con moviles de TRANSITO y
+-- peso_transito_alpha=0 (config soportada por el CHECK de demoras_modelo y
+-- documentada en transito_modo=ALPHA), demoras_capacidad da
+-- capacidad_efectiva=0 aunque haya moviles activos trabajando la zona.
+-- Antes del fix, el modelo viejo marcaba sin_capacidad=true ahi (via
+-- a.capacidad<=0, la capacidad PRORRATEADA) y el nuevo no (via a.mov_act<=0,
+-- que solo mira si hay ALGUN movil activo): el mismo dato quedaba en
+-- poblaciones distintas para el endpoint de comparativa, que EXCLUYE del
+-- promedio y de la brecha las filas con sin_capacidad=true. Comparar los
+-- dos modelos sobre los mismos datos -el punto de esta task- se rompe si
+-- cada uno decide con una regla distinta cuales filas cuentan.
+--
+-- Zona 700, pura de transito (NINGUN movil de prioridad asignado), un solo
+-- movil activo, alpha=0: capacidad_efectiva sale 0 pero SI hay alguien
+-- trabajando. Los dos modelos tienen que marcar sin_capacidad=false.
+-- (El modelo viejo va a informar igual el techo -via a.capacidad<=0 en la
+-- rama de demora_cruda, sin tocar- pero SIN la bandera puesta: es un
+-- defecto real del modelo viejo, no algo que este bloque deba tapar.)
+DO $$
+DECLARE v_sin_hueco boolean; v_sin_viejo boolean; v_n bigint;
+BEGIN
+  INSERT INTO demoras (escenario_id, zona_id, zona_tipo, descripcion, minutos, activa)
+  VALUES (1000, 700, 'Distribucion', 'URGENTE', 40, true);
+  INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito)
+  VALUES ('70', 700, 1000, 'URGENTE', 2);
+  INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+  VALUES (1000, 70, DATE '2026-07-30', true);
+  UPDATE escenario_settings SET peso_transito_alpha = 0 WHERE escenario_id = 1000;
+
+  UPDATE demoras_modelo SET modelo = 'PROXIMO_HUECO' WHERE escenario_id = 1000;
+  v_n := demoras_calcular_run(timestamptz '2026-07-30 15:20:00-03');
+  SELECT sin_capacidad INTO v_sin_hueco FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 15:20:00-03'
+     AND zona_id = 700 AND tipo_servicio = 'URGENTE';
+
+  UPDATE demoras_modelo SET modelo = 'CAPACIDAD_PROMEDIO' WHERE escenario_id = 1000;
+  v_n := demoras_calcular_run(timestamptz '2026-07-30 15:30:00-03');
+  SELECT sin_capacidad INTO v_sin_viejo FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 15:30:00-03'
+     AND zona_id = 700 AND tipo_servicio = 'URGENTE';
+
+  IF v_sin_hueco IS NULL OR v_sin_viejo IS NULL THEN
+    RAISE EXCEPTION 'falta alguna de las dos corridas en zona 700: hueco=% viejo=%', v_sin_hueco, v_sin_viejo;
+  END IF;
+  IF v_sin_hueco IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'zona de puro transito con alpha=0: PROXIMO_HUECO debia marcar sin_capacidad=false (hay un movil activo), dio %', v_sin_hueco;
+  END IF;
+  IF v_sin_viejo IS DISTINCT FROM v_sin_hueco THEN
+    RAISE EXCEPTION 'sin_capacidad diverge entre modelos con capacidad prorrateada 0 pero movil activo: hueco=% viejo=% (el endpoint de comparativa excluye estas filas del promedio -- si difieren, los dos modelos se comparan sobre poblaciones distintas)', v_sin_hueco, v_sin_viejo;
+  END IF;
+
+  UPDATE demoras_modelo SET modelo = 'PROXIMO_HUECO' WHERE escenario_id = 1000;
+  UPDATE escenario_settings SET peso_transito_alpha = 0.3 WHERE escenario_id = 1000;
+  RAISE NOTICE 'ok sin_capacidad no diverge entre modelos con transito puro y alpha=0 (hueco=%, viejo=%)', v_sin_hueco, v_sin_viejo;
+END $$;
+
 -- ─── El advisory lock (dispara el test de concurrencia del harness) ───
 -- El runner busca la cadena advisory_xact_lock en los asserts para decidir
 -- si lanza las dos conexiones concurrentes.

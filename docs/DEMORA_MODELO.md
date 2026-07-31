@@ -684,8 +684,8 @@ La configuración se parte en dos, con criterios distintos:
 
 | Tabla | Qué guarda | Una fila por |
 |---|---|---|
-| **`demoras_modelo`** *(nueva)* | Todo el cálculo | **escenario** |
-| `demoras_config` *(existente)* | Solo lo operativo: `motor_activo`, `hora_inicio`, `hora_fin` | escenario + tipo |
+| **`demoras_modelo`** *(nueva)* | Todo el cálculo, excepto `ritmo_cascada` (ver más abajo) | **escenario** |
+| `demoras_config` *(existente)* | Lo operativo: `motor_activo`, `hora_inicio`, `hora_fin` — y `ritmo_cascada` | escenario + tipo |
 
 El cálculo es **global**: no tiene sentido que URGENTE mida el ritmo de una
 manera y SERVICE de otra mientras estamos buscando la fórmula correcta. Lo
@@ -694,10 +694,21 @@ operativo sí es por tipo, porque NOCTURNO tiene su propia ventana horaria
 
 Las columnas de cálculo que hoy viven en `demoras_config`
 (`min_minutos`, `max_minutos`, `escalon_minutos`, `subida_max`, `bajada_max`,
-`estadistico`, `ritmo_cascada`, `ritmo_default_minutos`,
-`factor_calibracion`) **se migran a `demoras_modelo` y se eliminan de
-`demoras_config`**. Dejar el mismo parámetro en dos tablas es garantizar que
-algún día tengan valores distintos y nadie sepa cuál manda.
+`estadistico`, `ritmo_default_minutos`, `factor_calibracion`) **se migran a
+`demoras_modelo` y se eliminan de `demoras_config`**. Dejar el mismo
+parámetro en dos tablas es garantizar que algún día tengan valores
+distintos y nadie sepa cuál manda.
+
+**`ritmo_cascada` es la excepción y se queda en `demoras_config`, por tipo.**
+`demoras_ritmo` la lee ahí, por `tipo_servicio`, y hay configuraciones
+válidas donde `URGENTE` y `SERVICE` corren cascadas distintas al mismo
+tiempo (por ejemplo, saltear `CHOFER` para un tipo cuyo dato de chofer no es
+confiable, sin tocar el otro) — algo que una fila por *escenario* en
+`demoras_modelo` no puede representar sin cambiar el diseño de
+`demoras_ritmo`, que quedó fuera del alcance de la implementación. La
+columna existe también en `demoras_modelo` (por si algún día se decide que
+la cascada pasa a ser global), pero hoy no se lee en ningún lado — ver el
+`COMMENT ON COLUMN` en `docs/sqls/2026-07-31-demoras-modelo-tabla.sql`.
 
 ### 9.2 El inventario completo
 
@@ -722,7 +733,7 @@ algún día tengan valores distintos y nadie sepa cuál manda.
 |---|---|---|
 | `ritmo_metrica` | `ENTRE_ENTREGAS` · `ASIGNADO_A_ENTREGA` | **nuevo** |
 | `estadistico` | `MEDIA` · `MEDIANA` · `P75` · `P90` | MEDIANA |
-| `ritmo_cascada` | CSV de `CHOFER,MOVIL,ZONA,GLOBAL` | los cuatro |
+| `ritmo_cascada` | CSV de `CHOFER,MOVIL,ZONA,GLOBAL` | los cuatro — **vive en `demoras_config`, por tipo, no acá** (ver 9.1) |
 | `ritmo_dias_ventana` | entero — 7 es semanal | **nuevo**, hoy clavado en 7 |
 | `ritmo_min_muestras` | entero | **nuevo**, hoy clavado en 5 |
 | `ritmo_hueco_max_minutos` | minutos | **nuevo** — decisión 8.5 |

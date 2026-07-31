@@ -91,6 +91,8 @@ COMMENT ON COLUMN demoras_modelo.ritmo_metrica IS
   'ENTRE_ENTREGAS = minutos entre cumplimientos consecutivos del mismo movil (ritmo de trabajo real). ASIGNADO_A_ENTREGA = demora_efectiva_mins, que ya incluye la espera en cola y por eso doble-cuenta al multiplicarse por los pendientes (riesgo R1).';
 COMMENT ON COLUMN demoras_modelo.vecinas_modo IS
   'TODAVIA NO IMPLEMENTADO: hoy el calculo se comporta siempre como IGNORAR y poner TODOS o PONDERADO no cambia nada. La columna existe para no migrar la tabla de nuevo cuando se implemente. Que hara: los pedidos sin asignar de OTRAS zonas que comparten moviles con esta tambien compiten por ellos, y hoy el calculo de esta zona los ignora (optimista). El diseno recomienda empezar ignorandolos y medir cuanto se pierde antes de pagar la complejidad; esa medicion es el backtest.';
+COMMENT ON COLUMN demoras_modelo.ritmo_cascada IS
+  'NO ESTA EN USO: quien manda hoy es demoras_config.ritmo_cascada, leida POR TIPO de servicio (docs/sqls/2026-07-31-demoras-ritmo-v2.sql). Esta columna existe para el dia que se decida que la cascada pasa a ser global por escenario en vez de por tipo, pero ese cambio no se hizo: hay configuraciones validas donde URGENTE y SERVICE corren cascadas distintas al mismo tiempo, y una sola fila por escenario ACA no puede representar eso sin antes cambiar demoras_ritmo para que deje de leer por tipo. Migrar la baja de demoras_config.ritmo_cascada sin ese cambio previo rompe demoras_ritmo en runtime (verificado con el harness): esta columna se queda sin efecto a proposito, no por descuido.';
 
 -- ─── Historial ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS demoras_modelo_historial (
