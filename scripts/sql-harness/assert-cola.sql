@@ -34,28 +34,29 @@ BEGIN
   RAISE NOTICE 'ok conteos crudos';
 END $$;
 
--- 2) atrapados_modo = EXCLUIR (default): el atrapado no entra en la cola.
+-- 2) cola_efectiva AHORA incluye los asignados en zona. Con 3 asignados
+--    (2 al movil activo + 1 atrapado, que se excluye) y 4 sin asignar:
+--    2 + 4 = 6.
 DO $$
 DECLARE r record;
 BEGIN
   SELECT * INTO r FROM demoras_cola(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
    WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
-  IF r.cola_efectiva IS DISTINCT FROM 4 THEN
-    RAISE EXCEPTION 'EXCLUIR: cola_efectiva % (esperaba 4 = los sin asignar; los asignados a moviles activos los lleva el simulador via libre_en)', r.cola_efectiva;
+  IF r.cola_efectiva IS DISTINCT FROM 6 THEN
+    RAISE EXCEPTION 'cola_efectiva %: esperaba 6 = 4 sin asignar + 2 asignados al movil activo (el atrapado se excluye)', r.cola_efectiva;
   END IF;
-  RAISE NOTICE 'ok atrapados EXCLUIR';
+  RAISE NOTICE 'ok la cola incluye los asignados en zona';
 END $$;
 
--- 3) atrapados_modo = COMO_SIN_ASIGNAR: el atrapado se suma a la cola,
---    porque lo va a agarrar otro movil.
+-- 3) atrapados_modo = COMO_SIN_ASIGNAR: el atrapado tambien entra -> 7.
 DO $$
 DECLARE r record;
 BEGIN
   UPDATE demoras_modelo SET atrapados_modo = 'COMO_SIN_ASIGNAR' WHERE escenario_id = 1000;
   SELECT * INTO r FROM demoras_cola(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
    WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
-  IF r.cola_efectiva IS DISTINCT FROM 5 THEN
-    RAISE EXCEPTION 'COMO_SIN_ASIGNAR: cola_efectiva % (esperaba 5)', r.cola_efectiva;
+  IF r.cola_efectiva IS DISTINCT FROM 7 THEN
+    RAISE EXCEPTION 'COMO_SIN_ASIGNAR: cola_efectiva % (esperaba 7)', r.cola_efectiva;
   END IF;
   UPDATE demoras_modelo SET atrapados_modo = 'EXCLUIR' WHERE escenario_id = 1000;
   RAISE NOTICE 'ok atrapados COMO_SIN_ASIGNAR';
@@ -106,6 +107,43 @@ BEGIN
   INSERT INTO escenario_settings (escenario_id, peso_transito_alpha, nombre, pedidos_sa_minutos_antes)
   VALUES (1000, 0.3, 'Escenario 1000', v_mins);
   RAISE NOTICE 'ok sin escenario_settings degrada a "sin filtro", no a cero filas';
+END $$;
+
+-- 6) URGENTE y NOCTURNO unen la demanda: un nocturno de la zona tiene que
+--    aparecer en la cola de URGENTE y viceversa. Un SERVICE no.
+DO $$
+DECLARE r_urg record; r_noc record; r_srv record;
+BEGIN
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (30, 1000, 'NOCTURNO', NULL, 100, 1, DATE '2026-07-30'),
+         (31, 1000, 'NOCTURNO', NULL, 100, 1, DATE '2026-07-30');
+  INSERT INTO services (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (32, 1000, 'SERVICE', NULL, 100, 1, DATE '2026-07-30');
+
+  SELECT * INTO r_urg FROM demoras_cola(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
+   WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
+  SELECT * INTO r_noc FROM demoras_cola(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
+   WHERE zona_id = 100 AND tipo_servicio = 'NOCTURNO';
+  SELECT * INTO r_srv FROM demoras_cola(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
+   WHERE zona_id = 100 AND tipo_servicio = 'SERVICE';
+
+  -- Los 2 nocturnos se suman a los 7 que ya habia en este punto del archivo:
+  -- 4 sin_asignar + 3 asignados_activos. NO son los 6 del bloque 2 -- el
+  -- bloque 4 (sin tocar por esta task) agrego el pedido 21 (URGENTE, movil
+  -- 10 activo, fch_hora_para lejana): un asignado cuenta SIEMPRE aunque
+  -- arranque tarde (regla canonica), asi que subio asignados_activos de 2 a
+  -- 3 antes de que este bloque corriera. 7 + 2 nocturnos = 9.
+  IF r_urg.cola_efectiva IS DISTINCT FROM 9 THEN
+    RAISE EXCEPTION 'URGENTE debio sumar los 2 nocturnos: cola % (esperaba 9 = 4 sin_asignar + 3 asignados_activos + 2 nocturnos sin asignar)', r_urg.cola_efectiva;
+  END IF;
+  IF r_noc.cola_efectiva IS DISTINCT FROM r_urg.cola_efectiva THEN
+    RAISE EXCEPTION 'NOCTURNO y URGENTE deben ver la MISMA demanda: % vs %', r_noc.cola_efectiva, r_urg.cola_efectiva;
+  END IF;
+  -- SERVICE no se mezcla: solo su propio pedido.
+  IF r_srv.cola_efectiva IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION 'SERVICE no debe mezclarse: cola % (esperaba 1)', r_srv.cola_efectiva;
+  END IF;
+  RAISE NOTICE 'ok urgente+nocturno unen demanda, service no';
 END $$;
 
 TRUNCATE pedidos, services, moviles_dia;
