@@ -137,6 +137,47 @@ BEGIN
   RAISE NOTICE 'ok nivel CHOFER gana con historial propio (M6 via ANA = %)', r.ritmo_mediana;
 END $$;
 
+-- 0e) demoras_ritmo_movil lee la cascada de demoras_config.ritmo_cascada
+--     POR TIPO -- la MISMA fuente que demoras_ritmo -- y NO de
+--     demoras_modelo.ritmo_cascada (C1, review final: esa columna no
+--     alimenta nada, ver su COMMENT ON COLUMN). Reusa el fixture del
+--     bloque 0d: movil 6 (chofer ANA, 5 muestras a 20) y movil 8 (ANA
+--     tambien, 5 muestras a 40). Con la cascada default (CHOFER,MOVIL)
+--     gana CHOFER (blend de ANA en M6+M8 = mediana 30, bloque 0d). Un
+--     UPDATE sobre demoras_config.ritmo_cascada que ponga MOVIL primero
+--     tiene que cambiar el reparto a MOVIL (ritmo propio de M6 = 20, sin
+--     blend con M8); el mismo UPDATE sobre demoras_modelo.ritmo_cascada
+--     NO puede moverlo -- si lo hace, esa columna sigue alimentando la
+--     cascada por otro lado y la promesa del COMMENT ON COLUMN es falsa.
+DO $$
+DECLARE r record;
+BEGIN
+  -- Control: demoras_config.ritmo_cascada SI cambia el reparto.
+  UPDATE demoras_config SET ritmo_cascada = 'MOVIL,CHOFER'
+   WHERE escenario_id = 1000 AND tipo_servicio = 'URGENTE';
+  SELECT * INTO r FROM demoras_ritmo_movil(1000, DATE '2026-07-30')
+   WHERE movil = 6 AND tipo_servicio = 'URGENTE';
+  IF r.ritmo_origen IS DISTINCT FROM 'MOVIL' THEN
+    RAISE EXCEPTION 'UPDATE sobre demoras_config.ritmo_cascada no cambio el reparto: origen=% (esperaba MOVIL)', r.ritmo_origen;
+  END IF;
+  IF round(r.ritmo_mediana) IS DISTINCT FROM 20 THEN
+    RAISE EXCEPTION 'con MOVIL primero, M6 debio dar su propio ritmo (20, sin blend con M8), dio %', r.ritmo_mediana;
+  END IF;
+  UPDATE demoras_config SET ritmo_cascada = 'CHOFER,MOVIL,ZONA,GLOBAL'
+   WHERE escenario_id = 1000 AND tipo_servicio = 'URGENTE';
+
+  -- Negativo: demoras_modelo.ritmo_cascada NO alimenta nada.
+  UPDATE demoras_modelo SET ritmo_cascada = 'MOVIL,CHOFER' WHERE escenario_id = 1000;
+  SELECT * INTO r FROM demoras_ritmo_movil(1000, DATE '2026-07-30')
+   WHERE movil = 6 AND tipo_servicio = 'URGENTE';
+  IF r.ritmo_origen IS DISTINCT FROM 'CHOFER' THEN
+    RAISE EXCEPTION 'UPDATE sobre demoras_modelo.ritmo_cascada SI cambio el reparto (origen=%): esa columna no deberia alimentar nada (ver su COMMENT ON COLUMN)', r.ritmo_origen;
+  END IF;
+  UPDATE demoras_modelo SET ritmo_cascada = 'CHOFER,MOVIL,ZONA,GLOBAL' WHERE escenario_id = 1000;
+
+  RAISE NOTICE 'ok demoras_ritmo_movil lee la cascada de demoras_config (por tipo), no de demoras_modelo';
+END $$;
+
 -- 1) libre_en = carga x ritmo, con la carga contada en TODAS las zonas.
 DO $$
 DECLARE r record;
@@ -159,6 +200,36 @@ BEGIN
   END IF;
   IF round(r.libre_en) IS DISTINCT FROM 15 THEN RAISE EXCEPTION 'M2 libre_en: % (esperaba 15)', r.libre_en; END IF;
   RAISE NOTICE 'ok libre_en con carga de todas las zonas';
+END $$;
+
+-- 1b) ESPECIAL y OTROS SI cuentan en la carga del movil (Important 4,
+--     review final) -- decision deliberada, no la ausencia por omision de
+--     un filtro: no son DEMANDA de ninguna zona (demoras_cola los excluye
+--     de la cola -- assert-run.sql "ESPECIAL y OTROS no deben contar como
+--     demanda"), pero SI son TRABAJO real que ocupa al movil mientras lo
+--     entrega, igual que un pedido de otra zona. M1 ya lleva 3 URGENTE en
+--     zona 100 (carga=3, libre_en=60, bloque 1); sumarle 2 ESPECIAL/OTROS
+--     en una zona ajena (999, donde M1 ni siquiera es servidor) tiene que
+--     subirle la carga a 5 y libre_en a 100 -- si el filtro de tipo se
+--     colara aca como en demoras_cola, se quedaria en 3/60.
+DO $$
+DECLARE r record;
+BEGIN
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (101,1000,'ESPECIAL SIN FLETE',1,999,1,DATE '2026-07-30'),
+         (102,1000,'OTROS',              1,999,1,DATE '2026-07-30');
+
+  SELECT * INTO r FROM demoras_servidores(1000, DATE '2026-07-30')
+   WHERE zona_id = 100 AND tipo_servicio = 'URGENTE' AND movil = 1;
+  IF r.carga IS DISTINCT FROM 5 THEN
+    RAISE EXCEPTION 'M1 carga con ESPECIAL/OTROS sumados: % (esperaba 5 = 3 URGENTE + 2 ESPECIAL/OTROS: la carga cuenta trabajo, no demanda por tipo)', r.carga;
+  END IF;
+  IF round(r.libre_en) IS DISTINCT FROM 100 THEN
+    RAISE EXCEPTION 'M1 libre_en con ESPECIAL/OTROS sumados: % (esperaba 100 = 5 x 20)', r.libre_en;
+  END IF;
+
+  DELETE FROM pedidos WHERE id IN (101,102);
+  RAISE NOTICE 'ok ESPECIAL/OTROS cuentan como carga del movil (trabajo real), aunque no sean demanda de ninguna zona';
 END $$;
 
 -- 2) Un movil INACTIVO no es servidor.

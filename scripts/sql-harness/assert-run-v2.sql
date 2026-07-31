@@ -104,6 +104,65 @@ BEGIN
   RAISE NOTICE 'ok los dos modelos dan distinto (hueco=%, viejo=%)', v_hueco, v_viejo;
 END $$;
 
+-- ─── Los insumos de auditoria del modelo nuevo se persisten (Important 1,
+-- review final) ────────────────────────────────────────────────────────
+-- ritmo_aplicado / libre_primero / cola_por_delante / moviles_considerados
+-- son los insumos REALES que produjeron demora_cruda en PROXIMO_HUECO --
+-- demoras_proximo_hueco ya los devolvia, pero el orquestador los
+-- descartaba y persistia ritmo_usado/ritmo_origen del blend de ZONA (el
+-- FALLBACK del modelo nuevo, no lo que usa cuando el movil tiene ritmo
+-- propio). Sobre el ejemplo de DEMORA_MODELO.md 7.3: Centro informa 60
+-- desde el ritmo 15 de M2, pero la fila guardaba 17.50 -- un numero que no
+-- participo del calculo. Se verifica contra el resultado DIRECTO de
+-- demoras_proximo_hueco para la misma zona/fecha/corrida (no solo "no son
+-- NULL"), y que en CAPACIDAD_PROMEDIO las cuatro queden NULL.
+DO $$
+DECLARE v_directo record; v_guardado record; v_n bigint;
+BEGIN
+  UPDATE demoras_modelo SET modelo = 'PROXIMO_HUECO' WHERE escenario_id = 1000;
+  SELECT * INTO v_directo FROM demoras_proximo_hueco(1000, DATE '2026-07-30', timestamptz '2026-07-30 16:00:00-03')
+   WHERE zona_id = 100 AND tipo_servicio = 'URGENTE';
+
+  v_n := demoras_calcular_run(timestamptz '2026-07-30 16:00:00-03');
+  SELECT ritmo_aplicado, libre_primero, cola_por_delante, moviles_considerados
+    INTO v_guardado
+    FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 16:00:00-03'
+     AND zona_id = 100 AND tipo_servicio = 'URGENTE';
+
+  IF v_guardado.ritmo_aplicado IS NULL THEN
+    RAISE EXCEPTION 'PROXIMO_HUECO: los insumos de auditoria quedaron NULL (deberian venir de demoras_proximo_hueco)';
+  END IF;
+  IF v_guardado.ritmo_aplicado IS DISTINCT FROM v_directo.ritmo_aplicado THEN
+    RAISE EXCEPTION 'PROXIMO_HUECO: ritmo_aplicado guardado % (esperaba % del calculo directo)', v_guardado.ritmo_aplicado, v_directo.ritmo_aplicado;
+  END IF;
+  IF v_guardado.libre_primero IS DISTINCT FROM v_directo.libre_primero THEN
+    RAISE EXCEPTION 'PROXIMO_HUECO: libre_primero guardado % (esperaba %)', v_guardado.libre_primero, v_directo.libre_primero;
+  END IF;
+  IF v_guardado.cola_por_delante IS DISTINCT FROM v_directo.cola_por_delante THEN
+    RAISE EXCEPTION 'PROXIMO_HUECO: cola_por_delante guardado % (esperaba %)', v_guardado.cola_por_delante, v_directo.cola_por_delante;
+  END IF;
+  IF v_guardado.moviles_considerados IS DISTINCT FROM v_directo.moviles_considerados THEN
+    RAISE EXCEPTION 'PROXIMO_HUECO: moviles_considerados guardado % (esperaba %)', v_guardado.moviles_considerados, v_directo.moviles_considerados;
+  END IF;
+
+  UPDATE demoras_modelo SET modelo = 'CAPACIDAD_PROMEDIO' WHERE escenario_id = 1000;
+  v_n := demoras_calcular_run(timestamptz '2026-07-30 16:10:00-03');
+  SELECT ritmo_aplicado, libre_primero, cola_por_delante, moviles_considerados
+    INTO v_guardado
+    FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 16:10:00-03'
+     AND zona_id = 100 AND tipo_servicio = 'URGENTE';
+  IF v_guardado.ritmo_aplicado IS NOT NULL OR v_guardado.libre_primero IS NOT NULL
+     OR v_guardado.cola_por_delante IS NOT NULL OR v_guardado.moviles_considerados IS NOT NULL THEN
+    RAISE EXCEPTION 'CAPACIDAD_PROMEDIO no debio persistir insumos de PROXIMO_HUECO: ritmo_aplicado=% libre_primero=% cola_por_delante=% moviles_considerados=%',
+      v_guardado.ritmo_aplicado, v_guardado.libre_primero, v_guardado.cola_por_delante, v_guardado.moviles_considerados;
+  END IF;
+
+  UPDATE demoras_modelo SET modelo = 'PROXIMO_HUECO' WHERE escenario_id = 1000;
+  RAISE NOTICE 'ok insumos de auditoria de PROXIMO_HUECO persistidos y verificados contra el calculo directo; NULL en CAPACIDAD_PROMEDIO';
+END $$;
+
 -- ─── El sello de version ─────────────────────────────────────────────
 DO $$
 DECLARE v_ver integer; v_actual integer; v_n bigint;

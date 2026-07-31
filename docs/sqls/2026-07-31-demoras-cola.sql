@@ -128,3 +128,12 @@ $fn$;
 
 COMMENT ON FUNCTION demoras_cola(integer, date, timestamptz) IS
   'Demanda pendiente por (zona, tipo): conteos crudos de asignados / sin asignar / atrapados, mas cola_efectiva, que es lo que se pone en fila por delante del pedido nuevo segun demoras_modelo.atrapados_modo. cola_efectiva NO incluye a los asignados a moviles activos: ese trabajo entra al modelo por el tiempo de liberacion del movil, y contarlo tambien en la cola seria doble conteo. Aplica la ventana SA canonica (un asignado cuenta siempre; un sin asignar solo si arranca dentro de la ventana) y tolera fch_para NULL via COALESCE con fch_hora_para.';
+
+-- ─── Grants: solo service_role ───────────────────────────────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto:
+-- sin este REVOKE, anon/authenticated (las claves que viajan al browser)
+-- pueden invocarla via RPC. Mismo patron que
+-- docs/sqls/2026-07-24-metricas-dashboard-rpc.sql.
+REVOKE EXECUTE ON FUNCTION demoras_cola(integer, date, timestamptz) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_cola(integer, date, timestamptz) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_cola(integer, date, timestamptz) TO service_role;

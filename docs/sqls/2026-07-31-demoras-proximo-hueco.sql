@@ -186,3 +186,12 @@ $fn$;
 
 COMMENT ON FUNCTION demoras_proximo_hueco(integer, date, timestamptz) IS
   'Simulacion del proximo hueco por (zona, tipo): reparte los pedidos sin asignar entre los moviles activos, cada uno al que se libera primero, y ubica el pedido nuevo en el primer hueco que queda. La demora es esa espera mas la propia entrega (configurable). Devuelve demora_cruda SIN clamp, suavizado ni redondeo: de eso sigue ocupandose demoras_acabado. El universo sale de moviles_zonas y no de los servidores, para que una zona sin ningun movil activo devuelva fila igual con sin_capacidad=true y el techo, en vez de desaparecer sin dejar nada que auditar. libre_primero es el mejor tiempo de liberacion ANTES de repartir la cola, para poder separar cuanto de la demora es cola y cuanto es trabajo ya encima de los moviles. Empate de libre_en (el caso normal al arranque del dia, con todos los moviles en 0): gana el de menor ritmo, no el primero del array -- desempate determinista con "<" estricto si tambien empatan en ritmo.';
+
+-- ─── Grants: solo service_role ───────────────────────────────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto:
+-- sin este REVOKE, anon/authenticated (las claves que viajan al browser)
+-- pueden invocarla via RPC. Mismo patron que
+-- docs/sqls/2026-07-24-metricas-dashboard-rpc.sql.
+REVOKE EXECUTE ON FUNCTION demoras_proximo_hueco(integer, date, timestamptz) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_proximo_hueco(integer, date, timestamptz) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_proximo_hueco(integer, date, timestamptz) TO service_role;

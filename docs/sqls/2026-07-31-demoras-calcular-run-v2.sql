@@ -65,7 +65,7 @@ BEGIN
 
   WITH
   -- Solo lo OPERATIVO por tipo. Un tipo sin fila aca no se calcula, y esa
-  -- sigue siendo la forma de apagar un tipo sin borrar histórico.
+  -- sigue siendo la forma de apagar un tipo sin borrar historico.
   cfg AS (
     SELECT dc.tipo_servicio
       FROM demoras_config dc
@@ -126,8 +126,15 @@ BEGIN
            ELSE coalesce(r.ritmo_origen, 'GLOBAL') END AS ritmo_origen,
       p.demora_suavizada AS prev_suav,
       p.moviles_activos  AS prev_mov,
-      h.demora_cruda     AS hueco_cruda,
-      h.sin_capacidad    AS hueco_sin_cap,
+      h.demora_cruda         AS hueco_cruda,
+      h.sin_capacidad        AS hueco_sin_cap,
+      -- Insumos de auditoria del modelo PROXIMO_HUECO (Important 1, review
+      -- final): se llevan crudos hasta `crudo`, que los deja en NULL cuando
+      -- corre CAPACIDAD_PROMEDIO -- ver el comentario de mas abajo.
+      h.ritmo_aplicado       AS hueco_ritmo_aplicado,
+      h.libre_primero        AS hueco_libre_primero,
+      h.cola_por_delante     AS hueco_cola_por_delante,
+      h.moviles_considerados AS hueco_moviles_considerados,
       (SELECT dd.minutos FROM demoras dd
         WHERE dd.escenario_id = v_esc AND dd.zona_id = u.zona_id
           AND dd.descripcion = u.tipo_servicio
@@ -160,7 +167,7 @@ BEGIN
              ELSE ((a.asignados + a.sin_asignar)::numeric / a.capacidad)
                   * a.ritmo_usado * m.factor_calibracion
            END AS demora_cruda,
-           -- sin_cap describe el ESTADO DEL MUNDO (¿habia algun movil
+           -- sin_cap describe el ESTADO DEL MUNDO (habia algun movil
            -- activo en la zona?), no un atajo interno de un modelo en
            -- particular. Por eso la rama CAPACIDAD_PROMEDIO usa a.mov_act
            -- <= 0 y NO a.capacidad <= 0 (que si sigue usando la rama de
@@ -191,6 +198,18 @@ BEGIN
            CASE WHEN m.modelo = 'PROXIMO_HUECO'
                 THEN coalesce(a.hueco_sin_cap, true)
                 ELSE (a.mov_act <= 0) END AS sin_cap,
+           -- Los insumos que PRODUJERON demora_cruda en PROXIMO_HUECO, para
+           -- poder contestar "por que esta zona informo 90" sin adivinar
+           -- (Important 1, review final): antes de este fix se descartaban
+           -- y demoras_calculadas guardaba ritmo_usado/ritmo_origen del
+           -- blend de ZONA -el fallback del modelo nuevo, no lo que usa
+           -- cuando el movil SI tiene ritmo propio-. NULL en
+           -- CAPACIDAD_PROMEDIO: asi queda visible a simple vista que
+           -- modelo produjo cada fila, sin tener que mirar modelo_version.
+           CASE WHEN m.modelo = 'PROXIMO_HUECO' THEN a.hueco_ritmo_aplicado       ELSE NULL END AS ritmo_aplicado,
+           CASE WHEN m.modelo = 'PROXIMO_HUECO' THEN a.hueco_libre_primero        ELSE NULL END AS libre_primero,
+           CASE WHEN m.modelo = 'PROXIMO_HUECO' THEN a.hueco_cola_por_delante     ELSE NULL END AS cola_por_delante,
+           CASE WHEN m.modelo = 'PROXIMO_HUECO' THEN a.hueco_moviles_considerados ELSE NULL END AS moviles_considerados,
            -- Bypass del suavizado: si cambio la cantidad de moviles activos
            -- respecto de la corrida anterior, la variacion es estructural
            -- (entro o salio un movil), no ruido. Frenarla es informar de mas
@@ -215,6 +234,7 @@ BEGIN
       pendientes_asignados, pendientes_sin_asignar, pendientes_atrapados,
       capacidad_efectiva, moviles_activos, moviles_prioridad, moviles_transito, alpha_usado,
       ritmo_media, ritmo_mediana, ritmo_p75, ritmo_p90, ritmo_usado, ritmo_origen, ritmo_muestras,
+      ritmo_aplicado, libre_primero, cola_por_delante, moviles_considerados,
       sin_capacidad, clampeado, suavizado_aplicado, modelo_version
     )
     SELECT
@@ -224,6 +244,7 @@ BEGIN
       f.capacidad, f.mov_act, f.mov_pri, f.mov_tra, f.alpha,
       f.ritmo_media, f.ritmo_mediana, f.ritmo_p75, f.ritmo_p90,
       f.ritmo_usado, f.ritmo_origen, f.ritmo_muestras,
+      f.ritmo_aplicado, f.libre_primero, f.cola_por_delante, f.moviles_considerados,
       f.sin_cap, f.clampeado, f.suavizado_aplicado, m.version
     FROM final f
     ON CONFLICT (corrida_at, escenario, zona_id, tipo_servicio) DO UPDATE SET
@@ -246,6 +267,10 @@ BEGIN
       ritmo_usado             = EXCLUDED.ritmo_usado,
       ritmo_origen            = EXCLUDED.ritmo_origen,
       ritmo_muestras          = EXCLUDED.ritmo_muestras,
+      ritmo_aplicado          = EXCLUDED.ritmo_aplicado,
+      libre_primero           = EXCLUDED.libre_primero,
+      cola_por_delante        = EXCLUDED.cola_por_delante,
+      moviles_considerados    = EXCLUDED.moviles_considerados,
       sin_capacidad           = EXCLUDED.sin_capacidad,
       clampeado               = EXCLUDED.clampeado,
       suavizado_aplicado      = EXCLUDED.suavizado_aplicado,
@@ -261,6 +286,33 @@ $fn$;
 COMMENT ON FUNCTION demoras_calcular_run(timestamptz) IS
   'Motor de demora. Despacha entre PROXIMO_HUECO (simulacion de cola sobre tiempos de liberacion por movil) y CAPACIDAD_PROMEDIO (el modelo viejo) segun demoras_modelo.modelo, escribiendo las MISMAS columnas en los dos casos para poder compararlos. Los parametros del calculo salen de demoras_modelo (una fila por escenario); demoras_config queda solo con lo operativo por tipo (motor_activo, ventana horaria), asi que NOCTURNO conserva su horario propio. Cada fila sella modelo_version para que una corrida vieja se pueda reconstruir. Con suavizado_bypass_cambio_capacidad, un cambio en la cantidad de moviles activos saltea el suavizado: esa variacion es estructural, no ruido. sin_capacidad es igual en los dos modelos (ningun movil activo en la zona), no la capacidad prorrateada que usa el modelo viejo para su propio atajo del techo: los dos tienen que marcar las mismas filas, porque el endpoint de comparativa las excluye del promedio.';
 
+-- ─── Auditoria de los insumos del modelo nuevo (Important 1, review final) ──
+-- demoras_proximo_hueco ya devolvia ritmo_aplicado / libre_primero /
+-- cola_por_delante / moviles_considerados, pero el orquestador los
+-- descartaba y persistia ritmo_usado/ritmo_origen del blend de ZONA (el
+-- FALLBACK del modelo nuevo, no lo que usa cuando el movil tiene ritmo
+-- propio). Sobre el ejemplo de DEMORA_MODELO.md 7.3: Centro informa 60
+-- desde el ritmo 15 de M2, pero la fila guardaba 17.50 -- un numero que no
+-- participo del calculo. El diseno promete poder reconstruir "por que esta
+-- zona informo 90" seis semanas despues; sin estas columnas, no se puede.
+-- NULL en CAPACIDAD_PROMEDIO (ver el CASE en la funcion de arriba): asi
+-- queda visible a simple vista, sin mirar modelo_version, que modelo
+-- produjo cada fila.
+ALTER TABLE demoras_calculadas
+  ADD COLUMN IF NOT EXISTS ritmo_aplicado       numeric,
+  ADD COLUMN IF NOT EXISTS libre_primero        numeric,
+  ADD COLUMN IF NOT EXISTS cola_por_delante     integer,
+  ADD COLUMN IF NOT EXISTS moviles_considerados integer;
+
+COMMENT ON COLUMN demoras_calculadas.ritmo_aplicado IS
+  'Ritmo (minutos) del movil que efectivamente entrega el pedido nuevo en la simulacion PROXIMO_HUECO -- demoras_proximo_hueco.ritmo_aplicado. NULL en CAPACIDAD_PROMEDIO (esa columna la llena ritmo_usado, el blend de zona). Es el numero real detras de demora_cruda, no el fallback de zona.';
+COMMENT ON COLUMN demoras_calculadas.libre_primero IS
+  'Mejor tiempo de liberacion (minutos) ANTES de repartir la cola -- demoras_proximo_hueco.libre_primero. Permite separar cuanto de la demora es cola por delante y cuanto es trabajo que los moviles ya tenian encima. NULL en CAPACIDAD_PROMEDIO.';
+COMMENT ON COLUMN demoras_calculadas.cola_por_delante IS
+  'Pedidos sin asignar que la simulacion reparto antes de ubicar al pedido nuevo -- demoras_proximo_hueco.cola_por_delante. NULL en CAPACIDAD_PROMEDIO (esa informacion vive en pendientes_sin_asignar para los dos modelos).';
+COMMENT ON COLUMN demoras_calculadas.moviles_considerados IS
+  'Cantidad de moviles (servidores) que compitieron en la simulacion -- demoras_proximo_hueco.moviles_considerados. 0 implica sin_capacidad=true. NULL en CAPACIDAD_PROMEDIO.';
+
 -- ─── Baja de las columnas migradas ───────────────────────────────────
 -- Recien ahora nadie las lee. Dejarlas seria garantizar que algun dia
 -- demoras_config.estadistico y demoras_modelo.estadistico tengan valores
@@ -275,7 +327,7 @@ COMMENT ON FUNCTION demoras_calcular_run(timestamptz) IS
 -- Es una lectura real, no vestigial: assert-ritmo.sql prueba URGENTE y
 -- SERVICE con cascadas DISTINTAS a la vez (lineas 313-314), algo que
 -- demoras_modelo.ritmo_cascada -una fila por ESCENARIO, no por tipo- no
--- puede representar sin cambiar el diseño de esa tabla.
+-- puede representar sin cambiar el diseno de esa tabla.
 -- Dropear esta columna igual que las otras ocho rompe demoras_ritmo en
 -- runtime ("column dc.ritmo_cascada does not exist"), y como
 -- demoras_servidores, demoras_proximo_hueco Y este mismo orquestador
@@ -283,9 +335,31 @@ COMMENT ON FUNCTION demoras_calcular_run(timestamptz) IS
 -- viejo- queda fallando callado cada 10 minutos: exactamente el modo de
 -- falla que este comentario de mas arriba dice evitar. demoras_modelo.
 -- ritmo_cascada (Task 1) queda sin uso por ahora: migrar la cascada a
--- global-por-escenario es un cambio de diseño de demoras_ritmo, fuera del
+-- global-por-escenario es un cambio de diseno de demoras_ritmo, fuera del
 -- alcance de esta task (que es solo el orquestador). Ver
 -- docs/DEMORA_INFORMADA.md para el detalle.
+--
+-- BACKUP antes del DROP (C3, review final): el DROP de abajo no tenia
+-- snapshot previo, y el seed de demoras_modelo (archivo 4) hereda SOLO de
+-- la fila URGENTE -- si alguien calibro factor_calibracion de NOCTURNO o
+-- SERVICE en produccion, ese valor se pierde sin quedar en ningun lado.
+-- Esta tabla es esa red: copia completa de demoras_config, con las 8
+-- columnas de calculo todavia adentro, tomada justo antes del DROP.
+-- Borrable cuando el modelo nuevo este calibrado y nadie necesite volver a
+-- mirar los valores viejos por tipo.
+--
+-- IF NOT EXISTS y no CREATE OR REPLACE / DROP+CREATE: re-pegar este
+-- archivo DESPUES de que el DROP ya corrio no debe pisar el backup bueno
+-- (con las 8 columnas) con uno mutilado -- en esa segunda pasada
+-- demoras_config YA no las tiene, y un CREATE TABLE que se re-ejecutara
+-- sobreescribiria el backup con una copia sin ellas. Con IF NOT EXISTS, la
+-- tabla ya existe desde la primera vez y el SELECT ni se evalua.
+CREATE TABLE IF NOT EXISTS demoras_config_backup_20260731 AS
+  SELECT * FROM demoras_config;
+
+COMMENT ON TABLE demoras_config_backup_20260731 IS
+  'Snapshot de demoras_config tomado justo antes de que esta misma migracion (2026-07-31-demoras-calcular-run-v2.sql) le hiciera DROP COLUMN a las 8 columnas de calculo (min_minutos, max_minutos, escalon_minutos, subida_max, bajada_max, estadistico, ritmo_default_minutos, factor_calibracion), por tipo_servicio -- el seed de demoras_modelo solo hereda de la fila URGENTE, asi que es la unica forma de recuperar una calibracion de NOCTURNO o SERVICE hecha en produccion antes de esta migracion. Borrable cuando el modelo nuevo este calibrado y nadie necesite consultar los valores viejos por tipo.';
+
 ALTER TABLE demoras_config
   DROP COLUMN IF EXISTS min_minutos,
   DROP COLUMN IF EXISTS max_minutos,

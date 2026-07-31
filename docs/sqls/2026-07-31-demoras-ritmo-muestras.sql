@@ -98,3 +98,12 @@ $fn$;
 
 COMMENT ON FUNCTION demoras_ritmo_muestras(integer, date, integer, text, integer, boolean) IS
   'Muestras crudas del ritmo, una fila por muestra. ENTRE_ENTREGAS = minutos entre cumplimientos consecutivos del mismo movil dentro del mismo dia local (el ritmo de trabajo real); ASIGNADO_A_ENTREGA = demora_efectiva_mins, que ya incluye la espera en cola y se conserva solo para poder comparar contra el modelo viejo. p_hueco_max corta almuerzos y ratos sin pedidos; p_solo_con_cola exige que el pedido ya estuviera asignado al terminar el anterior (y descarta los hechos sin fch_hora_asignado, donde eso no se puede afirmar).';
+
+-- ─── Grants: solo service_role ───────────────────────────────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto:
+-- sin este REVOKE, anon/authenticated (las claves que viajan al browser)
+-- pueden invocarla via RPC. Mismo patron que
+-- docs/sqls/2026-07-24-metricas-dashboard-rpc.sql.
+REVOKE EXECUTE ON FUNCTION demoras_ritmo_muestras(integer, date, integer, text, integer, boolean) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_ritmo_muestras(integer, date, integer, text, integer, boolean) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_ritmo_muestras(integer, date, integer, text, integer, boolean) TO service_role;

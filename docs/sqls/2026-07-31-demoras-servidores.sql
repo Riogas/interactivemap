@@ -83,7 +83,18 @@ AS $fn$
       AND mz.tipo_de_servicio IN ('URGENTE','NOCTURNO','SERVICE')
   ),
   -- Carga real de cada movil: pendientes asignados en TODAS las zonas y de
-  -- TODOS los tipos. Un asignado cuenta siempre (regla canonica de la
+  -- TODOS los tipos -- SIN filtrar servicio_nombre, a diferencia de
+  -- demoras_cola y demoras_ritmo_muestras, que SI excluyen ESPECIAL/OTROS.
+  -- Es DELIBERADO, no la ausencia por omision del mismo filtro (Important 4,
+  -- review final): ESPECIAL/OTROS no tienen oferta propia en moviles_zonas,
+  -- asi que no son DEMANDA de ninguna zona (por eso demoras_cola los saca de
+  -- la cola). Pero SI son TRABAJO real que ocupa al movil -- el camion que
+  -- entrega un ESPECIAL en otra zona no esta disponible mientras tanto, ni
+  -- mas ni menos que si llevara un URGENTE -- y libre_en necesita saber
+  -- CUANDO queda libre, no de que tipo es lo que lo ocupa. Contarlos aca es
+  -- lo mismo que ya hace esta carga con el trabajo de OTRAS zonas: hace
+  -- falta contarlo para saber cuando el movil se libera, aunque no compita
+  -- por el pedido nuevo. Un asignado cuenta siempre (regla canonica de la
   -- ventana SA), asi que aca no hay filtro horario.
   carga_movil AS (
     SELECT p.movil, count(*)::integer AS n
@@ -190,4 +201,13 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION demoras_servidores(integer, date) IS
-  'Tiempo de liberacion de cada movil ACTIVO por (zona, tipo): libre_en = carga x ritmo, con la carga contada en TODAS las zonas porque el movil es un solo camion. Es el punto exacto donde el modelo deja de prorratear: los pedidos ya asignados dicen donde esta el trabajo, no hace falta suponerlo. transito_modo (IGUAL / CASTIGO / ALPHA / SOLO_SI_NO_HAY) decide como compite un movil que en esa zona es de transito; el descartado se devuelve igual con descartado=true para que se pueda auditar por que no se uso. Aproximacion documentada: un movil con pedidos de varios tipos usa el ritmo del tipo que se esta calculando.';
+  'Tiempo de liberacion de cada movil ACTIVO por (zona, tipo): libre_en = carga x ritmo, con la carga contada en TODAS las zonas porque el movil es un solo camion. Es el punto exacto donde el modelo deja de prorratear: los pedidos ya asignados dicen donde esta el trabajo, no hace falta suponerlo. La carga cuenta TAMBIEN los pedidos ESPECIAL/OTROS (a diferencia de demoras_cola, que los excluye de la demanda): no son demanda de ninguna zona, pero si son trabajo real que ocupa al movil -- ver el comentario junto a carga_movil. transito_modo (IGUAL / CASTIGO / ALPHA / SOLO_SI_NO_HAY) decide como compite un movil que en esa zona es de transito; el descartado se devuelve igual con descartado=true para que se pueda auditar por que no se uso. Aproximacion documentada: un movil con pedidos de varios tipos usa el ritmo del tipo que se esta calculando.';
+
+-- ─── Grants: solo service_role ───────────────────────────────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto:
+-- sin este REVOKE, anon/authenticated (las claves que viajan al browser)
+-- pueden invocarla via RPC. Mismo patron que
+-- docs/sqls/2026-07-24-metricas-dashboard-rpc.sql.
+REVOKE EXECUTE ON FUNCTION demoras_servidores(integer, date) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_servidores(integer, date) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_servidores(integer, date) TO service_role;
