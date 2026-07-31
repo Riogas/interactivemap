@@ -884,14 +884,13 @@ AS $fn$
 DECLARE
   c        record;
   z        record;
-  ev       record;
   v_q      numeric;
   v_t      numeric;
   v_mu     numeric;
   v_proc   numeric;
   v_tramo  numeric;
   v_listo  boolean;
-  v_n      integer;
+  v_i      integer;
 BEGIN
   SELECT coalesce(dm.max_minutos, 120)::numeric    AS max_min,
          coalesce(dm.factor_calibracion, 1.0)      AS factor
@@ -899,12 +898,72 @@ BEGIN
     FROM (SELECT p_escenario AS e) x
     LEFT JOIN demoras_modelo dm ON dm.escenario_id = x.e;
 
+  -- UNA SOLA llamada a demoras_aportes para toda la corrida, agregada por
+  -- (zona, tipo) en arrays paralelos. El loop de abajo solo toca memoria.
+  --
+  -- Esto NO es una optimizacion prematura: demoras_aportes llama por dentro a
+  -- la cascada del ritmo, que escanea las ~168.000 entregas del historico y
+  -- calcula percentiles. Llamarla adentro del loop serian 106 zonas x 3 tipos
+  -- x 3 llamadas = 954 ejecuciones POR ESCENARIO. Medido: entre 50 y 477 ms
+  -- cada una, o sea entre 48 segundos y 7,5 minutos por escenario, contra los
+  -- 265 ms que tarda hoy una corrida completa. Con el cron cada 10 minutos y
+  -- varios escenarios, el motor no llega a terminar antes del disparo
+  -- siguiente y el advisory lock empieza a rechazar corridas.
+  --
+  -- Es el mismo patron que ya usaba demoras_proximo_hueco y que su revision
+  -- valido.
+  --
+  -- Los eventos vienen YA AGRUPADOS por r_j: dos moviles que se liberan en el
+  -- mismo minuto entran en el MISMO tramo. Sin ese GROUP BY un empate abriria
+  -- dos tramos, el segundo de duracion cero -- no cambia el resultado, pero
+  -- ensucia el conteo de tramos que se persiste para auditoria.
   FOR z IN
+    -- MATERIALIZED es obligatorio, no cosmetico: desde Postgres 12 un CTE
+    -- referenciado una sola vez se inlinea, y este se referencia TRES veces
+    -- (capacidad inicial, conteo de moviles, eventos). Sin la palabra, el
+    -- planner puede evaluar demoras_aportes una vez por referencia, y cada
+    -- evaluacion escanea las ~168.000 entregas del historico para la cascada
+    -- del ritmo. Con MATERIALIZED se evalua UNA vez por escenario.
+    WITH ap AS MATERIALIZED (
+      SELECT a.zona_id, a.tipo_servicio, a.r_j, a.mu_j
+      FROM demoras_aportes(p_escenario, p_fecha) a
+    ),
+    -- Capacidad de arranque: los que ya estan adentro (r_j <= 0).
+    ini AS (
+      SELECT zona_id, tipo_servicio, sum(mu_j) AS mu
+      FROM ap WHERE r_j <= 0
+      GROUP BY zona_id, tipo_servicio
+    ),
+    -- Cuantos moviles considera la zona en total (para auditoria).
+    tot AS (
+      SELECT zona_id, tipo_servicio, count(*) AS n
+      FROM ap GROUP BY zona_id, tipo_servicio
+    ),
+    -- Los eventos de liberacion, agrupados por minuto y en orden. El GROUP BY
+    -- por r_j es lo que hace que dos moviles que se liberan en el mismo minuto
+    -- entren en el MISMO tramo: aca el empate no necesita desempate, se suman
+    -- las capacidades.
+    ev AS (
+      SELECT zona_id, tipo_servicio,
+             array_agg(r  ORDER BY r) AS rs,
+             array_agg(mu ORDER BY r) AS mus
+      FROM (
+        SELECT zona_id, tipo_servicio, r_j AS r, sum(mu_j) AS mu
+        FROM ap WHERE r_j > 0
+        GROUP BY zona_id, tipo_servicio, r_j
+      ) g
+      GROUP BY zona_id, tipo_servicio
+    )
     -- El universo sale de moviles_zonas y NO de los aportes: una zona sin
     -- ningun movil activo tiene que devolver fila igual, con sin_capacidad y
     -- el techo. A las 07:00 el 72% de la flota esta inactiva y ese es justo
     -- el caso que hay que poder auditar.
-    SELECT u.zona_id, u.tipo, coalesce(q.cola_efectiva, 0) AS cola
+    SELECT u.zona_id, u.tipo,
+           coalesce(q.cola_efectiva, 0)             AS cola,
+           coalesce(ini.mu, 0)                      AS mu_inicial,
+           coalesce(tot.n, 0)                       AS n_moviles,
+           coalesce(ev.rs,  ARRAY[]::numeric[])     AS rs,
+           coalesce(ev.mus, ARRAY[]::numeric[])     AS mus
     FROM (
       SELECT DISTINCT mz.zona_id, mz.tipo_de_servicio AS tipo
       FROM moviles_zonas mz
@@ -914,37 +973,22 @@ BEGIN
     ) u
     LEFT JOIN demoras_cola(p_escenario, p_fecha, p_corrida_at) q
            ON q.zona_id = u.zona_id AND q.tipo_servicio = u.tipo
+    LEFT JOIN ini ON ini.zona_id = u.zona_id AND ini.tipo_servicio = u.tipo
+    LEFT JOIN tot ON tot.zona_id = u.zona_id AND tot.tipo_servicio = u.tipo
+    LEFT JOIN ev  ON ev.zona_id  = u.zona_id AND ev.tipo_servicio  = u.tipo
   LOOP
     -- Q incluye el pedido que entra ahora.
     v_q     := z.cola + 1;
     v_t     := 0;
     v_listo := false;
     tramos  := 0;
+    v_mu    := z.mu_inicial;
 
-    -- Capacidad de arranque: los que ya estan adentro (r_j = 0).
-    SELECT coalesce(sum(a.mu_j), 0), count(*)
-      INTO v_mu, v_n
-      FROM demoras_aportes(p_escenario, p_fecha) a
-     WHERE a.zona_id = z.zona_id AND a.tipo_servicio = z.tipo AND a.r_j <= 0;
+    moviles_considerados := z.n_moviles;
+    capacidad_inicial    := round(v_mu, 6);
 
-    SELECT count(*) INTO moviles_considerados
-      FROM demoras_aportes(p_escenario, p_fecha) a
-     WHERE a.zona_id = z.zona_id AND a.tipo_servicio = z.tipo;
-
-    capacidad_inicial := round(v_mu, 6);
-
-    -- Recorrer los momentos de liberacion, agrupados: dos moviles que se
-    -- liberan en el mismo minuto entran en el MISMO tramo. Por eso el GROUP
-    -- BY -- sin el, un empate abriria dos tramos y el segundo tendria
-    -- duracion cero, que no rompe el resultado pero ensucia el conteo.
-    FOR ev IN
-      SELECT a.r_j AS r, sum(a.mu_j) AS mu
-        FROM demoras_aportes(p_escenario, p_fecha) a
-       WHERE a.zona_id = z.zona_id AND a.tipo_servicio = z.tipo AND a.r_j > 0
-       GROUP BY a.r_j
-       ORDER BY a.r_j
-    LOOP
-      v_tramo := ev.r - v_t;
+    FOR v_i IN 1 .. coalesce(array_length(z.rs, 1), 0) LOOP
+      v_tramo := z.rs[v_i] - v_t;
       v_proc  := v_tramo * v_mu;
 
       -- Con capacidad cero no se procesa nada y no se puede dividir: se
@@ -956,8 +1000,8 @@ BEGIN
       END IF;
 
       v_q     := v_q - v_proc;
-      v_t     := ev.r;
-      v_mu    := v_mu + ev.mu;
+      v_t     := z.rs[v_i];
+      v_mu    := v_mu + z.mus[v_i];
       tramos  := tramos + 1;
     END LOOP;
 
@@ -988,7 +1032,20 @@ COMMENT ON FUNCTION demoras_consumo_tramos(integer, date, timestamptz) IS
   'Simulacion por tramos: la demanda de la zona se consume a una velocidad que aumenta cada vez que un movil termina lo que tenia afuera. Devuelve demora_cruda SIN clamp, suavizado ni redondeo (de eso se ocupa demoras_acabado). El universo sale de moviles_zonas y no de los aportes, para que una zona sin ningun movil activo devuelva fila con sin_capacidad y el techo en vez de desaparecer. Dos moviles que se liberan en el mismo minuto entran en el mismo tramo: aca el empate no necesita desempate, se suman las capacidades. Reemplaza a demoras_proximo_hueco.';
 ```
 
-> **Al implementador:** el `demoras_aportes(...)` se llama tres veces por zona dentro del loop. Es correcto pero puede ser lento con 106 zonas × 3 tipos × N escenarios. **Medí el tiempo de una corrida completa** con el fixture más grande que puedas armar y reportalo. Si supera los 2 segundos por escenario, decilo en el reporte: la optimización (materializar los aportes en un CTE antes del loop) es simple pero cambia la estructura y prefiero decidirla con el número medido.
+> **Al implementador — dos cosas sobre este bloque.**
+>
+> **La estructura de una sola pasada no es negociable.** `demoras_aportes` se
+> llama una vez por escenario, desde el `FROM` del loop, y el recorrido de
+> tramos toca solo arrays en memoria. Llamarla adentro del loop —que es lo
+> natural de escribir— serían 954 ejecuciones por escenario, cada una
+> escaneando las 168.000 entregas del histórico: entre 48 segundos y 7,5
+> minutos por escenario, contra los 265 ms que tarda hoy una corrida completa.
+> Si te resulta más legible moverla adentro, **no lo hagas**.
+>
+> **Medí igual y reportá.** Armá el fixture más grande que puedas (idealmente
+> ~100 zonas × 3 tipos con historial) y poné en el reporte el tiempo real de
+> una corrida completa de `demoras_consumo_tramos`. Es el número que necesito
+> para saber si con varios escenarios entra en los 10 minutos del cron.
 
 - [ ] **Step 4: Correr el harness** — los 8 `ok`. **Si el ejemplo publicado no da 117, no ajustes el assert:** ese número está en la spec que aprobó el usuario. Devolvé `BLOCKED` con el diagnóstico.
 
@@ -1069,4 +1126,23 @@ Partir de `scripts/sql-harness/assert-run-v2.sql` y agregar:
 
 **Consistencia de tipos:** `demoras_cola` conserva su firma y columnas; `demoras_aportes` devuelve `tipo_servicio` y la Task 5 la filtra por ese nombre; `demoras_consumo_tramos` devuelve `zona_id`/`tipo_servicio` como las anteriores, así que el orquestador la joinea igual. `demoras_acabado` no cambia.
 
-**Riesgo principal identificado:** la Task 5 llama a `demoras_aportes` tres veces por zona dentro de un loop, y ahora hay N escenarios. Está marcado explícitamente para que el implementador **mida y reporte** en vez de optimizar a ciegas.
+**Defecto corregido antes de ejecutar.** La primera versión de la Task 5
+llamaba a `demoras_aportes` **tres veces por zona dentro del loop**. Como esa
+función escanea por dentro las ~168.000 entregas del histórico para la cascada
+del ritmo, eso son 954 ejecuciones por escenario: entre 48 segundos y 7,5
+minutos, contra los 265 ms que tarda hoy una corrida. Con el cron cada 10
+minutos y varios escenarios, el motor no termina antes del disparo siguiente y
+el advisory lock empieza a rechazar corridas.
+
+Lo llamativo es que **la versión anterior ya lo tenía resuelto**:
+`demoras_proximo_hueco` materializaba los servidores en arrays en una sola
+pasada, justamente por esto, y su revisión lo validó. Al reescribir la
+simulación se perdió ese patrón. Está corregido: una sola llamada por
+escenario, desde el `FROM` del loop, y el recorrido de tramos sobre arrays en
+memoria — con una nota explícita al implementador de que no lo mueva adentro
+aunque le parezca más legible.
+
+**Riesgo que queda vivo:** el volumen con N escenarios. La tabla de hechos se
+multiplica por la cantidad de escenarios (de 4,5 a 22 millones de filas en
+régimen con cinco departamentos) y el tiempo de corrida también. Por eso la
+Task 5 pide **medir y reportar** el tiempo real de una corrida completa.
