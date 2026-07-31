@@ -284,6 +284,101 @@ BEGIN
   RAISE NOTICE 'ok la carga de afuera cuenta cualquier tipo de servicio (M1 r_j con 1 SERVICE afuera=%)', r.r_j;
 END $$;
 
+-- 12) FIX ROUND 1 -- el reparto de prioridad tiene que dividir por la
+--     cantidad de zonas de prioridad, no solo restar el tope. Ningun movil
+--     del fixture original tiene 2+ zonas de prioridad (M1/M2/M3 tienen
+--     n_pri=1 cada uno), asi que sacar el "/ r.n_pri" del CASE de p_j no
+--     movia ningun valor ya verificado -- (1 - suma_tra) / 1 = (1 - suma_tra).
+--     Movil 5, zona propia, exclusivo de este bloque: 2 zonas de prioridad
+--     (600, 700) + 1 transito (800). suma_tra = least(1 x 0,20, 0,60) = 0,20.
+--     Cada prioridad = (1 - 0,20) / 2 = 0,40 (spec DEMORA_MODELO_TRAMOS.md
+--     seccion 2, fila "2 prioridad + 1 transito"). Sin la division darian
+--     0,80 cada una -- 1,80 en total para un solo movil.
+INSERT INTO moviles_zonas (escenario_id, movil_id, zona_id, tipo_de_servicio, prioridad_o_transito, activa)
+VALUES (1000,'5',600,'URGENTE',1,true),
+       (1000,'5',700,'URGENTE',1,true),
+       (1000,'5',800,'URGENTE',2,true);
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000,5,DATE '2026-08-01',true);
+
+DO $$
+DECLARE r600 record; r700 record; r800 record;
+BEGIN
+  SELECT * INTO r600 FROM demoras_aportes(1000, DATE '2026-08-01')
+   WHERE zona_id = 600 AND tipo_servicio = 'URGENTE' AND movil = 5;
+  SELECT * INTO r700 FROM demoras_aportes(1000, DATE '2026-08-01')
+   WHERE zona_id = 700 AND tipo_servicio = 'URGENTE' AND movil = 5;
+  SELECT * INTO r800 FROM demoras_aportes(1000, DATE '2026-08-01')
+   WHERE zona_id = 800 AND tipo_servicio = 'URGENTE' AND movil = 5;
+
+  IF r600.p_j IS DISTINCT FROM 0.40 OR r700.p_j IS DISTINCT FROM 0.40 THEN
+    RAISE EXCEPTION 'M5 p_j en las 2 prioridades: %/% (esperaba 0,40 cada una = (1 - 0,20) / 2)', r600.p_j, r700.p_j;
+  END IF;
+  IF r800.p_j IS DISTINCT FROM 0.20 THEN
+    RAISE EXCEPTION 'M5 p_j en el transito: % (esperaba 0,20)', r800.p_j;
+  END IF;
+  IF (r600.p_j + r700.p_j + r800.p_j) IS DISTINCT FROM 1.00 THEN
+    RAISE EXCEPTION 'la suma de p_j de M5 (2 prioridad + 1 transito) debio dar 1,00, dio %',
+      (r600.p_j + r700.p_j + r800.p_j);
+  END IF;
+  RAISE NOTICE 'ok el reparto de prioridad divide por la cantidad de zonas (M5: 600=%, 700=%, transito 800=%)',
+    r600.p_j, r700.p_j, r800.p_j;
+END $$;
+
+-- 13) FIX ROUND 1 -- la carga de "afuera" tiene que filtrar por la fecha que
+--     se consulta. Ningun pedido del fixture original tiene una fecha
+--     distinta de la consultada (todos DATE '2026-08-01'), asi que sacar el
+--     filtro de fecha de carga_total no movia ningun valor ya verificado.
+--     Movil 6, zona propia (950), exclusivo de este bloque: un pedido de HOY
+--     en la zona 960 (afuera) SI cuenta; uno de OTRO DIA en la misma zona 960
+--     NO tiene que sumar -- inflar el tiempo de liberacion de un movil que
+--     hoy esta libre con pedidos de otro dia es el bug que este filtro evita.
+INSERT INTO moviles_zonas (escenario_id, movil_id, zona_id, tipo_de_servicio, prioridad_o_transito, activa)
+VALUES (1000,'6',950,'URGENTE',1,true);
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000,6,DATE '2026-08-01',true);
+
+-- Ritmo propio de M6: 10 min (5 hechos para ganar el nivel MOVIL).
+INSERT INTO metricas_cumplimiento
+  (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+   fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+SELECT 'PEDIDO', 900 + g, 1000, DATE '2026-07-31', 'URGENTE', 6, 950, NULL,
+       now(), 10.0, 10.0, 'CAMPO'
+FROM generate_series(1,5) g;
+
+DO $$
+DECLARE r record;
+BEGIN
+  -- Pedido de HOY (2026-08-01, la fecha consultada) en la zona 960, afuera.
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (300,1000,'URGENTE',6,960,1,DATE '2026-08-01');
+
+  SELECT * INTO r FROM demoras_aportes(1000, DATE '2026-08-01')
+   WHERE zona_id = 950 AND tipo_servicio = 'URGENTE' AND movil = 6;
+  IF r.carga_fuera IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION 'M6 carga_fuera con 1 pedido de HOY afuera: % (esperaba 1)', r.carga_fuera;
+  END IF;
+  IF r.r_j IS DISTINCT FROM 25 THEN
+    RAISE EXCEPTION 'M6 r_j con 1 pedido de HOY afuera: % (esperaba 25 = 1 x 10 + 15)', r.r_j;
+  END IF;
+
+  -- Pedido de OTRO DIA (2026-08-02, otra fecha) en la misma zona 960: NO debe
+  -- sumar a la carga de HOY.
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (301,1000,'URGENTE',6,960,1,DATE '2026-08-02');
+
+  SELECT * INTO r FROM demoras_aportes(1000, DATE '2026-08-01')
+   WHERE zona_id = 950 AND tipo_servicio = 'URGENTE' AND movil = 6;
+  IF r.carga_fuera IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION 'M6 carga_fuera despues de agregar un pedido de OTRO DIA: % (esperaba que siguiera en 1, el de manana no cuenta)', r.carga_fuera;
+  END IF;
+  IF r.r_j IS DISTINCT FROM 25 THEN
+    RAISE EXCEPTION 'M6 r_j despues de agregar un pedido de OTRO DIA: % (esperaba que siguiera en 25, no 35)', r.r_j;
+  END IF;
+
+  RAISE NOTICE 'ok la carga de afuera filtra por fecha (M6: carga_fuera=% y r_j=% igual antes y despues de agregar un pedido de otro dia)', r.carga_fuera, r.r_j;
+END $$;
+
 UPDATE demoras_modelo
    SET ritmo_metrica = 'ENTRE_ENTREGAS', dedicacion_transito = 0.20,
        transito_dedicacion_max_total = 0.60, traslado_fuera_zona_minutos = 15,
