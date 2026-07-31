@@ -24,7 +24,7 @@ DO $$
 DECLARE v_n integer; v_max numeric;
 BEGIN
   SELECT count(*), max(v) INTO v_n, v_max
-    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 90, false);
+    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 90, 0, false);
   IF v_n IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'muestras: % (esperaba 2: los de 20 y 20)', v_n; END IF;
   IF v_max IS DISTINCT FROM 20 THEN RAISE EXCEPTION 'max: % (esperaba 20; el hueco de 140 debio caer)', v_max; END IF;
   RAISE NOTICE 'ok entre_entregas con corte de huecos';
@@ -35,7 +35,7 @@ DO $$
 DECLARE v_n integer;
 BEGIN
   SELECT count(*) INTO v_n
-    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 200, false);
+    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 200, 0, false);
   IF v_n IS DISTINCT FROM 3 THEN RAISE EXCEPTION 'con corte 200 esperaba 3 muestras, dio %', v_n; END IF;
   RAISE NOTICE 'ok el corte es parametro';
 END $$;
@@ -46,7 +46,7 @@ DO $$
 DECLARE v_n integer;
 BEGIN
   SELECT count(*) INTO v_n
-    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 90, true);
+    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 90, 0, true);
   IF v_n IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'solo_con_cola: % (esperaba 1)', v_n; END IF;
   RAISE NOTICE 'ok solo_con_cola';
 END $$;
@@ -56,7 +56,7 @@ DO $$
 DECLARE v_n integer; v_sum numeric;
 BEGIN
   SELECT count(*), sum(v) INTO v_n, v_sum
-    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ASIGNADO_A_ENTREGA', 90, false);
+    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ASIGNADO_A_ENTREGA', 90, 0, false);
   IF v_n IS DISTINCT FROM 4 THEN RAISE EXCEPTION 'asignado_a_entrega: % filas (esperaba 4)', v_n; END IF;
   IF v_sum IS DISTINCT FROM 120 THEN RAISE EXCEPTION 'suma: % (esperaba 20+30+10+60=120)', v_sum; END IF;
   RAISE NOTICE 'ok asignado_a_entrega';
@@ -75,7 +75,7 @@ BEGIN
      timestamptz '2026-07-27 22:30:00-03', timestamptz '2026-07-27 23:00:00-03', 30, 30, 'CAMPO');
 
   SELECT count(*) INTO v_n
-    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 90, false);
+    FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 90, 0, false);
   IF v_n IS DISTINCT FROM 2 THEN
     RAISE EXCEPTION 'muestras: % (esperaba 2; el salto 27-jul 23:00 -> 28-jul 09:00 no es un intervalo)', v_n;
   END IF;
@@ -108,7 +108,7 @@ BEGIN
   -- segunda entrega del par.
   SELECT count(*) FILTER (WHERE v = 15), count(*)
     INTO v_cruce, v_total
-    FROM demoras_ritmo_muestras(1000, DATE '2026-07-30', 7, 'ENTRE_ENTREGAS', 90, false);
+    FROM demoras_ritmo_muestras(1000, DATE '2026-07-30', 7, 'ENTRE_ENTREGAS', 90, 0, false);
 
   IF v_cruce IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'cruce de dia: % muestras de 15min (esperaba 0; 28-jul 23:50 -> 29-jul 00:05 no es un intervalo)', v_cruce;
@@ -117,6 +117,34 @@ BEGIN
     RAISE EXCEPTION 'total: % (esperaba 2, los de siempre; el par nuevo no debe aportar ninguna muestra)', v_total;
   END IF;
   RAISE NOTICE 'ok no cruza dias (aislado del corte de huecos)';
+END $$;
+
+-- 7) El piso descarta las marcaciones en lote. El fixture del bloque 1 tiene
+--    intervalos de 20 y 20; se agregan dos entregas separadas por 1 minuto,
+--    que es lo que produce un chofer marcando varias juntas.
+DO $$
+DECLARE v_con integer; v_sin integer;
+BEGIN
+  INSERT INTO metricas_cumplimiento
+    (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+     fch_hora_asignado, fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+  VALUES
+    ('PEDIDO', 90, 1000, DATE '2026-07-28', 'URGENTE', 30, 100, 'ANA',
+     timestamptz '2026-07-28 14:00:00-03', timestamptz '2026-07-28 14:30:00-03', 30, 30, 'CAMPO'),
+    ('PEDIDO', 91, 1000, DATE '2026-07-28', 'URGENTE', 30, 100, 'ANA',
+     timestamptz '2026-07-28 14:00:00-03', timestamptz '2026-07-28 14:31:00-03', 31, 31, 'CAMPO');
+
+  -- Sin piso (0): el intervalo de 1 minuto entra.
+  SELECT count(*) INTO v_sin FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 90, 0, false)
+   WHERE movil = 30;
+  IF v_sin <> 1 THEN RAISE EXCEPTION 'sin piso esperaba 1 muestra del movil 30, dio %', v_sin; END IF;
+
+  -- Con piso 5: el intervalo de 1 minuto se descarta.
+  SELECT count(*) INTO v_con FROM demoras_ritmo_muestras(1000, DATE '2026-07-29', 7, 'ENTRE_ENTREGAS', 90, 5, false)
+   WHERE movil = 30;
+  IF v_con <> 0 THEN RAISE EXCEPTION 'con piso 5 el intervalo de 1 min no debio entrar, dio % muestras', v_con; END IF;
+
+  RAISE NOTICE 'ok piso del ritmo (1 min entra con piso 0, no entra con piso 5)';
 END $$;
 
 TRUNCATE metricas_cumplimiento;
