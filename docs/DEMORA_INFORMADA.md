@@ -35,6 +35,25 @@ migraciones, CI): el Postgres de producción está firewalleado y no hay
 acceso directo desde fuera de Supabase. Es el mismo mecanismo que ya usa el
 resto de `docs/sqls/` en este repo.
 
+> **Paso 0 — antes de pegar el archivo 1, sin excepción:**
+>
+> ```sql
+> UPDATE demoras_config SET motor_activo = false WHERE escenario_id = 1000;
+> ```
+>
+> Entre que se pega el archivo 6 (cambia el default de métrica de
+> `demoras_ritmo`) y el archivo 11 (termina de migrar el orquestador), el
+> motor queda en un estado **híbrido**: mitad esquema viejo, mitad nuevo.
+> El cron **no se entera y no se detiene solo** — sigue disparando cada 10
+> minutos con lo que haya pegado hasta ese momento —, y esas corridas se
+> escriben con `modelo_version = NULL`: después no hay forma de
+> distinguirlas de una corrida genuina del modelo viejo. Medido sobre el
+> mismo fixture: **33% de caída** en el resultado. Este `UPDATE` apaga el
+> motor para toda la ventana de la migración, sin depender de cuán rápido
+> se peguen los 11 archivos siguientes, y se revierte en el **Paso final**
+> de más abajo — recién después del archivo 11 y de la verificación del
+> §2.
+
 Los 12 archivos, **en este orden exacto**:
 
 1. `docs/sqls/2026-07-29-demoras-acabado.sql` — función `demoras_acabado`:
@@ -96,12 +115,33 @@ Los 12 archivos, **en este orden exacto**:
     anteriores estén puestas deja al motor **viejo** (que lee esas mismas
     columnas) sin nada que leer, fallando callado cada 10 minutos — el mismo
     modo de falla que ya motivó separar esta baja de la primera migración.
+    Antes del `DROP COLUMN`, este mismo archivo crea
+    `demoras_config_backup_20260731` (snapshot completo de `demoras_config`,
+    ver §4.1) y agrega a `demoras_calculadas` las cuatro columnas de
+    auditoría del modelo nuevo (`ritmo_aplicado`, `libre_primero`,
+    `cola_por_delante`, `moviles_considerados` — ver §3).
 12. `docs/sqls/2026-07-29-demoras-cron.sql` — programa los dos jobs de
     `pg_cron` (`demoras-calcular` cada 10 min, `demoras-purga` diario) y
     **requiere `pg_cron` habilitado** en el proyecto de Supabase (Database →
     Extensions → `pg_cron`). Sin cambios: la firma de `demoras_calcular_run`
     no cambió. Si ya estaba aplicado antes de esta tanda, no hace falta
     repetirlo (es idempotente igual).
+
+> **Paso final — después del archivo 11 y de la verificación del §2** (el
+> archivo 12, el cron, se puede pegar antes o después: no depende de
+> `motor_activo`):
+>
+> ```sql
+> UPDATE demoras_config SET motor_activo = true WHERE escenario_id = 1000;
+> ```
+>
+> Con el motor apagado por el Paso 0, una corrida manual del §2
+> (`SELECT demoras_calcular_run(now())`) devuelve `0` — es lo esperado, no
+> un error: sigue ejecutando la función entera (así que un error de SQL
+> real contra el esquema de producción todavía se detecta), pero no
+> escribe filas. Confirmado que corre sin errores, este `UPDATE` reactiva
+> el motor y la corrida del cron siguiente (máximo 10 minutos después) ya
+> escribe con el esquema nuevo completo.
 
 Todos son idempotentes en el sentido estricto: volver a pegarlos no da error
 ni duplica nada, así que si hay dudas sobre si uno se aplicó, se puede repetir.
@@ -112,22 +152,55 @@ La primera ya existía y ahora tiene un candidato más: **`2026-07-29-demoras-ri
 y `2026-07-30-demoras-ritmo-cascada.sql` quedan los dos superseded por el
 archivo 6** (`2026-07-31-demoras-ritmo-v2.sql`) y **ninguno de los dos entra
 en esta secuencia**. Re-pegar cualquiera de los dos **después** del archivo 6
-—porque "no rompe nada"— hace un `CREATE OR REPLACE` exitoso, sin error ni
-warning, que degrada `demoras_ritmo` a una versión vieja (cascada de 2
-niveles, o la de 4 niveles pero sin el corte de huecos ni la elección de
-métrica) y deja `ritmo_dias_ventana` / `ritmo_min_muestras` /
-`ritmo_hueco_max_minutos` de `demoras_modelo` sin efecto real. Si hay que
-re-aplicar por las dudas, repetir la secuencia completa **en orden**
-empezando en el archivo 1, o saltear directamente al archivo 6 (autosuficiente
-— ver §13). Nunca sueltos.
+—pensando que "no rompe nada"— rompe, pero **ruidosamente, no en silencio**:
+los dos archivos viejos declaran `demoras_ritmo` con **4 parámetros**, los
+dos últimos (`p_dias`, `p_min_muestras`) con `DEFAULT`. Al lado de la
+versión nueva de **2 parámetros** quedan **dos funciones `demoras_ritmo`
+distintas coexistiendo**, y cualquier llamada con 2 argumentos —que es como
+la invocan `demoras_servidores`, `demoras_proximo_hueco` y el propio
+`demoras_calcular_run`— matchea a las dos por igual. Postgres aborta esa
+llamada con:
+
+```
+ERROR: function demoras_ritmo(integer, date) is not unique (SQLSTATE 42725)
+```
+
+El motor entero deja de escribir filas ahí mismo, y el cron lo va a marcar
+`failed` cada 10 minutos (§10) — es una falla que se nota de inmediato, no
+una que se arrastra en silencio semanas. La receta de recuperación es la
+misma de todas formas: repetir la secuencia completa **en orden** empezando
+en el archivo 1, o saltear directamente al archivo 6 (autosuficiente — ver
+§13), que **sí** resuelve la ambigüedad porque hace `DROP FUNCTION` de la
+firma vieja de 4 parámetros antes de crear la de 2. Nunca sueltos.
 
 La segunda es nueva de esta tanda: **`docs/sqls/2026-07-29-demoras-calcular-run.sql`
-(la versión vieja del orquestador) queda fuera de esta secuencia.** A
-diferencia del caso de arriba, re-pegarlo después del archivo 11 no degrada
+(la versión vieja del orquestador) queda fuera de esta secuencia.** Al igual
+que el caso de arriba, re-pegarlo después del archivo 11 no degrada
 en silencio: como el archivo 11 ya borró columnas de `demoras_config` que esa
 versión vieja necesita (hace `SELECT dc.*` sobre la tabla entera), la
 próxima corrida falla con `column "min_minutos" does not exist` y el motor
 deja de escribir filas hasta que alguien vuelva a pegar el archivo 11.
+
+La tercera también es nueva de esta tanda: **`docs/sqls/2026-07-29-demoras-calculadas-tabla.sql`
+(archivo 3) re-pegado después del archivo 11 falla.** Su `ALTER TABLE ...
+ADD COLUMN IF NOT EXISTS ritmo_default_minutos ...` sí es idempotente y
+resucita esa única columna en `demoras_config` (inofensivo: nadie la lee, el
+motor usa la de `demoras_modelo`), pero los `COMMENT ON COLUMN
+demoras_config.factor_calibracion` y `demoras_config.ritmo_default_minutos`
+de más abajo en el mismo archivo apuntan a columnas que el archivo 11 ya
+dropeó — `factor_calibracion` no tiene guard `ADD COLUMN IF NOT EXISTS`, así
+que para cuando el `COMMENT` la busca, ya no existe:
+
+```
+ERROR: column "factor_calibracion" of relation "demoras_config" does not exist
+```
+
+Falla **ruidosamente y con rollback completo** (el `--single-transaction` del
+harness y el comportamiento por defecto del SQL Editor de Supabase lo
+garantizan), así que no deja el esquema a mitad de camino. Si esto pasa, no
+hace falta ninguna acción de reparación: el archivo no llegó a cambiar nada,
+`demoras_config` queda exactamente como estaba. Simplemente no volver a
+pegar el archivo 3 una vez aplicado el archivo 11.
 
 ---
 
@@ -281,7 +354,43 @@ Un `UPDATE` que cambia cualquiera de estos parámetros queda en
 `trg_demoras_modelo_versionar`); un `UPDATE` que no cambia nada (guardar sin
 editar) no versiona.
 
-### Permisos: las cuatro tablas son solo de `service_role`
+### Auditoría del modelo nuevo en `demoras_calculadas`
+
+Cuatro columnas agregadas en el archivo 11 (review final de rama), para
+poder reconstruir **por qué** una zona informó tal número seis semanas
+después, no solo el resultado final:
+
+| Columna | Para qué |
+|---|---|
+| `ritmo_aplicado` | Ritmo (minutos) del móvil que efectivamente entrega el pedido nuevo en la simulación. |
+| `libre_primero` | Mejor tiempo de liberación ANTES de repartir la cola — separa cuánto de la demora es cola por delante y cuánto es trabajo que los móviles ya tenían encima. |
+| `cola_por_delante` | Pedidos sin asignar que la simulación repartió antes de ubicar al pedido nuevo. |
+| `moviles_considerados` | Cantidad de móviles (servidores) que compitieron; `0` implica `sin_capacidad=true`. |
+
+Las cuatro quedan **`NULL` en `CAPACIDAD_PROMEDIO`** a propósito: son
+insumos que solo produce la simulación de `PROXIMO_HUECO`, y que queden
+`NULL` hace evidente a simple vista qué modelo produjo cada fila, sin
+cruzar contra `modelo_version`. Antes de esto, `demoras_calculadas` solo
+persistía `ritmo_usado`/`ritmo_origen` del blend de **zona** (el *fallback*
+del modelo nuevo, no lo que usa cuando el móvil tiene ritmo propio) — sobre
+el ejemplo de `DEMORA_MODELO.md` §7.3, Centro informaba 60 desde el ritmo
+15 de M2, pero la fila guardaba 17,50: un número que no participó del
+cálculo.
+
+### El backup antes del `DROP COLUMN`
+
+El mismo archivo 11 crea `demoras_config_backup_20260731`
+(`CREATE TABLE IF NOT EXISTS ... AS SELECT * FROM demoras_config`) justo
+antes de dropear las 8 columnas de cálculo. Es la única forma de recuperar
+una calibración de `factor_calibracion` (o cualquier otro parámetro) de
+`NOCTURNO` o `SERVICE` hecha en producción antes de esta migración: el seed
+de `demoras_modelo` (archivo 4) solo hereda de la fila `URGENTE`, así que un
+valor distinto en las otras dos se pierde sin quedar en ningún lado si no
+fuera por este snapshot. Borrable cuando el modelo nuevo esté calibrado y
+nadie necesite consultar los valores viejos por tipo — no la lee ninguna
+función del motor.
+
+### Permisos: las cuatro tablas y las cinco funciones nuevas son solo de `service_role`
 
 `demoras_calculadas`, `demoras_config`, `demoras_modelo` y
 `demoras_modelo_historial` tienen `REVOKE ALL ... FROM anon, authenticated`
@@ -291,6 +400,16 @@ ventanas, topes, qué modelo corre, factor de calibración), y la anon key de
 Supabase vive en el bundle del browser. Sin los grants explícitos, si los
 default privileges del proyecto alcanzan a `anon`, cualquiera con la anon
 key puede apagar el motor o cambiarle el resultado.
+
+Lo mismo aplica a las cinco funciones nuevas de esta tanda
+(`demoras_ritmo_muestras`, `demoras_cola`, `demoras_ritmo_movil`,
+`demoras_servidores`, `demoras_proximo_hueco`): cada una tiene su propio
+`REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` + `GRANT EXECUTE ...
+TO service_role` en su propia migración (review final de rama). A
+diferencia de las tablas, Postgres le da `EXECUTE` a `PUBLIC` en **todo**
+`CREATE FUNCTION` por defecto — sin este `REVOKE` explícito quedaban
+invocables por la anon key vía RPC aunque las tablas que leen estuvieran
+blindadas.
 
 Verificación post-apply — las cuatro tienen que dar `f`:
 
@@ -350,6 +469,33 @@ Volver a prender es el mismo `UPDATE` con `true`. El cron sigue disparando
 cada 10 minutos igual (no hay que tocar `pg_cron`); la función simplemente no
 escribe filas para el/los tipo(s) apagado(s), y el histórico queda intacto.
 
+### 4.1 Cómo volver al modelo viejo
+
+Si `PROXIMO_HUECO` da resultados que no se entienden o hay que comparar
+contra el AS400 con el modelo conocido mientras se investiga:
+
+```sql
+UPDATE demoras_modelo SET modelo = 'CAPACIDAD_PROMEDIO' WHERE escenario_id = 1000;
+```
+
+**No requiere deploy, no toca el cron, no revierte ninguna migración.** La
+corrida siguiente (máximo 10 minutos después, o antes con una llamada manual
+a `SELECT demoras_calcular_run(now())`) ya usa el modelo viejo — el
+orquestador despacha entre los dos en cada corrida según lo que diga esta
+columna (§3), y las dos ramas escriben las mismas columnas de
+`demoras_calculadas`. Volver a `PROXIMO_HUECO` es el mismo `UPDATE` con el
+valor original. El `UPDATE` queda registrado en `demoras_modelo_historial`
+(bumpea `version`, ver §3), así que el cambio de modelo también es
+auditable: se puede reconstruir desde cuándo corrió cada uno mirando
+`demoras_calculadas.modelo_version` contra el historial.
+
+Esto **no** es lo mismo que revertir el `DROP COLUMN` del archivo 11 — para
+eso, ver el backup `demoras_config_backup_20260731` que esa misma migración
+crea antes de dropear (§3): sirve para recuperar una calibración vieja por
+tipo si hiciera falta, no para volver a correr el modelo viejo (que no
+necesita esas columnas por tipo — las lee de `demoras_modelo`, iguales para
+los tres tipos).
+
 ---
 
 ## 5. Cómo cambiar el estadístico o la cascada
@@ -372,6 +518,13 @@ movió a `demoras_modelo` (ver §3, la excepción documentada):
 UPDATE demoras_config SET ritmo_cascada = 'MOVIL,ZONA,GLOBAL'
  WHERE escenario_id = 1000 AND tipo_servicio = 'NOCTURNO';
 ```
+
+Este `UPDATE` cambia **las dos cascadas a la vez**: la de zona
+(`demoras_ritmo`) y la de móvil (`demoras_ritmo_movil`, la que alimenta
+`PROXIMO_HUECO` vía `demoras_servidores`) leen la misma columna, por el
+mismo tipo — es la única fuente real. `demoras_modelo.ritmo_cascada` **no
+alimenta ninguna de las dos**; un `UPDATE` ahí no tiene ningún efecto (ver
+el `COMMENT ON COLUMN` de `docs/sqls/2026-07-31-demoras-modelo-tabla.sql`).
 
 Ningún cambio en `demoras_config` ni en `demoras_modelo` requiere deploy ni
 reinicio: la próxima corrida del cron (máximo 10 minutos después) ya lo
@@ -450,8 +603,9 @@ archivo `2026-07-30-demoras-ritmo-cascada.sql` queda superseded — ver §1).
 >
 > **Esto debe quedar claro antes de que el número se informe a un cliente.**
 
-(En el código el campo se llama `demoras_config.factor_calibracion`; la spec
-lo nombra `demora_factor_calibracion` en prosa. Es la misma columna.)
+(En el código el campo se llama `demoras_modelo.factor_calibracion` —vive ahí
+desde la Task 7, ver §3; antes de esa migración vivía en `demoras_config`—;
+la spec lo nombra `demora_factor_calibracion` en prosa. Es la misma columna.)
 
 **El número calculado no debe informarse a un cliente por ningún canal hasta
 que la brecha contra el AS400 esté calibrada.** Hoy el motor es solo
@@ -587,7 +741,7 @@ Estas mismas tres queries están comentadas al final de
 
 ## 11. Qué falta fuera de las migraciones para que la card se vea
 
-Aplicar las 7 migraciones deja el motor calculando y escribiendo en
+Aplicar las 12 migraciones (§1) deja el motor calculando y escribiendo en
 `demoras_calculadas`, pero la card de comparativa en
 `/dashboard/metricas-cumplimiento` (y el endpoint `GET
 /api/demoras/comparativa` que la alimenta) tienen **dos gates adicionales**
@@ -657,11 +811,35 @@ bash scripts/sql-harness/run.sh \
 ```
 
 Asserts existentes: `assert-acabado.sql`, `assert-capacidad.sql`,
-`assert-config.sql`, `assert-modelo.sql`, `assert-ritmo-muestras.sql`,
-`assert-ritmo.sql`, `assert-cola.sql`, `assert-servidores.sql`,
-`assert-hueco.sql`, `assert-run-v2.sql`. (`assert-run.sql`, que probaba la
-versión vieja de `demoras_calcular_run` como único modelo posible, queda
-fuera de la regresión desde la Task 7 — `assert-run-v2.sql` la reemplaza.)
+`assert-config.sql`, `assert-modelo.sql`, `assert-run.sql`,
+`assert-ritmo-muestras.sql`, `assert-ritmo.sql`, `assert-cola.sql`,
+`assert-servidores.sql`, `assert-hueco.sql`, `assert-run-v2.sql`,
+`assert-grants-funciones.sql`.
+
+**`assert-run.sql` volvió a la regresión (review final de rama).** Había
+salido en la Task 7 porque probaba `demoras_calcular_run` asumiendo
+`CAPACIDAD_PROMEDIO` como único modelo posible, que dejó de ser el default.
+Pero **no lo reemplaza `assert-run-v2.sql`, lo complementa**: cubre 15
+comportamientos que ningún otro archivo ejercita (el interruptor global y
+por tipo, la ventana horaria por tipo, la idempotencia del `ON CONFLICT`, el
+snapshot del AS400, la exclusión de ESPECIAL/OTROS, la precedencia
+capacidad > demanda), mientras que `assert-run-v2.sql` sólo prueba lo que
+agregó la Task 7 (el despacho entre modelos, el sello de versión, el bypass
+del suavizado, la baja de columnas). Sigue pasando sin tocar una línea
+porque sus fixtures caen en los dos extremos donde los modelos convergen —
+un móvil saturado (clampea al techo en los dos) o demanda cero (el piso en
+los dos, porque `ritmo_default_minutos` y `min_minutos` son 30 los dos por
+default) —, así que no le importa cuál esté corriendo.
+
+**Tiene que ir ANTES de `assert-hueco.sql` en la cadena.** `assert-hueco.sql`
+deja `escenario_settings.pedidos_sa_minutos_antes = NULL` sin restaurar al
+terminar (a propósito: sus propios fixtures no usan `fch_hora_para`, así que
+no le afecta), y el bloque de ventana SA de `assert-run.sql` sí asume el
+default del stub (`60`). Corrido después de `assert-hueco.sql` sin
+resembrar ese valor, falla con `el SA fuera de ventana no debe contar: 0 ->
+1` — no por un bug del código, por contaminación de estado entre asserts de
+la misma invocación. El orden correcto (el que usa esta guía y el CI): justo
+después de `assert-modelo.sql`, antes de `assert-ritmo-muestras.sql`.
 
 `assert-config.sql` cubre la migración de tablas: el `CHECK (hora_fin >
 hora_inicio)` (§5.1) y los grants (§3) — las dos reglas siguen vigentes

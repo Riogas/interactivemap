@@ -8,10 +8,13 @@ Está escrito para que lo entienda alguien que nunca vio el sistema. Si en
 algún punto hace falta saber algo de programación para seguirlo, es un
 defecto del documento, no del lector.
 
-> **Estado: en discusión.** El motor que está corriendo hoy usa el modelo
-> viejo (sección 6). El modelo nuevo (sección 7) todavía no se implementó.
-> La guía operativa de lo que SÍ está corriendo es
-> [`DEMORA_INFORMADA.md`](DEMORA_INFORMADA.md).
+> **Estado: implementado.** El modelo nuevo (sección 7, `PROXIMO_HUECO`) es
+> el **default** en producción desde la Task 6 de
+> `docs/superpowers/plans/2026-07-30-motor-demora-proximo-hueco.md`. El
+> modelo viejo (sección 6, `CAPACIDAD_PROMEDIO`) se conserva, seleccionable
+> por `demoras_modelo.modelo`, para poder correr los dos sobre los mismos
+> datos y comparar en vez de discutir. La guía operativa de lo que está
+> corriendo es [`DEMORA_INFORMADA.md`](DEMORA_INFORMADA.md).
 
 ---
 
@@ -60,9 +63,19 @@ Son tres colas separadas. Un móvil puede estar habilitado para uno, dos o
 los tres. **El AS400 solo informa demora para URGENTE** — para los otros dos
 no hay contra qué comparar.
 
-Existen además pedidos de tipo ESPECIAL y OTROS, que quedan **fuera de todo
-este cálculo** por decisión tomada el 2026-07-28: no tienen móviles
-asignados propios, así que no forman parte de ninguna cola.
+Existen además pedidos de tipo ESPECIAL y OTROS, que quedan **fuera de la
+demanda de cualquier zona** por decisión tomada el 2026-07-28: no tienen
+móviles asignados propios, así que no compiten por ningún hueco de ninguna
+cola (`demoras_cola` los excluye).
+
+Eso es distinto de decir que no le importan al cálculo. Cuando un móvil ya
+tiene un ESPECIAL u OTROS asignado, ese trabajo sí lo mantiene ocupado —ni
+más ni menos que un pedido de otra zona— y `demoras_servidores` sí lo cuenta
+al calcular cuándo ese móvil queda libre (`libre_en`): hace falta saber
+cuándo termina, aunque el pedido en sí no compita por nada. La distinción es
+demanda (de qué zona es un pedido que hay que asignar) contra trabajo
+(qué tiene el móvil encima ahora mismo); ESPECIAL/OTROS no son lo primero,
+pero sí son lo segundo.
 
 ### 2.3 Prioridad y tránsito: la parte que confunde
 
