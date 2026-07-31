@@ -183,6 +183,22 @@ Zona A con **20 pedidos pendientes**. Entra uno nuevo, así que hay que sacar
 sobre el mismo dato, por ignorar que el de los 15 y el de los 60 ya estaban
 ayudando.
 
+> **Los tiempos de liberación de esta tabla están puestos a mano.** El 15, el
+> 60 y el 90 son números redondos elegidos para explicar el algoritmo, no
+> valores que el sistema pueda producir: `r_j` sale de `carga × ritmo +
+> traslado`, así que está **cuantizado** por el ritmo del móvil. Con ritmo 10
+> y traslado 5, los valores alcanzables son 0, 15, 25, 35, 45, 55… — el 60 y el
+> 90 no existen.
+>
+> Por eso el test que verifica este ejemplo usa la terna **15 / 55 / 95**, que
+> suma lo mismo (165) y **da el mismo resultado de 117 minutos**. La aritmética
+> de los tramos es idéntica; lo único que cambia es que esos tres tiempos sí
+> son producibles por la fórmula real.
+>
+> No es un defecto del modelo ni del ejemplo: es la diferencia entre una tabla
+> que enseña y un test que se conecta con el código de verdad. Queda anotado
+> acá para que nadie pierda una tarde tratando de reproducir el 60 y el 90.
+
 > **Ojo con el 0,50 del ejemplo.** Usa 50% de dedicación para los compartidos;
 > nuestro parámetro es **0,20**. Con él cada compartido aportaría 0,02/min, la
 > capacidad final sería 0,16 y la cuenta daría **alrededor de 152 minutos**,
