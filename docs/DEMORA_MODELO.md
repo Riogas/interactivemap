@@ -401,7 +401,22 @@ No todo se tira. Estas cuatro decisiones son correctas y siguen valiendo:
 
 ---
 
-## 7. El modelo propuesto: "el próximo hueco"
+## 7. El modelo del "próximo hueco" — **SUPERSEDED**
+
+> **Esta sección describe el modelo `PROXIMO_HUECO`, que fue implementado y
+> luego reemplazado.** Se conserva porque el diagnóstico de los tres errores
+> del modelo original (secciones 1 a 6) sigue siendo válido y porque el ejemplo
+> de acá abajo es el que explica de dónde salen los números.
+>
+> **El modelo vigente es "consumo por tramos"**, especificado en
+> [`DEMORA_MODELO_TRAMOS.md`](DEMORA_MODELO_TRAMOS.md). Cambió porque el
+> próximo hueco trata a un móvil compartido como todo o nada —entra, entra con
+> castigo, o no entra— y no puede expresar que le dedique una fracción de su
+> tiempo a la zona de forma continua, que es lo que realmente pasa. El modelo
+> nuevo también trata los pedidos ya asignados dentro de la zona como demanda
+> de la zona y no de un móvil, que es más fiel a cómo reacomoda el despacho.
+
+
 
 La idea, en una frase:
 
