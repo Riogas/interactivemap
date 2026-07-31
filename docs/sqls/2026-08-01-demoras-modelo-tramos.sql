@@ -72,6 +72,26 @@ COMMENT ON COLUMN demoras_modelo.modelo IS
 -- ── Baja de los tres parametros de transito_modo ─────────────────────
 -- En CONSUMO_TRAMOS un movil de transito SIEMPRE entra, con su fraccion.
 -- La decision de "entra o no entra" desaparece.
+--
+-- ORDEN DE APLICACION: demoras_servidores (docs/sqls/2026-07-31-demoras-servidores.sql)
+-- todavia lee dm.transito_modo, dm.transito_castigo_minutos y
+-- dm.transito_margen_minutos. La Task 4 la reemplaza por demoras_aportes, que
+-- no las usa -- hasta que esa task se aplique, las tres columnas siguen
+-- teniendo un lector.
+--
+-- Aplicar este DROP COLUMN con el motor PRENDIDO y antes de la Task 4 hace
+-- fallar cada corrida del cron con "column dm.transito_modo does not exist".
+-- Y pasa con CUALQUIER valor de modelo, incluido el default nuevo
+-- CONSUMO_TRAMOS: demoras_calcular_run arma el CTE que llama a
+-- demoras_proximo_hueco -> demoras_servidores de forma INCONDICIONAL, y
+-- recien despues decide con un CASE que resultado usar. Elegir el modelo
+-- nuevo no evita la llamada, porque el CTE ya se armo antes de llegar a ese
+-- CASE.
+--
+-- Es seguro con motor_activo=false, que es la precondicion de esta tanda
+-- completa (el universo de zonas activas queda vacio y esas funciones nunca
+-- se invocan), o aplicando la secuencia completa de una sola vez hasta la
+-- Task 4 inclusive.
 ALTER TABLE demoras_modelo
   DROP COLUMN IF EXISTS transito_modo,
   DROP COLUMN IF EXISTS transito_castigo_minutos,
