@@ -212,6 +212,70 @@ BEGIN
   RAISE NOTICE 'ok empate en libre_en: gana el de menor ritmo, no el id mas bajo';
 END $$;
 
+-- 9) El MISMO empate, pero con cola por delante: el bloque 8 tiene
+--    cola_por_delante = 0, asi que el FOR v_k IN 1 .. z.cola no itera ni
+--    una vez y el barrido del REPARTO nunca corre con ese fixture -- solo
+--    se prueba la ubicacion del pedido nuevo (el segundo barrido). Este
+--    bloque agrega UN pedido sin asignar para que el primer barrido
+--    (el reparto) corra de verdad.
+--
+--    Zona 500, moviles 13 (lento, ritmo 30) y 14 (rapido, ritmo 15, id MAS
+--    ALTO a proposito), los dos en libre_en = 0 (empatados) y un pedido
+--    sin asignar en la cola:
+--
+--    Reparto (correcto, empate -> gana el de menor ritmo): el pedido de la
+--    cola va al movil 14 (rapido). Movil14 = 0+15 = 15. Movil13 queda
+--    intacto en 0.
+--    Pedido nuevo: el minimo ahora es movil13 (0 < 15, sin empate). Le
+--    toca a movil13 -- el LENTO -- y su propia entrega es 30.
+--    demora = 0 (ya esta libre) + 30 (su propio ritmo) = 30.
+--
+--    Si el reparto NO respetara el desempate (empate resuelto por orden
+--    de array, o sea gana movil13 por tener el id mas bajo): el pedido de
+--    la cola va a movil13. Movil13 = 0+30 = 30, movil14 queda en 0. El
+--    pedido nuevo le toca entonces a movil14 (el rapido), con demora
+--    0+15 = 15. O sea: romper el desempate DEL REPARTO cambia el numero
+--    final (30 vs 15), aunque el desempate de la ubicacion final este
+--    perfecto -- es un fixture que solo el primer barrido puede aprobar.
+INSERT INTO moviles_zonas (escenario_id, movil_id, zona_id, tipo_de_servicio, prioridad_o_transito, activa)
+VALUES (1000,'13',500,'URGENTE',1,true),
+       (1000,'14',500,'URGENTE',1,true);
+
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000,13,DATE '2026-07-30',true),
+       (1000,14,DATE '2026-07-30',true);
+
+INSERT INTO metricas_cumplimiento
+  (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+   fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+SELECT 'PEDIDO', 6100 + g*10 + m.movil, 1000, DATE '2026-07-29', 'URGENTE',
+       m.movil, 500, NULL, now(), m.r, m.r, 'CAMPO'
+FROM (VALUES (13,30.0),(14,15.0)) AS m(movil, r),
+     generate_series(1,5) g;
+
+INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+VALUES (500,1000,'URGENTE',NULL,500,1,DATE '2026-07-30');
+
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_proximo_hueco(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
+   WHERE zona_id = 500 AND tipo_servicio = 'URGENTE';
+  IF r.moviles_considerados <> 2 THEN
+    RAISE EXCEPTION 'empate en reparto: se esperaban 2 moviles, hubo %', r.moviles_considerados;
+  END IF;
+  IF r.cola_por_delante <> 1 THEN
+    RAISE EXCEPTION 'empate en reparto: cola_por_delante % (esperaba 1)', r.cola_por_delante;
+  END IF;
+  IF round(r.ritmo_aplicado) IS DISTINCT FROM 30 THEN
+    RAISE EXCEPTION 'empate en reparto: ritmo_aplicado % (esperaba 30, el LENTO -- el rapido tuvo que haberse llevado la cola)', r.ritmo_aplicado;
+  END IF;
+  IF round(r.demora_cruda) IS DISTINCT FROM 30 THEN
+    RAISE EXCEPTION 'empate en reparto: % (esperaba 30: el rapido -movil 14- absorbe la cola por el desempate, y el lento -movil 13- queda libre para el pedido nuevo)', r.demora_cruda;
+  END IF;
+  RAISE NOTICE 'ok empate en el reparto de la cola: tambien respeta el desempate por ritmo';
+END $$;
+
 TRUNCATE moviles_zonas, moviles_dia, pedidos, services, metricas_cumplimiento;
 UPDATE demoras_modelo SET ritmo_metrica = 'ENTRE_ENTREGAS', transito_modo = 'SOLO_SI_NO_HAY'
  WHERE escenario_id = 1000;
