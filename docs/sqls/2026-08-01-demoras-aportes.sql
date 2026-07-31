@@ -99,7 +99,16 @@ AS $fn$
   -- Carga FUERA de la zona: todo lo que el movil tiene pendiente en OTRAS
   -- zonas, de CUALQUIER tipo. El movil es un solo camion y un service lo
   -- ocupa igual que un urgente.
-  carga_total AS (
+  --
+  -- MATERIALIZED por el mismo motivo que rit_zona/rit_movil mas abajo: se
+  -- lee desde adentro del primer LATERAL (cf_out), correlacionado por
+  -- pj.movil/pj.zona_id, y esta referenciada una sola vez -- sin forzar
+  -- MATERIALIZED, Postgres la inlinea y el agregado sobre pedidos+services
+  -- se recalcula una vez por fila de pj. Confirmado con EXPLAIN ANALYZE: sin
+  -- MATERIALIZED, el plan mostraba "Seq Scan on pedidos (loops=900)" y "Seq
+  -- Scan on services (loops=900)" -- no es hipotetico, es lo que salio en la
+  -- corrida real contra el fixture de 100 zonas x 3 tipos.
+  carga_total AS MATERIALIZED (
     SELECT p.movil, p.zona_nro, count(*)::integer AS n
     FROM (
       SELECT movil, zona_nro FROM pedidos
@@ -114,11 +123,29 @@ AS $fn$
     ) p
     GROUP BY p.movil, p.zona_nro
   ),
-  rit_zona AS (
+  -- MATERIALIZED es obligatorio en las tres CTEs de abajo, no cosmetico.
+  -- Las tres se leen desde ADENTRO de un LATERAL correlacionado por
+  -- pj.movil/pj.zona_id/pj.tipo (mas abajo, en el SELECT final). Una CTE
+  -- referenciada UNA sola vez se inlinea desde Postgres 12 (a menos que se
+  -- fuerce MATERIALIZED) -- y al inlinearse DENTRO del LATERAL, Postgres
+  -- vuelve a evaluarla una vez POR CADA FILA del lado izquierdo, no una sola
+  -- vez para todo el escenario. rit_zona y rit_movil envuelven a
+  -- demoras_ritmo()/demoras_ritmo_movil(), que escanean TODO
+  -- metricas_cumplimiento para resolver la cascada del ritmo; carga_total
+  -- agrupa TODO pedidos+services. Sin MATERIALIZED, un escenario de 100
+  -- zonas x 3 tipos (900 filas de moviles_zonas, 168.300 hechos historicos)
+  -- repetia ese escaneo ~900 veces -- medido en 2m13s por demoras_aportes.
+  -- Con MATERIALIZED (las tres CTEs se calculan UNA vez, se leen de una
+  -- tabla temporal en memoria desde el LATERAL) el mismo fixture midio
+  -- 605ms -- ~146x mas rapido, mismos resultados (checksum identico del
+  -- resultado completo antes y despues). Ver
+  -- .superpowers/sdd/2026-07-31-motor-demora-consumo-tramos/task-4-report.md,
+  -- seccion "Fix round 2", para las mediciones y el EXPLAIN ANALYZE.
+  rit_zona AS MATERIALIZED (
     SELECT r.zona_id, r.tipo_servicio, r.ritmo_media, r.ritmo_mediana, r.ritmo_p75, r.ritmo_p90
     FROM demoras_ritmo(p_escenario, p_fecha) r
   ),
-  rit_movil AS (
+  rit_movil AS MATERIALIZED (
     SELECT m.movil, m.tipo_servicio, m.ritmo_media, m.ritmo_mediana, m.ritmo_p75, m.ritmo_p90
     FROM demoras_ritmo_movil(p_escenario, p_fecha) m
   )
