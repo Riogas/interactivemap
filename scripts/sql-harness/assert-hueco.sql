@@ -167,6 +167,51 @@ BEGIN
   RAISE NOTICE 'ok zona con capacidad y cola vacia';
 END $$;
 
+-- 8) Empate de libre_en: al arranque del dia TODOS los moviles activos
+--    estan en libre_en = 0, asi que el empate es la situacion NORMAL, no
+--    una rareza. A igual momento de liberacion tiene que ganar el que
+--    entrega antes (menor ritmo), no el primero del array. Movil 10
+--    (rapido, ritmo 15) tiene el movil_id MAS ALTO que movil 9 (lento,
+--    ritmo 30) a proposito: el array_agg de demoras_proximo_hueco ordena
+--    por movil ascendente, asi que si el desempate volviera a ser "el
+--    primero del array" (el bug que este bloque encontro), ganaria el 9 y
+--    la demora saldria 30 en vez de 15 -- justo el mutante que hace pasar
+--    "<=" en vez de "<" con el segundo criterio.
+--    Zona 400 y moviles 9/10 son exclusivos de este bloque, sin carga
+--    (cero pedidos asignados: libre_en = 0 x ritmo = 0 para los dos).
+INSERT INTO moviles_zonas (escenario_id, movil_id, zona_id, tipo_de_servicio, prioridad_o_transito, activa)
+VALUES (1000,'9', 400,'URGENTE',1,true),
+       (1000,'10',400,'URGENTE',1,true);
+
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000,9, DATE '2026-07-30',true),
+       (1000,10,DATE '2026-07-30',true);
+
+INSERT INTO metricas_cumplimiento
+  (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+   fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+SELECT 'PEDIDO', 6000 + g*10 + m.movil, 1000, DATE '2026-07-29', 'URGENTE',
+       m.movil, 400, NULL, now(), m.r, m.r, 'CAMPO'
+FROM (VALUES (9,30.0),(10,15.0)) AS m(movil, r),
+     generate_series(1,5) g;
+
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_proximo_hueco(1000, DATE '2026-07-30', timestamptz '2026-07-30 14:00:00-03')
+   WHERE zona_id = 400 AND tipo_servicio = 'URGENTE';
+  IF r.moviles_considerados <> 2 THEN
+    RAISE EXCEPTION 'empate: se esperaban 2 moviles, hubo %', r.moviles_considerados;
+  END IF;
+  IF round(r.libre_primero) IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'empate: libre_primero % (esperaba 0, los dos arrancan libres)', r.libre_primero;
+  END IF;
+  IF round(r.demora_cruda) IS DISTINCT FROM 15 THEN
+    RAISE EXCEPTION 'empate en libre_en: % (esperaba 15 = ritmo del movil 10, el mas rapido, no 30 del movil 9 que ganaria solo por tener movil_id mas bajo)', r.demora_cruda;
+  END IF;
+  RAISE NOTICE 'ok empate en libre_en: gana el de menor ritmo, no el id mas bajo';
+END $$;
+
 TRUNCATE moviles_zonas, moviles_dia, pedidos, services, metricas_cumplimiento;
 UPDATE demoras_modelo SET ritmo_metrica = 'ENTRE_ENTREGAS', transito_modo = 'SOLO_SI_NO_HAY'
  WHERE escenario_id = 1000;

@@ -127,12 +127,22 @@ BEGIN
     -- que los moviles ya tenian encima.
     SELECT min(x) INTO libre_primero FROM unnest(v_libres) AS x;
 
-    -- Reparto de la cola: cada pedido al que se libera primero.
+    -- Reparto de la cola: cada pedido al que se libera primero. A igual
+    -- libre_en, gana el de MENOR ritmo (entrega antes), no el primero del
+    -- array. El empate no es una rareza: al arranque del dia TODOS los
+    -- moviles activos estan en libre_en = 0, asi que el empate es la
+    -- situacion NORMAL, y "el primero del array" (que hoy es el de
+    -- movil_id mas bajo, por el ORDER BY del array_agg de mas arriba) no es
+    -- una decision de nadie -- es un efecto lateral del orden de lectura.
+    -- El segundo criterio usa "<" ESTRICTO, no "<=": si tambien empatan en
+    -- ritmo, el resultado tiene que seguir siendo determinista, y el orden
+    -- estable del array_agg ya alcanza para eso.
     FOR v_k IN 1 .. z.cola LOOP
       v_idx := 1;
       v_min := v_libres[1];
       FOR v_i IN 2 .. v_n LOOP
-        IF v_libres[v_i] < v_min THEN
+        IF v_libres[v_i] < v_min
+           OR (v_libres[v_i] = v_min AND v_ritmos[v_i] < v_ritmos[v_idx]) THEN
           v_min := v_libres[v_i];
           v_idx := v_i;
         END IF;
@@ -140,11 +150,15 @@ BEGIN
       v_libres[v_idx] := v_libres[v_idx] + v_ritmos[v_idx];
     END LOOP;
 
-    -- El pedido nuevo va al que quede libre primero.
+    -- El pedido nuevo va al que quede libre primero. Mismo criterio de
+    -- desempate que el reparto de arriba (menor ritmo, "<" estricto): si
+    -- los dos barridos usaran reglas distintas, el reparto y la ubicacion
+    -- del pedido nuevo se contradirian entre si.
     v_idx := 1;
     v_min := v_libres[1];
     FOR v_i IN 2 .. v_n LOOP
-      IF v_libres[v_i] < v_min THEN
+      IF v_libres[v_i] < v_min
+         OR (v_libres[v_i] = v_min AND v_ritmos[v_i] < v_ritmos[v_idx]) THEN
         v_min := v_libres[v_i];
         v_idx := v_i;
       END IF;
@@ -171,4 +185,4 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION demoras_proximo_hueco(integer, date, timestamptz) IS
-  'Simulacion del proximo hueco por (zona, tipo): reparte los pedidos sin asignar entre los moviles activos, cada uno al que se libera primero, y ubica el pedido nuevo en el primer hueco que queda. La demora es esa espera mas la propia entrega (configurable). Devuelve demora_cruda SIN clamp, suavizado ni redondeo: de eso sigue ocupandose demoras_acabado. El universo sale de moviles_zonas y no de los servidores, para que una zona sin ningun movil activo devuelva fila igual con sin_capacidad=true y el techo, en vez de desaparecer sin dejar nada que auditar. libre_primero es el mejor tiempo de liberacion ANTES de repartir la cola, para poder separar cuanto de la demora es cola y cuanto es trabajo ya encima de los moviles.';
+  'Simulacion del proximo hueco por (zona, tipo): reparte los pedidos sin asignar entre los moviles activos, cada uno al que se libera primero, y ubica el pedido nuevo en el primer hueco que queda. La demora es esa espera mas la propia entrega (configurable). Devuelve demora_cruda SIN clamp, suavizado ni redondeo: de eso sigue ocupandose demoras_acabado. El universo sale de moviles_zonas y no de los servidores, para que una zona sin ningun movil activo devuelva fila igual con sin_capacidad=true y el techo, en vez de desaparecer sin dejar nada que auditar. libre_primero es el mejor tiempo de liberacion ANTES de repartir la cola, para poder separar cuanto de la demora es cola y cuanto es trabajo ya encima de los moviles. Empate de libre_en (el caso normal al arranque del dia, con todos los moviles en 0): gana el de menor ritmo, no el primero del array -- desempate determinista con "<" estricto si tambien empatan en ritmo.';
