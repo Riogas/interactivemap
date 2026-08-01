@@ -61,15 +61,16 @@
 -- docs/sqls/2026-08-01-demoras-modelo-tramos.sql). Es la misma precondicion
 -- de toda esta tanda (ver el plan, seccion Global Constraints).
 --
--- A DIFERENCIA de ese caso, ACA NINGUNA task de este plan actualiza
--- demoras_ritmo ni demoras_ritmo_movil (la arquitectura los declara "sin
--- cambios de fondo" para las siete tasks): si el motor se prende al final de
--- la tanda sin una task nueva que les agregue p_hueco_min, el cron vuelve a
--- fallar en silencio cada 10 minutos, esta vez para SIEMPRE y no solo
--- durante la ventana de aplicacion. Hace falta una task de cierre (o un
--- Step extra en la Task 7) que actualice esos dos archivos para pasar
--- demoras_modelo.ritmo_hueco_min_minutos como septimo argumento antes de
--- reactivar motor_activo.
+-- A DIFERENCIA de ese caso, esta firma nueva de 7 argumentos SI necesitaba
+-- que alguien actualizara a los dos llamadores antes de reactivar
+-- motor_activo -- si no, el cron vuelve a fallar en silencio cada 10
+-- minutos, esta vez para SIEMPRE y no solo durante la ventana de
+-- aplicacion. Eso ya se hizo: docs/sqls/2026-08-01-demoras-ritmo-callers-v2.sql
+-- (Task 2, fix round 1) recrea demoras_ritmo y demoras_ritmo_movil para
+-- pasar demoras_modelo.ritmo_hueco_min_minutos como septimo argumento. Se
+-- aplica DESPUES de este archivo (archivo 14 vs. 13 en el bundle unico,
+-- docs/DEMORA_INFORMADA.md seccion 1) -- no pegar este archivo solo sin el
+-- 14 detras.
 -- =====================================================================
 DROP FUNCTION IF EXISTS demoras_ritmo_muestras(integer, date, integer, text, integer, boolean);
 

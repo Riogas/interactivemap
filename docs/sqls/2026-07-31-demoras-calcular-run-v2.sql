@@ -360,6 +360,16 @@ CREATE TABLE IF NOT EXISTS demoras_config_backup_20260731 AS
 COMMENT ON TABLE demoras_config_backup_20260731 IS
   'Snapshot de demoras_config tomado justo antes de que esta misma migracion (2026-07-31-demoras-calcular-run-v2.sql) le hiciera DROP COLUMN a las 8 columnas de calculo (min_minutos, max_minutos, escalon_minutos, subida_max, bajada_max, estadistico, ritmo_default_minutos, factor_calibracion), por tipo_servicio -- el seed de demoras_modelo solo hereda de la fila URGENTE, asi que es la unica forma de recuperar una calibracion de NOCTURNO o SERVICE hecha en produccion antes de esta migracion. Borrable cuando el modelo nuevo este calibrado y nadie necesite consultar los valores viejos por tipo.';
 
+-- ─── Grants: solo service_role (I2, review final de rama) ────────────
+-- Es una copia de demoras_config -- la tabla que decide que calcula el
+-- motor (interruptor, ventanas, factor_calibracion por tipo) -- y nacia sin
+-- REVOKE: la unica tabla de la familia demoras_* sin el, verificado
+-- (anon podia SELECT y UPDATE). Mismo patron que demoras_config /
+-- demoras_calculadas mas abajo en este mismo archivo.
+REVOKE ALL ON TABLE demoras_config_backup_20260731 FROM PUBLIC;
+REVOKE ALL ON TABLE demoras_config_backup_20260731 FROM anon, authenticated;
+GRANT  ALL ON TABLE demoras_config_backup_20260731 TO service_role;
+
 ALTER TABLE demoras_config
   DROP COLUMN IF EXISTS min_minutos,
   DROP COLUMN IF EXISTS max_minutos,

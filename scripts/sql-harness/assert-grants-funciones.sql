@@ -1,23 +1,28 @@
 \set ON_ERROR_STOP on
 -- =====================================================================
--- Grants de EXECUTE sobre las cinco funciones nuevas de esta tanda
--- (Important 5, review final)
+-- Grants de EXECUTE sobre las funciones del motor de demora
+-- (Important 5 del review de la tanda PROXIMO_HUECO; actualizado por el
+-- Important 4 y el Important 3 del review final de rama, b7fff6e..64045c2)
 --
 -- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto --
 -- a diferencia de las tablas, donde hace falta que el proyecto agregue un
 -- default privilege para que anon/authenticated tengan algo (00-stubs.sql
 -- replica ese comportamiento de Supabase, ver su comentario). Con las
 -- funciones no hace falta ningun stub: es el comportamiento de serie de
--- Postgres, y por eso las cinco quedaban invocables por anon/authenticated
--- via RPC aunque las tablas que leen esten blindadas.
+-- Postgres, y por eso quedaban invocables por anon/authenticated via RPC
+-- aunque las tablas que leen esten blindadas.
 --
 -- Firma exacta de cada una (tiene que coincidir con el REVOKE/GRANT de su
 -- propia migracion -- un REVOKE con la firma equivocada no revoca nada):
 --   demoras_ritmo_muestras(integer, date, integer, text, integer, integer, boolean)
 --   demoras_cola(integer, date, timestamptz)
+--   demoras_ritmo(integer, date)
 --   demoras_ritmo_movil(integer, date)
---   demoras_servidores(integer, date)
---   demoras_proximo_hueco(integer, date, timestamptz)
+--   demoras_aportes(integer, date)
+--   demoras_consumo_tramos(integer, date, timestamptz)
+--   demoras_calcular_run(timestamptz)
+--   demoras_capacidad(integer, date)
+--   demoras_acabado(numeric, numeric, integer, integer, integer, integer, integer)
 --
 -- demoras_ritmo_muestras gano un septimo parametro (p_hueco_min) en
 -- docs/sqls/2026-08-01-demoras-ritmo-muestras-v2.sql (piso del ritmo, Task 2
@@ -26,15 +31,31 @@
 -- assert -- directamente lo hace abortar con "function ... does not exist",
 -- porque la firma ya no existe en el catalogo.
 --
--- demoras_ritmo(integer, date) queda deliberadamente FUERA de este assert:
--- no es una funcion nueva de esta tanda (reemplaza, con firma distinta, a
--- una que ya existia desde 2026-07-29), y su exposicion a anon es una
--- condicion PREEXISTENTE a esta tanda, no algo que este wave de fixes haya
--- introducido -- queda fuera de alcance aca, igual que quedo fuera del
--- hallazgo I5 del review.
+-- I4 (review final de rama): esta lista listaba demoras_servidores y
+-- demoras_proximo_hueco, que 2026-08-01-demoras-legacy-obsoletas.sql marco
+-- OBSOLETAS -- sin consumidor desde que el orquestador (v3) dejo de
+-- llamarlas, reemplazadas por demoras_aportes y demoras_consumo_tramos. Se
+-- sacan de aca (nada las protege menos por eso: siguen con su REVOKE propio
+-- de sus tandas originales, este assert solo dejo de listarlas) y entran
+-- las dos que las reemplazan.
+--
+-- I3 (review final de rama): demoras_ritmo, demoras_calcular_run,
+-- demoras_capacidad y demoras_acabado no tenian REVOKE/GRANT en ningun
+-- archivo -- la guia (DEMORA_INFORMADA.md) documentaba SOLO demoras_ritmo
+-- como excepcion conocida y las otras tres ni eso. Las cuatro se cerraron
+-- en esa misma tanda de fixes y entran aca: sin este assert, un futuro
+-- CREATE OR REPLACE sin el bloque de grants las deja expuestas de nuevo y
+-- la regresion sigue en verde -- exactamente la clase de hueco que este
+-- archivo existe para cerrar.
+--
+-- Con esto, TODAS las funciones vivas de la familia demoras_* (las dos
+-- obsoletas incluidas, protegidas por sus propias migraciones) tienen su
+-- REVOKE/GRANT explicito, y este assert las cubre a todas menos las dos
+-- obsoletas (fuera de alcance: no las llama nadie, y dropearlas es una
+-- decision de limpieza aparte -- ver docs/sqls/2026-08-01-demoras-legacy-obsoletas.sql).
 -- =====================================================================
 
--- ─── anon y authenticated NO pueden ejecutar ninguna de las cinco ────
+-- ─── anon y authenticated NO pueden ejecutar ninguna de las nueve ────
 DO $$
 DECLARE r record; falla text := '';
 BEGIN
@@ -43,9 +64,13 @@ BEGIN
       FROM (VALUES
         ('demoras_ritmo_muestras(integer, date, integer, text, integer, integer, boolean)'),
         ('demoras_cola(integer, date, timestamptz)'),
+        ('demoras_ritmo(integer, date)'),
         ('demoras_ritmo_movil(integer, date)'),
-        ('demoras_servidores(integer, date)'),
-        ('demoras_proximo_hueco(integer, date, timestamptz)')
+        ('demoras_aportes(integer, date)'),
+        ('demoras_consumo_tramos(integer, date, timestamptz)'),
+        ('demoras_calcular_run(timestamptz)'),
+        ('demoras_capacidad(integer, date)'),
+        ('demoras_acabado(numeric, numeric, integer, integer, integer, integer, integer)')
       ) AS f(fn)
      CROSS JOIN (VALUES ('anon'), ('authenticated')) AS g(rol)
   LOOP
@@ -57,7 +82,7 @@ BEGIN
   IF falla <> '' THEN
     RAISE EXCEPTION 'privilegios de mas (la anon key vive en el bundle del browser): %', falla;
   END IF;
-  RAISE NOTICE 'ok anon y authenticated no pueden ejecutar ninguna de las 5 funciones nuevas';
+  RAISE NOTICE 'ok anon y authenticated no pueden ejecutar ninguna de las 9 funciones del motor';
 END $$;
 
 -- ─── Control positivo: service_role SI puede ────────────────────────
@@ -72,9 +97,13 @@ BEGIN
     SELECT unnest(ARRAY[
       'demoras_ritmo_muestras(integer, date, integer, text, integer, integer, boolean)',
       'demoras_cola(integer, date, timestamptz)',
+      'demoras_ritmo(integer, date)',
       'demoras_ritmo_movil(integer, date)',
-      'demoras_servidores(integer, date)',
-      'demoras_proximo_hueco(integer, date, timestamptz)'
+      'demoras_aportes(integer, date)',
+      'demoras_consumo_tramos(integer, date, timestamptz)',
+      'demoras_calcular_run(timestamptz)',
+      'demoras_capacidad(integer, date)',
+      'demoras_acabado(numeric, numeric, integer, integer, integer, integer, integer)'
     ]) AS fn
   LOOP
     IF NOT has_function_privilege('service_role', r.fn, 'EXECUTE') THEN
@@ -85,5 +114,5 @@ BEGIN
   IF falta <> '' THEN
     RAISE EXCEPTION 'el GRANT a service_role no se aplico: %', falta;
   END IF;
-  RAISE NOTICE 'ok service_role puede ejecutar las 5 funciones nuevas';
+  RAISE NOTICE 'ok service_role puede ejecutar las 9 funciones del motor';
 END $$;

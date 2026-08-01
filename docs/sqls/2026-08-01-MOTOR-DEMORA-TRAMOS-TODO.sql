@@ -19,29 +19,53 @@
 -- esta aplicada (que es la situacion real): repetir CREATE OR REPLACE /
 -- ADD COLUMN IF NOT EXISTS / DROP ... IF EXISTS no rompe ni duplica nada.
 --
--- POR QUE UN SOLO ARCHIVO Y NO DE A UNO. Entre migracion y migracion el
--- motor queda a medio migrar y el cron NO para solo: sigue disparando cada
--- 10 minutos y escribe corridas hibridas. Con todo junto la ventana baja a
--- segundos, y el Paso 0 la cierra del todo.
+-- POR QUE UN SOLO ARCHIVO Y NO DE A UNO. Pegado entero, el SQL Editor lo
+-- corre como UNA transaccion: por MVCC, un cron concurrente ve el snapshot
+-- viejo completo y consistente hasta el COMMIT, y el completo nuevo recien
+-- despues -- nunca algo a medias, y el Paso 0b ni siquiera es visible para
+-- el mientras tanto. Esa atomicidad, no el apagado, es lo que evita
+-- corridas hibridas en el caso normal (pegado de una sola vez, sin cortes).
+--
+-- El apagado del Paso 0b protege OTRO escenario, no ese: que la aplicacion
+-- NO sea atomica de punta a punta (una conexion que se corta a mitad, un
+-- pegado a mano archivo por archivo sin --single-transaction). Ahi si puede
+-- quedar el esquema a medio migrar por un rato, y con el motor apagado el
+-- cron simplemente no escribe nada mientras tanto -- en vez de escribir
+-- corridas hibridas en silencio.
 --
 -- QUE HACE, DE PUNTA A PUNTA:
 --   Paso 0a   Verifica que pg_cron este habilitado (falla rapido si no).
---   Paso 0b   Apaga el motor -- TODOS los escenarios, no solo el 1000 (ver
---             la nota junto al UPDATE: el orquestador de esta tanda ya no
---             tiene el escenario clavado, asi que el apagado tampoco).
+--   Paso 0b   Guarda el motor_activo actual de cada (escenario, tipo) en una
+--             tabla temporal y APAGA el motor -- TODOS los escenarios, no
+--             solo el 1000 (ver la nota junto al UPDATE: el orquestador de
+--             esta tanda ya no tiene el escenario clavado, asi que el
+--             apagado tampoco).
 --   1 a 20    Aplica las migraciones de las dos tandas, en orden.
---   Paso final Vuelve a prender el motor -- TODOS los escenarios.
+--   Paso final Restaura el motor_activo que guardo el Paso 0b -- no prende
+--             todo a ciegas. Si algun tipo estaba apagado a proposito antes
+--             de empezar (por ejemplo NOCTURNO, ver seccion 4 de la guia),
+--             sigue apagado despues.
 --
--- SI FALLA EN EL MEDIO: el SQL Editor hace rollback, asi que no queda nada
--- a medias. Corregi lo que fallo y volve a pegar el archivo entero -- las
+-- SI FALLA EN EL MEDIO: el SQL Editor hace rollback de la transaccion
+-- completa (ver el parrafo de arriba sobre MVCC), asi que no queda nada a
+-- medias. Corregi lo que fallo y volve a pegar el archivo entero -- las
 -- migraciones son idempotentes, repetirlas no duplica ni rompe nada.
 --
--- ANTES DE EMPEZAR, guardate esto por las dudas (aunque el archivo 11 ya
--- deja su propio backup automatico de demoras_config, y no hace falta
--- repetirlo si ya se aplico la tanda anterior):
+-- ANTES DE EMPEZAR, guardate esto (no es opcional). El backup automatico
+-- del archivo 11 (demoras_config_backup_20260731) es CREATE TABLE IF NOT
+-- EXISTS: se crea UNA sola vez, la primera vez que se aplico la tanda
+-- anterior, y en un re-apply NO SE REFRESCA -- si desde entonces alguien
+-- calibro factor_calibracion (u otro parametro) por tipo, ese backup sigue
+-- teniendo los valores VIEJOS, no los de HOY. Y no cubre demoras_modelo en
+-- absoluto. La UNICA foto fiel de "como estaba todo justo antes de este
+-- pegado" es la que te llevas vos, ahora, antes de pegar nada:
 --
 --   SELECT * FROM demoras_config;
 --   SELECT * FROM demoras_modelo;
+--
+-- (El interruptor motor_activo por tipo SI se restaura solo -- ver Paso 0b
+-- / Paso final mas arriba -- pero el resto de la calibracion no tiene mas
+-- red que esta consulta manual.)
 --
 -- DESPUES DE APLICAR: las verificaciones estan al final de este archivo y
 -- en docs/DEMORA_INFORMADA.md seccion 2.
@@ -80,7 +104,7 @@ $prereq$;
 
 
 -- =====================================================================
--- PASO 0b - APAGAR EL MOTOR ANTES DE TOCAR NADA
+-- PASO 0b - GUARDAR EL ESTADO Y APAGAR EL MOTOR ANTES DE TOCAR NADA
 --
 -- El cron sigue disparando cada 10 minutos mientras esto corre. Sin este
 -- paso, las corridas que caigan en el medio mezclan piezas viejas con
@@ -96,12 +120,26 @@ $prereq$;
 -- la version sin WHERE es la que sigue siendo correcta el dia que exista
 -- un segundo escenario.
 --
--- Si demoras_config todavia no existe (primera instalacion), este UPDATE
--- no hace nada y no molesta: el archivo 3 la crea unas lineas mas abajo.
+-- SNAPSHOT antes de apagar (Important 1, review final de rama): el Paso
+-- final de mas abajo RESTAURA este estado, no prende todo a ciegas. Sin
+-- esto, un tipo que alguien hubiera apagado a proposito ANTES de empezar
+-- (por ejemplo, pausar NOCTURNO por resultados ruidosos -- operacion
+-- soportada, seccion 4 de la guia) quedaba reactivado por el Paso final,
+-- aunque nadie haya pedido eso. DROP + CREATE (no IF NOT EXISTS) para que
+-- la foto sea siempre la de ESTA corrida, no la de una sesion anterior que
+-- por algun motivo dejo la tabla temporal viva.
+--
+-- Si demoras_config todavia no existe (primera instalacion), no hay nada
+-- que snapshotear ni que apagar -- el archivo 3 la crea unas lineas mas
+-- abajo, y el Paso final (sin snapshot previo) prende todo, que es lo
+-- correcto para una instalacion nueva.
 -- =====================================================================
 DO $apagar$
 BEGIN
   IF to_regclass('public.demoras_config') IS NOT NULL THEN
+    DROP TABLE IF EXISTS _demoras_config_motor_prev;
+    CREATE TEMP TABLE _demoras_config_motor_prev AS
+      SELECT escenario_id, tipo_servicio, motor_activo FROM demoras_config;
     UPDATE demoras_config SET motor_activo = false;
   END IF;
 END
@@ -186,6 +224,15 @@ $fn$;
 COMMENT ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) IS
   'Aplica clamp -> suavizado asimetrico -> redondeo hacia arriba, acotando por piso y techo. Devuelve la suavizada continua (estado para la proxima corrida) y la informada redondeada (salida). La informada nunca sale del rango [p_min, p_max] incluso si el suavizado la movieria fuera, lo que puede ocurrir cuando la config se edita en caliente. p_prev NULL = primera corrida del dia.';
 
+-- ─── Grants: solo service_role (I3, review final de rama) ────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto: sin
+-- este REVOKE, anon/authenticated (las claves que viajan al browser) pueden
+-- invocarla via RPC. Quedaba sin revocar desde la tanda original (2026-07-29);
+-- mismo patron que el resto de las funciones del motor.
+REVOKE EXECUTE ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) TO service_role;
+
 
 -- =====================================================================
 -- ARCHIVO 2 de 20: docs/sqls/2026-07-29-demoras-capacidad.sql
@@ -263,6 +310,16 @@ $fn$;
 
 COMMENT ON FUNCTION demoras_capacidad(integer, date) IS
   'Capacidad efectiva por (zona, tipo): suma del aporte prorrateado de los moviles ACTIVOS. peso 1 prioridad / alpha transito, normalizado por tipo. Suma de aportes de un movil = 1 ± residuo de redondeo (~1e-4); no es invariante exacto.';
+
+-- ─── Grants: solo service_role (I3, review final de rama) ────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto: sin
+-- este REVOKE, anon/authenticated (las claves que viajan al browser) pueden
+-- invocarla via RPC y ver la estructura zona<->movil. Quedaba sin revocar
+-- desde la tanda original (2026-07-29); mismo patron que el resto de las
+-- funciones del motor.
+REVOKE EXECUTE ON FUNCTION demoras_capacidad(integer, date) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_capacidad(integer, date) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_capacidad(integer, date) TO service_role;
 
 
 -- =====================================================================
@@ -2257,6 +2314,16 @@ CREATE TABLE IF NOT EXISTS demoras_config_backup_20260731 AS
 COMMENT ON TABLE demoras_config_backup_20260731 IS
   'Snapshot de demoras_config tomado justo antes de que esta misma migracion (2026-07-31-demoras-calcular-run-v2.sql) le hiciera DROP COLUMN a las 8 columnas de calculo (min_minutos, max_minutos, escalon_minutos, subida_max, bajada_max, estadistico, ritmo_default_minutos, factor_calibracion), por tipo_servicio -- el seed de demoras_modelo solo hereda de la fila URGENTE, asi que es la unica forma de recuperar una calibracion de NOCTURNO o SERVICE hecha en produccion antes de esta migracion. Borrable cuando el modelo nuevo este calibrado y nadie necesite consultar los valores viejos por tipo.';
 
+-- ─── Grants: solo service_role (I2, review final de rama) ────────────
+-- Es una copia de demoras_config -- la tabla que decide que calcula el
+-- motor (interruptor, ventanas, factor_calibracion por tipo) -- y nacia sin
+-- REVOKE: la unica tabla de la familia demoras_* sin el, verificado
+-- (anon podia SELECT y UPDATE). Mismo patron que demoras_config /
+-- demoras_calculadas mas abajo en este mismo archivo.
+REVOKE ALL ON TABLE demoras_config_backup_20260731 FROM PUBLIC;
+REVOKE ALL ON TABLE demoras_config_backup_20260731 FROM anon, authenticated;
+GRANT  ALL ON TABLE demoras_config_backup_20260731 TO service_role;
+
 ALTER TABLE demoras_config
   DROP COLUMN IF EXISTS min_minutos,
   DROP COLUMN IF EXISTS max_minutos,
@@ -2458,15 +2525,16 @@ ALTER TABLE demoras_modelo
 -- docs/sqls/2026-08-01-demoras-modelo-tramos.sql). Es la misma precondicion
 -- de toda esta tanda (ver el plan, seccion Global Constraints).
 --
--- A DIFERENCIA de ese caso, ACA NINGUNA task de este plan actualiza
--- demoras_ritmo ni demoras_ritmo_movil (la arquitectura los declara "sin
--- cambios de fondo" para las siete tasks): si el motor se prende al final de
--- la tanda sin una task nueva que les agregue p_hueco_min, el cron vuelve a
--- fallar en silencio cada 10 minutos, esta vez para SIEMPRE y no solo
--- durante la ventana de aplicacion. Hace falta una task de cierre (o un
--- Step extra en la Task 7) que actualice esos dos archivos para pasar
--- demoras_modelo.ritmo_hueco_min_minutos como septimo argumento antes de
--- reactivar motor_activo.
+-- A DIFERENCIA de ese caso, esta firma nueva de 7 argumentos SI necesitaba
+-- que alguien actualizara a los dos llamadores antes de reactivar
+-- motor_activo -- si no, el cron vuelve a fallar en silencio cada 10
+-- minutos, esta vez para SIEMPRE y no solo durante la ventana de
+-- aplicacion. Eso ya se hizo: docs/sqls/2026-08-01-demoras-ritmo-callers-v2.sql
+-- (Task 2, fix round 1) recrea demoras_ritmo y demoras_ritmo_movil para
+-- pasar demoras_modelo.ritmo_hueco_min_minutos como septimo argumento. Se
+-- aplica DESPUES de este archivo (archivo 14 vs. 13 en el bundle unico,
+-- docs/DEMORA_INFORMADA.md seccion 1) -- no pegar este archivo solo sin el
+-- 14 detras.
 -- =====================================================================
 DROP FUNCTION IF EXISTS demoras_ritmo_muestras(integer, date, integer, text, integer, boolean);
 
@@ -2889,6 +2957,16 @@ $fn$;
 COMMENT ON FUNCTION demoras_ritmo(integer, date) IS
   'Cascada de cuatro niveles (CHOFER, MOVIL, ZONA, GLOBAL) por (zona, tipo). Los parametros (ventana en dias, minimo de muestras, metrica, corte de huecos) salen de demoras_modelo, no de la firma, para poder cambiarlos sin tocar a los llamadores. Las muestras vienen de demoras_ritmo_muestras, que resuelve si el ritmo se mide entre cumplimientos consecutivos (ENTRE_ENTREGAS, lo correcto) o de asignacion a entrega (ASIGNADO_A_ENTREGA, la metrica vieja que doble-cuenta la cola). El resto del algoritmo es identico a la version del 2026-07-30: blend ponderado en CHOFER/MOVIL, chofer que maneja varios moviles no duplica muestras, nivel sin peso real no gana la cascada, GLOBAL siempre ultimo.';
 
+-- ─── Grants: solo service_role (I3, review final de rama) ────────────
+-- demoras_ritmo nunca habia tenido REVOKE/GRANT explicito en ningun
+-- archivo (ni en la tanda PROXIMO_HUECO ni en la primera pasada de
+-- CONSUMO_TRAMOS) -- gap preexistente que se cierra aca, en su ultimo
+-- CREATE OR REPLACE. Mismo patron que demoras_ritmo_movil, mas abajo en
+-- este mismo archivo, y que el resto de las funciones del motor.
+REVOKE EXECUTE ON FUNCTION demoras_ritmo(integer, date) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_ritmo(integer, date) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_ritmo(integer, date) TO service_role;
+
 
 -- ─── demoras_ritmo_movil — copiado de docs/sqls/2026-07-31-demoras-ritmo-movil.sql ──
 CREATE OR REPLACE FUNCTION demoras_ritmo_movil(p_escenario integer, p_hasta date)
@@ -3052,6 +3130,33 @@ GRANT  EXECUTE ON FUNCTION demoras_ritmo_movil(integer, date) TO service_role;
 --      habilitado para URGENTE y no para NOCTURNO, y los dos tipos pueden dar
 --      demora_informada distinta aunque vean la MISMA cola.
 --
+--      IMPORTANTE (I5, review final de rama): el pooling NO es solo de
+--      cola_efectiva. El JOIN contra `pool` pasa ANTES del GROUP BY (ver el
+--      CTE `agg` mas abajo), asi que los conteos CRUDOS -- asignados,
+--      sin_asignar, atrapados, los que devuelve la funcion ademas de
+--      cola_efectiva -- TAMBIEN salen agrupados por tipo_calculado: la fila
+--      URGENTE de asignados/sin_asignar/atrapados YA incluye los pedidos
+--      NOCTURNO de la zona, y viceversa. Es una decision explicita, no un
+--      efecto colateral: separar "cola_efectiva pooled" de "crudos por tipo
+--      original" hubiera significado escribir DOS agregaciones distintas
+--      sobre el mismo JOIN, para un consumidor (demoras_calcular_run) que
+--      hoy solo usa los crudos como entrada de CAPACIDAD_PROMEDIO. Pero
+--      tiene dos efectos que hay que conocer, no asumir:
+--        a. CAMBIA el insumo de CAPACIDAD_PROMEDIO, el modelo viejo y el
+--           camino de reversion documentado (DEMORA_INFORMADA.md §4.1): su
+--           demanda es (asignados + sin_asignar) de esta funcion, que ahora
+--           mezcla URGENTE+NOCTURNO al calcular URGENTE, mientras que
+--           demoras_capacidad (la capacidad del mismo calculo) sigue
+--           contando SOLO los moviles habilitados para URGENTE. Volver a
+--           CAPACIDAD_PROMEDIO hoy no reproduce exactamente los numeros de
+--           antes de esta tanda -- la demanda cambio, no solo el modelo.
+--        b. CAMBIA el significado de `pendientes_asignados` /
+--           `pendientes_sin_asignar` en demoras_calculadas (los hechos que
+--           persiste demoras_calcular_run): esas columnas, para una fila
+--           URGENTE, ya no cuentan SOLO urgentes.
+--      Ver assert-cola.sql bloque 6 (conteos crudos, no solo cola_efectiva)
+--      y DEMORA_INFORMADA.md §4.1.
+--
 -- ORDEN DE APLICACION / riesgo cruzado (verificado leyendo el repo, no
 -- estaba en el plan): demoras_proximo_hueco.sql -- el modelo PROXIMO_HUECO,
 -- HOY activo en produccion via demoras_calcular_run -- tambien llama a
@@ -3193,7 +3298,7 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION demoras_cola(integer, date, timestamptz) IS
-  'Demanda pendiente por (zona, tipo): conteos crudos de asignados / sin asignar / atrapados, mas cola_efectiva. cola_efectiva AHORA incluye los asignados a moviles ACTIVOS dentro de la misma zona (asignados - atrapados): ese trabajo pasa a ser demanda de la ZONA, no de su movil, y demoras_aportes (que reemplaza a demoras_servidores) deja de contarlo en el tiempo de liberacion para no contarlo dos veces. Los atrapados (asignados a un movil que hoy no salio) se suman aparte segun demoras_modelo.atrapados_modo. La demanda de URGENTE y NOCTURNO se UNE (un movil haciendo un nocturno esta igual de ocupado que si hiciera un urgente): la cola de cada uno de esos dos tipos incluye los pedidos URGENTE y NOCTURNO de la zona; SERVICE no se mezcla con ninguno. Aplica la ventana SA canonica (un asignado cuenta siempre; un sin asignar solo si arranca dentro de la ventana) y tolera fch_para NULL via COALESCE con fch_hora_para.';
+  'Demanda pendiente por (zona, tipo): conteos crudos de asignados / sin asignar / atrapados, mas cola_efectiva. cola_efectiva AHORA incluye los asignados a moviles ACTIVOS dentro de la misma zona (asignados - atrapados): ese trabajo pasa a ser demanda de la ZONA, no de su movil, y demoras_aportes (que reemplaza a demoras_servidores) deja de contarlo en el tiempo de liberacion para no contarlo dos veces. Los atrapados (asignados a un movil que hoy no salio) se suman aparte segun demoras_modelo.atrapados_modo. La demanda de URGENTE y NOCTURNO se UNE (un movil haciendo un nocturno esta igual de ocupado que si hiciera un urgente): la cola de cada uno de esos dos tipos incluye los pedidos URGENTE y NOCTURNO de la zona; SERVICE no se mezcla con ninguno. El pooling alcanza a los TRES conteos crudos (asignados, sin_asignar, atrapados), no solo a cola_efectiva -- I5, review final de rama: cambia el insumo de CAPACIDAD_PROMEDIO y el significado de pendientes_asignados/pendientes_sin_asignar en demoras_calculadas, ver DEMORA_INFORMADA.md §4.1. Aplica la ventana SA canonica (un asignado cuenta siempre; un sin asignar solo si arranca dentro de la ventana) y tolera fch_para NULL via COALESCE con fch_hora_para.';
 
 -- ─── Grants: solo service_role ───────────────────────────────────────
 -- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto:
@@ -3225,9 +3330,21 @@ GRANT  EXECUTE ON FUNCTION demoras_cola(integer, date, timestamptz) TO service_r
 --   mu_j  cuanto aporta una vez adentro = su dedicacion a la zona dividida
 --         por su ritmo, en pedidos por minuto.
 --
--- Los pedidos que el movil tiene DENTRO de la zona NO entran en r_j: son
--- demanda de la zona y los cuenta demoras_cola. Contarlos en los dos lados
--- seria el doble conteo que este modelo vino a evitar.
+-- Los pedidos que el movil tiene DENTRO de la zona, del MISMO pool que se
+-- esta calculando (URGENTE y NOCTURNO comparten pool; SERVICE va solo -- ver
+-- demoras_cola), NO entran en r_j: esos ya son demanda de la zona y los
+-- cuenta demoras_cola. Contarlos en los dos lados seria el doble conteo que
+-- este modelo vino a evitar.
+--
+-- Los pedidos que el movil tiene DENTRO de la zona pero de OTRO pool (un
+-- SERVICE cuando se calcula URGENTE, por ejemplo) SI entran en r_j: nadie
+-- mas los cuenta -- demoras_cola de URGENTE no ve los SERVICE de la zona--,
+-- y el movil sigue estando ocupado con ellos. Fix C1 (review final de rama,
+-- b7fff6e..64045c2): la version anterior excluia de r_j TODO lo in-zone sin
+-- mirar el tipo, asi que el trabajo in-zone de otro pool no lo contaba
+-- ninguna de las dos funciones -- un movil con 9 services encima en su
+-- propia zona parecia libre. Ver el CASE de pool_de mas abajo, mismo
+-- criterio que el CTE `pool` de demoras_cola.
 --
 -- El reparto de p_j (spec seccion 2):
 --   1. Cada zona de transito se lleva dedicacion_transito.
@@ -3308,32 +3425,45 @@ AS $fn$
     FROM asign a
     JOIN reparto r ON r.movil = a.movil AND r.tipo = a.tipo
   ),
-  -- Carga FUERA de la zona: todo lo que el movil tiene pendiente en OTRAS
-  -- zonas, de CUALQUIER tipo. El movil es un solo camion y un service lo
-  -- ocupa igual que un urgente.
+  -- Carga de CUALQUIER tipo, con su tipo normalizado a cuestas (C1): el
+  -- movil es un solo camion y un service lo ocupa igual que un urgente, asi
+  -- que todo entra aca -- pero para decidir mas abajo si un pedido IN-ZONE
+  -- cuenta o no hace falta saber de que pool es. `pedidos` trae URGENTE y
+  -- NOCTURNO exactos (cualquier otro servicio_nombre, ESPECIAL/OTROS
+  -- incluidos, cae en 'OTRO': no pertenece a ningun pool, asi que nunca se
+  -- excluye si esta in-zone -- sigue ocupando al movil igual que hoy).
+  -- `services` es siempre SERVICE.
   --
   -- MATERIALIZED por el mismo motivo que rit_zona/rit_movil mas abajo: se
   -- lee desde adentro del primer LATERAL (cf_out), correlacionado por
-  -- pj.movil/pj.zona_id, y esta referenciada una sola vez -- sin forzar
-  -- MATERIALIZED, Postgres la inlinea y el agregado sobre pedidos+services
-  -- se recalcula una vez por fila de pj. Confirmado con EXPLAIN ANALYZE: sin
-  -- MATERIALIZED, el plan mostraba "Seq Scan on pedidos (loops=900)" y "Seq
-  -- Scan on services (loops=900)" -- no es hipotetico, es lo que salio en la
-  -- corrida real contra el fixture de 100 zonas x 3 tipos.
+  -- pj.movil/pj.zona_id/pj.tipo, y esta referenciada una sola vez -- sin
+  -- forzar MATERIALIZED, Postgres la inlinea y el agregado sobre
+  -- pedidos+services se recalcula una vez por fila de pj. Confirmado con
+  -- EXPLAIN ANALYZE: sin MATERIALIZED, el plan mostraba "Seq Scan on
+  -- pedidos (loops=900)" y "Seq Scan on services (loops=900)" -- no es
+  -- hipotetico, es lo que salio en la corrida real contra el fixture de 100
+  -- zonas x 3 tipos.
   carga_total AS MATERIALIZED (
-    SELECT p.movil, p.zona_nro, count(*)::integer AS n
+    SELECT p.movil, p.zona_nro, p.tipo, count(*)::integer AS n
     FROM (
-      SELECT movil, zona_nro FROM pedidos
+      SELECT movil, zona_nro,
+             CASE upper(trim(coalesce(servicio_nombre,'')))
+               WHEN 'NOCTURNO' THEN 'NOCTURNO'
+               WHEN 'URGENTE'  THEN 'URGENTE'
+               ELSE 'OTRO'
+             END AS tipo
+        FROM pedidos
        WHERE escenario = p_escenario AND estado_nro = 1
          AND movil IS NOT NULL AND movil <> 0 AND zona_nro IS NOT NULL
          AND COALESCE(fch_para, (fch_hora_para AT TIME ZONE 'America/Montevideo')::date) = p_fecha
       UNION ALL
-      SELECT movil, zona_nro FROM services
+      SELECT movil, zona_nro, 'SERVICE' AS tipo
+        FROM services
        WHERE escenario = p_escenario AND estado_nro = 1
          AND movil IS NOT NULL AND movil <> 0 AND zona_nro IS NOT NULL
          AND COALESCE(fch_para, (fch_hora_para AT TIME ZONE 'America/Montevideo')::date) = p_fecha
     ) p
-    GROUP BY p.movil, p.zona_nro
+    GROUP BY p.movil, p.zona_nro, p.tipo
   ),
   -- MATERIALIZED es obligatorio en las tres CTEs de abajo, no cosmetico.
   -- Las tres se leen desde ADENTRO de un LATERAL correlacionado por
@@ -3372,10 +3502,30 @@ AS $fn$
     CASE WHEN rr.ritmo > 0 THEN round(pj.p_j / rr.ritmo, 6) ELSE 0 END AS mu_j
   FROM pj
   CROSS JOIN cfg c
+  -- cf_out: TODO lo que el movil tiene, salvo lo que ya cuenta demoras_cola
+  -- como demanda de ESTA zona -- o sea lo in-zone del MISMO pool que pj.tipo
+  -- (C1). Lo de otras zonas cuenta siempre, de cualquier tipo (r_j = "todo
+  -- lo que lleva", spec seccion 2); lo in-zone de OTRO pool tambien cuenta
+  -- (nadie mas lo contabiliza); solo lo in-zone del MISMO pool se excluye.
+  -- El CASE replica el CTE `pool` de demoras_cola: URGENTE y NOCTURNO
+  -- comparten pool, SERVICE va solo. Si pj.tipo no matchea ninguna rama
+  -- (no deberia pasar: `asign` ya filtra a los tres tipos), el ELSE deja el
+  -- array vacio -- no se excluye nada, el lado conservador.
   LEFT JOIN LATERAL (
     SELECT coalesce(sum(ct.n), 0) AS n
     FROM carga_total ct
-    WHERE ct.movil = pj.movil AND ct.zona_nro <> pj.zona_id
+    WHERE ct.movil = pj.movil
+      AND NOT (
+        ct.zona_nro = pj.zona_id
+        AND ct.tipo = ANY (
+          CASE pj.tipo
+            WHEN 'URGENTE'  THEN ARRAY['URGENTE','NOCTURNO']
+            WHEN 'NOCTURNO' THEN ARRAY['URGENTE','NOCTURNO']
+            WHEN 'SERVICE'  THEN ARRAY['SERVICE']
+            ELSE ARRAY[]::text[]
+          END
+        )
+      )
   ) cf_out ON true
   CROSS JOIN LATERAL (
     SELECT
@@ -3399,7 +3549,7 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION demoras_aportes(integer, date) IS
-  'Cuanto y desde cuando aporta cada movil activo a cada (zona, tipo). r_j = lo que tiene FUERA de la zona por su ritmo, mas el traslado de vuelta una sola vez; los pedidos que tiene DENTRO de la zona NO entran, son demanda de la zona y los cuenta demoras_cola. mu_j = p_j / ritmo, en pedidos por minuto. p_j reparte: cada transito se lleva dedicacion_transito, el conjunto de transitos se topea en transito_dedicacion_max_total achicandolos a prorrata, y las prioridades se reparten el resto -- asi la prioridad nunca baja de (1 - tope). Reemplaza a demoras_servidores.';
+  'Cuanto y desde cuando aporta cada movil activo a cada (zona, tipo). r_j = lo que tiene FUERA de la zona por su ritmo, mas el traslado de vuelta una sola vez; los pedidos que tiene DENTRO de la zona y del MISMO pool que se esta calculando (URGENTE+NOCTURNO juntos, SERVICE solo -- mismo pool que demoras_cola) NO entran, porque esos ya son demanda de la zona y los cuenta demoras_cola. Los pedidos DENTRO de la zona pero de OTRO pool (un SERVICE cuando se calcula URGENTE) SI entran: nadie mas los cuenta, y el movil sigue ocupado con ellos (fix C1, review final de rama). mu_j = p_j / ritmo, en pedidos por minuto. p_j reparte: cada transito se lleva dedicacion_transito, el conjunto de transitos se topea en transito_dedicacion_max_total achicandolos a prorrata, y las prioridades se reparten el resto -- asi la prioridad nunca baja de (1 - tope). Reemplaza a demoras_servidores.';
 
 -- ─── Grants: solo service_role ───────────────────────────────────────
 -- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto: sin
@@ -4029,7 +4179,18 @@ COMMENT ON COLUMN demoras_calculadas.tramos IS
 COMMENT ON COLUMN demoras_calculadas.cola_por_delante IS
   'CONSUMO_TRAMOS: pedidos pendientes de la zona (cola_efectiva de demoras_cola) SIN contar el pedido nuevo -- demoras_consumo_tramos.cola_por_delante. NULL en CAPACIDAD_PROMEDIO (esa informacion vive en pendientes_sin_asignar/pendientes_asignados para los dos modelos).';
 COMMENT ON COLUMN demoras_calculadas.moviles_considerados IS
-  'CONSUMO_TRAMOS: cuantos moviles (de moviles_zonas, activos o no hoy) tiene asignados la zona para este tipo -- demoras_consumo_tramos.moviles_considerados. NULL en CAPACIDAD_PROMEDIO.';
+  'CONSUMO_TRAMOS: cuantos moviles (de moviles_zonas) tiene asignados la zona para este tipo y estan ACTIVOS hoy -- demoras_consumo_tramos.moviles_considerados cuenta sobre demoras_aportes, que ya filtra moviles_dia.activo. NULL en CAPACIDAD_PROMEDIO.';
+
+-- ─── Grants: solo service_role (I3, review final de rama) ────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto: sin
+-- este REVOKE, anon/authenticated (las claves que viajan al browser) pueden
+-- invocar el orquestador entero via RPC (es SECURITY INVOKER: muere en el
+-- primer CTE porque las tablas que lee estan revocadas, pero no deberia ni
+-- llegar a intentarlo). Quedaba sin revocar desde la v2 (2026-07-31); mismo
+-- patron que el resto de las funciones del motor.
+REVOKE EXECUTE ON FUNCTION demoras_calcular_run(timestamptz) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_calcular_run(timestamptz) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_calcular_run(timestamptz) TO service_role;
 
 
 -- =====================================================================
@@ -4128,22 +4289,45 @@ SELECT cron.schedule('demoras-purga', '43 4 * * *',
 
 
 -- =====================================================================
--- PASO FINAL - VOLVER A PRENDER EL MOTOR
+-- PASO FINAL - RESTAURAR EL MOTOR AL ESTADO DE ANTES DE EMPEZAR
 --
 -- Si llegaste hasta aca sin errores, las migraciones de las dos tandas
 -- estan aplicadas y el motor arranca con el modelo CONSUMO_TRAMOS en la
 -- proxima corrida del cron (maximo 10 minutos).
 --
--- SIN WHERE escenario_id, simetrico con el Paso 0b: prende TODOS los
--- escenarios que estaban prendidos antes de empezar. Si algun escenario
--- tenia motor_activo=false por una razon operativa PREVIA a esta
--- migracion (no por el Paso 0b), este UPDATE lo reactiva tambien -- hoy
--- no aplica (un solo escenario, 1000, y se apaga expresamente para esta
--- migracion), pero es la contraparte correcta del Paso 0b generalizado.
--- Para reactivar solo un escenario puntual, agregar
--- WHERE escenario_id = 1000.
+-- NO prende todo a ciegas (Important 1, review final de rama): restaura el
+-- motor_activo por (escenario, tipo) que el Paso 0b guardo en
+-- _demoras_config_motor_prev, ANTES de apagar. Si NOCTURNO (o cualquier
+-- tipo/escenario) estaba apagado a proposito antes de empezar -operacion
+-- soportada, seccion 4 de la guia-, sigue apagado despues; lo que estaba
+-- prendido, vuelve a quedar prendido. Simetrico con el Paso 0b: cubre
+-- TODOS los escenarios, no solo el 1000.
+--
+-- Sin snapshot (instalacion nueva, demoras_config no existia en el Paso 0b):
+-- no hay estado previo que restaurar, asi que prende todo -- lo correcto
+-- para un motor que nunca corrio.
+--
+-- Para reactivar/pausar un tipo puntual DESPUES de este paso, seguir
+-- usando el UPDATE de la seccion 4 de la guia
+-- (UPDATE demoras_config SET motor_activo = ... WHERE escenario_id = ...
+-- AND tipo_servicio = ...); este paso solo restaura el estado de ANTES de
+-- la migracion.
 -- =====================================================================
-UPDATE demoras_config SET motor_activo = true;
+DO $prender$
+BEGIN
+  IF to_regclass('pg_temp._demoras_config_motor_prev') IS NOT NULL THEN
+    UPDATE demoras_config dc
+       SET motor_activo = p.motor_activo
+      FROM _demoras_config_motor_prev p
+     WHERE p.escenario_id = dc.escenario_id AND p.tipo_servicio = dc.tipo_servicio;
+  ELSE
+    -- Sin snapshot: instalacion nueva (demoras_config no existia en el
+    -- Paso 0b) o Paso final corrido suelto sin el Paso 0b antes en la MISMA
+    -- sesion. Fallback conservador: prender todo.
+    UPDATE demoras_config SET motor_activo = true;
+  END IF;
+END
+$prender$;
 
 
 -- =====================================================================

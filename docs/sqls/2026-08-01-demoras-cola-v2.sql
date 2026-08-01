@@ -30,6 +30,33 @@
 --      habilitado para URGENTE y no para NOCTURNO, y los dos tipos pueden dar
 --      demora_informada distinta aunque vean la MISMA cola.
 --
+--      IMPORTANTE (I5, review final de rama): el pooling NO es solo de
+--      cola_efectiva. El JOIN contra `pool` pasa ANTES del GROUP BY (ver el
+--      CTE `agg` mas abajo), asi que los conteos CRUDOS -- asignados,
+--      sin_asignar, atrapados, los que devuelve la funcion ademas de
+--      cola_efectiva -- TAMBIEN salen agrupados por tipo_calculado: la fila
+--      URGENTE de asignados/sin_asignar/atrapados YA incluye los pedidos
+--      NOCTURNO de la zona, y viceversa. Es una decision explicita, no un
+--      efecto colateral: separar "cola_efectiva pooled" de "crudos por tipo
+--      original" hubiera significado escribir DOS agregaciones distintas
+--      sobre el mismo JOIN, para un consumidor (demoras_calcular_run) que
+--      hoy solo usa los crudos como entrada de CAPACIDAD_PROMEDIO. Pero
+--      tiene dos efectos que hay que conocer, no asumir:
+--        a. CAMBIA el insumo de CAPACIDAD_PROMEDIO, el modelo viejo y el
+--           camino de reversion documentado (DEMORA_INFORMADA.md §4.1): su
+--           demanda es (asignados + sin_asignar) de esta funcion, que ahora
+--           mezcla URGENTE+NOCTURNO al calcular URGENTE, mientras que
+--           demoras_capacidad (la capacidad del mismo calculo) sigue
+--           contando SOLO los moviles habilitados para URGENTE. Volver a
+--           CAPACIDAD_PROMEDIO hoy no reproduce exactamente los numeros de
+--           antes de esta tanda -- la demanda cambio, no solo el modelo.
+--        b. CAMBIA el significado de `pendientes_asignados` /
+--           `pendientes_sin_asignar` en demoras_calculadas (los hechos que
+--           persiste demoras_calcular_run): esas columnas, para una fila
+--           URGENTE, ya no cuentan SOLO urgentes.
+--      Ver assert-cola.sql bloque 6 (conteos crudos, no solo cola_efectiva)
+--      y DEMORA_INFORMADA.md §4.1.
+--
 -- ORDEN DE APLICACION / riesgo cruzado (verificado leyendo el repo, no
 -- estaba en el plan): demoras_proximo_hueco.sql -- el modelo PROXIMO_HUECO,
 -- HOY activo en produccion via demoras_calcular_run -- tambien llama a
@@ -171,7 +198,7 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION demoras_cola(integer, date, timestamptz) IS
-  'Demanda pendiente por (zona, tipo): conteos crudos de asignados / sin asignar / atrapados, mas cola_efectiva. cola_efectiva AHORA incluye los asignados a moviles ACTIVOS dentro de la misma zona (asignados - atrapados): ese trabajo pasa a ser demanda de la ZONA, no de su movil, y demoras_aportes (que reemplaza a demoras_servidores) deja de contarlo en el tiempo de liberacion para no contarlo dos veces. Los atrapados (asignados a un movil que hoy no salio) se suman aparte segun demoras_modelo.atrapados_modo. La demanda de URGENTE y NOCTURNO se UNE (un movil haciendo un nocturno esta igual de ocupado que si hiciera un urgente): la cola de cada uno de esos dos tipos incluye los pedidos URGENTE y NOCTURNO de la zona; SERVICE no se mezcla con ninguno. Aplica la ventana SA canonica (un asignado cuenta siempre; un sin asignar solo si arranca dentro de la ventana) y tolera fch_para NULL via COALESCE con fch_hora_para.';
+  'Demanda pendiente por (zona, tipo): conteos crudos de asignados / sin asignar / atrapados, mas cola_efectiva. cola_efectiva AHORA incluye los asignados a moviles ACTIVOS dentro de la misma zona (asignados - atrapados): ese trabajo pasa a ser demanda de la ZONA, no de su movil, y demoras_aportes (que reemplaza a demoras_servidores) deja de contarlo en el tiempo de liberacion para no contarlo dos veces. Los atrapados (asignados a un movil que hoy no salio) se suman aparte segun demoras_modelo.atrapados_modo. La demanda de URGENTE y NOCTURNO se UNE (un movil haciendo un nocturno esta igual de ocupado que si hiciera un urgente): la cola de cada uno de esos dos tipos incluye los pedidos URGENTE y NOCTURNO de la zona; SERVICE no se mezcla con ninguno. El pooling alcanza a los TRES conteos crudos (asignados, sin_asignar, atrapados), no solo a cola_efectiva -- I5, review final de rama: cambia el insumo de CAPACIDAD_PROMEDIO y el significado de pendientes_asignados/pendientes_sin_asignar en demoras_calculadas, ver DEMORA_INFORMADA.md §4.1. Aplica la ventana SA canonica (un asignado cuenta siempre; un sin asignar solo si arranca dentro de la ventana) y tolera fch_para NULL via COALESCE con fch_hora_para.';
 
 -- ─── Grants: solo service_role ───────────────────────────────────────
 -- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto:

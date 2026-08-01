@@ -381,4 +381,15 @@ COMMENT ON COLUMN demoras_calculadas.tramos IS
 COMMENT ON COLUMN demoras_calculadas.cola_por_delante IS
   'CONSUMO_TRAMOS: pedidos pendientes de la zona (cola_efectiva de demoras_cola) SIN contar el pedido nuevo -- demoras_consumo_tramos.cola_por_delante. NULL en CAPACIDAD_PROMEDIO (esa informacion vive en pendientes_sin_asignar/pendientes_asignados para los dos modelos).';
 COMMENT ON COLUMN demoras_calculadas.moviles_considerados IS
-  'CONSUMO_TRAMOS: cuantos moviles (de moviles_zonas, activos o no hoy) tiene asignados la zona para este tipo -- demoras_consumo_tramos.moviles_considerados. NULL en CAPACIDAD_PROMEDIO.';
+  'CONSUMO_TRAMOS: cuantos moviles (de moviles_zonas) tiene asignados la zona para este tipo y estan ACTIVOS hoy -- demoras_consumo_tramos.moviles_considerados cuenta sobre demoras_aportes, que ya filtra moviles_dia.activo. NULL en CAPACIDAD_PROMEDIO.';
+
+-- ─── Grants: solo service_role (I3, review final de rama) ────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto: sin
+-- este REVOKE, anon/authenticated (las claves que viajan al browser) pueden
+-- invocar el orquestador entero via RPC (es SECURITY INVOKER: muere en el
+-- primer CTE porque las tablas que lee estan revocadas, pero no deberia ni
+-- llegar a intentarlo). Quedaba sin revocar desde la v2 (2026-07-31); mismo
+-- patron que el resto de las funciones del motor.
+REVOKE EXECUTE ON FUNCTION demoras_calcular_run(timestamptz) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_calcular_run(timestamptz) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_calcular_run(timestamptz) TO service_role;

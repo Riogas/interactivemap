@@ -143,7 +143,32 @@ BEGIN
   IF r_srv.cola_efectiva IS DISTINCT FROM 1 THEN
     RAISE EXCEPTION 'SERVICE no debe mezclarse: cola % (esperaba 1)', r_srv.cola_efectiva;
   END IF;
-  RAISE NOTICE 'ok urgente+nocturno unen demanda, service no';
+
+  -- I5 (review final de rama): el pooling NO es solo de cola_efectiva -- los
+  -- conteos CRUDOS tambien se agrupan por tipo_calculado, porque el JOIN
+  -- contra `pool` pasa ANTES del GROUP BY en el CTE `agg`. URGENTE crudo, en
+  -- este punto del archivo: 8 filas propias (id1,2,3,4,5,6,9,21 -- 4
+  -- asignadas [3 activas + 1 atrapada], 4 sin asignar) MAS los 2 nocturnos
+  -- (30,31, sin asignar) del pool -> asignados=4, sin_asignar=6, atrapados=1
+  -- (el mismo atrapado de siempre, id3 -- los nocturnos no agregan
+  -- atrapados). NOCTURNO tiene que dar EXACTAMENTE lo mismo (mismo pool);
+  -- SERVICE, que no se mezcla, solo ve su propio pedido sin asignar (32).
+  IF r_urg.asignados IS DISTINCT FROM 4 OR r_urg.sin_asignar IS DISTINCT FROM 6 OR r_urg.atrapados IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION 'URGENTE conteos crudos: asignados=% sin_asignar=% atrapados=% (esperaba 4/6/1 -- el pool tambien agrupa los crudos, no solo cola_efectiva)',
+      r_urg.asignados, r_urg.sin_asignar, r_urg.atrapados;
+  END IF;
+  IF r_noc.asignados IS DISTINCT FROM r_urg.asignados
+     OR r_noc.sin_asignar IS DISTINCT FROM r_urg.sin_asignar
+     OR r_noc.atrapados IS DISTINCT FROM r_urg.atrapados THEN
+    RAISE EXCEPTION 'NOCTURNO y URGENTE deben ver los MISMOS conteos crudos (mismo pool): asignados %/% sin_asignar %/% atrapados %/%',
+      r_noc.asignados, r_urg.asignados, r_noc.sin_asignar, r_urg.sin_asignar, r_noc.atrapados, r_urg.atrapados;
+  END IF;
+  IF r_srv.asignados IS DISTINCT FROM 0 OR r_srv.sin_asignar IS DISTINCT FROM 1 OR r_srv.atrapados IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'SERVICE conteos crudos: asignados=% sin_asignar=% atrapados=% (esperaba 0/1/0, no se mezcla con URGENTE/NOCTURNO)',
+      r_srv.asignados, r_srv.sin_asignar, r_srv.atrapados;
+  END IF;
+
+  RAISE NOTICE 'ok urgente+nocturno unen demanda (cola_efectiva Y los conteos crudos), service no';
 END $$;
 
 TRUNCATE pedidos, services, moviles_dia;

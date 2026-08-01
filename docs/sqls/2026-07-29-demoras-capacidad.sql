@@ -69,3 +69,13 @@ $fn$;
 
 COMMENT ON FUNCTION demoras_capacidad(integer, date) IS
   'Capacidad efectiva por (zona, tipo): suma del aporte prorrateado de los moviles ACTIVOS. peso 1 prioridad / alpha transito, normalizado por tipo. Suma de aportes de un movil = 1 ± residuo de redondeo (~1e-4); no es invariante exacto.';
+
+-- ─── Grants: solo service_role (I3, review final de rama) ────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto: sin
+-- este REVOKE, anon/authenticated (las claves que viajan al browser) pueden
+-- invocarla via RPC y ver la estructura zona<->movil. Quedaba sin revocar
+-- desde la tanda original (2026-07-29); mismo patron que el resto de las
+-- funciones del motor.
+REVOKE EXECUTE ON FUNCTION demoras_capacidad(integer, date) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_capacidad(integer, date) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_capacidad(integer, date) TO service_role;

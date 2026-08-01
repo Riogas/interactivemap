@@ -333,6 +333,16 @@ $fn$;
 COMMENT ON FUNCTION demoras_ritmo(integer, date) IS
   'Cascada de cuatro niveles (CHOFER, MOVIL, ZONA, GLOBAL) por (zona, tipo). Los parametros (ventana en dias, minimo de muestras, metrica, corte de huecos) salen de demoras_modelo, no de la firma, para poder cambiarlos sin tocar a los llamadores. Las muestras vienen de demoras_ritmo_muestras, que resuelve si el ritmo se mide entre cumplimientos consecutivos (ENTRE_ENTREGAS, lo correcto) o de asignacion a entrega (ASIGNADO_A_ENTREGA, la metrica vieja que doble-cuenta la cola). El resto del algoritmo es identico a la version del 2026-07-30: blend ponderado en CHOFER/MOVIL, chofer que maneja varios moviles no duplica muestras, nivel sin peso real no gana la cascada, GLOBAL siempre ultimo.';
 
+-- ─── Grants: solo service_role (I3, review final de rama) ────────────
+-- demoras_ritmo nunca habia tenido REVOKE/GRANT explicito en ningun
+-- archivo (ni en la tanda PROXIMO_HUECO ni en la primera pasada de
+-- CONSUMO_TRAMOS) -- gap preexistente que se cierra aca, en su ultimo
+-- CREATE OR REPLACE. Mismo patron que demoras_ritmo_movil, mas abajo en
+-- este mismo archivo, y que el resto de las funciones del motor.
+REVOKE EXECUTE ON FUNCTION demoras_ritmo(integer, date) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_ritmo(integer, date) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_ritmo(integer, date) TO service_role;
+
 
 -- ─── demoras_ritmo_movil — copiado de docs/sqls/2026-07-31-demoras-ritmo-movil.sql ──
 CREATE OR REPLACE FUNCTION demoras_ritmo_movil(p_escenario integer, p_hasta date)

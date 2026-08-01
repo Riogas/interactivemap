@@ -13,9 +13,21 @@
 --   mu_j  cuanto aporta una vez adentro = su dedicacion a la zona dividida
 --         por su ritmo, en pedidos por minuto.
 --
--- Los pedidos que el movil tiene DENTRO de la zona NO entran en r_j: son
--- demanda de la zona y los cuenta demoras_cola. Contarlos en los dos lados
--- seria el doble conteo que este modelo vino a evitar.
+-- Los pedidos que el movil tiene DENTRO de la zona, del MISMO pool que se
+-- esta calculando (URGENTE y NOCTURNO comparten pool; SERVICE va solo -- ver
+-- demoras_cola), NO entran en r_j: esos ya son demanda de la zona y los
+-- cuenta demoras_cola. Contarlos en los dos lados seria el doble conteo que
+-- este modelo vino a evitar.
+--
+-- Los pedidos que el movil tiene DENTRO de la zona pero de OTRO pool (un
+-- SERVICE cuando se calcula URGENTE, por ejemplo) SI entran en r_j: nadie
+-- mas los cuenta -- demoras_cola de URGENTE no ve los SERVICE de la zona--,
+-- y el movil sigue estando ocupado con ellos. Fix C1 (review final de rama,
+-- b7fff6e..64045c2): la version anterior excluia de r_j TODO lo in-zone sin
+-- mirar el tipo, asi que el trabajo in-zone de otro pool no lo contaba
+-- ninguna de las dos funciones -- un movil con 9 services encima en su
+-- propia zona parecia libre. Ver el CASE de pool_de mas abajo, mismo
+-- criterio que el CTE `pool` de demoras_cola.
 --
 -- El reparto de p_j (spec seccion 2):
 --   1. Cada zona de transito se lleva dedicacion_transito.
@@ -96,32 +108,45 @@ AS $fn$
     FROM asign a
     JOIN reparto r ON r.movil = a.movil AND r.tipo = a.tipo
   ),
-  -- Carga FUERA de la zona: todo lo que el movil tiene pendiente en OTRAS
-  -- zonas, de CUALQUIER tipo. El movil es un solo camion y un service lo
-  -- ocupa igual que un urgente.
+  -- Carga de CUALQUIER tipo, con su tipo normalizado a cuestas (C1): el
+  -- movil es un solo camion y un service lo ocupa igual que un urgente, asi
+  -- que todo entra aca -- pero para decidir mas abajo si un pedido IN-ZONE
+  -- cuenta o no hace falta saber de que pool es. `pedidos` trae URGENTE y
+  -- NOCTURNO exactos (cualquier otro servicio_nombre, ESPECIAL/OTROS
+  -- incluidos, cae en 'OTRO': no pertenece a ningun pool, asi que nunca se
+  -- excluye si esta in-zone -- sigue ocupando al movil igual que hoy).
+  -- `services` es siempre SERVICE.
   --
   -- MATERIALIZED por el mismo motivo que rit_zona/rit_movil mas abajo: se
   -- lee desde adentro del primer LATERAL (cf_out), correlacionado por
-  -- pj.movil/pj.zona_id, y esta referenciada una sola vez -- sin forzar
-  -- MATERIALIZED, Postgres la inlinea y el agregado sobre pedidos+services
-  -- se recalcula una vez por fila de pj. Confirmado con EXPLAIN ANALYZE: sin
-  -- MATERIALIZED, el plan mostraba "Seq Scan on pedidos (loops=900)" y "Seq
-  -- Scan on services (loops=900)" -- no es hipotetico, es lo que salio en la
-  -- corrida real contra el fixture de 100 zonas x 3 tipos.
+  -- pj.movil/pj.zona_id/pj.tipo, y esta referenciada una sola vez -- sin
+  -- forzar MATERIALIZED, Postgres la inlinea y el agregado sobre
+  -- pedidos+services se recalcula una vez por fila de pj. Confirmado con
+  -- EXPLAIN ANALYZE: sin MATERIALIZED, el plan mostraba "Seq Scan on
+  -- pedidos (loops=900)" y "Seq Scan on services (loops=900)" -- no es
+  -- hipotetico, es lo que salio en la corrida real contra el fixture de 100
+  -- zonas x 3 tipos.
   carga_total AS MATERIALIZED (
-    SELECT p.movil, p.zona_nro, count(*)::integer AS n
+    SELECT p.movil, p.zona_nro, p.tipo, count(*)::integer AS n
     FROM (
-      SELECT movil, zona_nro FROM pedidos
+      SELECT movil, zona_nro,
+             CASE upper(trim(coalesce(servicio_nombre,'')))
+               WHEN 'NOCTURNO' THEN 'NOCTURNO'
+               WHEN 'URGENTE'  THEN 'URGENTE'
+               ELSE 'OTRO'
+             END AS tipo
+        FROM pedidos
        WHERE escenario = p_escenario AND estado_nro = 1
          AND movil IS NOT NULL AND movil <> 0 AND zona_nro IS NOT NULL
          AND COALESCE(fch_para, (fch_hora_para AT TIME ZONE 'America/Montevideo')::date) = p_fecha
       UNION ALL
-      SELECT movil, zona_nro FROM services
+      SELECT movil, zona_nro, 'SERVICE' AS tipo
+        FROM services
        WHERE escenario = p_escenario AND estado_nro = 1
          AND movil IS NOT NULL AND movil <> 0 AND zona_nro IS NOT NULL
          AND COALESCE(fch_para, (fch_hora_para AT TIME ZONE 'America/Montevideo')::date) = p_fecha
     ) p
-    GROUP BY p.movil, p.zona_nro
+    GROUP BY p.movil, p.zona_nro, p.tipo
   ),
   -- MATERIALIZED es obligatorio en las tres CTEs de abajo, no cosmetico.
   -- Las tres se leen desde ADENTRO de un LATERAL correlacionado por
@@ -160,10 +185,30 @@ AS $fn$
     CASE WHEN rr.ritmo > 0 THEN round(pj.p_j / rr.ritmo, 6) ELSE 0 END AS mu_j
   FROM pj
   CROSS JOIN cfg c
+  -- cf_out: TODO lo que el movil tiene, salvo lo que ya cuenta demoras_cola
+  -- como demanda de ESTA zona -- o sea lo in-zone del MISMO pool que pj.tipo
+  -- (C1). Lo de otras zonas cuenta siempre, de cualquier tipo (r_j = "todo
+  -- lo que lleva", spec seccion 2); lo in-zone de OTRO pool tambien cuenta
+  -- (nadie mas lo contabiliza); solo lo in-zone del MISMO pool se excluye.
+  -- El CASE replica el CTE `pool` de demoras_cola: URGENTE y NOCTURNO
+  -- comparten pool, SERVICE va solo. Si pj.tipo no matchea ninguna rama
+  -- (no deberia pasar: `asign` ya filtra a los tres tipos), el ELSE deja el
+  -- array vacio -- no se excluye nada, el lado conservador.
   LEFT JOIN LATERAL (
     SELECT coalesce(sum(ct.n), 0) AS n
     FROM carga_total ct
-    WHERE ct.movil = pj.movil AND ct.zona_nro <> pj.zona_id
+    WHERE ct.movil = pj.movil
+      AND NOT (
+        ct.zona_nro = pj.zona_id
+        AND ct.tipo = ANY (
+          CASE pj.tipo
+            WHEN 'URGENTE'  THEN ARRAY['URGENTE','NOCTURNO']
+            WHEN 'NOCTURNO' THEN ARRAY['URGENTE','NOCTURNO']
+            WHEN 'SERVICE'  THEN ARRAY['SERVICE']
+            ELSE ARRAY[]::text[]
+          END
+        )
+      )
   ) cf_out ON true
   CROSS JOIN LATERAL (
     SELECT
@@ -187,7 +232,7 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION demoras_aportes(integer, date) IS
-  'Cuanto y desde cuando aporta cada movil activo a cada (zona, tipo). r_j = lo que tiene FUERA de la zona por su ritmo, mas el traslado de vuelta una sola vez; los pedidos que tiene DENTRO de la zona NO entran, son demanda de la zona y los cuenta demoras_cola. mu_j = p_j / ritmo, en pedidos por minuto. p_j reparte: cada transito se lleva dedicacion_transito, el conjunto de transitos se topea en transito_dedicacion_max_total achicandolos a prorrata, y las prioridades se reparten el resto -- asi la prioridad nunca baja de (1 - tope). Reemplaza a demoras_servidores.';
+  'Cuanto y desde cuando aporta cada movil activo a cada (zona, tipo). r_j = lo que tiene FUERA de la zona por su ritmo, mas el traslado de vuelta una sola vez; los pedidos que tiene DENTRO de la zona y del MISMO pool que se esta calculando (URGENTE+NOCTURNO juntos, SERVICE solo -- mismo pool que demoras_cola) NO entran, porque esos ya son demanda de la zona y los cuenta demoras_cola. Los pedidos DENTRO de la zona pero de OTRO pool (un SERVICE cuando se calcula URGENTE) SI entran: nadie mas los cuenta, y el movil sigue ocupado con ellos (fix C1, review final de rama). mu_j = p_j / ritmo, en pedidos por minuto. p_j reparte: cada transito se lleva dedicacion_transito, el conjunto de transitos se topea en transito_dedicacion_max_total achicandolos a prorrata, y las prioridades se reparten el resto -- asi la prioridad nunca baja de (1 - tope). Reemplaza a demoras_servidores.';
 
 -- ─── Grants: solo service_role ───────────────────────────────────────
 -- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto: sin

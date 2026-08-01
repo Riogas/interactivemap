@@ -379,6 +379,56 @@ BEGIN
   RAISE NOTICE 'ok la carga de afuera filtra por fecha (M6: carga_fuera=% y r_j=% igual antes y despues de agregar un pedido de otro dia)', r.carga_fuera, r.r_j;
 END $$;
 
+-- 14) C1 (review final de rama, b7fff6e..64045c2) -- el trabajo IN-ZONE de
+--     OTRO pool tiene que ocupar al movil (contar en r_j); el de MISMO pool
+--     sigue sin contar (ya es demanda de la zona via demoras_cola). Antes
+--     de este fix, carga_total no distinguia tipo y excluia TODO lo in-zone
+--     sin mirar el pool: un movil con trabajo in-zone de otro tipo parecia
+--     libre. Movil 7, zona propia (970), exclusivo de este bloque: un
+--     URGENTE y un NOCTURNO en la MISMA zona (mismo pool que URGENTE -> NO
+--     cuentan) y 2 SERVICES en la MISMA zona (otro pool -> SI cuentan).
+INSERT INTO moviles_zonas (escenario_id, movil_id, zona_id, tipo_de_servicio, prioridad_o_transito, activa)
+VALUES (1000,'7',970,'URGENTE',1,true);
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000,7,DATE '2026-08-01',true);
+
+-- Ritmo propio de M7: 20 min (5 hechos para ganar el nivel MOVIL), igual
+-- patron que M1-M3.
+INSERT INTO metricas_cumplimiento
+  (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+   fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+SELECT 'PEDIDO', 700 + g, 1000, DATE '2026-07-31', 'URGENTE', 7, 970, NULL,
+       now(), 20.0, 20.0, 'CAMPO'
+FROM generate_series(1,5) g;
+
+DO $$
+DECLARE r record;
+BEGIN
+  -- URGENTE y NOCTURNO en la MISMA zona: mismo pool que se esta calculando
+  -- (URGENTE) -- demoras_cola ya los cuenta como demanda de la zona, no
+  -- tienen que sumar en r_j.
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (400,1000,'URGENTE',7,970,1,DATE '2026-08-01'),
+         (401,1000,'NOCTURNO',7,970,1,DATE '2026-08-01');
+
+  -- 2 SERVICES en la MISMA zona: pool DISTINTO al que se esta calculando
+  -- (SERVICE no se mezcla con URGENTE/NOCTURNO en demoras_cola) -- nadie los
+  -- cuenta como demanda de la zona, asi que TIENEN que ocupar al movil.
+  INSERT INTO services (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (210,1000,'SERVICE',7,970,1,DATE '2026-08-01'),
+         (211,1000,'SERVICE',7,970,1,DATE '2026-08-01');
+
+  SELECT * INTO r FROM demoras_aportes(1000, DATE '2026-08-01')
+   WHERE zona_id = 970 AND tipo_servicio = 'URGENTE' AND movil = 7;
+  IF r.carga_fuera IS DISTINCT FROM 2 THEN
+    RAISE EXCEPTION 'M7 carga_fuera: % (esperaba 2: los 2 SERVICES in-zone, NO el URGENTE ni el NOCTURNO in-zone -- mismo pool, ya son demanda de demoras_cola)', r.carga_fuera;
+  END IF;
+  IF r.r_j IS DISTINCT FROM 55 THEN
+    RAISE EXCEPTION 'M7 r_j: % (esperaba 55 = 2 x 20 + 15: el trabajo in-zone de OTRO pool tiene que ocupar al movil -- C1 del review final: antes de este fix daba 0, el movil parecia libre con 4 pedidos encima)', r.r_j;
+  END IF;
+  RAISE NOTICE 'ok C1: el trabajo in-zone de OTRO pool cuenta en r_j, el del MISMO pool no (M7 carga_fuera=%, r_j=%)', r.carga_fuera, r.r_j;
+END $$;
+
 UPDATE demoras_modelo
    SET ritmo_metrica = 'ENTRE_ENTREGAS', dedicacion_transito = 0.20,
        transito_dedicacion_max_total = 0.60, traslado_fuera_zona_minutos = 15,
