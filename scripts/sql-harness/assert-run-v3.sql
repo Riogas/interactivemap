@@ -26,6 +26,22 @@
 --      funcion (chequeo estatico de posicion): un lock adentro del loop
 --      serializaria escenario por escenario, no la corrida entera.
 --
+-- Fix round 1 (review): dos hallazgos del reviewer, cada uno con mutante
+-- propio y verificado, que sobrevivian a los 71 asserts de la primera
+-- entrega:
+--   7. El suavizado NO se filtra entre escenarios: la CTE `prev` tiene que
+--      seguir siendo POR ESCENARIO aunque dos zonas de departamentos
+--      distintos compartan el mismo NUMERO. Sin el filtro `escenario =
+--      v_esc`, una zona toma como "corrida anterior" la de OTRO escenario
+--      con el mismo numero de zona, y el suavizado arrastra un valor
+--      ajeno sin ningun error visible -- el riesgo real que introduce el
+--      cambio de alcance de esta task (antes de esta task ese filtro era
+--      decorativo, con un solo escenario nunca podia colisionar).
+--   8. El valor devuelto (filas escritas) tiene que ser la SUMA de todos
+--      los escenarios, no la del ultimo procesado -- un acumulador que
+--      usa `:=` en vez de sumar miente en silencio sobre cuanto trabajo
+--      hizo la corrida.
+--
 -- No se replican aca los DO $$ ... $$ que prueban comportamiento
 -- ESPECIFICO de CAPACIDAD_PROMEDIO como unico modelo posible (siguen en
 -- assert-run.sql) ni el resto de los bloques de assert-run-v2.sql que no
@@ -344,6 +360,128 @@ BEGIN
   UPDATE demoras_modelo SET modelo = 'CONSUMO_TRAMOS' WHERE escenario_id = 1000;
   UPDATE escenario_settings SET peso_transito_alpha = 0.3 WHERE escenario_id = 1000;
   RAISE NOTICE 'ok sin_capacidad no diverge entre modelos con transito puro y alpha=0 (tramos=%, viejo=%)', v_sin_tramos, v_sin_viejo;
+END $$;
+
+-- ─── Fix round 1 (review): el suavizado NO se filtra entre escenarios ──
+-- Hallazgo del reviewer: si se le saca a la CTE `prev` el filtro
+-- `escenario = v_esc`, los 71 asserts de la primera entrega seguian
+-- pasando. Es el riesgo real que introduce el cambio de alcance de esta
+-- task: antes habia un solo escenario y el filtro era decorativo; ahora es
+-- lo que separa los departamentos. Sin el, una zona del escenario 1000
+-- tomaria como "corrida anterior" la de una zona con el MISMO NUMERO del
+-- escenario 2000, y el suavizado arrastraria un valor ajeno sin ningun
+-- error visible.
+--
+-- Zona 9500, CON EL MISMO NUMERO en los dos escenarios (1000 y 2000), cada
+-- uno con su propio movil y la MISMA demanda (2 sin asignar, sin
+-- historial de ritmo -> crudo=90 en los dos, identico -- verificado igual
+-- que el crudo=90 del bloque "los dos modelos dan distinto" mas arriba,
+-- mismo movil unico + misma cola). Se siembra a mano (INSERT directo, sin
+-- pasar por el motor) una fila "corrida anterior" para cada escenario, EN
+-- INSTANTES DISTINTOS (16:50 el 1000, 16:55 el 2000) para que un DISTINCT
+-- ON sin filtro de escenario NO empate: sin el filtro, "la mas reciente
+-- para zona 9500/URGENTE" es SIEMPRE la del escenario 2000 (16:55),
+-- para los DOS escenarios.
+--
+-- Con crudo=90 identico en los dos y prev DISTINTO (40 el 1000, 100 el
+-- 2000), subida_max=30/bajada_max=15 hacen que el resultado dependa
+-- del prev de forma verificable con un numero exacto:
+--   1000 (prev propio 40): 90>40 -> sube, tope 40+30=70 -> ceil(70/15)*15=75
+--   2000 (prev propio 100): 90<100 -> baja, piso 100-15=85 -> ceil(85/15)*15=90
+-- Si el filtro faltara, el 1000 leeria el prev del 2000 (100 en vez de 40)
+-- y darial 90 en vez de 75 -- exactamente el numero que atrapa al mutante,
+-- verificado mas abajo en el reporte de la task.
+DO $$
+DECLARE v_1000 integer; v_2000 integer; v_n bigint;
+BEGIN
+  INSERT INTO demoras (escenario_id, zona_id, zona_tipo, descripcion, minutos, activa)
+  VALUES (1000, 9500, 'Distribucion', 'URGENTE', 35, true),
+         (2000, 9500, 'Distribucion', 'URGENTE', 35, true);
+  INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito)
+  VALUES ('95', 9500, 1000, 'URGENTE', 1),
+         ('96', 9500, 2000, 'URGENTE', 1);
+  INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+  VALUES (1000, 95, DATE '2026-07-30', true),
+         (2000, 96, DATE '2026-07-30', true);
+  INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+  VALUES (95001, 1000, 'URGENTE', NULL, 9500, 1, DATE '2026-07-30'),
+         (95002, 1000, 'URGENTE', NULL, 9500, 1, DATE '2026-07-30'),
+         (95003, 2000, 'URGENTE', NULL, 9500, 1, DATE '2026-07-30'),
+         (95004, 2000, 'URGENTE', NULL, 9500, 1, DATE '2026-07-30');
+
+  -- El bypass por cambio de capacidad no debe interferir: se fuerza false
+  -- en los dos escenarios (2000 ya nace en false por default; 1000 puede
+  -- venir en true del bloque anterior).
+  UPDATE demoras_modelo SET suavizado_bypass_cambio_capacidad = false WHERE escenario_id IN (1000, 2000);
+
+  -- "Corrida anterior" sembrada A MANO, sin pasar por el motor -- lo que se
+  -- prueba es la lectura de `prev`, no como se llego a ese valor.
+  INSERT INTO demoras_calculadas
+    (corrida_at, escenario, zona_id, tipo_servicio, demora_informada, demora_suavizada, demora_cruda, moviles_activos)
+  VALUES
+    (timestamptz '2026-07-30 16:50:00-03', 1000, 9500, 'URGENTE', 40,  40,  40,  1),
+    (timestamptz '2026-07-30 16:55:00-03', 2000, 9500, 'URGENTE', 100, 100, 100, 1);
+
+  v_n := demoras_calcular_run(timestamptz '2026-07-30 17:00:00-03');
+
+  SELECT demora_informada INTO v_1000 FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 17:00:00-03'
+     AND escenario = 1000 AND zona_id = 9500 AND tipo_servicio = 'URGENTE';
+  SELECT demora_informada INTO v_2000 FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 17:00:00-03'
+     AND escenario = 2000 AND zona_id = 9500 AND tipo_servicio = 'URGENTE';
+
+  IF v_1000 IS NULL OR v_2000 IS NULL THEN
+    RAISE EXCEPTION 'falta alguna de las dos corridas en zona 9500: 1000=% 2000=%', v_1000, v_2000;
+  END IF;
+  IF v_1000 <> 75 THEN
+    RAISE EXCEPTION 'escenario 1000, zona 9500: demora_informada=% (esperaba 75, de su PROPIO prev=40; si dio 90 es que arrastro el prev=100 del escenario 2000 -- el suavizado se filtro entre escenarios)', v_1000;
+  END IF;
+  IF v_2000 <> 90 THEN
+    RAISE EXCEPTION 'escenario 2000, zona 9500: demora_informada=% (esperaba 90, de su propio prev=100)', v_2000;
+  END IF;
+  RAISE NOTICE 'ok el suavizado no se filtra entre escenarios con zonas de igual numero (1000=%, 2000=%, mismo crudo=90 los dos)', v_1000, v_2000;
+END $$;
+
+-- ─── Fix round 1 (review): el acumulador suma TODOS los escenarios ────
+-- Hallazgo del reviewer: si `v_escritas` se ASIGNA (`:=`) en vez de
+-- sumarse en cada vuelta del loop, tambien pasaban los 71 asserts -- el
+-- valor devuelto quedaria en la cantidad de filas del ULTIMO escenario
+-- procesado (2000, por el ORDER BY escenario_id), no el total. Es la
+-- mentira silenciosa que un `bigint := v_n` en vez de `bigint := bigint +
+-- v_n` produce: la funcion devuelve la cantidad de filas escritas y eso es
+-- lo que se mira para saber si una corrida hizo algo.
+--
+-- No se hardcodean numeros de fila esperados (dependen de cuantas zonas
+-- quedaron activas en cada escenario a esta altura del archivo): se
+-- verifica el INVARIANTE -- el valor devuelto tiene que ser la SUMA de
+-- las filas realmente escritas en TODOS los escenarios de esa corrida,
+-- contadas de forma independiente con un count(*) plano -- y que el
+-- fixture efectivamente tenga cantidades DISTINTAS por escenario (si
+-- dieran lo mismo, un acumulador que se queda con el ultimo podria pasar
+-- por coincidencia).
+DO $$
+DECLARE v_n bigint; v_total bigint; v_1000 bigint; v_2000 bigint;
+BEGIN
+  v_n := demoras_calcular_run(timestamptz '2026-07-30 17:10:00-03');
+
+  SELECT count(*) INTO v_total FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 17:10:00-03';
+  SELECT count(*) INTO v_1000 FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 17:10:00-03' AND escenario = 1000;
+  SELECT count(*) INTO v_2000 FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-07-30 17:10:00-03' AND escenario = 2000;
+
+  IF v_1000 = 0 OR v_2000 = 0 THEN
+    RAISE EXCEPTION 'el fixture no sirve para este test: algun escenario no escribio nada (1000=%, 2000=%)', v_1000, v_2000;
+  END IF;
+  IF v_1000 = v_2000 THEN
+    RAISE EXCEPTION 'el fixture no sirve para este test: escenario 1000 y 2000 escribieron la misma cantidad de filas (%); hace falta que difieran para detectar un acumulador que se queda con el ultimo', v_1000;
+  END IF;
+  IF v_n IS DISTINCT FROM v_total THEN
+    RAISE EXCEPTION 'demoras_calcular_run devolvio % pero se escribieron % filas en total (1000=%, 2000=%): el acumulador no esta sumando todos los escenarios', v_n, v_total, v_1000, v_2000;
+  END IF;
+  RAISE NOTICE 'ok el valor devuelto es la suma de todos los escenarios (% = % filas totales; 1000=%, 2000=%)', v_n, v_total, v_1000, v_2000;
 END $$;
 
 -- ─── El advisory lock: existe Y esta ANTES del loop de escenarios ─────
