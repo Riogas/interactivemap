@@ -36,12 +36,17 @@
  * y se EXCLUYEN esas filas del promedio de brecha, informando cuántas se
  * excluyeron. La serie las conserva (la card las marca en el gráfico).
  *
- * `escenario_configurado` (B3): el motor solo calcula el escenario 1000
- * (`v_esc integer := 1000` hardcodeado en demoras_calcular_run, y el seed de
- * `demoras_config` es solo de ese escenario), pero la pantalla tiene selector
- * de escenario. Este flag deja que la card diga "el motor no está configurado
- * para este escenario" en vez de "todavía no hay corridas para hoy", que es
- * una explicación falsa de una condición permanente.
+ * `escenario_configurado` (B3, corregido en el review final de rama — I6):
+ * el gate real es `demoras_modelo`, no `demoras_config`. Desde la tanda
+ * CONSUMO_TRAMOS, `demoras_calcular_run` recorre `FOR m IN SELECT * FROM
+ * demoras_modelo ...` — un escenario se calcula si y solo si tiene fila ahí,
+ * tenga o no fila en `demoras_config` (sin esa, simplemente no escribe nada
+ * para ningún tipo, igual que hoy con un tipo sin fila). Mirar
+ * `demoras_config` colaba un falso positivo: un escenario con
+ * `demoras_config` pero SIN `demoras_modelo` entra al loop del orquestador y
+ * nunca se calcula, y la card decía "todavía no hay corridas para hoy" para
+ * siempre — exactamente la explicación falsa que este flag existe para
+ * evitar.
  *
  * Auth-scope (fix round 1 — gap Critical del review: el endpoint no acotaba
  * por empresa y getServerSupabaseClient() usa service_role, bypass total de
@@ -165,27 +170,32 @@ function prom(xs: number[]): number {
 /**
  * B3 — ¿el motor está configurado para este escenario?
  *
- * `demoras_calcular_run` tiene el escenario 1000 hardcodeado y el seed de
- * `demoras_config` solo siembra ese escenario, pero la pantalla tiene
- * selector de escenario. Con cualquier otro la card queda vacía PARA SIEMPRE:
- * sin este flag, la UI explicaba esa condición permanente con "todavía no hay
- * corridas del motor para hoy" — una explicación falsa que invita a esperar.
+ * I6 (review final de rama): el gate real es `demoras_modelo`, no
+ * `demoras_config`. `demoras_calcular_run` (v3) recorre `FOR m IN SELECT *
+ * FROM demoras_modelo ORDER BY escenario_id LOOP` — sin fila ahí, el
+ * escenario ni siquiera entra al loop del orquestador, tenga o no
+ * `demoras_config`. Mirar `demoras_config` (como hacía esta función antes)
+ * daba un falso positivo justo en ese caso: `escenario_configurado: true`
+ * para un escenario que el motor NUNCA va a calcular, y la card explicaba
+ * eso con "todavía no hay corridas del motor para hoy" — una condición
+ * permanente disfrazada de "todavía no", que es exactamente lo que este
+ * flag existe para evitar.
  *
- * Un error leyendo `demoras_config` (el caso más probable: la migración
+ * Un error leyendo `demoras_modelo` (el caso más probable: la migración
  * todavía no se aplicó y la tabla no existe) se trata como "no configurado",
  * que a los efectos del usuario es exactamente lo mismo.
  */
 async function escenarioEstaConfigurado(db: SupabaseCompat, escenario: number): Promise<boolean> {
   const { data, error } = (await db
-    .from('demoras_config')
-    .select('tipo_servicio')
+    .from('demoras_modelo')
+    .select('escenario_id')
     .eq('escenario_id', escenario)) as {
-    data: { tipo_servicio: string }[] | null;
+    data: { escenario_id: number }[] | null;
     error: { message: string } | null;
   };
 
   if (error) {
-    console.error('[demoras/comparativa] error al leer demoras_config:', error.message);
+    console.error('[demoras/comparativa] error al leer demoras_modelo:', error.message);
     return false;
   }
   return (data ?? []).length > 0;

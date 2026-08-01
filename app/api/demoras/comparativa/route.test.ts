@@ -18,8 +18,15 @@ const FILAS = [
   { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 200, tipo_servicio: 'URGENTE', demora_informada: 30, demora_as400: null, sin_capacidad: false, clampeado: 'MIN', ritmo_origen: 'GLOBAL' },
 ];
 
-/** Config sembrada: el escenario 1000 es el único que el motor calcula. */
+/** Config sembrada: el escenario 1000 tiene fila operativa por tipo. */
 const CONFIG_1000 = [{ tipo_servicio: 'URGENTE' }, { tipo_servicio: 'NOCTURNO' }, { tipo_servicio: 'SERVICE' }];
+
+/**
+ * `demoras_modelo`: el gate REAL de si el motor calcula un escenario (I6,
+ * review final de rama) — `demoras_calcular_run` recorre `FOR m IN SELECT *
+ * FROM demoras_modelo ...`, no `demoras_config`. Una fila por escenario.
+ */
+const MODELO_1000 = [{ escenario_id: 1000 }];
 
 /**
  * Mock del cliente Supabase, por tabla. `.in('zona_id', ids)` FILTRA de
@@ -42,6 +49,7 @@ function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
   const fixtures: Record<string, unknown[]> = {
     demoras_calculadas: FILAS,
     demoras_config: CONFIG_1000,
+    demoras_modelo: MODELO_1000,
     fleteras_zonas: [],
     zonas: [],
     demoras: [],
@@ -490,24 +498,38 @@ describe('GET /api/demoras/comparativa', () => {
     });
   });
 
-  // ─── B3 — el motor solo esta configurado para el escenario 1000 ──────────
-  // demoras_calcular_run tiene `v_esc integer := 1000` hardcodeado y el seed
-  // de demoras_config es solo de ese escenario, pero la pantalla tiene
-  // selector: con cualquier otro la card queda vacia PARA SIEMPRE.
+  // ─── B3 — el motor solo calcula escenarios con fila en demoras_modelo ────
+  // I6 (review final de rama): el gate REAL paso a ser demoras_modelo desde
+  // que el orquestador (v3) recorre TODOS los escenarios con fila ahi. El
+  // endpoint miraba demoras_config, que es el gate VIEJO (de la epoca del
+  // escenario 1000 clavado) -- con cualquier escenario que tuviera
+  // demoras_config pero NO demoras_modelo, la card quedaba vacia PARA
+  // SIEMPRE diciendo "todavia no hay corridas", que es exactamente el
+  // mensaje falso que este flag existe para evitar.
 
   describe('escenario_configurado', () => {
-    it('true cuando el escenario tiene filas en demoras_config', async () => {
+    it('true cuando el escenario tiene fila en demoras_modelo', async () => {
       const res = await GET(req('escenario=1000&tipo=URGENTE'));
       const body = await res.json();
       expect(body.data.escenario_configurado).toBe(true);
     });
 
-    it('false cuando el escenario no tiene NINGUNA fila en demoras_config', async () => {
-      mockDb.mockReturnValue(makeDb({ demoras_calculadas: [], demoras_config: [] }) as never);
+    it('false cuando el escenario no tiene NINGUNA fila en demoras_modelo', async () => {
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: [], demoras_modelo: [] }) as never);
       const res = await GET(req('escenario=2000&tipo=URGENTE'));
       const body = await res.json();
       expect(res.status).toBe(200);
       expect(body.data.serie).toEqual([]);
+      expect(body.data.escenario_configurado).toBe(false);
+    });
+
+    it('false cuando el escenario tiene demoras_config pero NO demoras_modelo (I6 -- el motor nunca lo va a calcular)', async () => {
+      mockDb.mockReturnValue(
+        makeDb({ demoras_calculadas: [], demoras_config: CONFIG_1000, demoras_modelo: [] }) as never,
+      );
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      expect(res.status).toBe(200);
       expect(body.data.escenario_configurado).toBe(false);
     });
   });
