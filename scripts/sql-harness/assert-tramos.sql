@@ -313,6 +313,72 @@ BEGIN
   RAISE NOTICE 'ok empate en la liberacion: tramos=% (uno solo por el empate), demora_cruda=%', r.tramos, r.demora_cruda;
 END $$;
 
+-- =======================================================================
+-- 9) Salida temprana DENTRO del loop (Task 7, hueco de cobertura senalado
+--    por T5): ninguno de los bloques 1-8 ejercita la rama
+--
+--      IF v_mu > 0 AND v_q <= v_proc THEN
+--        ...
+--        tramos := tramos + 1;   <-- este incremento
+--        v_listo := true;
+--        EXIT;
+--
+--    con eventos TODAVIA sin procesar en el array. En 1-8 la cola siempre
+--    se termina de vaciar en el ULTIMO tramo (la rama post-loop) o el loop
+--    ni arranca (zona vacia, rs=[]). Un mutante que borra SOLO ese
+--    incremento sobrevivia a los 8 bloques -- no por falta de asercion,
+--    sino porque la rama en si nunca se ejecutaba.
+--
+--    Zona 950: movil 95 exclusivo, libre YA (r_j=0, mu_inicial=0,10).
+--    Movil 96 (zona 950+960, p_j=0,50, 1 pedido afuera -> r_j=15) y movil
+--    97 (zona 950+970, p_j=0,50, 3 pedidos afuera -> r_j=35): DOS eventos
+--    en el array (rs=[15,35]). Q=1 (nada pendiente en 950, solo el nuevo):
+--    en el tramo [0,15] el procesado es 15 x 0,10 = 1,5 >= Q=1 -> se
+--    resuelve DENTRO del primer evento, el segundo (r_j=35) nunca se toca.
+--    Si el incremento de la rama temprana faltara, tramos daria 0 en vez
+--    de 1.
+INSERT INTO moviles_zonas (escenario_id, movil_id, zona_id, tipo_de_servicio, prioridad_o_transito, activa)
+VALUES (1000,'95',950,'URGENTE',1,true),
+       (1000,'96',950,'URGENTE',1,true),(1000,'96',960,'URGENTE',1,true),
+       (1000,'97',950,'URGENTE',1,true),(1000,'97',970,'URGENTE',1,true);
+INSERT INTO moviles_dia (escenario_id, movil_id, fecha, activo)
+VALUES (1000,95,DATE '2026-08-01',true),(1000,96,DATE '2026-08-01',true),(1000,97,DATE '2026-08-01',true);
+INSERT INTO metricas_cumplimiento
+  (origen, pedido_id, escenario, fecha, tipo_servicio, movil, zona_nro, chofer,
+   fch_hora_finalizacion, demora_mins, demora_efectiva_mins, asignado_source)
+SELECT 'PEDIDO', 9500+m*10+g, 1000, DATE '2026-07-31', 'URGENTE', m, 950, NULL, now(), 10.0, 10.0, 'CAMPO'
+FROM (VALUES (95),(96),(97)) AS mm(m), generate_series(1,5) g;
+
+INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+VALUES (9600,1000,'URGENTE',96,960,1,DATE '2026-08-01');
+INSERT INTO pedidos (id, escenario, servicio_nombre, movil, zona_nro, estado_nro, fch_para)
+SELECT 9700+g,1000,'URGENTE',97,970,1,DATE '2026-08-01' FROM generate_series(1,3) g;
+
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM demoras_consumo_tramos(1000, DATE '2026-08-01', timestamptz '2026-08-01 14:00:00-03')
+   WHERE zona_id = 950 AND tipo_servicio = 'URGENTE';
+  IF r.moviles_considerados IS DISTINCT FROM 3 THEN
+    RAISE EXCEPTION 'salida temprana dentro del loop: moviles_considerados % (esperaba 3)', r.moviles_considerados;
+  END IF;
+  IF r.cola_por_delante IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'salida temprana dentro del loop: cola_por_delante % (esperaba 0)', r.cola_por_delante;
+  END IF;
+  IF r.tramos IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION 'salida temprana dentro del loop: tramos % (esperaba 1: se resuelve en el PRIMER evento, r_j=35 nunca se procesa)', r.tramos;
+  END IF;
+  IF r.demora_cruda IS DISTINCT FROM 10.00 THEN
+    RAISE EXCEPTION 'salida temprana dentro del loop: demora_cruda % (esperaba 10,00 = 0 + 1/0,10, resuelto ANTES del primer evento)', r.demora_cruda;
+  END IF;
+  IF r.capacidad_final IS DISTINCT FROM r.capacidad_inicial THEN
+    RAISE EXCEPTION 'salida temprana dentro del loop: capacidad_final % tendria que ser IGUAL a capacidad_inicial % -- el segundo movil (r_j=35) nunca llega a sumarse',
+      r.capacidad_final, r.capacidad_inicial;
+  END IF;
+  IF r.sin_capacidad THEN RAISE EXCEPTION 'salida temprana dentro del loop no puede quedar sin_capacidad'; END IF;
+  RAISE NOTICE 'ok salida temprana DENTRO del loop: tramos=1 (no 2), el evento r_j=35 nunca se procesa';
+END $$;
+
 TRUNCATE moviles_zonas, moviles_dia, pedidos, services, metricas_cumplimiento;
 UPDATE demoras_modelo
    SET ritmo_metrica = 'ENTRE_ENTREGAS', traslado_fuera_zona_minutos = 15, factor_calibracion = 1.0

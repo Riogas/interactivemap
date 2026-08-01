@@ -4,7 +4,7 @@
 
 **Goal:** Reemplazar el modelo `PROXIMO_HUECO` por `CONSUMO_TRAMOS`: la capacidad de una zona deja de ser un número fijo y pasa a crecer por escalones a medida que los móviles compartidos terminan sus compromisos fuera de zona, consumiendo la demanda tramo a tramo.
 
-**Architecture:** Siete migraciones SQL en Supabase, sobre la base del motor ya implementado. Se reusan `demoras_acabado`, `demoras_capacidad`, `demoras_ritmo` y `demoras_ritmo_movil` sin cambios de fondo; se reescriben la cola, los aportes por móvil y la simulación; y el orquestador pasa a recorrer todos los escenarios en vez de tener el 1000 clavado.
+**Architecture:** Siete migraciones SQL en Supabase, sobre la base del motor ya implementado. Se reusan `demoras_acabado` y `demoras_capacidad` sin cambios de fondo; `demoras_ritmo` y `demoras_ritmo_movil` sí cambian (Task 2, fix round 1: pasan a leer `demoras_modelo.ritmo_hueco_min_minutos` y a llamar a `demoras_ritmo_muestras` con el séptimo parámetro — ver `docs/sqls/2026-08-01-demoras-ritmo-callers-v2.sql`); se reescriben la cola, los aportes por móvil y la simulación; y el orquestador pasa a recorrer todos los escenarios en vez de tener el 1000 clavado.
 
 **Tech Stack:** PostgreSQL 15 (Supabase), plpgsql + SQL functions, `pg_cron`, harness Docker (`scripts/sql-harness/run.sh`).
 
@@ -565,7 +565,7 @@ Dos cambios que vienen de la spec del consumo por tramos.
 - Create: `scripts/sql-harness/assert-aportes.sql`
 
 **Interfaces:**
-- Consumes: `demoras_modelo` (Task 1), `demoras_ritmo` y `demoras_ritmo_movil` (sin cambios).
+- Consumes: `demoras_modelo` (Task 1), `demoras_ritmo` y `demoras_ritmo_movil`. **Actualizado (Task 7):** no quedaron "sin cambios" — el fix round 1 de la Task 2 las recreó en `docs/sqls/2026-08-01-demoras-ritmo-callers-v2.sql` para que pasaran el piso del ritmo (`ritmo_hueco_min_minutos`) a `demoras_ritmo_muestras`. La Task 4 las sigue consumiendo con la misma firma `(integer, date)`, así que no hay ruptura de interfaz para esta task.
 - Produces:
   ```sql
   demoras_aportes(p_escenario integer, p_fecha date)

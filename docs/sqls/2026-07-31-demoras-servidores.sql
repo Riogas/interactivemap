@@ -34,7 +34,32 @@
 -- Un movil descartado se DEVUELVE igual, con descartado=true, en vez de
 -- filtrarse: quien audite una zona tiene que poder ver que habia un
 -- transito disponible y por que no se uso.
+--
+-- IDEMPOTENCIA (fix Task 7, tanda CONSUMO_TRAMOS, hallazgo del archivo
+-- unico aplicado dos veces): esta funcion es LANGUAGE sql, y Postgres
+-- valida su cuerpo contra el catalogo EN EL CREATE (a diferencia de
+-- plpgsql, que solo compila la sintaxis externa y no valida el SQL
+-- embebido hasta ejecutarse) -- confirmado con Postgres 15. El cuerpo lee
+-- dm.transito_modo / dm.transito_castigo_minutos / dm.transito_margen_minutos,
+-- que 2026-08-01-demoras-modelo-tramos.sql da de baja de demoras_modelo.
+-- Repegar este archivo DESPUES de esa migracion (por ejemplo, la segunda
+-- vez que se pega el archivo unico de la tanda CONSUMO_TRAMOS, que incluye
+-- los dos) hacia fallar el CREATE con "column dm.transito_modo does not
+-- exist" -- no en runtime, en el CREATE mismo, abortando TODO el script
+-- bajo --single-transaction. El CREATE queda condicionado a que esas
+-- columnas todavia existan: la primera vez que se aplica (con las
+-- columnas puestas) crea la funcion normalmente; una vez que
+-- demoras-modelo-tramos.sql ya las dio de baja, este bloque es un no-op
+-- silencioso -- la funcion queda tal cual la dejo la ultima vez que SI se
+-- pudo crear, que es exactamente lo que hace falta: es una funcion
+-- obsoleta (ver docs/sqls/2026-08-01-demoras-legacy-obsoletas.sql), su
+-- cuerpo no necesita seguir cambiando.
 -- =====================================================================
+DO $guard_servidores$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'demoras_modelo' AND column_name = 'transito_modo') THEN
+    EXECUTE $def_servidores$
 CREATE OR REPLACE FUNCTION demoras_servidores(
   p_escenario integer,
   p_fecha     date
@@ -199,6 +224,10 @@ AS $fn$
   CROSS JOIN cfg c
   LEFT JOIN mejor_prioridad mp ON mp.zona_id = l.zona_id AND mp.tipo = l.tipo;
 $fn$;
+$def_servidores$;
+  END IF;
+END
+$guard_servidores$;
 
 COMMENT ON FUNCTION demoras_servidores(integer, date) IS
   'Tiempo de liberacion de cada movil ACTIVO por (zona, tipo): libre_en = carga x ritmo, con la carga contada en TODAS las zonas porque el movil es un solo camion. Es el punto exacto donde el modelo deja de prorratear: los pedidos ya asignados dicen donde esta el trabajo, no hace falta suponerlo. La carga cuenta TAMBIEN los pedidos ESPECIAL/OTROS (a diferencia de demoras_cola, que los excluye de la demanda): no son demanda de ninguna zona, pero si son trabajo real que ocupa al movil -- ver el comentario junto a carga_movil. transito_modo (IGUAL / CASTIGO / ALPHA / SOLO_SI_NO_HAY) decide como compite un movil que en esa zona es de transito; el descartado se devuelve igual con descartado=true para que se pueda auditar por que no se uso. Aproximacion documentada: un movil con pedidos de varios tipos usa el ritmo del tipo que se esta calculando.';

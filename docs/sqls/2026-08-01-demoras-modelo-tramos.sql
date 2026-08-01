@@ -10,6 +10,13 @@
 -- transito_margen_minutos. En CONSUMO_TRAMOS el movil SIEMPRE entra, con la
 -- fraccion de tiempo que le corresponda, asi que esos tres se dan de baja y
 -- los reemplaza un solo numero calibrable.
+--
+-- BREAK GLASS: si algo de esta migracion (o de cualquiera de las que
+-- siguen en la secuencia de docs/DEMORA_INFORMADA.md) sale mal, el motor
+-- entero se apaga con una linea, sin deploy y sin revertir nada:
+--   UPDATE demoras_config SET motor_activo = false;
+-- (todos los escenarios y tipos; para uno solo, agregar
+-- WHERE escenario_id = 1000 -- ver docs/DEMORA_INFORMADA.md seccion 4).
 -- =====================================================================
 
 -- ── Los cuatro parametros nuevos ─────────────────────────────────────
@@ -75,9 +82,13 @@ COMMENT ON COLUMN demoras_modelo.modelo IS
 --
 -- ORDEN DE APLICACION: demoras_servidores (docs/sqls/2026-07-31-demoras-servidores.sql)
 -- todavia lee dm.transito_modo, dm.transito_castigo_minutos y
--- dm.transito_margen_minutos. La Task 4 la reemplaza por demoras_aportes, que
--- no las usa -- hasta que esa task se aplique, las tres columnas siguen
--- teniendo un lector.
+-- dm.transito_margen_minutos. La Task 4 la reemplaza por demoras_aportes
+-- (docs/sqls/2026-08-01-demoras-aportes.sql), que no las usa -- hasta que
+-- esa migracion se aplique, las tres columnas siguen teniendo un lector.
+-- (Actualizado en la Task 7: ese archivo ya existe hoy -- ver tambien
+-- docs/sqls/2026-08-01-demoras-legacy-obsoletas.sql, que marca
+-- demoras_servidores y demoras_proximo_hueco como obsoletas una vez que
+-- el orquestador deja de llamarlas.)
 --
 -- Aplicar este DROP COLUMN con el motor PRENDIDO y antes de la Task 4 hace
 -- fallar cada corrida del cron con "column dm.transito_modo does not exist".
