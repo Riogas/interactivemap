@@ -73,6 +73,18 @@ solo camión y un service lo ocupa igual que un urgente. El traslado se suma
 una sola vez, no por pedido: es el viaje de regreso. Un móvil sin nada afuera
 tiene `r_j = 0` y aporta desde el minuto cero.
 
+> **"Otras zonas" quiere decir, con precisión: fuera de esta zona, O dentro
+> de esta zona pero de un tipo que no forma parte del pool que se está
+> calculando** (ver sección 5 — URGENTE y NOCTURNO comparten pool, SERVICE
+> va solo). Q (arriba) solo cuenta, como demanda de la zona, los pendientes
+> del **mismo** pool; el trabajo que el móvil tiene dentro de la zona pero de
+> **otro** pool (un SERVICE cuando se calcula URGENTE) no es demanda de
+> nadie más, así que tiene que seguir ocupando al móvil acá. Fijado en la
+> tanda de fixes del review final de rama (C1): la primera implementación
+> excluía de `r_j` todo lo que estuviera dentro de la zona sin mirar el
+> pool, y ese trabajo terminaba sin contarlo ninguna de las dos piezas del
+> modelo.
+
 ### ritmo_j — cuánto tarda por entrega
 
 Minutos entre una entrega y la siguiente del mismo móvil, medidos del

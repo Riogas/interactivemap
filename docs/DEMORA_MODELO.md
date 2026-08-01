@@ -8,13 +8,19 @@ Está escrito para que lo entienda alguien que nunca vio el sistema. Si en
 algún punto hace falta saber algo de programación para seguirlo, es un
 defecto del documento, no del lector.
 
-> **Estado: implementado.** El modelo nuevo (sección 7, `PROXIMO_HUECO`) es
-> el **default** en producción desde la Task 6 de
-> `docs/superpowers/plans/2026-07-30-motor-demora-proximo-hueco.md`. El
-> modelo viejo (sección 6, `CAPACIDAD_PROMEDIO`) se conserva, seleccionable
-> por `demoras_modelo.modelo`, para poder correr los dos sobre los mismos
-> datos y comparar en vez de discutir. La guía operativa de lo que está
-> corriendo es [`DEMORA_INFORMADA.md`](DEMORA_INFORMADA.md).
+> **Estado: implementado, pero la sección 7 quedó superseded.** El modelo
+> vigente hoy es `CONSUMO_TRAMOS` (consumo por tramos), especificado en
+> [`DEMORA_MODELO_TRAMOS.md`](DEMORA_MODELO_TRAMOS.md) — es el **default**
+> en producción desde la tanda `CONSUMO_TRAMOS`. `PROXIMO_HUECO` (sección 7
+> de este documento) fue el modelo que reemplazó a `CAPACIDAD_PROMEDIO`
+> primero, y a su vez fue reemplazado por `CONSUMO_TRAMOS` — ver la nota al
+> principio de la sección 7. El modelo original (sección 6,
+> `CAPACIDAD_PROMEDIO`) se conserva, seleccionable por
+> `demoras_modelo.modelo`, para poder correr los dos vigentes sobre los
+> mismos datos y comparar en vez de discutir. El resto de este documento
+> (el diagnóstico, los datos, los tres errores del modelo original, el
+> backtest) sigue vigente. La guía operativa de lo que está corriendo hoy es
+> [`DEMORA_INFORMADA.md`](DEMORA_INFORMADA.md).
 
 ---
 

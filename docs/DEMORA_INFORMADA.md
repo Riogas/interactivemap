@@ -101,15 +101,17 @@ incluye completo.
 Las veinte migraciones, **en este orden exacto**:
 
 **Tanda `PROXIMO_HUECO` (2026-07-29 / 2026-07-31), archivos 1 a 11 — sin
-cambios de código, pero con una nota de idempotencia nueva en el 9:**
+cambios de código de fondo, salvo la idempotencia del 9 y los `REVOKE`/`GRANT`
+que le faltaban al 1 y al 2 (review final de rama):**
 
 1. `docs/sqls/2026-07-29-demoras-acabado.sql` — función `demoras_acabado`:
-   clamp → suavizado asimétrico → redondeo hacia arriba al escalón. Sin
-   cambios desde el original.
+   clamp → suavizado asimétrico → redondeo hacia arriba al escalón. Cuerpo
+   sin cambios; gana su `REVOKE`/`GRANT` (no lo tenía desde 2026-07-29).
 2. `docs/sqls/2026-07-29-demoras-capacidad.sql` — función `demoras_capacidad`:
    capacidad efectiva por (zona, tipo). La sigue usando el modelo
    `CAPACIDAD_PROMEDIO` y los conteos `moviles_activos` / `moviles_prioridad`
-   / `moviles_transito` que se persisten sea cual sea el modelo. Sin cambios.
+   / `moviles_transito` que se persisten sea cual sea el modelo. Cuerpo sin
+   cambios; gana su `REVOKE`/`GRANT` (mismo motivo que el 1).
 3. `docs/sqls/2026-07-29-demoras-calculadas-tabla.sql` — crea
    `demoras_calculadas` (los hechos) y `demoras_config` (la configuración
    **operativa**). Sin cambios.
@@ -128,10 +130,10 @@ cambios de código, pero con una nota de idempotencia nueva en el 9:**
 6. `docs/sqls/2026-07-31-demoras-ritmo-v2.sql` — función `demoras_ritmo`
    (cascada por zona), firma de 2 parámetros. El archivo 14 le reemplaza el
    cuerpo (`CREATE OR REPLACE`, misma firma); se incluye igual porque es la
-   referencia histórica del algoritmo y porque, a diferencia de
-   `demoras_ritmo_movil`, esta función **nunca tuvo `REVOKE`/`GRANT`
-   explícito** en ningún archivo — gap preexistente, documentado y fuera de
-   alcance en `assert-grants-funciones.sql`.
+   referencia histórica del algoritmo. A diferencia de `demoras_ritmo_movil`,
+   este archivo **nunca le puso `REVOKE`/`GRANT` explícito** — gap
+   preexistente que el archivo 14 (ver más abajo) cierra en su propio
+   `CREATE OR REPLACE`, la última vez que se toca el cuerpo de la función.
 7. `docs/sqls/2026-07-31-demoras-cola.sql` — función `demoras_cola`,
    significado **viejo** de `cola_efectiva` (los asignados no cuentan). La
    reemplaza por completo el archivo 15 (self-sufficient, con su propio
@@ -176,7 +178,9 @@ cambios de código, pero con una nota de idempotencia nueva en el 9:**
     `moviles_considerados` (entre otras) que el archivo 18 **ya no vuelve a
     agregar** — las asume puestas. Saltear este archivo deja esas dos
     columnas faltantes y el `INSERT` del archivo 18 fallando en runtime con
-    `column does not exist`.
+    `column does not exist`. `demoras_config_backup_20260731` gana su
+    `REVOKE`/`GRANT` (I2, review final de rama): era la única tabla de la
+    familia `demoras_*` que nacía sin él (`anon` podía `SELECT` y `UPDATE`).
 
 **Tanda `CONSUMO_TRAMOS` (2026-08-01), archivos 12 a 19 — el trabajo de
 esta tanda:**
@@ -197,7 +201,9 @@ esta tanda:**
     piso del ritmo a `demoras_ritmo_muestras`. Necesita el archivo 12 (lee
     `demoras_modelo.ritmo_hueco_min_minutos`) y el archivo 13 (llama a la
     firma de 7 parámetros) ya aplicados — las dos son `LANGUAGE sql`, se
-    validan al crearse.
+    validan al crearse. También le agrega a `demoras_ritmo` su
+    `REVOKE`/`GRANT` (review final de rama), que ningún archivo anterior le
+    había puesto — ver el punto 6 de arriba.
 15. `docs/sqls/2026-08-01-demoras-cola-v2.sql` (**Task 3**) — `demoras_cola`
     pasa a incluir los asignados a un móvil activo **dentro de la misma
     zona** en `cola_efectiva` (antes ese trabajo solo entraba por el tiempo
@@ -219,7 +225,8 @@ esta tanda:**
     `CAPACIDAD_PROMEDIO`. Última migración **funcional** a propósito: da de
     baja `ritmo_aplicado` / `libre_primero` de `demoras_calculadas` (sin
     equivalente en `CONSUMO_TRAMOS`) y agrega `capacidad_inicial` /
-    `capacidad_final` / `tramos` — ver §3.3.
+    `capacidad_final` / `tramos` — ver §3.3. Gana su `REVOKE`/`GRANT` (I3,
+    review final de rama): no lo tenía desde la v2.
 19. `docs/sqls/2026-08-01-demoras-legacy-obsoletas.sql` (**Task 7,
     triage**) — `demoras_servidores` y `demoras_proximo_hueco` se marcan
     **obsoletas** vía `COMMENT ON FUNCTION`: sin consumidor desde el
@@ -309,18 +316,22 @@ pensando "no rompe nada":
   tabla entera), la próxima corrida falla con `column "min_minutos" does
   not exist`.
 - **`2026-07-29-demoras-calculadas-tabla.sql` (archivo 3) re-pegado
-  DESPUÉS del archivo 11 falla, ruidosamente y con rollback completo.** Su
-  `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ritmo_default_minutos ...` es
-  idempotente y resucita esa columna (inofensivo, nadie la lee), pero los
-  `COMMENT ON COLUMN demoras_config.factor_calibracion` /
-  `.ritmo_default_minutos` de más abajo en el mismo archivo apuntan a
-  columnas que el archivo 11 ya dropeó, y `COMMENT ON COLUMN` no tiene
-  forma `IF EXISTS`: `ERROR: column "factor_calibracion" of relation
-  "demoras_config" does not exist`. Si esto pasa, no hace falta ninguna
-  acción de reparación: el `--single-transaction` del harness y el
-  comportamiento por defecto del SQL Editor garantizan que no cambió nada.
-  Simplemente no volver a pegar el archivo 3 una vez aplicado el archivo
-  11.
+  DESPUÉS del archivo 11 — esto YA NO FALLA** (I7, review final de rama:
+  esta guía decía lo contrario hasta esta corrección, y quedó
+  desactualizada desde el fix de idempotencia de la tanda pasada — se
+  contradecía con el párrafo de más arriba, que afirma que el bundle entero
+  se puede repetir sin problema). Su `ALTER TABLE ... ADD
+  COLUMN IF NOT EXISTS ritmo_default_minutos ...` es idempotente y resucita
+  esa columna (inofensivo, nadie la lee). Los `COMMENT ON COLUMN
+  demoras_config.factor_calibracion` / `.ritmo_default_minutos` de más abajo
+  en el mismo archivo apuntaban a columnas que el archivo 11 ya dropeó —
+  antes rompían con `ERROR: column "factor_calibracion" of relation
+  "demoras_config" does not exist`, porque `COMMENT ON COLUMN` no tiene forma
+  `IF EXISTS`. Están envueltos en un `DO ... IF EXISTS (SELECT 1 FROM
+  information_schema.columns ...)` que solo ejecuta el `COMMENT` si la
+  columna todavía existe (ver el archivo fuente). Re-pegar el archivo 3
+  después del 11 hoy es un no-op silencioso sobre esos dos `COMMENT`, no un
+  error — verificado aplicando el bundle entero tres veces seguidas (§12).
 
 ---
 
@@ -465,7 +476,7 @@ ritmo de una manera y `SERVICE` de otra.
 | `ritmo_hueco_min_minutos` | `5` | **Nuevo (`CONSUMO_TRAMOS`).** Corte de huecos por abajo: los intervalos **menores** se descartan como marcación en lote (un chofer que marca cinco entregas juntas en el AS400 queda con un ritmo de segundos y arrastra la mediana de toda su zona). Medido en producción el 2026-07-31: 12 de 194 zonas tenían ritmos menores a 5 minutos, una de 8 segundos. **Tiene que ser menor que `ritmo_hueco_max_minutos`** (`CHECK`) — si se cruzan, el filtro no deja pasar ninguna muestra y todas las zonas caen al piso configurado sin que nadie se entere. |
 | `ritmo_solo_con_cola` | `false` | Contar solo los intervalos en que el móvil ya tenía el próximo pedido asignado al terminar el anterior. |
 | `ritmo_default_minutos` | `30` | Piso cuando no hay ninguna estadística disponible. `ritmo_origen='DEFECTO'`. |
-| `dedicacion_transito` | `0.20` | **Nuevo (`CONSUMO_TRAMOS`).** Fracción del tiempo que un móvil le dedica a **cada** zona donde es de tránsito. **La perilla más sensible del modelo**: con 0,50 en vez de 0,20, el ejemplo canónico de la spec pasa de 117 a ~152 minutos — calibrar con el backtest antes de creerle a ningún número. Va aparte de `escenario_settings.peso_transito_alpha`, que es del modelo `CAPACIDAD_PROMEDIO`. |
+| `dedicacion_transito` | `0.20` | **Nuevo (`CONSUMO_TRAMOS`).** Fracción del tiempo que un móvil le dedica a **cada** zona donde es de tránsito. **La perilla más sensible del modelo**: el ejemplo canónico de la spec usa 0,50 y da 117 minutos; con nuestro default real, 0,20, el mismo ejemplo da ~152 — calibrar con el backtest antes de creerle a ningún número. Va aparte de `escenario_settings.peso_transito_alpha`, que es del modelo `CAPACIDAD_PROMEDIO`. |
 | `transito_dedicacion_max_total` | `0.60` | **Nuevo (`CONSUMO_TRAMOS`).** Cuánto pueden sumar entre todas las zonas de tránsito de un mismo móvil; si se pasan, se achican a prorrata. Es lo que le garantiza un piso a la zona de prioridad: con 0,60, la prioridad nunca baja de 0,40 por más zonas de tránsito que se agreguen. |
 | `traslado_fuera_zona_minutos` | `15` | **Nuevo (`CONSUMO_TRAMOS`).** Minutos que tarda un móvil en volver a la zona después de terminar lo que tenía afuera. Se suma **una sola vez** al tiempo de liberación (`r_j`), no por pedido — es el viaje de regreso. Con 0 se comporta como si ya estuviera absorbido en el ritmo histórico. |
 | `vecinas_modo` | `IGNORAR` | **No implementado todavía**: `TODOS`/`PONDERADO` no cambian nada hoy (ver el `COMMENT ON COLUMN` en la migración). |
@@ -550,7 +561,7 @@ existían desde la tanda `PROXIMO_HUECO` y se conservan porque
 | `capacidad_final` | Capacidad al momento en que se resolvió la demora, con todos los móviles que ya aportaban en ese instante. | Nueva |
 | `tramos` | Cuántos regímenes de capacidad distintos atravesó la simulación para llegar a la respuesta (el inicial más cada liberación de móvil hasta vaciar la cola), incluido el último. | Nueva |
 | `cola_por_delante` | Pedidos pendientes de la zona (`cola_efectiva`) sin contar el pedido nuevo. | Ya existía (la llenaba `demoras_proximo_hueco`; ahora la llena `demoras_consumo_tramos`) |
-| `moviles_considerados` | Cuántos móviles (de `moviles_zonas`, activos o no hoy) tiene asignados la zona para este tipo. | Ya existía, mismo cambio de origen |
+| `moviles_considerados` | Cuántos móviles (de `moviles_zonas`) tiene asignados la zona para este tipo y están **activos hoy** (cuenta sobre `demoras_aportes`, que ya filtra `moviles_dia.activo` — corregido, minor del review final de rama: decía "activos o no hoy" y medía solo los activos). | Ya existía, mismo cambio de origen |
 
 **`ritmo_aplicado` y `libre_primero` se dieron de baja** (eran específicas
 de `PROXIMO_HUECO`: el ritmo del móvil que efectivamente entregaba en esa
@@ -577,13 +588,17 @@ evidente a simple vista qué modelo produjo cada fila, sin cruzar contra
 factor de calibración), y la anon key de Supabase vive en el bundle del
 browser.
 
-Lo mismo aplica a las funciones nuevas: cada una tiene su propio `REVOKE
+Lo mismo aplica a las funciones del motor: cada una tiene su propio `REVOKE
 EXECUTE ... FROM PUBLIC, anon, authenticated` + `GRANT EXECUTE ... TO
-service_role` en su propia migración — **con una excepción conocida y fuera
-de alcance**: `demoras_ritmo(integer, date)` nunca tuvo `REVOKE`/`GRANT`
-explícito en ningún archivo (ni en la tanda `PROXIMO_HUECO` ni en
-`CONSUMO_TRAMOS`); es una condición preexistente a las dos tandas de
-hardening, documentada en `scripts/sql-harness/assert-grants-funciones.sql`.
+service_role` en su propia migración. Hasta el review final de rama había
+cuatro excepciones sin revocar (`demoras_calcular_run`, `demoras_capacidad`,
+`demoras_acabado` y `demoras_ritmo`) — la guía solo mencionaba una
+(`demoras_ritmo`) y la daba por fuera de alcance. Las cuatro se cerraron en
+esa misma tanda de fixes: `demoras_ritmo` en su último `CREATE OR REPLACE`
+(`docs/sqls/2026-08-01-demoras-ritmo-callers-v2.sql`, archivo 14), las otras
+tres en sus propias migraciones (archivos 1, 2 y 18). Hoy no queda ninguna
+función del motor sin su `REVOKE`/`GRANT` explícito — verificado por
+`scripts/sql-harness/assert-grants-funciones.sql`.
 
 Verificación post-apply — las cuatro tienen que dar `f`:
 
@@ -650,6 +665,26 @@ columna (§3), y las dos ramas escriben las mismas columnas de
 otro — ver §3.3). Volver a `CONSUMO_TRAMOS` es el mismo `UPDATE` con el
 valor original. El `UPDATE` queda registrado en `demoras_modelo_historial`
 (bumpea `version`), así que el cambio de modelo también es auditable.
+
+**Ojo: `CAPACIDAD_PROMEDIO` ya no mide exactamente lo mismo que antes de
+`CONSUMO_TRAMOS` (I5, review final de rama).** Su demanda sale de
+`demoras_cola.asignados + demoras_cola.sin_asignar`, y desde
+`2026-08-01-demoras-cola-v2.sql` esos dos conteos **crudos** —no solo
+`cola_efectiva`— también se agrupan por pool: la fila `URGENTE` de
+`asignados`/`sin_asignar` incluye los pedidos `NOCTURNO` de la zona, y
+viceversa (el `JOIN` contra el pool pasa antes del `GROUP BY`). La
+capacidad, en cambio, sigue siendo la de `demoras_capacidad`, que cuenta
+solo los móviles habilitados para el tipo que se calcula — no se pooleó.
+O sea que volver a `CAPACIDAD_PROMEDIO` hoy compara una demanda pooled
+contra una capacidad sin poolear, y el resultado **no** es un replay exacto
+de cómo corría antes de esta tanda: quien vuelva atrás y compare contra
+corridas de antes de `CONSUMO_TRAMOS` va a ver un salto que no viene del
+modelo, viene de este cambio de insumo. Mismo motivo por el que
+`pendientes_asignados`/`pendientes_sin_asignar` en `demoras_calculadas`
+cambiaron de significado para una fila `URGENTE` o `NOCTURNO` (ya no
+cuentan solo ese tipo) — el único marcador de que esto pasó es
+`modelo_version`. Ver el header de `docs/sqls/2026-08-01-demoras-cola-v2.sql`
+y `scripts/sql-harness/assert-cola.sql` bloque 6.
 
 Esto **no** es lo mismo que revertir el `DROP COLUMN` del archivo 11 — para
 eso, ver el backup `demoras_config_backup_20260731` que esa misma migración
