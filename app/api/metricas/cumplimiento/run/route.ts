@@ -1,6 +1,18 @@
 /**
  * POST /api/metricas/cumplimiento/run
  *
+ * ⚠ DEPRECADO COMO PATH DE ESCRITURA (2026-08-03). El cron real llama a la
+ * FUNCIÓN SQL `metricas_cumplimiento_run` desde 2026-07-24, y desde la
+ * tanda de desfasaje (docs/sqls/2026-08-03-desfasaje-demoras.sql) la
+ * función calcula columnas que este path NO conoce: compromiso,
+ * demora_informada_mins, desfasajes y el espejo en pedidos. Un backfill
+ * manual por acá crea hechos DEGRADADOS (esas columnas NULL) y su purga
+ * puede borrar hechos que el path SQL sí considera válidos. Para backfill
+ * manual usar SIEMPRE la función SQL en el SQL Editor:
+ *   SELECT metricas_cumplimiento_run('YYYY-MM-DD', 'YYYY-MM-DD');
+ * Este endpoint queda solo como referencia histórica hasta migrarlo a
+ * delegar en la RPC (pendiente).
+ *
  * Job del cron nocturno (pg_cron 00:15 UY, ver docs/sqls/2026-07-22-metricas-cumplimiento-cron.sql)
  * que puebla la tabla de hechos `metricas_cumplimiento` con la demora
  * asignado→cumplido de cada pedido/service cumplido en el rango.

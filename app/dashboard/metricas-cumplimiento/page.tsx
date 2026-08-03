@@ -29,9 +29,10 @@ import { DetalleTable } from '@/components/metricas/DetalleTable';
 import { ExpandModal } from '@/components/metricas/ExpandModal';
 import { EscenarioComparativa } from '@/components/metricas/EscenarioComparativa';
 import { DemoraComparativa } from '@/components/metricas/DemoraComparativa';
+import { DesfasajeCard } from '@/components/metricas/DesfasajeCard';
 import { INFO_TEXTS, DIMENSION_LABEL, COLOR_TIPO, TIPO_LABEL, formatMin, formatPct } from '@/components/metricas/metricas-theme';
 
-type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | null;
+type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | null;
 
 // ─── Sub-tablas chicas usadas SOLO dentro del ExpandModal (E2: "tabla completa
 // de datos de esa sección" para tendencia/por-tipo, complementando el chart). ──
@@ -560,6 +561,21 @@ function MetricasCumplimientoContent() {
           >
             <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
           </CardShell>
+
+          {/* ── Acierto de la demora ──
+              La réplica de la planilla manual: franjas de desfasaje entre lo
+              proyectado (AS400 / motor) y lo real, por pedido entregado. */}
+          <CardShell
+            title="Acierto de la demora"
+            hint="franjas de 5 min · por pedido entregado"
+            infoTitle={INFO_TEXTS.desfasaje.title}
+            infoText={INFO_TEXTS.desfasaje.text}
+            onExpand={() => setExpandedSection('desfasaje')}
+            className="col-span-12"
+            style={{ animationDelay: '420ms' }}
+          >
+            <DesfasajeCard escenario={escenarioSel} empresaSel={empresaSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
+          </CardShell>
         </div>
 
         <div className="mt-4 text-[0.76rem] text-stats-muted-fg">
@@ -583,7 +599,9 @@ function MetricasCumplimientoContent() {
                   ? 'Comparativa entre escenarios'
                   : expandedSection === 'demora'
                     ? 'Demora calculada vs. informada'
-                    : `Detalle por ${dimLabel.singular}`
+                    : expandedSection === 'desfasaje'
+                      ? 'Acierto de la demora'
+                      : `Detalle por ${dimLabel.singular}`
         }
       >
         {data && expandedSection === 'tendencia' && (
@@ -619,6 +637,16 @@ function MetricasCumplimientoContent() {
         )}
         {expandedSection === 'demora' && (
           <DemoraComparativa escenario={escenarioSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
+        )}
+        {expandedSection === 'desfasaje' && (
+          <DesfasajeCard
+            escenario={escenarioSel}
+            empresaSel={empresaSel}
+            isRoot={unrestricted}
+            empresasIds={empresasIdsForHeader}
+            funcionalidades={funcionalidades}
+            height={380}
+          />
         )}
       </ExpandModal>
     </div>

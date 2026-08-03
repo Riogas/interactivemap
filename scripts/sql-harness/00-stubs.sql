@@ -66,6 +66,9 @@ CREATE TABLE pedidos (
   demora_movil_desde_asignacion_mins NUMERIC,
   estado_nro INTEGER, sub_estado_nro INTEGER, orden_cancelacion TEXT,
   fch_para DATE,
+  -- Snapshot AS400 por pedido (DemoraInformada, default 0 = sin dato en el
+  -- transform del import) — existe en prod desde el CREATE original.
+  demora_informada INTEGER DEFAULT 0,
   PRIMARY KEY (id, escenario)
 );
 CREATE TABLE services (LIKE pedidos INCLUDING ALL);

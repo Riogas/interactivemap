@@ -117,6 +117,10 @@ export const INFO_TEXTS = {
     title: 'Detalle',
     text: 'Detalle completo de la dimensión elegida: cantidad de cumplidos, promedio, mediana, p90 y atraso promedio (con signo). Ordenable por columna (click en el encabezado) y filtrable por nombre. Sirve como alternativa accesible a la codificación por color del ranking.',
   },
+  desfasaje: {
+    title: 'Acierto de la demora',
+    text: 'Por cada pedido URGENTE o NOCTURNO entregado (no agendado) se mide el desfasaje entre la demora proyectada al tomarlo y lo que tardó de verdad: tomado 10:00 con 60 minutos era para las 11:00 — entregado 11:05 o 10:55 son 5 minutos de desfasaje en ambos casos (se mira el valor absoluto). La distribución va en franjas de 5 minutos hasta 90 y después "90+"; el KPI operativo es el % de pedidos con desfasaje ≤ 25. Se calcula contra dos proyecciones: la que informó el AS400 (congelada en el pedido al tomarlo) y la que calculaba el motor de TrackMovil en ese momento (existe desde el 29/07). El modo "Comparar" usa SOLO los pedidos que tienen ambas — misma población, única comparación justa de cuál demora acierta más. p80 = "el 80% de los pedidos cayó en ≤ X min".',
+  },
   demora_comparativa: {
     title: 'Demora calculada vs. informada',
     text: 'Cada 10 minutos TrackMovil calcula, para cada zona activa, cuánto debería demorar un pedido según la demanda pendiente, los móviles realmente activos y el ritmo real de cumplimiento de la última semana. Esa línea se compara contra la que informa el AS400. La nuestra es escalonada porque redondea a 15 minutos; la del AS400 usa escalones de 5. El AS400 solo informa URGENTE: para NOCTURNO y SERVICE se muestra únicamente nuestra línea. Haciendo click en una zona de la tabla se abre el porqué de su última corrida: pedidos por delante, móviles que aportan, cómo creció la capacidad por escalones y qué ritmo se usó. Este número NO se le informa a ningún cliente — es solo para validar el modelo.',
