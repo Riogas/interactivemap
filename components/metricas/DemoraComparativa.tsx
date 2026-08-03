@@ -9,23 +9,25 @@
  * un bug.
  */
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { TIPOS_DEMORA } from '@/types/demoras-comparativa';
-import type { TipoDemora, ComparativaData } from '@/types/demoras-comparativa';
+import type { TipoDemora, ComparativaData, ClampeadoDemora, RitmoOrigen } from '@/types/demoras-comparativa';
 import { formatMin } from './metricas-theme';
-import { sinAlcanceNoRoot, buildComparativaFetch, mensajeSinDatos, MENSAJE_SIN_ALCANCE } from './demora-comparativa-logic';
+import {
+  sinAlcanceNoRoot,
+  buildComparativaFetch,
+  mensajeSinDatos,
+  MENSAJE_SIN_ALCANCE,
+  detalleUltimaCorrida,
+  sufijosPunto,
+  horaMontevideo,
+} from './demora-comparativa-logic';
 
 const COLOR_CALC = 'var(--color-metricas-serie)';
 const COLOR_AS400 = 'var(--color-metricas-nocturno)';
 /** Marca de los puntos sin capacidad (B2): amarillo de alerta del tema stats. */
 const COLOR_SIN_CAP = 'var(--color-stats-warning, #eab308)';
-
-function horaDe(iso: string): string {
-  return new Intl.DateTimeFormat('es-UY', {
-    timeZone: 'America/Montevideo', hour: '2-digit', minute: '2-digit',
-  }).format(new Date(iso));
-}
 
 /** Punto del gráfico: la serie del endpoint más lo que necesita Recharts. */
 interface PuntoGrafico {
@@ -38,6 +40,13 @@ interface PuntoGrafico {
   sin_cap_n: number;
   /** Cuántas zonas hay en ese timestamp (1 cuando hay zona elegida). */
   total_n: number;
+  /**
+   * Solo con zona elegida (punto 1:1 con una corrida): banderas para que el
+   * tooltip diga por qué el punto no es un resultado "limpio" del modelo
+   * (techo/mínimo/sin móviles/ritmo global). En el agregado de todas las
+   * zonas no hay una corrida única que explicar, y no se setean.
+   */
+  flags?: { sin_capacidad: boolean; clampeado: ClampeadoDemora | null; ritmo_origen: RitmoOrigen | null };
 }
 
 /**
@@ -89,6 +98,8 @@ export function DemoraComparativa({
   const [data, setData] = useState<ComparativaData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  /** Zona con el desglose ("porqué") abierto en la tabla de brecha. */
+  const [zonaExpandida, setZonaExpandida] = useState<number | null>(null);
 
   // Fix round 1 (Important): un no-root sin ninguna empresa en su scope NO
   // tiene ninguna zona posible que ver — el fail-closed del endpoint
@@ -136,9 +147,10 @@ export function DemoraComparativa({
         zona_id: p.zona_id,
         calculada: p.calculada,
         as400: p.as400,
-        hora: horaDe(p.corrida_at),
+        hora: horaMontevideo(p.corrida_at),
         sin_cap_n: p.sin_capacidad ? 1 : 0,
         total_n: 1,
+        flags: { sin_capacidad: p.sin_capacidad, clampeado: p.clampeado, ritmo_origen: p.ritmo_origen },
       }));
     }
     const porHora = new Map<string, { c: number[]; a: number[]; sinCap: number; total: number }>();
@@ -165,7 +177,7 @@ export function DemoraComparativa({
         // creíble. Mismo tipo que as400.
         calculada: prom(e.c),
         as400: prom(e.a),
-        hora: horaDe(corrida_at),
+        hora: horaMontevideo(corrida_at),
         sin_cap_n: e.sinCap,
         total_n: e.total,
       }));
@@ -190,7 +202,12 @@ export function DemoraComparativa({
           <span className="text-[0.66rem] font-semibold uppercase tracking-wide text-stats-muted-fg">Tipo</span>
           <select
             value={tipo}
-            onChange={(e) => setTipo(e.target.value as TipoDemora)}
+            onChange={(e) => {
+              setTipo(e.target.value as TipoDemora);
+              // El desglose abierto es de una corrida del tipo anterior;
+              // dejarlo abierto mostraría "el porqué" de otro número.
+              setZonaExpandida(null);
+            }}
             className="rounded-md border border-stats-border bg-stats-surface-2 px-2.5 py-1.5 text-sm text-stats-foreground outline-none focus:border-stats-primary"
           >
             {TIPOS_DEMORA.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -231,8 +248,20 @@ export function DemoraComparativa({
               <YAxis unit="'" tick={{ fontSize: 11 }} stroke="var(--color-stats-muted-fg)" />
               {/* Recharts 3.10 tipa Formatter con `ValueType | undefined` (unknown a
                   efectos prácticos), no `number | null` — mismo ajuste que
-                  components/metricas/TipoBarChart.tsx:80 (LabelList formatter). */}
-              <Tooltip formatter={(v: unknown) => (v == null ? '—' : `${formatMin(v as number)} min`)} />
+                  components/metricas/TipoBarChart.tsx:80 (LabelList formatter).
+                  Con zona elegida, la línea Calculada agrega las marcas del
+                  punto (techo/mínimo/sin móviles/ritmo global): un 120 con
+                  "techo" al lado ya no necesita explicación aparte. */}
+              <Tooltip
+                formatter={(v: unknown, name: unknown, item: unknown) => {
+                  if (v == null) return '—';
+                  const base = `${formatMin(v as number)} min`;
+                  if (name !== 'Calculada') return base;
+                  const p = (item as { payload?: PuntoGrafico } | undefined)?.payload;
+                  const suf = p?.flags ? sufijosPunto(p.flags) : [];
+                  return suf.length > 0 ? `${base} · ${suf.join(' · ')}` : base;
+                }}
+              />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {/* dot condicional: solo se pinta en los puntos sin capacidad (B2). */}
               <Line
@@ -285,25 +314,79 @@ export function DemoraComparativa({
               </tr>
             </thead>
             <tbody>
-              {(data?.zonas ?? []).slice(0, 12).map((z) => (
-                <tr key={z.zona_id} className="hover:bg-stats-surface-2">
-                  <td className="border-b border-stats-border px-2.5 py-1.5 text-stats-foreground">{z.zona_nombre}</td>
-                  <td className="border-b border-stats-border px-2.5 py-1.5 text-right font-stats-mono tabular-nums text-stats-foreground">{formatMin(z.prom_calculada)}</td>
-                  <td className="border-b border-stats-border px-2.5 py-1.5 text-right font-stats-mono tabular-nums text-stats-foreground">{formatMin(z.prom_as400)}</td>
-                  <td className="border-b border-stats-border px-2.5 py-1.5 text-right font-stats-mono tabular-nums text-stats-foreground">{formatMin(z.brecha)}</td>
-                  {/* B2: cuántas corridas de esa zona quedaron fuera del promedio.
-                      Una zona con "12 / 99" es una zona cuyo promedio se apoya en
-                      poca evidencia — sin esta columna, el número parecía firme. */}
-                  <td
-                    className="border-b border-stats-border px-2.5 py-1.5 text-right font-stats-mono tabular-nums text-stats-muted-fg"
-                    style={z.excluidas_sin_capacidad > 0 ? { color: COLOR_SIN_CAP } : undefined}
-                  >
-                    {z.excluidas_sin_capacidad > 0
-                      ? `${z.excluidas_sin_capacidad} / ${z.excluidas_sin_capacidad + z.muestras}`
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
+              {(data?.zonas ?? []).slice(0, 12).map((z) => {
+                const abierta = zonaExpandida === z.zona_id;
+                const detalle = abierta ? detalleUltimaCorrida(z.ultima) : null;
+                return (
+                  <Fragment key={z.zona_id}>
+                    <tr
+                      className="cursor-pointer hover:bg-stats-surface-2"
+                      onClick={() => setZonaExpandida(abierta ? null : z.zona_id)}
+                    >
+                      <td className="border-b border-stats-border px-2.5 py-1.5 text-stats-foreground">
+                        <button
+                          type="button"
+                          aria-expanded={abierta}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setZonaExpandida(abierta ? null : z.zona_id);
+                          }}
+                          className="flex w-full items-center gap-1.5 text-left"
+                        >
+                          <svg
+                            viewBox="0 0 16 16"
+                            aria-hidden
+                            className={`h-3 w-3 shrink-0 text-stats-muted-fg transition-transform ${abierta ? 'rotate-90' : ''}`}
+                          >
+                            <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span>{z.zona_nombre}</span>
+                        </button>
+                      </td>
+                      <td className="border-b border-stats-border px-2.5 py-1.5 text-right font-stats-mono tabular-nums text-stats-foreground">{formatMin(z.prom_calculada)}</td>
+                      <td className="border-b border-stats-border px-2.5 py-1.5 text-right font-stats-mono tabular-nums text-stats-foreground">{formatMin(z.prom_as400)}</td>
+                      <td className="border-b border-stats-border px-2.5 py-1.5 text-right font-stats-mono tabular-nums text-stats-foreground">{formatMin(z.brecha)}</td>
+                      {/* B2: cuántas corridas de esa zona quedaron fuera del promedio.
+                          Una zona con "12 / 99" es una zona cuyo promedio se apoya en
+                          poca evidencia — sin esta columna, el número parecía firme. */}
+                      <td
+                        className="border-b border-stats-border px-2.5 py-1.5 text-right font-stats-mono tabular-nums text-stats-muted-fg"
+                        style={z.excluidas_sin_capacidad > 0 ? { color: COLOR_SIN_CAP } : undefined}
+                      >
+                        {z.excluidas_sin_capacidad > 0
+                          ? `${z.excluidas_sin_capacidad} / ${z.excluidas_sin_capacidad + z.muestras}`
+                          : '—'}
+                      </td>
+                    </tr>
+                    {detalle && (
+                      <tr>
+                        <td colSpan={5} className="border-b border-stats-border bg-stats-surface-2 px-4 py-3">
+                          <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-stats-muted-fg">
+                            {detalle.titulo}
+                          </p>
+                          <dl className="mt-2 flex flex-col gap-1">
+                            {detalle.items.map((it) => (
+                              <div key={it.label} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                                <dt className="w-40 shrink-0 text-[0.75rem] text-stats-muted-fg">{it.label}</dt>
+                                <dd className="font-stats-mono text-[0.8rem] tabular-nums text-stats-foreground">{it.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                          {detalle.notas.map((n) => (
+                            <p
+                              key={n}
+                              className="mt-2 border-l-2 pl-2.5 text-[0.78rem] leading-snug text-stats-muted-fg"
+                              style={{ borderColor: COLOR_SIN_CAP }}
+                            >
+                              {n}
+                            </p>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
