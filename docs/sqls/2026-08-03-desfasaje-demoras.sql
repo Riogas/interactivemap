@@ -1,17 +1,24 @@
 -- =====================================================================
 -- ACIERTO DE LA DEMORA — desfasaje proyectado vs. real, por pedido
--- Fecha: 2026-08-03 | Idempotente | Aplicar en: Supabase SQL Editor.
--- Aplicar DESPUÉS de 2026-07-28b-metricas-compromiso-real.sql (métricas)
--- y de 2026-08-01-MOTOR-DEMORA-TRAMOS-TODO.sql (motor) — ambos ya en prod.
+-- Fecha: 2026-08-03 | Idempotente
 --
--- ⚠ APLICAR FUERA DEL HORARIO OPERATIVO (después de 23:30 o antes de
--- 07:00). El backfill espeja desfasajes en cientos de miles de filas de
--- `pedidos`, y `pedidos` está en la publicación realtime CON triggers:
--- al COMMIT, los clientes conectados reciben el burst de UPDATEs (el
--- filtro por escenario NO descarta pedidos históricos) y los pedidos con
--- fch_para = hoy/ayer disparan el recompute de moviles_dia. De noche el
--- burst es inocuo; a las 10:00 de un día hábil, no. También se pisa
--- `updated_at` de los pedidos espejados (el trigger corre igual).
+-- ✅ ESTADO REAL EN PROD (2026-08-03): los pasos 1-4 (DDL + run v4 + RPC)
+-- y el backfill de hechos 5a-5d YA ESTÁN APLICADOS — ejecutados vía
+-- pg-meta (/pg/query con la service key) porque el SQL Editor de Studio
+-- se quedaba sin timeout con el archivo entero (rollback limpio,
+-- verificado). Los pasos pesados 5e/5f NO se corren de este archivo:
+-- los ejecuta el job nocturno auto-desprogramable de
+-- 2026-08-03-desfasaje-backfill-nocturno.sql (chunks de a 1 minuto,
+-- 01:00-05:59 UY). Este archivo queda como referencia completa y para
+-- re-aplicar 1-4/5a-5d si hiciera falta (idempotente).
+--
+-- ⚠ Si igual se corre entero a mano: FUERA DEL HORARIO OPERATIVO. El
+-- backfill espeja desfasajes en cientos de miles de filas de `pedidos`,
+-- que está en la publicación realtime CON triggers: al COMMIT los
+-- clientes conectados reciben el burst de UPDATEs (el filtro por
+-- escenario NO descarta pedidos históricos) y los pedidos con fch_para =
+-- hoy/ayer disparan el recompute de moviles_dia. También se pisa
+-- `updated_at` de los pedidos espejados.
 --
 -- QUÉ MIDE
 -- --------
