@@ -18,8 +18,15 @@ const FILAS = [
   { corrida_at: '2026-07-29T10:00:00-03:00', zona_id: 200, tipo_servicio: 'URGENTE', demora_informada: 30, demora_as400: null, sin_capacidad: false, clampeado: 'MIN', ritmo_origen: 'GLOBAL' },
 ];
 
-/** Config sembrada: el escenario 1000 es el único que el motor calcula. */
+/** Config sembrada: el escenario 1000 tiene fila operativa por tipo. */
 const CONFIG_1000 = [{ tipo_servicio: 'URGENTE' }, { tipo_servicio: 'NOCTURNO' }, { tipo_servicio: 'SERVICE' }];
+
+/**
+ * `demoras_modelo`: el gate REAL de si el motor calcula un escenario (I6,
+ * review final de rama) — `demoras_calcular_run` recorre `FOR m IN SELECT *
+ * FROM demoras_modelo ...`, no `demoras_config`. Una fila por escenario.
+ */
+const MODELO_1000 = [{ escenario_id: 1000 }];
 
 /**
  * Mock del cliente Supabase, por tabla. `.in('zona_id', ids)` FILTRA de
@@ -42,11 +49,18 @@ function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
   const fixtures: Record<string, unknown[]> = {
     demoras_calculadas: FILAS,
     demoras_config: CONFIG_1000,
+    demoras_modelo: MODELO_1000,
     fleteras_zonas: [],
     zonas: [],
     demoras: [],
     ...tables,
   };
+  // Qué columnas pidió cada `.select()`, por tabla. Existe porque el mock
+  // devuelve las filas ENTERAS del fixture ignorando el select: un FILA_COLS
+  // al que le falte una columna de auditoría pasaría todos los tests de
+  // mapeo igual (el fixture trae la key, producción no) — un test que no
+  // puede fallar. Con esto, el test de columnas inspecciona el string real.
+  const selects: Record<string, string[]> = {};
   const from = vi.fn((table: string) => {
     let rows = fixtures[table] ?? [];
     let ranged = false;
@@ -54,6 +68,10 @@ function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
     for (const m of ['select', 'eq', 'gte', 'lt', 'lte', 'order']) {
       q[m] = vi.fn(() => q);
     }
+    q.select = vi.fn((cols: string) => {
+      (selects[table] ??= []).push(cols);
+      return q;
+    });
     q.in = vi.fn((col: string, vals: unknown[]) => {
       if (col === 'zona_id') {
         const set = new Set(vals.map((v) => Number(v)));
@@ -71,7 +89,7 @@ function makeDb(tables: Partial<Record<string, unknown[]>> = {}) {
       res({ data: ranged ? rows : rows.slice(0, SUPABASE_MAX_ROWS), error: null });
     return q;
   });
-  return { from };
+  return { from, selects };
 }
 
 /** Headers root por default: preserva el comportamiento de los tests que no
@@ -490,24 +508,118 @@ describe('GET /api/demoras/comparativa', () => {
     });
   });
 
-  // ─── B3 — el motor solo esta configurado para el escenario 1000 ──────────
-  // demoras_calcular_run tiene `v_esc integer := 1000` hardcodeado y el seed
-  // de demoras_config es solo de ese escenario, pero la pantalla tiene
-  // selector: con cualquier otro la card queda vacia PARA SIEMPRE.
+  // ─── Desglose por zona: zonas[].ultima ───────────────────────────────────
+  // La card expande cada zona de la tabla de brecha con "el porqué" de su
+  // última corrida (modelo CONSUMO_TRAMOS): cruda, capacidad inicial→final,
+  // tramos, cola, móviles, ritmo con origen y muestras, banderas.
+
+  describe('zonas[].ultima (desglose de la última corrida)', () => {
+    /** Dos corridas con auditoría completa y valores DISTINTOS en todo: si el
+     * endpoint devolviera la primera en vez de la última, todos los asserts
+     * de mapeo fallan. */
+    const CON_AUDITORIA = [
+      { corrida_at: '2026-08-03T10:00:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 45, demora_as400: 35, sin_capacidad: false, clampeado: null, ritmo_origen: 'ZONA', demora_cruda: 44.1, capacidad_inicial: 0.02, capacidad_final: 0.02, tramos: 1, cola_por_delante: 1, moviles_considerados: 2, ritmo_usado: 18.2, ritmo_muestras: 60, suavizado_aplicado: false },
+      // Valores TODOS distintos entre sí (tramos 3 vs moviles 5, etc.): un
+      // mutante que intercambie el mapeo de dos campos en toUltima no puede
+      // pasar el toEqual de abajo.
+      { corrida_at: '2026-08-03T10:10:00-03:00', zona_id: 100, tipo_servicio: 'URGENTE', demora_informada: 60, demora_as400: 40, sin_capacidad: false, clampeado: 'MAX', ritmo_origen: 'CHOFER', demora_cruda: 55.3, capacidad_inicial: 0.01, capacidad_final: 0.03, tramos: 3, cola_por_delante: 4, moviles_considerados: 5, ritmo_usado: 15.3, ritmo_muestras: 214, suavizado_aplicado: true },
+    ];
+
+    it('ultima es la ÚLTIMA corrida del día, con toda la auditoría mapeada', async () => {
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: CON_AUDITORIA }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+      expect(z100.ultima).toEqual({
+        corrida_at: '2026-08-03T10:10:00-03:00',
+        demora_informada: 60,
+        demora_cruda: 55.3,
+        as400: 40,
+        capacidad_inicial: 0.01,
+        capacidad_final: 0.03,
+        tramos: 3,
+        cola_por_delante: 4,
+        moviles_considerados: 5,
+        ritmo_usado: 15.3,
+        ritmo_origen: 'CHOFER',
+        ritmo_muestras: 214,
+        sin_capacidad: false,
+        clampeado: 'MAX',
+        suavizado_aplicado: true,
+      });
+    });
+
+    it('corridas del modelo viejo (sin columnas de auditoría) -> null explícitos, no undefined ni ceros', async () => {
+      // FILAS (fixture base) no trae ninguna columna nueva: simula filas
+      // escritas antes de la migración TRAMOS.
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+      expect(z100.ultima.corrida_at).toBe('2026-07-29T10:10:00-03:00');
+      // Claves PRESENTES con null (JSON omite undefined: 'in' distingue).
+      for (const k of ['demora_cruda', 'capacidad_inicial', 'capacidad_final', 'tramos', 'cola_por_delante', 'moviles_considerados', 'ritmo_usado', 'ritmo_muestras']) {
+        expect(k in z100.ultima).toBe(true);
+        expect(z100.ultima[k]).toBeNull();
+      }
+      expect(z100.ultima.suavizado_aplicado).toBe(false);
+    });
+
+    it('una zona con TODAS las corridas sin capacidad igual trae su ultima (el desglose explica el techo)', async () => {
+      const filas = [
+        { corrida_at: '2026-08-03T07:00:00-03:00', zona_id: 300, tipo_servicio: 'URGENTE', demora_informada: 120, demora_as400: 35, sin_capacidad: true, clampeado: 'MAX', ritmo_origen: 'DEFECTO' },
+      ];
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: filas }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z300 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 300);
+      expect(z300.prom_calculada).toBeNull();
+      expect(z300.ultima.sin_capacidad).toBe(true);
+      expect(z300.ultima.demora_informada).toBe(120);
+    });
+
+    it('el select a demoras_calculadas pide las columnas de auditoría (guarda de FILA_COLS)', async () => {
+      const db = makeDb();
+      mockDb.mockReturnValue(db as never);
+      await GET(req('escenario=1000&tipo=URGENTE'));
+      const cols = db.selects.demoras_calculadas?.[0] ?? '';
+      for (const c of ['demora_cruda', 'capacidad_inicial', 'capacidad_final', 'tramos', 'cola_por_delante', 'moviles_considerados', 'ritmo_usado', 'ritmo_muestras', 'suavizado_aplicado']) {
+        expect(cols).toContain(c);
+      }
+    });
+  });
+
+  // ─── B3 — el motor solo calcula escenarios con fila en demoras_modelo ────
+  // I6 (review final de rama): el gate REAL paso a ser demoras_modelo desde
+  // que el orquestador (v3) recorre TODOS los escenarios con fila ahi. El
+  // endpoint miraba demoras_config, que es el gate VIEJO (de la epoca del
+  // escenario 1000 clavado) -- con cualquier escenario que tuviera
+  // demoras_config pero NO demoras_modelo, la card quedaba vacia PARA
+  // SIEMPRE diciendo "todavia no hay corridas", que es exactamente el
+  // mensaje falso que este flag existe para evitar.
 
   describe('escenario_configurado', () => {
-    it('true cuando el escenario tiene filas en demoras_config', async () => {
+    it('true cuando el escenario tiene fila en demoras_modelo', async () => {
       const res = await GET(req('escenario=1000&tipo=URGENTE'));
       const body = await res.json();
       expect(body.data.escenario_configurado).toBe(true);
     });
 
-    it('false cuando el escenario no tiene NINGUNA fila en demoras_config', async () => {
-      mockDb.mockReturnValue(makeDb({ demoras_calculadas: [], demoras_config: [] }) as never);
+    it('false cuando el escenario no tiene NINGUNA fila en demoras_modelo', async () => {
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: [], demoras_modelo: [] }) as never);
       const res = await GET(req('escenario=2000&tipo=URGENTE'));
       const body = await res.json();
       expect(res.status).toBe(200);
       expect(body.data.serie).toEqual([]);
+      expect(body.data.escenario_configurado).toBe(false);
+    });
+
+    it('false cuando el escenario tiene demoras_config pero NO demoras_modelo (I6 -- el motor nunca lo va a calcular)', async () => {
+      mockDb.mockReturnValue(
+        makeDb({ demoras_calculadas: [], demoras_config: CONFIG_1000, demoras_modelo: [] }) as never,
+      );
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      expect(res.status).toBe(200);
       expect(body.data.escenario_configurado).toBe(false);
     });
   });

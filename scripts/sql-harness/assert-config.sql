@@ -14,6 +14,20 @@
 --
 -- Autocontenido: no depende de que corra antes o despues de los otros
 -- asserts, y restaura las ventanas del seed al terminar.
+--
+-- Revisado para Task 7 (docs/sqls/2026-07-31-demoras-calcular-run-v2.sql):
+-- esa migracion da de baja de demoras_config las columnas de CALCULO
+-- (min_minutos, max_minutos, escalon_minutos, subida_max, bajada_max,
+-- estadistico, ritmo_default_minutos, factor_calibracion -- ver el
+-- comentario junto al ALTER TABLE de esa migracion sobre por que
+-- ritmo_cascada NO se incluye en esa lista, a diferencia de las otras
+-- ocho). Este archivo no afirma nada sobre esas columnas (nunca lo hizo:
+-- solo cubre B4 y B6, mas abajo) y sigue pasando sin cambios contra el
+-- esquema posterior a esa migracion -- verificado con el harness. Lo que
+-- prueba (el CHECK de ventana horaria y los grants de service_role) sigue
+-- vigente: demoras_config conserva motor_activo, hora_inicio, hora_fin y
+-- ritmo_cascada. La baja de las OTRAS columnas se prueba en
+-- scripts/sql-harness/assert-run-v2.sql.
 -- =====================================================================
 
 -- ─── B4: la ventana no puede cruzar la medianoche ─────────────────────

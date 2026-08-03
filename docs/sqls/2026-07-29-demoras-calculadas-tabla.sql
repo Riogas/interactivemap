@@ -143,10 +143,35 @@ COMMENT ON TABLE demoras_config IS
   'Configuracion del motor de demora por (escenario, tipo de servicio). Editable desde Preferencias Globales. Si falta la fila de un tipo, ese tipo no se calcula.';
 COMMENT ON COLUMN demoras_config.ritmo_cascada IS
   'Orden de la cascada de atribucion del ritmo, CSV. Se recorre de izquierda a derecha y gana el primer nivel que llegue al minimo de muestras. Niveles validos: CHOFER, MOVIL, ZONA, GLOBAL. GLOBAL se evalua siempre ultimo aunque no figure: es la red final.';
-COMMENT ON COLUMN demoras_config.factor_calibracion IS
-  'Multiplicador global del resultado crudo. Existe por el riesgo R1: demora_efectiva_mins ya incluye la espera en cola, asi que multiplicarla por los pendientes puede doble-contar. Permite corregir el nivel sin tocar codigo.';
-COMMENT ON COLUMN demoras_config.ritmo_default_minutos IS
-  'Piso del ritmo cuando no hay ninguna estadistica disponible (ni zona ni global): antes era un 30 hardcodeado en el orquestador que no quedaba registrado en la fila calculada. Ahora es un parametro del modelo, editable desde Preferencias Globales, y el valor efectivamente usado se persiste en demoras_calculadas.ritmo_usado (auditable).';
+
+-- Los dos COMMENT de abajo son CONDICIONALES a proposito.
+--
+-- 2026-07-31-demoras-calcular-run-v2.sql da de baja factor_calibracion y
+-- ritmo_default_minutos de demoras_config (se mudaron a demoras_modelo). Como
+-- COMMENT ON COLUMN no tiene forma IF EXISTS, dejarlos sueltos rompia la
+-- idempotencia de este archivo: re-pegarlo DESPUES de esa migracion abortaba
+-- con `column "factor_calibracion" of relation "demoras_config" does not
+-- exist` y hacia rollback de todo.
+--
+-- No es un detalle teorico: la instruccion de recuperacion de
+-- 2026-07-31-MOTOR-DEMORA-TODO.sql es justamente "volve a pegar el archivo
+-- entero", y este archivo va adentro. O sea que el camino de recuperacion no
+-- funcionaba. Con la guarda, re-aplicar es inocuo en cualquier orden.
+DO $comentarios$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'demoras_config' AND column_name = 'factor_calibracion') THEN
+    EXECUTE $q$COMMENT ON COLUMN demoras_config.factor_calibracion IS
+      'Multiplicador global del resultado crudo. Existe por el riesgo R1: demora_efectiva_mins ya incluye la espera en cola, asi que multiplicarla por los pendientes puede doble-contar. Permite corregir el nivel sin tocar codigo.'$q$;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'demoras_config' AND column_name = 'ritmo_default_minutos') THEN
+    EXECUTE $q$COMMENT ON COLUMN demoras_config.ritmo_default_minutos IS
+      'Piso del ritmo cuando no hay ninguna estadistica disponible (ni zona ni global): antes era un 30 hardcodeado en el orquestador que no quedaba registrado en la fila calculada. Ahora es un parametro del modelo, editable desde Preferencias Globales, y el valor efectivamente usado se persiste en demoras_calculadas.ritmo_usado (auditable).'$q$;
+  END IF;
+END
+$comentarios$;
 
 -- Seed: los tres tipos del escenario 1000 con los defaults.
 -- NOCTURNO arranca con su propia ventana horaria, que es el caso que motivo

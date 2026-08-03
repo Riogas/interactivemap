@@ -36,12 +36,17 @@
  * y se EXCLUYEN esas filas del promedio de brecha, informando cuántas se
  * excluyeron. La serie las conserva (la card las marca en el gráfico).
  *
- * `escenario_configurado` (B3): el motor solo calcula el escenario 1000
- * (`v_esc integer := 1000` hardcodeado en demoras_calcular_run, y el seed de
- * `demoras_config` es solo de ese escenario), pero la pantalla tiene selector
- * de escenario. Este flag deja que la card diga "el motor no está configurado
- * para este escenario" en vez de "todavía no hay corridas para hoy", que es
- * una explicación falsa de una condición permanente.
+ * `escenario_configurado` (B3, corregido en el review final de rama — I6):
+ * el gate real es `demoras_modelo`, no `demoras_config`. Desde la tanda
+ * CONSUMO_TRAMOS, `demoras_calcular_run` recorre `FOR m IN SELECT * FROM
+ * demoras_modelo ...` — un escenario se calcula si y solo si tiene fila ahí,
+ * tenga o no fila en `demoras_config` (sin esa, simplemente no escribe nada
+ * para ningún tipo, igual que hoy con un tipo sin fila). Mirar
+ * `demoras_config` colaba un falso positivo: un escenario con
+ * `demoras_config` pero SIN `demoras_modelo` entra al loop del orquestador y
+ * nunca se calcula, y la card decía "todavía no hay corridas para hoy" para
+ * siempre — exactamente la explicación falsa que este flag existe para
+ * evitar.
  *
  * Auth-scope (fix round 1 — gap Critical del review: el endpoint no acotaba
  * por empresa y getServerSupabaseClient() usa service_role, bypass total de
@@ -78,6 +83,7 @@ import type {
   ComparativaData,
   PuntoComparativa,
   ZonaBrecha,
+  UltimaCorridaZona,
   ClampeadoDemora,
   RitmoOrigen,
 } from '@/types/demoras-comparativa';
@@ -98,9 +104,20 @@ const PAGE_SIZE = 1000;
  */
 const MAX_PAGES = 30;
 
-/** Columnas leídas de `demoras_calculadas` (una sola fuente de verdad). */
+/**
+ * Columnas leídas de `demoras_calculadas` (una sola fuente de verdad).
+ *
+ * Desglose por zona: las columnas de auditoría del modelo CONSUMO_TRAMOS
+ * (demora_cruda, capacidad_inicial/final, tramos, cola_por_delante,
+ * moviles_considerados, ritmo_usado/muestras, suavizado_aplicado) se leen
+ * para armar `zonas[].ultima` — la radiografía de la última corrida del día.
+ * NO viajan en `serie` (≈10.500 puntos/día): al browser solo van una vez por
+ * zona.
+ */
 const FILA_COLS =
-  'corrida_at, zona_id, tipo_servicio, demora_informada, demora_as400, sin_capacidad, clampeado, ritmo_origen';
+  'corrida_at, zona_id, tipo_servicio, demora_informada, demora_as400, sin_capacidad, clampeado, ritmo_origen, ' +
+  'demora_cruda, capacidad_inicial, capacidad_final, tramos, cola_por_delante, moviles_considerados, ' +
+  'ritmo_usado, ritmo_muestras, suavizado_aplicado';
 
 interface Fila {
   corrida_at: string;
@@ -111,6 +128,41 @@ interface Fila {
   sin_capacidad: boolean | null;
   clampeado: ClampeadoDemora | null;
   ritmo_origen: RitmoOrigen | null;
+  demora_cruda: number | null;
+  capacidad_inicial: number | null;
+  capacidad_final: number | null;
+  tramos: number | null;
+  cola_por_delante: number | null;
+  moviles_considerados: number | null;
+  ritmo_usado: number | null;
+  ritmo_muestras: number | null;
+  suavizado_aplicado: boolean | null;
+}
+
+/**
+ * Fila → UltimaCorridaZona. Los `?? null` no son decorativos: las corridas
+ * anteriores a la migración TRAMOS no tienen las columnas de auditoría y el
+ * payload debe decir null explícito (la card omite el dato), nunca undefined
+ * ni un 0 inventado.
+ */
+function toUltima(f: Fila): UltimaCorridaZona {
+  return {
+    corrida_at: f.corrida_at,
+    demora_informada: f.demora_informada,
+    demora_cruda: f.demora_cruda ?? null,
+    as400: f.demora_as400 ?? null,
+    capacidad_inicial: f.capacidad_inicial ?? null,
+    capacidad_final: f.capacidad_final ?? null,
+    tramos: f.tramos ?? null,
+    cola_por_delante: f.cola_por_delante ?? null,
+    moviles_considerados: f.moviles_considerados ?? null,
+    ritmo_usado: f.ritmo_usado ?? null,
+    ritmo_origen: f.ritmo_origen ?? null,
+    ritmo_muestras: f.ritmo_muestras ?? null,
+    sin_capacidad: f.sin_capacidad === true,
+    clampeado: f.clampeado ?? null,
+    suavizado_aplicado: f.suavizado_aplicado === true,
+  };
 }
 
 interface ZonaNombreRow {
@@ -165,27 +217,32 @@ function prom(xs: number[]): number {
 /**
  * B3 — ¿el motor está configurado para este escenario?
  *
- * `demoras_calcular_run` tiene el escenario 1000 hardcodeado y el seed de
- * `demoras_config` solo siembra ese escenario, pero la pantalla tiene
- * selector de escenario. Con cualquier otro la card queda vacía PARA SIEMPRE:
- * sin este flag, la UI explicaba esa condición permanente con "todavía no hay
- * corridas del motor para hoy" — una explicación falsa que invita a esperar.
+ * I6 (review final de rama): el gate real es `demoras_modelo`, no
+ * `demoras_config`. `demoras_calcular_run` (v3) recorre `FOR m IN SELECT *
+ * FROM demoras_modelo ORDER BY escenario_id LOOP` — sin fila ahí, el
+ * escenario ni siquiera entra al loop del orquestador, tenga o no
+ * `demoras_config`. Mirar `demoras_config` (como hacía esta función antes)
+ * daba un falso positivo justo en ese caso: `escenario_configurado: true`
+ * para un escenario que el motor NUNCA va a calcular, y la card explicaba
+ * eso con "todavía no hay corridas del motor para hoy" — una condición
+ * permanente disfrazada de "todavía no", que es exactamente lo que este
+ * flag existe para evitar.
  *
- * Un error leyendo `demoras_config` (el caso más probable: la migración
+ * Un error leyendo `demoras_modelo` (el caso más probable: la migración
  * todavía no se aplicó y la tabla no existe) se trata como "no configurado",
  * que a los efectos del usuario es exactamente lo mismo.
  */
 async function escenarioEstaConfigurado(db: SupabaseCompat, escenario: number): Promise<boolean> {
   const { data, error } = (await db
-    .from('demoras_config')
-    .select('tipo_servicio')
+    .from('demoras_modelo')
+    .select('escenario_id')
     .eq('escenario_id', escenario)) as {
-    data: { tipo_servicio: string }[] | null;
+    data: { escenario_id: number }[] | null;
     error: { message: string } | null;
   };
 
   if (error) {
-    console.error('[demoras/comparativa] error al leer demoras_config:', error.message);
+    console.error('[demoras/comparativa] error al leer demoras_modelo:', error.message);
     return false;
   }
   return (data ?? []).length > 0;
@@ -436,6 +493,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // lo que descalibra la comparación contra el AS400 — y a las 07:00, con el
   // 72% de la flota inactiva, son la mayoría del tramo.
   const porZona = new Map<number, { calc: number[]; as400: number[]; excluidas: number }>();
+  // Desglose: la última corrida del día por zona. `filas` viene ordenada
+  // ascendente por corrida_at (el .order() de fetchFilas, estable a través de
+  // las páginas), así que sobrescribir en cada vuelta deja la más nueva.
+  const ultimaPorZona = new Map<number, Fila>();
   for (const f of filas) {
     const e = porZona.get(f.zona_id) ?? { calc: [], as400: [], excluidas: 0 };
     if (f.sin_capacidad === true) {
@@ -447,6 +508,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (f.demora_as400 !== null) e.as400.push(f.demora_as400);
     }
     porZona.set(f.zona_id, e);
+    // Comparación explícita y no solo "el último iterado gana": si un INSERT
+    // del cron cae entre dos páginas del fetch y desplaza el offset, el orden
+    // global puede tener un pliegue — los ISO con mismo offset comparan bien
+    // como strings.
+    const prev = ultimaPorZona.get(f.zona_id);
+    if (prev === undefined || f.corrida_at >= prev.corrida_at) ultimaPorZona.set(f.zona_id, f);
   }
 
   const zonas: ZonaBrecha[] = [...porZona.entries()]
@@ -461,6 +528,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         brecha: pc === null || pa === null ? null : Math.round((pc - pa) * 100) / 100,
         muestras: e.calc.length,
         excluidas_sin_capacidad: e.excluidas,
+        // porZona y ultimaPorZona se pueblan del mismo loop sobre las mismas
+        // filas: toda zona de este map tiene su última corrida ahí.
+        ultima: toUltima(ultimaPorZona.get(zona_id) as Fila),
       };
     })
     .sort(compararBrechaDesc);

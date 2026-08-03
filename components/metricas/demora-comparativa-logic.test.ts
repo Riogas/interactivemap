@@ -25,7 +25,11 @@ import {
   MENSAJE_SIN_ALCANCE,
   MENSAJE_SIN_CORRIDAS,
   MENSAJE_ESCENARIO_NO_CONFIGURADO,
+  capacidadHumana,
+  sufijosPunto,
+  detalleUltimaCorrida,
 } from './demora-comparativa-logic';
+import type { UltimaCorridaZona } from '@/types/demoras-comparativa';
 
 /** Nombre EXACTO que exige requireFuncionalidad en app/api/demoras/comparativa/route.ts. */
 const FUNC = 'Estadisticas Cumplimiento';
@@ -192,5 +196,234 @@ describe('buildComparativaFetch()', () => {
       if (intent.skip) throw new Error('unreachable');
       expect(intent.headers['x-track-funcs']).toBe('');
     });
+  });
+});
+
+// ─── Desglose por zona: la última corrida traducida a lenguaje llano ────────
+// Los fixtures son corridas REALES del escenario 1000 (2026-08-03 09:40,
+// primer día completo del modelo CONSUMO_TRAMOS): si un caso parece raro,
+// probablemente sea porque pasó de verdad.
+
+/** Corrida "limpia": zona 3 SERVICE — 2 escalones, ritmo del chofer. */
+function corridaBase(overrides: Partial<UltimaCorridaZona> = {}): UltimaCorridaZona {
+  return {
+    corrida_at: '2026-08-03T09:40:00-03:00',
+    demora_informada: 90,
+    demora_cruda: 86.05,
+    as400: null,
+    capacidad_inicial: 0.011502,
+    capacidad_final: 0.011916,
+    tramos: 2,
+    cola_por_delante: 0,
+    moviles_considerados: 4,
+    ritmo_usado: 15.3,
+    ritmo_origen: 'CHOFER',
+    ritmo_muestras: 214,
+    sin_capacidad: false,
+    clampeado: null,
+    suavizado_aplicado: false,
+    ...overrides,
+  };
+}
+
+describe('capacidadHumana()', () => {
+  it('invierte pedidos/min a "1 pedido cada ~N min" (0,0166 no le dice nada a nadie; 60 sí)', () => {
+    // 1/0.016851 = 59.3 -> 59 (zona 5 SERVICE real)
+    expect(capacidadHumana(0.016851)).toBe('1 pedido cada ~59 min');
+    // 1/0.011916 = 83.9 -> 84
+    expect(capacidadHumana(0.011916)).toBe('1 pedido cada ~84 min');
+  });
+
+  it('capacidad 0 (o negativa) = nadie disponible, no una división por cero', () => {
+    expect(capacidadHumana(0)).toBe('nadie disponible');
+    expect(capacidadHumana(-0.01)).toBe('nadie disponible');
+  });
+
+  it('null -> em dash (corridas sin auditoría)', () => {
+    expect(capacidadHumana(null)).toBe('—');
+  });
+
+  it('capacidad altísima no produce "1 pedido cada ~1 min" redundante', () => {
+    expect(capacidadHumana(0.8)).toBe('más de 1 pedido por minuto');
+  });
+
+  it('capacidad ínfima usa separador de miles (zona 8 real: 0,000414 -> ~2.415 min)', () => {
+    expect(capacidadHumana(0.000414)).toBe('1 pedido cada ~2.415 min');
+  });
+});
+
+describe('sufijosPunto()', () => {
+  it('punto limpio -> sin marcas', () => {
+    expect(sufijosPunto({ sin_capacidad: false, clampeado: null, ritmo_origen: 'CHOFER' })).toEqual([]);
+  });
+
+  it('techo y mínimo se dicen', () => {
+    expect(sufijosPunto({ sin_capacidad: false, clampeado: 'MAX', ritmo_origen: 'ZONA' })).toEqual(['techo']);
+    expect(sufijosPunto({ sin_capacidad: false, clampeado: 'MIN', ritmo_origen: 'ZONA' })).toEqual(['mínimo']);
+  });
+
+  it('sin móviles TAPA el techo: informar 120 sin nadie no es un clamp del modelo', () => {
+    expect(sufijosPunto({ sin_capacidad: true, clampeado: 'MAX', ritmo_origen: 'DEFECTO' }))
+      .toEqual(['sin móviles', 'ritmo por defecto']);
+  });
+
+  it('ritmo global/por defecto se marca (número menos confiable)', () => {
+    expect(sufijosPunto({ sin_capacidad: false, clampeado: null, ritmo_origen: 'GLOBAL' })).toEqual(['ritmo global']);
+    expect(sufijosPunto({ sin_capacidad: false, clampeado: null, ritmo_origen: 'DEFECTO' })).toEqual(['ritmo por defecto']);
+  });
+});
+
+describe('detalleUltimaCorrida()', () => {
+  it('titulo: hora Montevideo + lo informado', () => {
+    expect(detalleUltimaCorrida(corridaBase()).titulo).toBe('Última corrida 09:40 — informó 90 min');
+  });
+
+  it('corrida limpia: items en orden de lectura y SIN notas', () => {
+    const d = detalleUltimaCorrida(corridaBase());
+    expect(d.items.map((i) => i.label)).toEqual([
+      'Resultado del modelo',
+      'Pedidos por delante',
+      'Móviles que aportan',
+      'Capacidad',
+      'Ritmo',
+    ]);
+    expect(d.notas).toEqual([]);
+  });
+
+  it('capacidad con escalones cuenta arranque, final y cuántos fueron', () => {
+    const d = detalleUltimaCorrida(corridaBase());
+    const cap = d.items.find((i) => i.label === 'Capacidad');
+    // 1/0.011502 = 86.9 -> 87 ; 1/0.011916 = 83.9 -> 84
+    expect(cap?.value).toBe('arrancó en 1 pedido cada ~87 min y terminó en 1 pedido cada ~84 min, en 2 escalones');
+  });
+
+  it('capacidad de un solo tramo se dice constante (no inventa escalones)', () => {
+    // Zona 5 URGENTE real: 0.048406 constante, 1/0.048406 = 20.7 -> 21
+    const d = detalleUltimaCorrida(corridaBase({ capacidad_inicial: 0.048406, capacidad_final: 0.048406, tramos: 1 }));
+    expect(d.items.find((i) => i.label === 'Capacidad')?.value).toBe('1 pedido cada ~21 min (constante)');
+  });
+
+  it('capacidad inicial 0 con escalones: "arrancó sin nadie disponible" (no "arrancó en nadie...")', () => {
+    // Zona 6 SERVICE real: 0 -> 0.010091 en 2 tramos. 1/0.010091 = 99.1 -> 99
+    const d = detalleUltimaCorrida(corridaBase({ capacidad_inicial: 0, capacidad_final: 0.010091, tramos: 2 }));
+    expect(d.items.find((i) => i.label === 'Capacidad')?.value)
+      .toBe('arrancó sin nadie disponible y terminó en 1 pedido cada ~99 min, en 2 escalones');
+  });
+
+  it('ritmo: minutos por pedido + de dónde salió + cuántas muestras', () => {
+    const d = detalleUltimaCorrida(corridaBase());
+    expect(d.items.find((i) => i.label === 'Ritmo')?.value)
+      .toBe('15.3 min por pedido · historia del chofer (214 muestras)');
+  });
+
+  it('as400 presente -> item propio; ausente -> ni aparece (SERVICE/NOCTURNO)', () => {
+    const con = detalleUltimaCorrida(corridaBase({ as400: 35 }));
+    expect(con.items.find((i) => i.label === 'AS400 en ese momento')?.value).toBe('35 min');
+    const sin = detalleUltimaCorrida(corridaBase({ as400: null }));
+    expect(sin.items.find((i) => i.label === 'AS400 en ese momento')).toBeUndefined();
+  });
+
+  it('techo (clamp MAX) lo explica CON el número crudo — zona 6 SERVICE real', () => {
+    const d = detalleUltimaCorrida(corridaBase({ demora_informada: 120, demora_cruda: 143.83, clampeado: 'MAX' }));
+    expect(d.notas).toEqual([
+      'El modelo dio 143.8 min, por encima del máximo publicable: se informó el techo.',
+    ]);
+  });
+
+  it('mínimo (clamp MIN) idem — zona 2 URGENTE real', () => {
+    const d = detalleUltimaCorrida(corridaBase({ demora_informada: 30, demora_cruda: 17, clampeado: 'MIN' }));
+    expect(d.notas).toEqual([
+      'El modelo dio 17 min, por debajo del mínimo publicable: se informó el mínimo.',
+    ]);
+  });
+
+  it('sin móviles activos TAPA la nota del clamp: el techo ahí es por definición, no por cálculo', () => {
+    const d = detalleUltimaCorrida(corridaBase({ sin_capacidad: true, clampeado: 'MAX' }));
+    expect(d.notas).toEqual([
+      'No había ningún móvil activo en la zona: se informó el techo por definición, no por cálculo.',
+    ]);
+  });
+
+  it('sin móviles + suavizado: NO afirma "se informó el techo" (la suba capada puede haber publicado menos)', () => {
+    // Review iteración 2: zona que venía publicando 30, pierde su último
+    // móvil → crudo 120, pero la suba se capa (subida_max 30) y publica 60.
+    const d = detalleUltimaCorrida(
+      corridaBase({ demora_informada: 60, demora_cruda: 120, sin_capacidad: true, clampeado: null, suavizado_aplicado: true }),
+    );
+    expect(d.notas).toEqual([
+      'No había ningún móvil activo en la zona: corresponde el techo por definición, no por cálculo — pero el publicado se mueve de a pasos limitados por corrida (suavizado) y puede no haber llegado al techo todavía.',
+    ]);
+  });
+
+  // ─── Suavizado: se marca en subas capadas Y en bajas capadas ─────────────
+  // demoras_acabado corre crudo → clamp → suavizado → redondeo, y setea
+  // suavizado_aplicado en AMBAS direcciones (sube hasta subida_max, baja
+  // hasta bajada_max). Hallazgo Critical del review: la primera versión
+  // afirmaba siempre "viene bajando", que en una suba capada es la dirección
+  // CONTRARIA a la real.
+
+  it('suavizado sin clamp, publicado por DEBAJO del modelo: está subiendo (no "bajando")', () => {
+    const d = detalleUltimaCorrida(corridaBase({ demora_informada: 60, demora_cruda: 90, suavizado_aplicado: true }));
+    expect(d.notas).toEqual([
+      'El modelo pedía 90 min pero el publicado sube de a pasos limitados por corrida (suavizado): todavía está alcanzándolo.',
+    ]);
+  });
+
+  it('suavizado sin clamp, publicado por ENCIMA del modelo: viene bajando', () => {
+    const d = detalleUltimaCorrida(corridaBase({ demora_informada: 60, demora_cruda: 40, suavizado_aplicado: true }));
+    expect(d.notas).toEqual([
+      'El modelo ya da 40 min pero el publicado baja de a pasos limitados por corrida (suavizado): todavía viene bajando.',
+    ]);
+  });
+
+  it('suavizado + clamp MAX: UNA sola nota combinada que no afirma "se informó el techo"', () => {
+    // El escenario del review: cruda 200, techo 120, pero una suba capada dejó
+    // el publicado en 75 — decir "se informó el techo" contradice al título.
+    const d = detalleUltimaCorrida(
+      corridaBase({ demora_informada: 75, demora_cruda: 200, clampeado: 'MAX', suavizado_aplicado: true }),
+    );
+    expect(d.notas).toEqual([
+      'El modelo dio 200 min, por encima del máximo publicable, y además el publicado se mueve de a pasos limitados por corrida (suavizado): lo informado puede no coincidir ni con el modelo ni con el techo.',
+    ]);
+  });
+
+  it('suavizado + clamp MIN: idem, combinada', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({ demora_informada: 60, demora_cruda: 17, clampeado: 'MIN', suavizado_aplicado: true }),
+    );
+    expect(d.notas).toHaveLength(1);
+    expect(d.notas[0]).toMatch(/mínimo publicable/);
+    expect(d.notas[0]).toMatch(/suavizado/);
+  });
+
+  it('suavizado sin cruda (fila vieja): nota genérica sin inventar dirección', () => {
+    const d = detalleUltimaCorrida(corridaBase({ demora_cruda: null, suavizado_aplicado: true }));
+    expect(d.notas).toContain('El publicado se mueve de a pasos limitados por corrida (suavizado).');
+  });
+
+  it('corrida sin auditoría (anterior a la migración): no inventa items y lo dice', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({
+        demora_cruda: null,
+        as400: 35,
+        capacidad_inicial: null,
+        capacidad_final: null,
+        tramos: null,
+        cola_por_delante: null,
+        moviles_considerados: null,
+        ritmo_usado: null,
+        ritmo_origen: null,
+        ritmo_muestras: null,
+      }),
+    );
+    expect(d.items).toEqual([{ label: 'AS400 en ese momento', value: '35 min' }]);
+    expect(d.notas).toEqual([
+      'Esta corrida no tiene el detalle del modelo por tramos (es anterior a la migración).',
+    ]);
+  });
+
+  it('ritmo sin muestras informadas: no agrega un "(— muestras)" vacío', () => {
+    const d = detalleUltimaCorrida(corridaBase({ ritmo_muestras: null }));
+    expect(d.items.find((i) => i.label === 'Ritmo')?.value).toBe('15.3 min por pedido · historia del chofer');
   });
 });

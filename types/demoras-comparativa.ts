@@ -30,6 +30,50 @@ export interface PuntoComparativa {
   ritmo_origen: RitmoOrigen | null;
 }
 
+/**
+ * Radiografía de la ÚLTIMA corrida del día de una zona: los números que
+ * explican POR QUÉ se informó lo que se informó (modelo CONSUMO_TRAMOS,
+ * ver docs/DEMORA_MODELO_TRAMOS.md). Todos los campos de auditoría admiten
+ * null: las corridas anteriores a la migración TRAMOS (y las del modelo
+ * CAPACIDAD_PROMEDIO) no los tienen — la UI omite lo que falte en vez de
+ * inventar ceros.
+ */
+export interface UltimaCorridaZona {
+  corrida_at: string;
+  demora_informada: number;
+  /** Resultado del modelo ANTES de clamp/redondeo/suavizado. */
+  demora_cruda: number | null;
+  as400: number | null;
+  /**
+   * Capacidad de la zona en pedidos por minuto (μ = dedicación / ritmo,
+   * sumada sobre los móviles). `inicial` = al momento del cálculo; `final` =
+   * la del último tramo que la simulación llegó a consumir — NO la máxima
+   * teórica de la zona: si la cola se vació en el primer tramo, final ==
+   * inicial aunque hubiera móviles por sumarse.
+   */
+  capacidad_inicial: number | null;
+  capacidad_final: number | null;
+  /** Escalones de capacidad que recorrió la simulación (1 = constante). */
+  tramos: number | null;
+  /** Pedidos del pool que están delante del hipotético pedido nuevo. */
+  cola_por_delante: number | null;
+  /** Móviles que aportan capacidad a la zona (dedicación > 0). */
+  moviles_considerados: number | null;
+  /** Ritmo aplicado, en minutos por pedido, y de qué nivel de la cascada salió. */
+  ritmo_usado: number | null;
+  ritmo_origen: RitmoOrigen | null;
+  ritmo_muestras: number | null;
+  sin_capacidad: boolean;
+  clampeado: ClampeadoDemora | null;
+  /**
+   * true = el publicado NO llegó al valor que pedía el modelo (post-clamp):
+   * el movimiento entre corridas está topeado EN LAS DOS direcciones (sube
+   * hasta subida_max y baja hasta bajada_max por corrida — demoras_acabado).
+   * No afirma dirección: puede ser una suba capada o una baja capada.
+   */
+  suavizado_aplicado: boolean;
+}
+
 export interface ZonaBrecha {
   zona_id: number;
   zona_nombre: string;
@@ -47,6 +91,12 @@ export interface ZonaBrecha {
   muestras: number;
   /** Corridas descartadas del promedio por `sin_capacidad = true`. */
   excluidas_sin_capacidad: number;
+  /**
+   * El desglose ("por qué esta zona informa esto"): la última corrida del
+   * día con su auditoría completa. Siempre presente — toda zona listada
+   * tiene al menos una corrida, que es de donde salió.
+   */
+  ultima: UltimaCorridaZona;
 }
 
 export interface ComparativaData {

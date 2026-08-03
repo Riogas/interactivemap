@@ -70,3 +70,12 @@ $fn$;
 
 COMMENT ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) IS
   'Aplica clamp -> suavizado asimetrico -> redondeo hacia arriba, acotando por piso y techo. Devuelve la suavizada continua (estado para la proxima corrida) y la informada redondeada (salida). La informada nunca sale del rango [p_min, p_max] incluso si el suavizado la movieria fuera, lo que puede ocurrir cuando la config se edita en caliente. p_prev NULL = primera corrida del dia.';
+
+-- ─── Grants: solo service_role (I3, review final de rama) ────────────
+-- Postgres otorga EXECUTE a PUBLIC en cada CREATE FUNCTION por defecto: sin
+-- este REVOKE, anon/authenticated (las claves que viajan al browser) pueden
+-- invocarla via RPC. Quedaba sin revocar desde la tanda original (2026-07-29);
+-- mismo patron que el resto de las funciones del motor.
+REVOKE EXECUTE ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) FROM anon, authenticated;
+GRANT  EXECUTE ON FUNCTION demoras_acabado(numeric,numeric,integer,integer,integer,integer,integer) TO service_role;
