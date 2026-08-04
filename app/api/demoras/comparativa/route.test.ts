@@ -546,7 +546,37 @@ describe('GET /api/demoras/comparativa', () => {
         sin_capacidad: false,
         clampeado: 'MAX',
         suavizado_aplicado: true,
+        // Auditoría del arranque PREDICTIVO (2026-08-05): el fixture no la
+        // trae -> null explícito, como las corridas previas a la migración.
+        arranque_fase: null,
+        activacion_estimada_at: null,
+        activacion_origen: null,
+        espera_minutos: null,
+        espera_max_at: null,
+        moviles_prioridad: null,
+        moviles_transito: null,
       });
+    });
+
+    it('la auditoría del arranque PREDICTIVO viaja al front cuando la corrida la trae', async () => {
+      const conFase = [{
+        ...CON_AUDITORIA[CON_AUDITORIA.length - 1],
+        arranque_fase: 'PREDICTIVO',
+        activacion_estimada_at: '2026-08-05T08:40:00-03:00',
+        activacion_origen: 'DIA_TIPO',
+        espera_minutos: 40,
+        espera_max_at: '2026-08-05T10:00:00-03:00',
+        moviles_prioridad: 0,
+        moviles_transito: 2,
+      }];
+      mockDb.mockReturnValue(makeDb({ demoras_calculadas: conFase }) as never);
+      const res = await GET(req('escenario=1000&tipo=URGENTE'));
+      const body = await res.json();
+      const z100 = body.data.zonas.find((z: { zona_id: number }) => z.zona_id === 100);
+      expect(z100.ultima.arranque_fase).toBe('PREDICTIVO');
+      expect(z100.ultima.activacion_origen).toBe('DIA_TIPO');
+      expect(z100.ultima.espera_minutos).toBe(40);
+      expect(z100.ultima.moviles_transito).toBe(2);
     });
 
     it('corridas del modelo viejo (sin columnas de auditoría) -> null explícitos, no undefined ni ceros', async () => {

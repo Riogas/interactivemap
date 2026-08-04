@@ -28,6 +28,7 @@ import {
   capacidadHumana,
   sufijosPunto,
   detalleUltimaCorrida,
+  EXPLICACION_MOTOR,
 } from './demora-comparativa-logic';
 import type { UltimaCorridaZona } from '@/types/demoras-comparativa';
 
@@ -222,6 +223,13 @@ function corridaBase(overrides: Partial<UltimaCorridaZona> = {}): UltimaCorridaZ
     sin_capacidad: false,
     clampeado: null,
     suavizado_aplicado: false,
+    arranque_fase: null,
+    activacion_estimada_at: null,
+    activacion_origen: null,
+    espera_minutos: null,
+    espera_max_at: null,
+    moviles_prioridad: null,
+    moviles_transito: null,
     ...overrides,
   };
 }
@@ -432,34 +440,144 @@ describe('detalleUltimaCorrida()', () => {
     expect(d.items.find((i) => i.label === 'Ritmo')?.value).toBe('15.3 min por pedido · historia del chofer');
   });
 
-  // ─── Perilla de arranque en modo DESPACHO (2026-08-04) ───────────────
-  // Zona sin móviles Y sin pedidos: el run persiste cruda = valor del
-  // Despacho — la nota tiene que contarlo, no mentir "se informó el techo".
+  // ─── Respaldo Despacho (modos DESPACHO/DESPACHO_MAS_COLA y el respaldo
+  // post-espera-máxima del PREDICTIVO): cruda = Despacho (+ cola × ritmo) ──
 
-  it('arranque Despacho: sin móviles + sin pedidos + cruda igual al Despacho -> nota de arranque, no de techo', () => {
+  it('respaldo Despacho: sin móviles + cruda igual al Despacho -> nota de respaldo, no de techo', () => {
     const d = detalleUltimaCorrida(
       corridaBase({ demora_informada: 45, demora_cruda: 45, as400: 45, cola_por_delante: 0, sin_capacidad: true, clampeado: null }),
     );
     expect(d.notas).toEqual([
-      'Sin ningún móvil activo pero también sin pedidos: se informó el valor del Despacho como arranque, no un cálculo del modelo.',
+      'Sin ningún móvil activo en la zona: se informa el valor del Despacho — el mejor dato disponible, no un cálculo del modelo.',
     ]);
   });
 
-  it('arranque Despacho + suavizado: la nota combina las dos cosas', () => {
+  it('respaldo Despacho + suavizado: la nota combina las dos cosas', () => {
     const d = detalleUltimaCorrida(
       corridaBase({ demora_informada: 60, demora_cruda: 45, as400: 45, cola_por_delante: 0, sin_capacidad: true, clampeado: null, suavizado_aplicado: true }),
     );
     expect(d.notas).toHaveLength(1);
-    expect(d.notas[0]).toMatch(/valor del Despacho como arranque/);
+    expect(d.notas[0]).toMatch(/valor del Despacho/);
     expect(d.notas[0]).toMatch(/suavizado/);
   });
 
-  it('sin móviles pero CON pedidos esperando: sigue la nota de techo (el arranque no aplica)', () => {
+  it('respaldo Despacho CON cola (Despacho + cola × ritmo): la nota menciona la cola', () => {
+    // 45 + 4 × 15.3 = 106.2 — la detección tolera el redondeo de la cruda.
+    const d = detalleUltimaCorrida(
+      corridaBase({ demora_informada: 105, demora_cruda: 106.2, as400: 45, cola_por_delante: 4, ritmo_usado: 15.3, sin_capacidad: true, clampeado: null }),
+    );
+    expect(d.notas).toHaveLength(1);
+    expect(d.notas[0]).toMatch(/valor del Despacho más el costo de la cola/);
+  });
+
+  it('sin móviles y cruda que NO es el Despacho: sigue la nota de techo', () => {
     const d = detalleUltimaCorrida(
       corridaBase({ demora_informada: 120, demora_cruda: 120, as400: 45, cola_por_delante: 4, sin_capacidad: true, clampeado: null }),
     );
     expect(d.notas).toEqual([
       'No había ningún móvil activo en la zona: se informó el techo por definición, no por cálculo.',
     ]);
+  });
+
+  // ─── Arranque PREDICTIVO (2026-08-05): la fase manda sobre todo ───────
+
+  it('fase PREDICTIVO: cuenta la espera, el origen del histórico, la espera máxima y el tránsito invisible', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({
+        demora_informada: 75, demora_cruda: 70,
+        arranque_fase: 'PREDICTIVO',
+        activacion_estimada_at: '2026-08-05T08:40:00-03:00',
+        activacion_origen: 'DIA_TIPO',
+        espera_minutos: 40,
+        espera_max_at: '2026-08-05T10:00:00-03:00',
+        moviles_prioridad: 0, moviles_transito: 2,
+        sin_capacidad: false,
+      }),
+    );
+    expect(d.notas).toHaveLength(1);
+    expect(d.notas[0]).toContain('todavía no tiene móvil de prioridad');
+    expect(d.notas[0]).toContain('histórico de este tipo de día');
+    expect(d.notas[0]).toContain('08:40');
+    expect(d.notas[0]).toContain('faltan ~40 min');
+    expect(d.notas[0]).toContain('hasta las 10:00');
+    expect(d.notas[0]).toContain('tránsito');
+  });
+
+  it('fase PREDICTIVO con cola y sin tránsito: menciona los pedidos de antes y calla el tránsito', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({
+        arranque_fase: 'PREDICTIVO',
+        activacion_estimada_at: '2026-08-05T08:40:00-03:00',
+        activacion_origen: 'GENERAL',
+        espera_minutos: 0,
+        espera_max_at: '2026-08-05T09:00:00-03:00',
+        cola_por_delante: 2.5,
+        moviles_prioridad: 0, moviles_transito: 0,
+        sin_capacidad: true,
+      }),
+    );
+    expect(d.notas[0]).toContain('ya debería estar por llegar');
+    expect(d.notas[0]).toContain('los 2.5 pedidos que están antes');
+    expect(d.notas[0]).toContain('histórico general');
+    expect(d.notas[0]).not.toContain('tránsito');
+  });
+
+  it('fase GRACIA_VENCIDA: el móvil no apareció y la demora sube al techo', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({
+        demora_informada: 105, demora_cruda: 120,
+        arranque_fase: 'GRACIA_VENCIDA',
+        activacion_estimada_at: '2026-08-05T08:40:00-03:00',
+        activacion_origen: 'DIA_TIPO',
+        espera_max_at: '2026-08-05T10:00:00-03:00',
+        moviles_prioridad: 0, moviles_transito: 0,
+        sin_capacidad: true,
+      }),
+    );
+    expect(d.notas[0]).toContain('no apareció a la hora estimada (08:40)');
+    expect(d.notas[0]).toContain('sube hacia el techo');
+    expect(d.notas[0]).toContain('hasta las 10:00');
+  });
+
+  it('fase TRANSITO: venció la espera máxima y el cálculo corre con los de tránsito', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({
+        demora_informada: 75, demora_cruda: 75,
+        arranque_fase: 'TRANSITO',
+        activacion_estimada_at: '2026-08-05T08:40:00-03:00',
+        activacion_origen: 'DIA_TIPO',
+        espera_max_at: '2026-08-05T09:00:00-03:00',
+        moviles_prioridad: 0, moviles_transito: 2,
+        sin_capacidad: false,
+      }),
+    );
+    expect(d.notas[0]).toContain('Pasó la espera máxima');
+    expect(d.notas[0]).toContain('(09:00)');
+    expect(d.notas[0]).toContain('dedicación parcial');
+  });
+
+  it('fase + suavizado: se agrega la aclaración del paso limitado', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({
+        arranque_fase: 'GRACIA_VENCIDA',
+        activacion_estimada_at: '2026-08-05T08:40:00-03:00',
+        espera_max_at: '2026-08-05T10:00:00-03:00',
+        suavizado_aplicado: true,
+        sin_capacidad: true,
+      }),
+    );
+    expect(d.notas).toHaveLength(2);
+    expect(d.notas[1]).toMatch(/suavizado/);
+  });
+});
+
+describe('EXPLICACION_MOTOR (el motor para todo el mundo)', () => {
+  it('cubre las piezas del cálculo: ritmo, cola, capacidad, arranque predictivo y límites', () => {
+    const todo = EXPLICACION_MOTOR.map((s) => `${s.titulo} ${s.texto}`).join(' ');
+    for (const clave of ['Despacho', 'ritmo', 'cola', 'tránsito', 'histórico', 'hora máxima de espera', 'techo', 'suavizado']) {
+      expect(todo).toContain(clave);
+    }
+    // Redactado para personas: sin jerga interna de tablas/SQL.
+    expect(todo).not.toMatch(/demoras_|corrida_at|sin_capacidad/);
   });
 });

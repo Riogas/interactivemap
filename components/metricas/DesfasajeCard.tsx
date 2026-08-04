@@ -21,7 +21,7 @@ import { TIPOS_DESFASAJE } from '@/types/metricas-desfasaje';
 import { formatMin, formatPct, formatCount } from './metricas-theme';
 import {
   buildDesfasajeFetch, filasGrafico, kpisDeFuente, mensajeVacioDesfasaje, esFranjaKpi,
-  FUENTE_LABEL, DIAS_OPCIONES,
+  FUENTE_LABEL, DIAS_OPCIONES, EXPLICACION_ACIERTO,
 } from './desfasaje-logic';
 import type { FilaFranjaGrafico } from './desfasaje-logic';
 import { usePrefersReducedMotion } from './useCountUp';
@@ -201,6 +201,21 @@ export function DesfasajeCard({
           </select>
         </label>
       </div>
+
+      {/* La medición explicada para cualquiera (pedido 2026-08-04). */}
+      <details className="rounded-lg border border-stats-border">
+        <summary className="cursor-pointer select-none px-3 py-2 text-[0.78rem] font-semibold text-stats-muted-fg hover:text-stats-foreground">
+          ¿Cómo se mide el acierto?
+        </summary>
+        <div className="grid gap-3 px-3 pb-3 md:grid-cols-2">
+          {EXPLICACION_ACIERTO.map((s) => (
+            <div key={s.titulo}>
+              <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-stats-muted-fg">{s.titulo}</p>
+              <p className="mt-0.5 text-[0.8rem] leading-relaxed text-stats-foreground">{s.texto}</p>
+            </div>
+          ))}
+        </div>
+      </details>
 
       {error !== null ? (
         // El error NO desmonta los selectores (fix Important del review):

@@ -86,6 +86,8 @@ import type {
   UltimaCorridaZona,
   ClampeadoDemora,
   RitmoOrigen,
+  ArranqueFase,
+  ActivacionOrigen,
 } from '@/types/demoras-comparativa';
 
 export const dynamic = 'force-dynamic';
@@ -117,7 +119,9 @@ const MAX_PAGES = 30;
 const FILA_COLS =
   'corrida_at, zona_id, tipo_servicio, demora_informada, demora_as400, sin_capacidad, clampeado, ritmo_origen, ' +
   'demora_cruda, capacidad_inicial, capacidad_final, tramos, cola_por_delante, moviles_considerados, ' +
-  'ritmo_usado, ritmo_muestras, suavizado_aplicado';
+  'ritmo_usado, ritmo_muestras, suavizado_aplicado, ' +
+  'arranque_fase, activacion_estimada_at, activacion_origen, espera_minutos, espera_max_at, ' +
+  'moviles_prioridad, moviles_transito';
 
 interface Fila {
   corrida_at: string;
@@ -137,6 +141,13 @@ interface Fila {
   ritmo_usado: number | null;
   ritmo_muestras: number | null;
   suavizado_aplicado: boolean | null;
+  arranque_fase: ArranqueFase | null;
+  activacion_estimada_at: string | null;
+  activacion_origen: ActivacionOrigen | null;
+  espera_minutos: number | null;
+  espera_max_at: string | null;
+  moviles_prioridad: number | null;
+  moviles_transito: number | null;
 }
 
 /**
@@ -162,6 +173,13 @@ function toUltima(f: Fila): UltimaCorridaZona {
     sin_capacidad: f.sin_capacidad === true,
     clampeado: f.clampeado ?? null,
     suavizado_aplicado: f.suavizado_aplicado === true,
+    arranque_fase: f.arranque_fase ?? null,
+    activacion_estimada_at: f.activacion_estimada_at ?? null,
+    activacion_origen: f.activacion_origen ?? null,
+    espera_minutos: f.espera_minutos ?? null,
+    espera_max_at: f.espera_max_at ?? null,
+    moviles_prioridad: f.moviles_prioridad ?? null,
+    moviles_transito: f.moviles_transito ?? null,
   };
 }
 
