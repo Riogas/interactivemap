@@ -26,7 +26,8 @@ import {
 import type { FilaFranjaGrafico } from './desfasaje-logic';
 import { usePrefersReducedMotion } from './useCountUp';
 
-const COLOR_INFORMADA = 'var(--color-metricas-nocturno)';
+// Despacho naranja / motor azul: par CVD-safe (antes eran dos azules).
+const COLOR_INFORMADA = 'var(--color-metricas-despacho)';
 const COLOR_CALCULADA = 'var(--color-metricas-serie)';
 /** Las franjas por encima del KPI (≤25') se pintan atenuadas: la zona
  * "buena" resalta sin necesidad de una línea extra. */
@@ -44,7 +45,7 @@ function DesfasajeTooltip({ active, payload }: TooltipContentProps) {
     <div className="rounded-lg border border-stats-border bg-stats-surface px-3 py-2 shadow-xl">
       <div className="mb-1 text-xs font-bold text-stats-foreground">Desfasaje {nombreFranja(row.label)}</div>
       <div className="font-stats-mono text-[0.72rem] text-stats-muted-fg">
-        {row.esComparar ? 'Informada: ' : ''}
+        {row.esComparar ? 'Despacho: ' : ''}
         {row.principal == null ? '—' : `${row.principal}%`} · {formatCount(row.principal_n)} pedidos
       </div>
       {row.esComparar && (
@@ -227,7 +228,7 @@ export function DesfasajeCard({
           {kpis && (
             <div className="flex flex-col gap-1.5">
               <KpisFila
-                etiqueta={esComparar ? 'Informada (AS400)' : undefined}
+                etiqueta={esComparar ? 'Despacho' : undefined}
                 color={COLOR_INFORMADA}
                 kpis={kpis.principal}
               />
@@ -256,7 +257,7 @@ export function DesfasajeCard({
                 <Tooltip content={DesfasajeTooltip} cursor={{ fill: 'var(--color-stats-surface-2)' }} />
                 <Bar
                   dataKey="principal"
-                  name={esComparar ? 'Informada' : 'Pedidos'}
+                  name={esComparar ? 'Despacho' : 'Pedidos'}
                   radius={[3, 3, 0, 0]}
                   isAnimationActive={!reducedMotion}
                   maxBarSize={30}

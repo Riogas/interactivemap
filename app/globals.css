@@ -54,6 +54,11 @@
   --color-metricas-especial: #CC79A7;
   --color-metricas-otros: #009E73;
   --color-metricas-service: #E69F00;
+  /* Despacho (AS400) en las comparativas contra el motor: naranja
+   * vermillion (Okabe-Ito, CVD-safe) — par clasico azul/naranja contra
+   * --color-metricas-serie. Antes se usaba nocturno (azul) y las dos
+   * series eran indistinguibles. */
+  --color-metricas-despacho: #D55E00;
 }
 
 /* Habilitar `dark:` variant de Tailwind v4 cuando el ancestor tiene
@@ -127,6 +132,7 @@
   --color-metricas-especial: #BE73A8;
   --color-metricas-otros: #1F9E74;
   --color-metricas-service: #B47826;
+  --color-metricas-despacho: #E06A2C;
 }
 
 body {

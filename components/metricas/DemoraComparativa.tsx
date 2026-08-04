@@ -2,9 +2,9 @@
 
 /**
  * Comparativa entre la demora que calcula TrackMovil y la que informa el
- * AS400, por zona y tipo de servicio.
+ * Despacho (AS400), por zona y tipo de servicio.
  *
- * El AS400 solo informa URGENTE. Para NOCTURNO y SERVICE se dibuja solo
+ * El Despacho solo informa URGENTE. Para NOCTURNO y SERVICE se dibuja solo
  * nuestra línea y se dice explícitamente: un hueco sin explicar se lee como
  * un bug.
  */
@@ -25,7 +25,9 @@ import {
 } from './demora-comparativa-logic';
 
 const COLOR_CALC = 'var(--color-metricas-serie)';
-const COLOR_AS400 = 'var(--color-metricas-nocturno)';
+// Despacho = AS400 (léxico adoptado 2026-08-04). Naranja CVD-safe: con el
+// azul nocturno de antes, las dos líneas eran indistinguibles.
+const COLOR_DESPACHO = 'var(--color-metricas-despacho)';
 /** Marca de los puntos sin capacidad (B2): amarillo de alerta del tema stats. */
 const COLOR_SIN_CAP = 'var(--color-stats-warning, #eab308)';
 
@@ -228,7 +230,7 @@ export function DemoraComparativa({
         </label>
         {!hayAs400 && (
           <p className="max-w-[34ch] text-[0.78rem] text-stats-muted-fg">
-            El AS400 no informa demora para {tipo}: solo se muestra la línea calculada.
+            El Despacho no informa demora para {tipo}: solo se muestra la línea calculada.
           </p>
         )}
       </div>
@@ -274,7 +276,7 @@ export function DemoraComparativa({
                 activeDot={{ r: 3.5 }}
               />
               {hayAs400 && (
-                <Line type="monotone" dataKey="as400" name="AS400" stroke={COLOR_AS400} strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls />
+                <Line type="monotone" dataKey="as400" name="Despacho" stroke={COLOR_DESPACHO} strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls />
               )}
             </LineChart>
           </ResponsiveContainer>
@@ -303,7 +305,7 @@ export function DemoraComparativa({
               <tr>
                 <th className="border-b border-stats-border px-2.5 py-1.5 text-left text-[0.68rem] font-bold uppercase tracking-wide text-stats-muted-fg">Zona</th>
                 <th className="border-b border-stats-border px-2.5 py-1.5 text-right text-[0.68rem] font-bold uppercase tracking-wide text-stats-muted-fg">Calculada</th>
-                <th className="border-b border-stats-border px-2.5 py-1.5 text-right text-[0.68rem] font-bold uppercase tracking-wide text-stats-muted-fg">AS400</th>
+                <th className="border-b border-stats-border px-2.5 py-1.5 text-right text-[0.68rem] font-bold uppercase tracking-wide text-stats-muted-fg">Despacho</th>
                 <th className="border-b border-stats-border px-2.5 py-1.5 text-right text-[0.68rem] font-bold uppercase tracking-wide text-stats-muted-fg">Brecha</th>
                 <th
                   className="border-b border-stats-border px-2.5 py-1.5 text-right text-[0.68rem] font-bold uppercase tracking-wide text-stats-muted-fg"

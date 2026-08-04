@@ -316,11 +316,11 @@ describe('detalleUltimaCorrida()', () => {
       .toBe('15.3 min por pedido · historia del chofer (214 muestras)');
   });
 
-  it('as400 presente -> item propio; ausente -> ni aparece (SERVICE/NOCTURNO)', () => {
+  it('valor del Despacho presente -> item propio; ausente -> ni aparece (SERVICE/NOCTURNO)', () => {
     const con = detalleUltimaCorrida(corridaBase({ as400: 35 }));
-    expect(con.items.find((i) => i.label === 'AS400 en ese momento')?.value).toBe('35 min');
+    expect(con.items.find((i) => i.label === 'Despacho en ese momento')?.value).toBe('35 min');
     const sin = detalleUltimaCorrida(corridaBase({ as400: null }));
-    expect(sin.items.find((i) => i.label === 'AS400 en ese momento')).toBeUndefined();
+    expect(sin.items.find((i) => i.label === 'Despacho en ese momento')).toBeUndefined();
   });
 
   it('techo (clamp MAX) lo explica CON el número crudo — zona 6 SERVICE real', () => {
@@ -416,7 +416,7 @@ describe('detalleUltimaCorrida()', () => {
         ritmo_muestras: null,
       }),
     );
-    expect(d.items).toEqual([{ label: 'AS400 en ese momento', value: '35 min' }]);
+    expect(d.items).toEqual([{ label: 'Despacho en ese momento', value: '35 min' }]);
     expect(d.notas).toEqual([
       'Esta corrida no tiene el detalle del modelo por tramos (es anterior a la migración).',
     ]);
@@ -425,5 +425,36 @@ describe('detalleUltimaCorrida()', () => {
   it('ritmo sin muestras informadas: no agrega un "(— muestras)" vacío', () => {
     const d = detalleUltimaCorrida(corridaBase({ ritmo_muestras: null }));
     expect(d.items.find((i) => i.label === 'Ritmo')?.value).toBe('15.3 min por pedido · historia del chofer');
+  });
+
+  // ─── Perilla de arranque en modo DESPACHO (2026-08-04) ───────────────
+  // Zona sin móviles Y sin pedidos: el run persiste cruda = valor del
+  // Despacho — la nota tiene que contarlo, no mentir "se informó el techo".
+
+  it('arranque Despacho: sin móviles + sin pedidos + cruda igual al Despacho -> nota de arranque, no de techo', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({ demora_informada: 45, demora_cruda: 45, as400: 45, cola_por_delante: 0, sin_capacidad: true, clampeado: null }),
+    );
+    expect(d.notas).toEqual([
+      'Sin ningún móvil activo pero también sin pedidos: se informó el valor del Despacho como arranque, no un cálculo del modelo.',
+    ]);
+  });
+
+  it('arranque Despacho + suavizado: la nota combina las dos cosas', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({ demora_informada: 60, demora_cruda: 45, as400: 45, cola_por_delante: 0, sin_capacidad: true, clampeado: null, suavizado_aplicado: true }),
+    );
+    expect(d.notas).toHaveLength(1);
+    expect(d.notas[0]).toMatch(/valor del Despacho como arranque/);
+    expect(d.notas[0]).toMatch(/suavizado/);
+  });
+
+  it('sin móviles pero CON pedidos esperando: sigue la nota de techo (el arranque no aplica)', () => {
+    const d = detalleUltimaCorrida(
+      corridaBase({ demora_informada: 120, demora_cruda: 120, as400: 45, cola_por_delante: 4, sin_capacidad: true, clampeado: null }),
+    );
+    expect(d.notas).toEqual([
+      'No había ningún móvil activo en la zona: se informó el techo por definición, no por cálculo.',
+    ]);
   });
 });

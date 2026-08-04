@@ -205,7 +205,7 @@ export function detalleUltimaCorrida(u: UltimaCorridaZona): DetalleUltima {
     items.push({ label: 'Resultado del modelo', value: `${formatMin(u.demora_cruda)} min` });
   }
   if (u.as400 !== null) {
-    items.push({ label: 'AS400 en ese momento', value: `${formatMin(u.as400)} min` });
+    items.push({ label: 'Despacho en ese momento', value: `${formatMin(u.as400)} min` });
   }
   if (u.cola_por_delante !== null) {
     items.push({ label: 'Pedidos por delante', value: formatCount(u.cola_por_delante) });
@@ -250,15 +250,29 @@ export function detalleUltimaCorrida(u: UltimaCorridaZona): DetalleUltima {
   // puede NO coincidir con el techo/mínimo del clamp: las notas se combinan
   // en una sola para no contradecirse entre sí (ni con el título).
   if (u.sin_capacidad) {
-    // El suavizado corre igual con sin_capacidad (demoras_acabado no tiene
-    // bypass por default): si la zona venía publicando poco y perdió su
-    // último móvil, la SUBA al techo también se capa — "se informó el techo"
-    // sería falso hasta que la escalera llegue.
-    notas.push(
-      u.suavizado_aplicado
-        ? 'No había ningún móvil activo en la zona: corresponde el techo por definición, no por cálculo — pero el publicado se mueve de a pasos limitados por corrida (suavizado) y puede no haber llegado al techo todavía.'
-        : 'No había ningún móvil activo en la zona: se informó el techo por definición, no por cálculo.',
-    );
+    // Con la perilla de arranque en modo DESPACHO (2026-08-04), una zona
+    // sin móviles Y sin pedidos informa el valor del Despacho, no el
+    // techo. Se detecta porque el run persiste esa cruda = valor del
+    // Despacho de la misma corrida.
+    const esArranqueDespacho =
+      u.cola_por_delante === 0 && u.demora_cruda !== null && u.as400 !== null && u.demora_cruda === u.as400;
+    if (esArranqueDespacho) {
+      notas.push(
+        u.suavizado_aplicado
+          ? 'Sin ningún móvil activo pero también sin pedidos: se tomó el valor del Despacho como arranque (no un cálculo del modelo), y el publicado se mueve de a pasos limitados por corrida (suavizado).'
+          : 'Sin ningún móvil activo pero también sin pedidos: se informó el valor del Despacho como arranque, no un cálculo del modelo.',
+      );
+    } else {
+      // El suavizado corre igual con sin_capacidad (demoras_acabado no tiene
+      // bypass por default): si la zona venía publicando poco y perdió su
+      // último móvil, la SUBA al techo también se capa — "se informó el techo"
+      // sería falso hasta que la escalera llegue.
+      notas.push(
+        u.suavizado_aplicado
+          ? 'No había ningún móvil activo en la zona: corresponde el techo por definición, no por cálculo — pero el publicado se mueve de a pasos limitados por corrida (suavizado) y puede no haber llegado al techo todavía.'
+          : 'No había ningún móvil activo en la zona: se informó el techo por definición, no por cálculo.',
+      );
+    }
   } else if (u.suavizado_aplicado) {
     if (u.clampeado === 'MAX') {
       notas.push(

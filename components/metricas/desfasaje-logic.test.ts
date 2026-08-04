@@ -202,7 +202,7 @@ describe('mensajeVacioDesfasaje()', () => {
 
 describe('FUENTE_LABEL', () => {
   it('etiquetas humanas para el selector (sin jerga interna)', () => {
-    expect(FUENTE_LABEL.informada).toMatch(/AS400/);
+    expect(FUENTE_LABEL.informada).toMatch(/Despacho/);
     expect(FUENTE_LABEL.calculada).toMatch(/motor/);
     expect(FUENTE_LABEL.comparar).toMatch(/común/);
   });
