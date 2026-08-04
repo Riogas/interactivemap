@@ -1,7 +1,23 @@
 -- Asserts de 2026-08-03-desfasaje-backfill-nocturno.sql (el job one-shot).
--- Corre DESPUÉS de assert-desfasaje.sql en la misma base: sus hechos son
--- del 2026-08-03, así que el cursor de 5e arranca ahí y baja hasta
--- 2026-03-23 sin tocarlos. Ids nuevos (300+) para no chocar.
+-- AUTOSUFICIENTE respecto del orden de asserts (el glob corre
+-- "-backfill" ANTES que assert-desfasaje: '-' < '.'): siembra su PROPIO
+-- hecho ancla para que el cursor de 5e tenga desde dónde arrancar.
+-- Ids nuevos (300+) para no chocar.
+
+-- Hecho ancla (estilo pre-migración, columnas nuevas NULL): fija
+-- min(fecha) = 2026-06-10 -> el cursor baja desde ahí hasta 2026-03-23.
+INSERT INTO metricas_cumplimiento
+  (origen, pedido_id, escenario, fecha, tipo_servicio, servicio_nombre,
+   movil, zona_nro, empresa_fletera_id, chofer,
+   fch_hora_asignado, fch_hora_finalizacion, fch_hora_para, fch_hora_max_ent_comp,
+   demora_mins, demora_efectiva_mins, atraso_vs_para_mins, atraso_vs_compromiso_mins,
+   reloj_inicio, asignado_source)
+VALUES
+  ('PEDIDO', 301, 1000, DATE '2026-06-10', 'URGENTE', 'URGENTE',
+   77, 10, 7, 'CHOFER ANCLA',
+   '2026-06-10 10:05-03', '2026-06-10 10:40-03', '2026-06-10 10:00-03', '2026-06-10 10:45-03',
+   35, 35, 40, -5,
+   'ASIGNADO', 'CAMPO');
 
 -- Fixture: un pedido entregado en ABRIL (pre-historia, sin hecho) que 5e
 -- tiene que descubrir, calcular y espejar vía el run.
@@ -56,7 +72,7 @@ SELECT 'ok espejo del pedido de abril poblado por el run interno de 5e' AS r;
 DO $$
 DECLARE v text; n int;
 BEGIN
-  SELECT detalle INTO v FROM metricas_desfasaje_backfill_estado WHERE paso='5e-cursor';
+  SELECT e.detalle INTO v FROM metricas_desfasaje_backfill_estado e WHERE e.paso='5e-cursor';
   IF v::date <> DATE '2026-03-23' THEN RAISE EXCEPTION 'cursor=% (debia llegar al piso)', v; END IF;
   SELECT count(*) INTO n FROM metricas_desfasaje_backfill_estado WHERE paso LIKE '5f-%';
   IF n <> 3 THEN RAISE EXCEPTION 'meses 5f marcados=%', n; END IF;

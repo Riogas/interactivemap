@@ -13,7 +13,7 @@ import type {
 } from '@/types/metricas-desfasaje';
 
 export const FUENTE_LABEL: Record<FuenteDesfasaje, string> = {
-  informada: 'Informada (AS400)',
+  informada: 'Despacho',
   calculada: 'Calculada (motor)',
   comparar: 'Comparar (población común)',
 };
