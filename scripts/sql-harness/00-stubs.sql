@@ -69,6 +69,9 @@ CREATE TABLE pedidos (
   -- Snapshot AS400 por pedido (DemoraInformada, default 0 = sin dato en el
   -- transform del import) — existe en prod desde el CREATE original.
   demora_informada INTEGER DEFAULT 0,
+  -- En prod la pisa trigger_pedidos_updated_at en cada UPDATE; el proxy de
+  -- asignados_modo PROGRESO la lee cuando falta fch_hora_asignado.
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (id, escenario)
 );
 CREATE TABLE services (LIKE pedidos INCLUDING ALL);

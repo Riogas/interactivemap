@@ -290,6 +290,11 @@ describe('detalleUltimaCorrida()', () => {
     expect(d.notas).toEqual([]);
   });
 
+  it('cola fraccionaria (asignados equivalentes) se muestra con decimal, no redondeada', () => {
+    const d = detalleUltimaCorrida(corridaBase({ cola_por_delante: 2.5 }));
+    expect(d.items.find((i) => i.label === 'Pedidos por delante')?.value).toBe('2.5');
+  });
+
   it('capacidad con escalones cuenta arranque, final y cuántos fueron', () => {
     const d = detalleUltimaCorrida(corridaBase());
     const cap = d.items.find((i) => i.label === 'Capacidad');
