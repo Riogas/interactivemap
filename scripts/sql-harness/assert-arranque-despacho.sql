@@ -99,7 +99,44 @@ BEGIN
 END $$;
 SELECT 'ok CHECK de arranque_sin_movil_modo' AS r;
 
+-- ─── Modo DESPACHO_MAS_COLA: con cola informa Despacho + cola x ritmo ───
+DO $$
+DECLARE v bigint; r record;
+BEGIN
+  UPDATE demoras_modelo SET arranque_sin_movil_modo = 'DESPACHO_MAS_COLA' WHERE escenario_id = 1000;
+
+  v := demoras_calcular_run(timestamptz '2026-08-05 09:20-03');
+
+  -- Zona 801: sin moviles, 1 pedido, Despacho 40, ritmo default 30
+  -- -> cruda 40 + 1x30 = 70. La PUBLICADA es 105, no 75: las corridas
+  -- anteriores del assert publicaron 120 (techo) y la escalera baja de a
+  -- 15 (el bypass no aplica: mov_act siguio en 0). En la corrida
+  -- siguiente seria 90, despues 75.
+  SELECT * INTO r FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-08-05 09:20-03' AND escenario = 1000
+     AND zona_id = 801 AND tipo_servicio = 'URGENTE';
+  IF r.demora_cruda     IS DISTINCT FROM 70  THEN RAISE EXCEPTION 'z801 MAS_COLA cruda=% (esperaba 70 = 40 + 1x30)', r.demora_cruda; END IF;
+  IF r.demora_informada IS DISTINCT FROM 105 THEN RAISE EXCEPTION 'z801 MAS_COLA informada=% (esperaba 105: escalera desde el 120 previo)', r.demora_informada; END IF;
+
+  -- Zona 800 (vacia): identico a DESPACHO -> cruda 45. La publicada es 60:
+  -- el test TECHO de 09:10 la dejo en 75 (subida capada desde 45) y la
+  -- escalera baja de a 15 (bypass no aplica: mov_act siguio en 0).
+  SELECT * INTO r FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-08-05 09:20-03' AND escenario = 1000
+     AND zona_id = 800 AND tipo_servicio = 'URGENTE';
+  IF r.demora_cruda     IS DISTINCT FROM 45 THEN RAISE EXCEPTION 'z800 MAS_COLA cruda=% (vacia = Despacho)', r.demora_cruda; END IF;
+  IF r.demora_informada IS DISTINCT FROM 60 THEN RAISE EXCEPTION 'z800 MAS_COLA informada=% (esperaba 60: escalera desde el 75 del test TECHO)', r.demora_informada; END IF;
+
+  -- Zona 802 SERVICE (sin valor del Despacho): techo, con o sin cola.
+  SELECT * INTO r FROM demoras_calculadas
+   WHERE corrida_at = timestamptz '2026-08-05 09:20-03' AND escenario = 1000
+     AND zona_id = 802 AND tipo_servicio = 'SERVICE';
+  IF r.demora_informada IS DISTINCT FROM 120 THEN RAISE EXCEPTION 'z802 MAS_COLA informada=%', r.demora_informada; END IF;
+END $$;
+SELECT 'ok DESPACHO_MAS_COLA: con cola 75 (40 + 1x30), vacia 45, sin Despacho techo' AS r;
+
 -- ─── Teardown: dejar el mundo como estaba para los asserts siguientes ───
+UPDATE demoras_modelo SET arranque_sin_movil_modo = 'TECHO' WHERE escenario_id = 1000;
 DELETE FROM demoras_calculadas WHERE zona_id IN (800, 801, 802);
 DELETE FROM pedidos WHERE id = 900 AND escenario = 1000;
 DELETE FROM demoras WHERE zona_id IN (800, 801, 802) AND escenario_id = 1000;
