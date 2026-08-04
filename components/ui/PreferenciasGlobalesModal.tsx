@@ -10,6 +10,7 @@ import { isRoot } from '@/lib/auth-scope';
 import { useGlobalRealtimeSettings } from '@/hooks/dashboard/useGlobalRealtimeSettings';
 import { useEmailSettings, DEFAULT_EMAIL_SETTINGS, type EmailSettings } from '@/hooks/dashboard/useEmailSettings';
 import ImportPuntosInteresModal from '@/components/ui/ImportPuntosInteresModal';
+import MotorDemoraSection from '@/components/ui/MotorDemoraSection';
 
 interface PreferenciasGlobalesModalProps {
   isOpen: boolean;
@@ -442,6 +443,36 @@ export default function PreferenciasGlobalesModal({
 
             {/* Content */}
             <div className="p-6 space-y-6">
+
+              {/* ===== Motor de demora informada ===== */}
+              {/* Colapsable: es la sección más grande del modal. Los headers
+                  de auth se leen de authStorage (mismo patrón que el resto de
+                  los handlers) y viajan como props — la sección no usa
+                  useAuth para poder previsualizarse sola. */}
+              <details className="group rounded-lg border border-gray-200">
+                <summary className="flex cursor-pointer items-center gap-2 rounded-lg px-4 py-3 hover:bg-gray-50">
+                  <span className="text-sm font-bold text-gray-800">Motor de demora informada</span>
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-700">ADMIN</span>
+                  <span className="ml-auto text-xs text-gray-400 group-open:hidden">ver perillas</span>
+                </summary>
+                <div className="border-t border-gray-100 p-4">
+                  {(() => {
+                    let isRootHeader: 'S' | 'N' = 'N';
+                    let username = '';
+                    if (typeof window !== 'undefined') {
+                      try {
+                        const raw = authStorage.getItem('trackmovil_user');
+                        if (raw) {
+                          const u = JSON.parse(raw) as { isRoot?: string; username?: string; email?: string };
+                          isRootHeader = u.isRoot === 'S' ? 'S' : 'N';
+                          username = u.username ?? u.email ?? '';
+                        }
+                      } catch { /* silencioso */ }
+                    }
+                    return <MotorDemoraSection trackFuncs={trackFuncs} isRootHeader={isRootHeader} userName={username} />;
+                  })()}
+                </div>
+              </details>
 
               {/* ===== Realtime avanzado ===== */}
               <div className="space-y-4">
