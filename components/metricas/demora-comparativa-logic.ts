@@ -208,7 +208,9 @@ export function detalleUltimaCorrida(u: UltimaCorridaZona): DetalleUltima {
     items.push({ label: 'Despacho en ese momento', value: `${formatMin(u.as400)} min` });
   }
   if (u.cola_por_delante !== null) {
-    items.push({ label: 'Pedidos por delante', value: formatCount(u.cola_por_delante) });
+    // formatMin y no formatCount: con asignados_modo PESO/PROGRESO la cola
+    // viene en pedidos EQUIVALENTES (2.5 = dos y medio por terminar).
+    items.push({ label: 'Pedidos por delante', value: formatMin(u.cola_por_delante) });
   }
   if (u.moviles_considerados !== null) {
     items.push({ label: 'Móviles que aportan', value: formatCount(u.moviles_considerados) });
