@@ -33,6 +33,8 @@ const CAMPOS_MODELO = new Set([
   'min_minutos', 'max_minutos', 'escalon_minutos',
   'subida_max', 'bajada_max', 'suavizado_bypass_cambio_capacidad',
   'arranque_sin_movil_modo',
+  'activacion_percentil', 'activacion_margen_minutos',
+  'activacion_min_muestras', 'activacion_gracia_minutos',
   'asignados_modo', 'peso_asignados', 'atrapados_modo',
   'estadistico', 'ritmo_dias_ventana', 'ritmo_min_muestras',
   'ritmo_hueco_max_minutos', 'ritmo_hueco_min_minutos',
@@ -44,12 +46,19 @@ const CAMPOS_MODELO = new Set([
 
 const CAMPOS_CONFIG = new Set(['motor_activo', 'hora_inicio', 'hora_fin']);
 
+const TIPOS = ['URGENTE', 'NOCTURNO', 'SERVICE'];
+const DIA_TIPOS = ['HABIL', 'SABADO', 'DOMINGO'];
+
 type SQB = {
-  select: (cols: string) => SQB;
+  select: (cols?: string) => SQB;
   eq: (col: string, val: unknown) => SQB;
-  order: (col: string, opts: { ascending: boolean }) => SQB;
+  is: (col: string, val: null) => SQB;
+  order: (col: string, opts: { ascending: boolean; nullsFirst?: boolean }) => SQB;
   limit: (n: number) => SQB;
   update: (vals: Record<string, unknown>) => SQB;
+  insert: (vals: Record<string, unknown>) => SQB;
+  upsert: (vals: Record<string, unknown>, opts: { onConflict: string }) => SQB;
+  delete: () => SQB;
   then: Promise<{ data: unknown; error: { message: string } | null }>['then'];
 };
 type SupabaseCompat = { from: (table: string) => SQB };
@@ -72,7 +81,7 @@ function gate(request: NextRequest): NextResponse | null {
 }
 
 async function payload(db: SupabaseCompat, escenario: number) {
-  const [modelo, config, historial, escenarios] = await Promise.all([
+  const [modelo, config, historial, escenarios, ventanas, esperaMax] = await Promise.all([
     db.from('demoras_modelo').select('*').eq('escenario_id', escenario) as unknown as Promise<{ data: unknown[] | null; error: { message: string } | null }>,
     db.from('demoras_config').select('*').eq('escenario_id', escenario).order('tipo_servicio', { ascending: true }) as unknown as Promise<{ data: unknown[] | null; error: { message: string } | null }>,
     db.from('demoras_modelo_historial')
@@ -81,9 +90,15 @@ async function payload(db: SupabaseCompat, escenario: number) {
       .order('version', { ascending: false })
       .limit(8) as unknown as Promise<{ data: unknown[] | null; error: { message: string } | null }>,
     db.from('demoras_modelo').select('escenario_id').order('escenario_id', { ascending: true }) as unknown as Promise<{ data: { escenario_id: number }[] | null; error: { message: string } | null }>,
+    db.from('demoras_ventanas').select('*').eq('escenario_id', escenario).order('tipo_servicio', { ascending: true }) as unknown as Promise<{ data: unknown[] | null; error: { message: string } | null }>,
+    db.from('demoras_espera_max')
+      .select('*')
+      .eq('escenario_id', escenario)
+      .order('zona_id', { ascending: true, nullsFirst: true }) as unknown as Promise<{ data: unknown[] | null; error: { message: string } | null }>,
   ]);
 
-  const err = modelo.error ?? config.error ?? historial.error ?? escenarios.error;
+  const err = modelo.error ?? config.error ?? historial.error ?? escenarios.error
+    ?? ventanas.error ?? esperaMax.error;
   if (err) return { error: err.message };
 
   return {
@@ -91,6 +106,8 @@ async function payload(db: SupabaseCompat, escenario: number) {
     config: config.data ?? [],
     historial: historial.data ?? [],
     escenarios: (escenarios.data ?? []).map((e) => e.escenario_id),
+    ventanas: ventanas.data ?? [],
+    esperaMax: esperaMax.data ?? [],
   };
 }
 
@@ -122,6 +139,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     escenario?: number;
     modelo?: Record<string, unknown>;
     config?: Array<Record<string, unknown> & { tipo_servicio?: string }>;
+    ventanas?: Array<{ tipo_servicio?: string; dia_tipo?: string; hora_inicio?: string; hora_fin?: string }>;
+    esperaMax?: Array<{ tipo_servicio?: string; dia_tipo?: string; zona_id?: number | null; hora_max?: string | null }>;
   };
   try {
     body = await request.json();
@@ -175,6 +194,74 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       const esCheck = /check|constraint|invalid/i.test(error.message);
       return NextResponse.json(
         { success: false, error: `No se pudo guardar la config de ${tipo}: ${error.message}` },
+        { status: esCheck ? 400 : 500 },
+      );
+    }
+  }
+
+  // ── demoras_ventanas (ventana del cron por tipo de día) ────────────────
+  // Upsert por PK: la fila puede no existir (solo URGENTE viene sembrado).
+  for (const fila of body.ventanas ?? []) {
+    const tipo = String(fila.tipo_servicio ?? '');
+    const dia = String(fila.dia_tipo ?? '');
+    if (!TIPOS.includes(tipo) || !DIA_TIPOS.includes(dia)) continue;
+    if (fila.hora_inicio == null && fila.hora_fin == null) continue;
+    const { error } = await (db.from('demoras_ventanas').upsert({
+      escenario_id: escenario,
+      tipo_servicio: tipo,
+      dia_tipo: dia,
+      ...(fila.hora_inicio != null ? { hora_inicio: fila.hora_inicio } : {}),
+      ...(fila.hora_fin != null ? { hora_fin: fila.hora_fin } : {}),
+      updated_by: updatedBy ?? null,
+    }, { onConflict: 'escenario_id,tipo_servicio,dia_tipo' }) as unknown as Promise<{ data: unknown; error: { message: string } | null }>);
+    if (error) {
+      const esCheck = /check|constraint|invalid/i.test(error.message);
+      return NextResponse.json(
+        { success: false, error: `No se pudo guardar la ventana ${tipo}/${dia}: ${error.message}` },
+        { status: esCheck ? 400 : 500 },
+      );
+    }
+  }
+
+  // ── demoras_espera_max ─────────────────────────────────────────────────
+  // zona_id null = la default del escenario+tipo+día (update; la siembra la
+  // migración). zona_id con hora_max = override (update o insert). zona_id
+  // con hora_max null = borrar el override (la default nunca se borra: el
+  // motor la necesita como respaldo).
+  for (const fila of body.esperaMax ?? []) {
+    const tipo = String(fila.tipo_servicio ?? '');
+    const dia = String(fila.dia_tipo ?? '');
+    if (!TIPOS.includes(tipo) || !DIA_TIPOS.includes(dia)) continue;
+    const zona = fila.zona_id == null ? null : Number.parseInt(String(fila.zona_id), 10);
+    if (zona !== null && !Number.isFinite(zona)) continue;
+
+    let error: { message: string } | null = null;
+    if (zona !== null && fila.hora_max == null) {
+      ({ error } = await (db.from('demoras_espera_max').delete()
+        .eq('escenario_id', escenario).eq('tipo_servicio', tipo)
+        .eq('dia_tipo', dia).eq('zona_id', zona) as unknown as Promise<{ data: unknown; error: { message: string } | null }>));
+    } else if (fila.hora_max != null) {
+      const base = db.from('demoras_espera_max')
+        .update({ hora_max: fila.hora_max, updated_by: updatedBy ?? null })
+        .eq('escenario_id', escenario).eq('tipo_servicio', tipo).eq('dia_tipo', dia);
+      const upd = await ((zona === null ? base.is('zona_id', null) : base.eq('zona_id', zona))
+        .select() as unknown as Promise<{ data: unknown[] | null; error: { message: string } | null }>);
+      error = upd.error;
+      if (!error && (upd.data ?? []).length === 0) {
+        ({ error } = await (db.from('demoras_espera_max').insert({
+          escenario_id: escenario,
+          tipo_servicio: tipo,
+          dia_tipo: dia,
+          zona_id: zona,
+          hora_max: fila.hora_max,
+          updated_by: updatedBy ?? null,
+        }) as unknown as Promise<{ data: unknown; error: { message: string } | null }>));
+      }
+    }
+    if (error) {
+      const esCheck = /check|constraint|invalid/i.test(error.message);
+      return NextResponse.json(
+        { success: false, error: `No se pudo guardar la espera máxima ${tipo}/${dia}: ${error.message}` },
         { status: esCheck ? 400 : 500 },
       );
     }

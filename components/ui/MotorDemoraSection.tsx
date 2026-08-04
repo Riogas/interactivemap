@@ -27,13 +27,32 @@ interface ConfigRow {
   [k: string]: Primitivo;
 }
 interface HistorialRow { version: number; cambiado_at: string; cambiado_por: string | null }
+interface VentanaRow {
+  tipo_servicio: string;
+  dia_tipo: string;
+  hora_inicio: string;
+  hora_fin: string;
+  [k: string]: Primitivo;
+}
+interface EsperaRow {
+  tipo_servicio: string;
+  dia_tipo: string;
+  zona_id: number | null;
+  hora_max: string;
+  [k: string]: Primitivo;
+}
 
 interface Payload {
   modelo: ModeloRow | null;
   config: ConfigRow[];
   historial: HistorialRow[];
   escenarios: number[];
+  ventanas: VentanaRow[];
+  esperaMax: EsperaRow[];
 }
+
+const DIA_TIPOS = ['HABIL', 'SABADO', 'DOMINGO'];
+const DIA_LABEL: Record<string, string> = { HABIL: 'Hábiles', SABADO: 'Sábado', DOMINGO: 'Domingo' };
 
 type TipoCampo = 'int' | 'num' | 'bool' | 'select';
 
@@ -72,7 +91,7 @@ const GRUPOS: GrupoDef[] = [
   },
   {
     titulo: 'Arranque sin móvil',
-    descripcion: 'Qué informar cuando la zona no tiene ningún móvil activo.',
+    descripcion: 'Qué informar cuando la zona no tiene ningún móvil de prioridad.',
     campos: [
       {
         key: 'arranque_sin_movil_modo', label: 'Modo', tipo: 'select',
@@ -80,8 +99,22 @@ const GRUPOS: GrupoDef[] = [
           { valor: 'TECHO', label: 'Techo (histórico)' },
           { valor: 'DESPACHO', label: 'Valor del Despacho (solo zona vacía)' },
           { valor: 'DESPACHO_MAS_COLA', label: 'Despacho + cola × ritmo (también con pedidos)' },
+          { valor: 'PREDICTIVO', label: 'Predictivo: espera al primer móvil + cola × ritmo' },
         ],
-        hint: 'Sin valor del Despacho (NOCTURNO/SERVICE) siempre manda el techo.',
+        hint: 'PREDICTIVO (solo URGENTE): estima a qué hora aparece el primer móvil de prioridad con el histórico de la zona y promete esa espera; el tránsito es invisible hasta la espera máxima. NOCTURNO/SERVICE siguen como Despacho + cola.',
+      },
+      {
+        key: 'activacion_percentil', label: 'Percentil del histórico', tipo: 'num', step: 0.05,
+        hint: '0.5 = mediana (elegido por retro-backtest); 0.75 = más conservador.',
+      },
+      { key: 'activacion_margen_minutos', label: 'Colchón sobre la estimación (min)', tipo: 'int' },
+      {
+        key: 'activacion_min_muestras', label: 'Días mínimos de muestra', tipo: 'int',
+        hint: 'Sin muestra suficiente cae a: histórico general de la zona → apertura de la ventana.',
+      },
+      {
+        key: 'activacion_gracia_minutos', label: 'Gracia si el móvil no aparece (min)', tipo: 'int',
+        hint: 'Pasada la hora estimada + gracia, la escalera sube al techo hasta la espera máxima.',
       },
     ],
   },
@@ -156,6 +189,31 @@ const GRUPOS: GrupoDef[] = [
 
 const TIPOS_CONFIG = ['URGENTE', 'NOCTURNO', 'SERVICE'];
 
+const hhmm = (v: Primitivo) => String(v ?? '').slice(0, 5);
+
+/**
+ * Las tres filas URGENTE de la ventana por tipo de día. Si alguna no
+ * existe en la base (solo se siembra URGENTE), se sintetiza desde la
+ * ventana general de demoras_config — editarla la crea al guardar.
+ */
+function ventanasUrgente(p: Payload): VentanaRow[] {
+  const cfgUrg = p.config.find((c) => c.tipo_servicio === 'URGENTE');
+  return DIA_TIPOS.map((dia) => {
+    const fila = (p.ventanas ?? []).find((v) => v.tipo_servicio === 'URGENTE' && v.dia_tipo === dia);
+    return fila
+      ? { ...fila }
+      : {
+          tipo_servicio: 'URGENTE',
+          dia_tipo: dia,
+          hora_inicio: String(cfgUrg?.hora_inicio ?? '07:00'),
+          hora_fin: String(cfgUrg?.hora_fin ?? '23:30'),
+        };
+  });
+}
+
+const claveEspera = (e: { dia_tipo: string; zona_id: number | null }) =>
+  `${e.dia_tipo}|${e.zona_id ?? 'def'}`;
+
 export default function MotorDemoraSection({
   trackFuncs,
   isRootHeader,
@@ -169,9 +227,15 @@ export default function MotorDemoraSection({
   const [data, setData] = useState<Payload | null>(null);
   const [modelo, setModelo] = useState<ModeloRow | null>(null);
   const [config, setConfig] = useState<ConfigRow[]>([]);
+  const [ventanas, setVentanas] = useState<VentanaRow[]>([]);
+  const [espera, setEspera] = useState<EsperaRow[]>([]);
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: boolean; msg: string } | null>(null);
+  // Formulario del override nuevo de espera máxima.
+  const [nvZona, setNvZona] = useState('');
+  const [nvDia, setNvDia] = useState('HABIL');
+  const [nvHora, setNvHora] = useState('09:00');
 
   const headers = useMemo(
     () => ({
@@ -193,6 +257,8 @@ export default function MotorDemoraSection({
         setData(j.data);
         setModelo(j.data.modelo ? { ...j.data.modelo } : null);
         setConfig(j.data.config.map((c) => ({ ...c })));
+        setVentanas(ventanasUrgente(j.data));
+        setEspera((j.data.esperaMax ?? []).filter((e) => e.tipo_servicio === 'URGENTE').map((e) => ({ ...e })));
       })
       .catch((e: unknown) => setResultado({ ok: false, msg: e instanceof Error ? e.message : String(e) }))
       .finally(() => setCargando(false));
@@ -223,10 +289,43 @@ export default function MotorDemoraSection({
         return Object.keys(d).length > 0 ? { tipo_servicio: c.tipo_servicio, ...d } : null;
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
-    return { modeloDiff, configDiff };
-  }, [data, modelo, config]);
 
-  const hayCambios = Object.keys(cambios.modeloDiff).length > 0 || cambios.configDiff.length > 0;
+    // Ventana por tipo de día (URGENTE): fila entera cuando cambió algo
+    // (el PUT upsertea — la fila puede no existir todavía).
+    const ventanasInit = data ? ventanasUrgente(data) : [];
+    const ventanasDiff = ventanas
+      .filter((v) => {
+        const o = ventanasInit.find((x) => x.dia_tipo === v.dia_tipo);
+        return !o || hhmm(o.hora_inicio) !== hhmm(v.hora_inicio) || hhmm(o.hora_fin) !== hhmm(v.hora_fin);
+      })
+      .map((v) => ({
+        tipo_servicio: 'URGENTE',
+        dia_tipo: v.dia_tipo,
+        hora_inicio: hhmm(v.hora_inicio),
+        hora_fin: hhmm(v.hora_fin),
+      }));
+
+    // Espera máxima: cambios y altas van con hora; los overrides quitados
+    // viajan con hora_max null (la default nunca se borra).
+    const esperaInit = (data?.esperaMax ?? []).filter((e) => e.tipo_servicio === 'URGENTE');
+    const esperaDiff: Array<{ tipo_servicio: string; dia_tipo: string; zona_id: number | null; hora_max: string | null }> = [];
+    for (const e of espera) {
+      const o = esperaInit.find((x) => claveEspera(x) === claveEspera(e));
+      if (!o || hhmm(o.hora_max) !== hhmm(e.hora_max)) {
+        esperaDiff.push({ tipo_servicio: 'URGENTE', dia_tipo: e.dia_tipo, zona_id: e.zona_id, hora_max: hhmm(e.hora_max) });
+      }
+    }
+    for (const o of esperaInit) {
+      if (o.zona_id != null && !espera.some((e) => claveEspera(e) === claveEspera(o))) {
+        esperaDiff.push({ tipo_servicio: 'URGENTE', dia_tipo: o.dia_tipo, zona_id: o.zona_id, hora_max: null });
+      }
+    }
+
+    return { modeloDiff, configDiff, ventanasDiff, esperaDiff };
+  }, [data, modelo, config, ventanas, espera]);
+
+  const hayCambios = Object.keys(cambios.modeloDiff).length > 0 || cambios.configDiff.length > 0
+    || cambios.ventanasDiff.length > 0 || cambios.esperaDiff.length > 0;
 
   const guardar = () => {
     if (!hayCambios || guardando) return;
@@ -239,6 +338,8 @@ export default function MotorDemoraSection({
         escenario,
         modelo: Object.keys(cambios.modeloDiff).length > 0 ? cambios.modeloDiff : undefined,
         config: cambios.configDiff.length > 0 ? cambios.configDiff : undefined,
+        ventanas: cambios.ventanasDiff.length > 0 ? cambios.ventanasDiff : undefined,
+        esperaMax: cambios.esperaDiff.length > 0 ? cambios.esperaDiff : undefined,
       }),
     })
       .then((r) => r.json())
@@ -247,6 +348,8 @@ export default function MotorDemoraSection({
         setData(j.data);
         setModelo(j.data.modelo ? { ...j.data.modelo } : null);
         setConfig(j.data.config.map((c) => ({ ...c })));
+        setVentanas(ventanasUrgente(j.data));
+        setEspera((j.data.esperaMax ?? []).filter((e) => e.tipo_servicio === 'URGENTE').map((e) => ({ ...e })));
         setResultado({ ok: true, msg: `Guardado — versión ${String(j.data.modelo?.version ?? '?')}. Impacta en la próxima corrida (≤10 min).` });
       })
       .catch((e: unknown) => setResultado({ ok: false, msg: e instanceof Error ? e.message : String(e) }))
@@ -260,7 +363,9 @@ export default function MotorDemoraSection({
   const renderCampo = (c: CampoDef) => {
     if (!modelo) return null;
     const v = modelo[c.key];
-    const deshabilitado = c.key === 'peso_asignados' && modelo['asignados_modo'] !== 'PESO';
+    const deshabilitado =
+      (c.key === 'peso_asignados' && modelo['asignados_modo'] !== 'PESO') ||
+      (c.key.startsWith('activacion_') && modelo['arranque_sin_movil_modo'] !== 'PREDICTIVO');
 
     // Los select van en layout vertical (label arriba, control abajo): al
     // lado, el combo aplastaba la etiqueta en la columna angosta del grid.
@@ -407,6 +512,141 @@ export default function MotorDemoraSection({
                 })}
               </div>
             </div>
+
+            <div className="rounded-lg border border-gray-200 p-3">
+              <div className="text-xs font-bold uppercase tracking-wide text-gray-500">Ventana por tipo de día (URGENTE)</div>
+              <div className="mb-1 text-xs text-gray-400">
+                Cuándo corre el motor cada tipo de día. Manda sobre la ventana general de arriba; NOCTURNO y SERVICE siguen usando la general.
+              </div>
+              <div className="divide-y divide-gray-100">
+                {ventanas.map((v) => (
+                  <div key={v.dia_tipo} className="flex flex-wrap items-center gap-3 py-1.5">
+                    <span className="w-28 text-sm text-gray-700">{DIA_LABEL[v.dia_tipo] ?? v.dia_tipo}</span>
+                    <input
+                      type="time"
+                      value={hhmm(v.hora_inicio)}
+                      onChange={(e) =>
+                        setVentanas((vs) => vs.map((x) => (x.dia_tipo === v.dia_tipo ? { ...x, hora_inicio: e.target.value } : x)))
+                      }
+                      className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-800"
+                    />
+                    <span className="text-xs text-gray-400">a</span>
+                    <input
+                      type="time"
+                      value={hhmm(v.hora_fin)}
+                      onChange={(e) =>
+                        setVentanas((vs) => vs.map((x) => (x.dia_tipo === v.dia_tipo ? { ...x, hora_fin: e.target.value } : x)))
+                      }
+                      className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-800"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-3 md:col-span-2">
+              <div className="text-xs font-bold uppercase tracking-wide text-gray-500">Espera máxima al móvil de prioridad (URGENTE)</div>
+              <div className="mb-1 text-xs text-gray-400">
+                Hasta qué hora del día el arranque predictivo espera al primer móvil de prioridad (el tránsito es invisible hasta esa hora).
+                La default aplica a todas las zonas; un override la pisa solo para esa zona.
+              </div>
+              <div className="flex flex-wrap items-center gap-4 py-1.5">
+                {DIA_TIPOS.map((dia) => {
+                  const fila = espera.find((e) => e.zona_id === null && e.dia_tipo === dia);
+                  return (
+                    <label key={dia} className="flex items-center gap-2 text-sm text-gray-700">
+                      {DIA_LABEL[dia]}
+                      <input
+                        type="time"
+                        value={fila ? hhmm(fila.hora_max) : ''}
+                        onChange={(e) => {
+                          const hora = e.target.value;
+                          setEspera((es) => {
+                            const idx = es.findIndex((x) => x.zona_id === null && x.dia_tipo === dia);
+                            if (idx >= 0) return es.map((x, i) => (i === idx ? { ...x, hora_max: hora } : x));
+                            return [...es, { tipo_servicio: 'URGENTE', dia_tipo: dia, zona_id: null, hora_max: hora }];
+                          });
+                        }}
+                        className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-800"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+
+              {espera.some((e) => e.zona_id !== null) && (
+                <div className="mt-2 divide-y divide-gray-100 border-t border-gray-100">
+                  {espera
+                    .filter((e) => e.zona_id !== null)
+                    .sort((a, b) => (a.zona_id ?? 0) - (b.zona_id ?? 0) || a.dia_tipo.localeCompare(b.dia_tipo))
+                    .map((e) => (
+                      <div key={claveEspera(e)} className="flex flex-wrap items-center gap-3 py-1.5">
+                        <span className="w-24 text-sm text-gray-700">Zona {e.zona_id}</span>
+                        <span className="w-20 text-xs text-gray-500">{DIA_LABEL[e.dia_tipo] ?? e.dia_tipo}</span>
+                        <input
+                          type="time"
+                          value={hhmm(e.hora_max)}
+                          onChange={(ev) =>
+                            setEspera((es) => es.map((x) => (claveEspera(x) === claveEspera(e) ? { ...x, hora_max: ev.target.value } : x)))
+                          }
+                          className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-800"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEspera((es) => es.filter((x) => claveEspera(x) !== claveEspera(e)))}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
+                <span className="text-xs text-gray-500">Override por zona:</span>
+                <input
+                  type="number"
+                  placeholder="Zona"
+                  value={nvZona}
+                  onChange={(e) => setNvZona(e.target.value)}
+                  className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-800"
+                />
+                <select
+                  value={nvDia}
+                  onChange={(e) => setNvDia(e.target.value)}
+                  className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800"
+                >
+                  {DIA_TIPOS.map((d) => (
+                    <option key={d} value={d}>{DIA_LABEL[d]}</option>
+                  ))}
+                </select>
+                <input
+                  type="time"
+                  value={nvHora}
+                  onChange={(e) => setNvHora(e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-800"
+                />
+                <button
+                  type="button"
+                  disabled={!Number.isFinite(Number.parseInt(nvZona, 10)) || nvHora === ''}
+                  onClick={() => {
+                    const zona = Number.parseInt(nvZona, 10);
+                    if (!Number.isFinite(zona)) return;
+                    setEspera((es) => {
+                      const nueva = { tipo_servicio: 'URGENTE', dia_tipo: nvDia, zona_id: zona, hora_max: nvHora };
+                      const idx = es.findIndex((x) => claveEspera(x) === claveEspera(nueva));
+                      if (idx >= 0) return es.map((x, i) => (i === idx ? { ...x, hora_max: nvHora } : x));
+                      return [...es, nueva];
+                    });
+                    setNvZona('');
+                  }}
+                  className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+                >
+                  Agregar
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -420,7 +660,7 @@ export default function MotorDemoraSection({
             </button>
             {hayCambios && !guardando && (
               <span className="text-xs text-gray-500">
-                {Object.keys(cambios.modeloDiff).length + cambios.configDiff.length} cambio(s) sin guardar
+                {Object.keys(cambios.modeloDiff).length + cambios.configDiff.length + cambios.ventanasDiff.length + cambios.esperaDiff.length} cambio(s) sin guardar
               </span>
             )}
             {resultado && (

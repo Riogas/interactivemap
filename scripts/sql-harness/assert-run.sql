@@ -169,7 +169,11 @@ END $$;
 UPDATE demoras_config SET motor_activo=true WHERE escenario_id=1000;
 
 -- Fuera de ventana (global: cierra los 3 tipos a la vez).
+-- v6 (arranque predictivo): URGENTE gatea por demoras_ventanas cuando hay
+-- fila del tipo de dia (la migracion la siembra) -> hay que cerrarla
+-- TAMBIEN, o el coalesce del gate la usa y la corrida escribe igual.
 UPDATE demoras_config SET hora_inicio='07:00', hora_fin='08:00' WHERE escenario_id=1000;
+UPDATE demoras_ventanas SET hora_inicio='07:00', hora_fin='08:00' WHERE escenario_id=1000;
 DO $$
 BEGIN
   IF demoras_calcular_run(timestamptz '2026-07-29 15:00:00-03') IS DISTINCT FROM 0 THEN
@@ -188,6 +192,7 @@ END $$;
 -- que apagar/cerrar UN tipo no afecta a los otros.
 -- ═══════════════════════════════════════════════════════════════════════
 UPDATE demoras_config SET motor_activo=true, hora_inicio='00:00', hora_fin='23:59' WHERE escenario_id=1000;
+UPDATE demoras_ventanas SET hora_inicio='00:00', hora_fin='23:59' WHERE escenario_id=1000;
 
 INSERT INTO moviles_zonas (movil_id, zona_id, escenario_id, tipo_de_servicio, prioridad_o_transito)
 VALUES ('10', 100, 1000, 'NOCTURNO', 1),
