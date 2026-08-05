@@ -11,6 +11,7 @@ import {
   mensajeVacioDesfasaje,
   esFranjaKpi,
   FUENTE_LABEL,
+  EXPLICACION_ACIERTO,
 } from './desfasaje-logic';
 import type { DesfasajeData, FranjaDesfasaje } from '@/types/metricas-desfasaje';
 
@@ -205,5 +206,16 @@ describe('FUENTE_LABEL', () => {
     expect(FUENTE_LABEL.informada).toMatch(/Despacho/);
     expect(FUENTE_LABEL.calculada).toMatch(/motor/);
     expect(FUENTE_LABEL.comparar).toMatch(/común/);
+  });
+});
+
+describe('EXPLICACION_ACIERTO (la medición para todo el mundo)', () => {
+  it('cubre qué se mide, el KPI de 25, las dos promesas y el origen de los datos', () => {
+    const todo = EXPLICACION_ACIERTO.map((s) => `${s.titulo} ${s.texto}`).join(' ');
+    for (const clave of ['desfasaje', '25 minutos', 'Despacho', 'motor', 'población común', 'entrega']) {
+      expect(todo).toContain(clave);
+    }
+    // Redactado para personas: sin jerga interna de tablas/SQL.
+    expect(todo).not.toMatch(/metricas_|corrida_calc_at|fch_hora/);
   });
 });

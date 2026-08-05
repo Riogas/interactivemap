@@ -22,6 +22,7 @@ import {
   detalleUltimaCorrida,
   sufijosPunto,
   horaMontevideo,
+  EXPLICACION_MOTOR,
 } from './demora-comparativa-logic';
 
 const COLOR_CALC = 'var(--color-metricas-serie)';
@@ -234,6 +235,22 @@ export function DemoraComparativa({
           </p>
         )}
       </div>
+
+      {/* El motor entero explicado para cualquiera (pedido 2026-08-04):
+          colapsado por defecto para no empujar el gráfico. */}
+      <details className="rounded-lg border border-stats-border">
+        <summary className="cursor-pointer select-none px-3 py-2 text-[0.78rem] font-semibold text-stats-muted-fg hover:text-stats-foreground">
+          ¿Cómo se calcula esta demora?
+        </summary>
+        <div className="grid gap-3 px-3 pb-3 md:grid-cols-2">
+          {EXPLICACION_MOTOR.map((s) => (
+            <div key={s.titulo}>
+              <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-stats-muted-fg">{s.titulo}</p>
+              <p className="mt-0.5 text-[0.8rem] leading-relaxed text-stats-foreground">{s.texto}</p>
+            </div>
+          ))}
+        </div>
+      </details>
 
       {cargando && !data ? (
         <div className="h-[240px] animate-pulse rounded-lg bg-stats-surface-2" />

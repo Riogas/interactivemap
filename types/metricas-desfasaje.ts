@@ -54,3 +54,72 @@ export interface DesfasajeData {
   } | null;
   franjas: FranjaDesfasaje[];
 }
+
+// ─── Análisis del acierto (RPC metricas_desfasaje_analisis) ─────────────────
+// "Dónde y cuándo falla" cada proyección, con head-to-head Despacho vs motor
+// sobre la población común de cada corte. Ver docs/sqls/2026-08-05-desfasaje-
+// analisis.sql.
+
+/** Qué proyección se autopsia en por_hora/por_zona/peores. */
+export type FuenteAnalisis = 'informada' | 'calculada';
+
+export interface AnalisisResumen {
+  n: number;
+  despacho_le25: number | null;
+  motor_le25: number | null;
+  despacho_p80: number | null;
+  motor_p80: number | null;
+}
+
+export interface AnalisisDia {
+  fecha: string;
+  n: number;
+  despacho_le25: number;
+  motor_le25: number;
+  despacho_p80: number | null;
+  motor_p80: number | null;
+}
+
+export interface AnalisisHora {
+  hora: string;
+  n: number;
+  tarde30_pct: number;
+  sesgo_mediana: number;
+  p80: number;
+  n_comun: number;
+  despacho_le25: number | null;
+  motor_le25: number | null;
+}
+
+export interface AnalisisZona {
+  zona_id: number;
+  n: number;
+  a_tiempo_pct: number;
+  tarde30_pct: number;
+  sesgo_mediana: number;
+  p80: number;
+  n_comun: number;
+  despacho_le25: number | null;
+  motor_le25: number | null;
+}
+
+export interface AnalisisPeor {
+  fecha: string;
+  toma: string;
+  zona_id: number;
+  prometido: number;
+  tardo: number;
+  desfasaje: number;
+}
+
+export interface DesfasajeAnalisisData {
+  rango: { desde: string; hasta: string } | null;
+  fuente: FuenteAnalisis | null;
+  /** Día elegido para el detalle (por_dia siempre trae el rango entero). */
+  fecha: string | null;
+  resumen: AnalisisResumen | null;
+  por_dia: AnalisisDia[];
+  por_hora: AnalisisHora[];
+  por_zona: AnalisisZona[];
+  peores: AnalisisPeor[];
+}

@@ -7,7 +7,7 @@
  * theme.test.ts).
  */
 
-import type { TipoDemora, RitmoOrigen, UltimaCorridaZona } from '@/types/demoras-comparativa';
+import type { TipoDemora, RitmoOrigen, ActivacionOrigen, UltimaCorridaZona } from '@/types/demoras-comparativa';
 import { formatMin, formatCount } from './metricas-theme';
 
 /**
@@ -138,6 +138,13 @@ export const RITMO_ORIGEN_LABEL: Record<RitmoOrigen, string> = {
   DEFECTO: 'valor por defecto — sin ninguna estadística',
 };
 
+/** De dónde salió la hora estimada de activación, dicho para humanos. */
+export const ACTIVACION_ORIGEN_LABEL: Record<ActivacionOrigen, string> = {
+  DIA_TIPO: 'histórico de este tipo de día',
+  GENERAL: 'histórico general de la zona (sin días suficientes de este tipo)',
+  HORARIO: 'apertura de la ventana — la zona no tiene historia suficiente',
+};
+
 /**
  * Capacidad (pedidos por minuto, μ = dedicación/ritmo sumada por móvil) dicha
  * al revés, que es como la piensa cualquiera: "1 pedido cada ~N min". El
@@ -180,6 +187,50 @@ export function sufijosPunto(p: {
   if (p.ritmo_origen === 'GLOBAL') out.push('ritmo global');
   if (p.ritmo_origen === 'DEFECTO') out.push('ritmo por defecto');
   return out;
+}
+
+/**
+ * El "porqué" del arranque PREDICTIVO (2026-08-05), redactado para
+ * cualquiera: qué fase atravesaba la zona sin móvil de prioridad y qué se
+ * está prometiendo. null = la corrida no estaba en ninguna fase del
+ * arranque (hay prioridad, otro modo, otro tipo).
+ */
+export function notaArranque(u: UltimaCorridaZona): string | null {
+  if (u.arranque_fase === null) return null;
+  const hEst = u.activacion_estimada_at ? horaMontevideo(u.activacion_estimada_at) : null;
+  const hMax = u.espera_max_at ? horaMontevideo(u.espera_max_at) : null;
+  const tra = u.moviles_transito ?? 0;
+  const origen = u.activacion_origen
+    ? (ACTIVACION_ORIGEN_LABEL as Record<string, string>)[u.activacion_origen] ?? u.activacion_origen
+    : 'histórico de la zona';
+
+  if (u.arranque_fase === 'PREDICTIVO') {
+    const cola = u.cola_por_delante ?? 0;
+    const espera = u.espera_minutos ?? 0;
+    const llegada = espera > 0 ? ` — faltan ~${formatMin(espera)} min` : ' — ya debería estar por llegar';
+    const colaTxt = cola > 0 ? ` y a los ${formatMin(cola)} pedidos que están antes` : '';
+    const traTxt = tra > 0
+      ? ` Los móviles de tránsito de la zona (${formatCount(tra)}) no cuentan mientras se espera al de prioridad.`
+      : '';
+    return (
+      `La zona todavía no tiene móvil de prioridad. Según el ${origen}, el primero suele activarse a las ${hEst ?? '—'}${llegada}; ` +
+      `se lo espera hasta las ${hMax ?? '—'}. La promesa cubre esa espera más tu entrega${colaTxt}.${traTxt}`
+    );
+  }
+  if (u.arranque_fase === 'GRACIA_VENCIDA') {
+    const traTxt = tra > 0
+      ? ` Los móviles de tránsito (${formatCount(tra)}) siguen sin contar hasta esa hora.`
+      : '';
+    return (
+      `El primer móvil de prioridad no apareció a la hora estimada (${hEst ?? '—'}) y venció la gracia: ` +
+      `la demora sube hacia el techo mientras se lo sigue esperando, hasta las ${hMax ?? '—'}.${traTxt}`
+    );
+  }
+  // TRANSITO
+  return (
+    `Pasó la espera máxima al móvil de prioridad (${hMax ?? '—'}) y no apareció: el cálculo corre con ` +
+    `los móviles de tránsito de la zona (${formatCount(tra)}), que la atienden con dedicación parcial.`
+  );
 }
 
 /** Vista ya redactada del desglose: la card solo la pinta. */
@@ -251,18 +302,29 @@ export function detalleUltimaCorrida(u: UltimaCorridaZona): DetalleUltima {
   // nunca afirmar una dirección fija. Y con suavizado encima, lo publicado
   // puede NO coincidir con el techo/mínimo del clamp: las notas se combinan
   // en una sola para no contradecirse entre sí (ni con el título).
-  if (u.sin_capacidad) {
-    // Con la perilla de arranque en modo DESPACHO (2026-08-04), una zona
-    // sin móviles Y sin pedidos informa el valor del Despacho, no el
-    // techo. Se detecta porque el run persiste esa cruda = valor del
-    // Despacho de la misma corrida.
+  const arranque = notaArranque(u);
+  if (arranque !== null) {
+    notas.push(arranque);
+    if (u.suavizado_aplicado) {
+      notas.push('El publicado se mueve de a pasos limitados por corrida (suavizado): puede no coincidir todavía con esa cuenta.');
+    }
+  } else if (u.sin_capacidad) {
+    // Perillas de arranque DESPACHO / DESPACHO_MAS_COLA (2026-08-04) y el
+    // respaldo del modo PREDICTIVO pasada la espera máxima: una zona sin
+    // ningún móvil informa el valor del Despacho (más la cola que espera),
+    // no el techo. Se detecta porque el run persiste esa cruda = Despacho
+    // (+ cola × ritmo) de la misma corrida.
     const esArranqueDespacho =
-      u.cola_por_delante === 0 && u.demora_cruda !== null && u.as400 !== null && u.demora_cruda === u.as400;
+      u.demora_cruda !== null && u.as400 !== null &&
+      (u.demora_cruda === u.as400 ||
+        (u.cola_por_delante !== null && u.ritmo_usado !== null &&
+          Math.abs(u.demora_cruda - (u.as400 + u.cola_por_delante * u.ritmo_usado)) < 0.01));
     if (esArranqueDespacho) {
+      const conCola = (u.cola_por_delante ?? 0) > 0 ? ' más el costo de la cola que espera' : '';
       notas.push(
         u.suavizado_aplicado
-          ? 'Sin ningún móvil activo pero también sin pedidos: se tomó el valor del Despacho como arranque (no un cálculo del modelo), y el publicado se mueve de a pasos limitados por corrida (suavizado).'
-          : 'Sin ningún móvil activo pero también sin pedidos: se informó el valor del Despacho como arranque, no un cálculo del modelo.',
+          ? `Sin ningún móvil activo en la zona: se informa el valor del Despacho${conCola} — el mejor dato disponible, no un cálculo del modelo — y el publicado se mueve de a pasos limitados por corrida (suavizado).`
+          : `Sin ningún móvil activo en la zona: se informa el valor del Despacho${conCola} — el mejor dato disponible, no un cálculo del modelo.`,
       );
     } else {
       // El suavizado corre igual con sin_capacidad (demoras_acabado no tiene
@@ -327,3 +389,56 @@ export function detalleUltimaCorrida(u: UltimaCorridaZona): DetalleUltima {
     notas,
   };
 }
+
+// ─── "¿Cómo se calcula?" — el motor entero en lenguaje llano ────────────────
+// Pedido del usuario (2026-08-04): que CUALQUIERA pueda entender qué
+// considera el cálculo, sin conocer el modelo. Vive acá (y no inline en el
+// componente) para que el test fije el contenido y las dos cards lo
+// compartan si hace falta.
+
+export interface SeccionExplicacion { titulo: string; texto: string }
+
+export const EXPLICACION_MOTOR: SeccionExplicacion[] = [
+  {
+    titulo: 'Qué es este número',
+    texto:
+      'Cada 10 minutos, para cada zona, el motor calcula cuántos minutos tardaría en llegar un pedido que entrara AHORA. ' +
+      'En la comparativa hay dos líneas: la naranja es lo que cargó la operativa en el Despacho (AS400) y la azul es lo que calculó el motor con datos. ' +
+      'Las dos se comparan después contra lo que realmente tardó cada pedido.',
+  },
+  {
+    titulo: 'El ritmo: cuánto tarda un móvil por pedido',
+    texto:
+      'Sale de las entregas reales de los últimos días (la mediana, no el promedio, para que un caso raro no arrastre el número). ' +
+      'Se busca en cascada: primero la historia del chofer, si no la hay la del móvil, después la de la zona y por último el promedio global. ' +
+      'El desglose de cada zona dice de qué nivel salió y con cuántas muestras.',
+  },
+  {
+    titulo: 'La cola: quiénes están antes que vos',
+    texto:
+      'Se cuentan los pedidos de la zona que todavía esperan. Los que ya están arriba de un móvil no cuentan enteros: ' +
+      'cuentan solo lo que les falta, descontando el tiempo que ya llevan en curso contra el ritmo de la zona. ' +
+      'Por eso la cola puede dar un número con coma (2,5 = dos pedidos y medio por terminar).',
+  },
+  {
+    titulo: 'La capacidad: quiénes atienden',
+    texto:
+      'Los móviles de prioridad de la zona atienden a pleno; los de tránsito (que pasan por la zona pero no son de ella) aportan solo una dedicación parcial. ' +
+      'Un móvil que está terminando algo afuera se suma cuando vuelve — la simulación avanza por escalones a medida que se liberan.',
+  },
+  {
+    titulo: 'El arranque del día (predictivo)',
+    texto:
+      'Cuando la zona todavía no tiene móvil de prioridad, el motor mira el histórico: a qué hora suele activarse el primero ese tipo de día (hábil, sábado o domingo). ' +
+      'La promesa cubre esa espera, más la cola, más tu entrega. Los móviles de tránsito no cuentan en esa espera. ' +
+      'Si el móvil no aparece a la hora estimada (más una gracia), la demora sube hacia el techo; y pasada la hora máxima de espera configurada, ' +
+      'el cálculo sigue con lo que haya: los de tránsito, o el valor del Despacho como respaldo si no hay nada.',
+  },
+  {
+    titulo: 'Los límites del número publicado',
+    texto:
+      'Lo publicado nunca baja de 30 ni sube de 120 minutos, y se redondea al escalón de 15 siempre HACIA ARRIBA (la promesa no se achica por redondeo). ' +
+      'Entre corridas se mueve de a pasos limitados (suavizado) para no marear con saltos — salvo cuando entra o sale un móvil, ' +
+      'que es un cambio real y el número salta directo.',
+  },
+];

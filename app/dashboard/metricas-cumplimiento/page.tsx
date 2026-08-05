@@ -30,9 +30,10 @@ import { ExpandModal } from '@/components/metricas/ExpandModal';
 import { EscenarioComparativa } from '@/components/metricas/EscenarioComparativa';
 import { DemoraComparativa } from '@/components/metricas/DemoraComparativa';
 import { DesfasajeCard } from '@/components/metricas/DesfasajeCard';
+import { DesfasajeAnalisis } from '@/components/metricas/DesfasajeAnalisis';
 import { INFO_TEXTS, DIMENSION_LABEL, COLOR_TIPO, TIPO_LABEL, formatMin, formatPct } from '@/components/metricas/metricas-theme';
 
-type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | null;
+type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | 'analisis' | null;
 
 // ─── Sub-tablas chicas usadas SOLO dentro del ExpandModal (E2: "tabla completa
 // de datos de esa sección" para tendencia/por-tipo, complementando el chart). ──
@@ -576,6 +577,22 @@ function MetricasCumplimientoContent() {
           >
             <DesfasajeCard escenario={escenarioSel} empresaSel={empresaSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
           </CardShell>
+
+          {/* ── Análisis del acierto ──
+              Las aperturas del informe semanal, vivas: por día (Despacho vs
+              motor con veredicto), por hora de la toma, peores zonas y
+              peores incumplimientos — con filtro por día (click en la fila). */}
+          <CardShell
+            title="Análisis del acierto"
+            hint="dónde y cuándo falla · click en un día para filtrar"
+            infoTitle="Análisis del acierto"
+            infoText="Compara el Despacho y el motor sobre los MISMOS pedidos, día por día, y autopsia la proyección elegida por hora de la toma, por zona (con su lectura) y por peores casos. El sesgo es la mediana del desfasaje con signo: negativo = se llega antes de lo prometido."
+            onExpand={() => setExpandedSection('analisis')}
+            className="col-span-12"
+            style={{ animationDelay: '460ms' }}
+          >
+            <DesfasajeAnalisis escenario={escenarioSel} empresaSel={empresaSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
+          </CardShell>
         </div>
 
         <div className="mt-4 text-[0.76rem] text-stats-muted-fg">
@@ -601,7 +618,9 @@ function MetricasCumplimientoContent() {
                     ? 'Demora calculada vs. informada'
                     : expandedSection === 'desfasaje'
                       ? 'Acierto de la demora'
-                      : `Detalle por ${dimLabel.singular}`
+                      : expandedSection === 'analisis'
+                        ? 'Análisis del acierto'
+                        : `Detalle por ${dimLabel.singular}`
         }
       >
         {data && expandedSection === 'tendencia' && (
@@ -646,6 +665,15 @@ function MetricasCumplimientoContent() {
             empresasIds={empresasIdsForHeader}
             funcionalidades={funcionalidades}
             height={380}
+          />
+        )}
+        {expandedSection === 'analisis' && (
+          <DesfasajeAnalisis
+            escenario={escenarioSel}
+            empresaSel={empresaSel}
+            isRoot={unrestricted}
+            empresasIds={empresasIdsForHeader}
+            funcionalidades={funcionalidades}
           />
         )}
       </ExpandModal>

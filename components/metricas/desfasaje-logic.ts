@@ -18,6 +18,42 @@ export const FUENTE_LABEL: Record<FuenteDesfasaje, string> = {
   comparar: 'Comparar (población común)',
 };
 
+// ─── "¿Cómo se mide?" — el acierto en lenguaje llano ────────────────────────
+// Pedido del usuario (2026-08-04): que cualquiera entienda qué considera
+// esta medición, sin conocer las tablas. Misma forma que EXPLICACION_MOTOR
+// (demora-comparativa-logic.ts).
+
+export interface SeccionExplicacionAcierto { titulo: string; texto: string }
+
+export const EXPLICACION_ACIERTO: SeccionExplicacionAcierto[] = [
+  {
+    titulo: 'Qué se mide',
+    texto:
+      'Para cada pedido urgente o nocturno ENTREGADO se compara la demora que se le prometió en el momento en que lo tomamos ' +
+      'contra lo que realmente tardó en llegar. La diferencia (con signo: negativo = llegó antes de lo prometido, positivo = llegó después) ' +
+      'es el desfasaje, y se agrupa en franjas de 5 minutos.',
+  },
+  {
+    titulo: 'El número que importa',
+    texto:
+      'El KPI es el porcentaje de pedidos con desfasaje de 25 minutos o menos — llegaron "en tiempo y forma" respecto de la promesa. ' +
+      'Los agendados para más tarde y los cancelados no entran: solo pedidos que se pidieron para ya y se entregaron.',
+  },
+  {
+    titulo: 'Las dos promesas que se comparan',
+    texto:
+      'La naranja es la demora que la operativa cargó en el Despacho (AS400) y viajó congelada en el pedido. ' +
+      'La azul es la que calculó el motor en la corrida de ese momento. "Comparar" usa la población común: ' +
+      'solo pedidos que tienen las DOS promesas, para que la comparación sea justa (mismos pedidos, misma vara).',
+  },
+  {
+    titulo: 'De dónde salen los datos',
+    texto:
+      'La entrega real sale del cierre del pedido; la promesa del Despacho, de la fecha comprometida que quedó grabada en el pedido; ' +
+      'y la del motor, de la corrida vigente cuando el pedido se tomó (el motor recalcula cada 10 minutos). Nada se estima a mano.',
+  },
+];
+
 export const DIAS_OPCIONES = [7, 30, 90] as const;
 
 /**

@@ -8,6 +8,18 @@ export type ClampeadoDemora = 'MIN' | 'MAX';
 /** Valor de `demoras_calculadas.ritmo_origen`. */
 export type RitmoOrigen = 'CHOFER' | 'MOVIL' | 'ZONA' | 'GLOBAL' | 'DEFECTO';
 
+/**
+ * Fase del arranque PREDICTIVO en la corrida (2026-08-05): PREDICTIVO =
+ * prometiendo la espera al primer móvil de prioridad; GRACIA_VENCIDA = pasó
+ * la hora estimada + gracia sin móvil (escalera al techo); TRANSITO = pasó
+ * la espera máxima y el cálculo corre con los móviles de tránsito. null =
+ * el arranque no aplicó (hay prioridad, otro tipo de servicio u otro modo).
+ */
+export type ArranqueFase = 'PREDICTIVO' | 'GRACIA_VENCIDA' | 'TRANSITO';
+
+/** De dónde salió la hora estimada de activación del primer prioridad. */
+export type ActivacionOrigen = 'DIA_TIPO' | 'GENERAL' | 'HORARIO';
+
 export interface PuntoComparativa {
   corrida_at: string;
   /** Fix round 1: sin esto, la serie sin filtro de zona mezcla puntos de
@@ -72,6 +84,17 @@ export interface UltimaCorridaZona {
    * No afirma dirección: puede ser una suba capada o una baja capada.
    */
   suavizado_aplicado: boolean;
+  /** Auditoría del arranque PREDICTIVO (null en corridas sin la fase). */
+  arranque_fase: ArranqueFase | null;
+  /** Hora estimada de activación del primer prioridad (sin capear, ISO). */
+  activacion_estimada_at: string | null;
+  activacion_origen: ActivacionOrigen | null;
+  /** Espera aplicada en la fórmula, ya capeada a la espera máxima. */
+  espera_minutos: number | null;
+  /** Hasta qué hora se espera al prioridad en esta zona/día (ISO). */
+  espera_max_at: string | null;
+  moviles_prioridad: number | null;
+  moviles_transito: number | null;
 }
 
 export interface ZonaBrecha {

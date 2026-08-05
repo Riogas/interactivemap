@@ -14,39 +14,59 @@ const CONFIG = [
   { escenario_id: 1000, tipo_servicio: 'URGENTE', motor_activo: true, hora_inicio: '07:00:00', hora_fin: '23:30:00' },
 ];
 const HISTORIAL = [{ version: 6, cambiado_at: '2026-08-04T15:00:00-03:00', cambiado_por: 'jgomez' }];
+const VENTANAS = [
+  { escenario_id: 1000, tipo_servicio: 'URGENTE', dia_tipo: 'HABIL', hora_inicio: '07:00:00', hora_fin: '23:30:00' },
+];
+const ESPERA = [
+  { id: 1, escenario_id: 1000, tipo_servicio: 'URGENTE', dia_tipo: 'HABIL', zona_id: null, hora_max: '09:00:00' },
+];
 
-/** Mock por tabla que registra los update() y sus filtros eq(). */
+interface Op {
+  table: string;
+  op: 'update' | 'insert' | 'upsert' | 'delete';
+  vals?: Record<string, unknown>;
+  opts?: Record<string, unknown>;
+  eqs: Array<[string, unknown]>;
+  iss: Array<[string, unknown]>;
+}
+
+/** Mock por tabla que registra escrituras (update/insert/upsert/delete) con sus filtros. */
 function makeDb() {
-  const updates: Array<{ table: string; vals: Record<string, unknown>; eqs: Array<[string, unknown]> }> = [];
+  const ops: Op[] = [];
   const fixtures: Record<string, unknown[]> = {
     demoras_modelo: [MODELO],
     demoras_config: CONFIG,
     demoras_modelo_historial: HISTORIAL,
+    demoras_ventanas: VENTANAS,
+    demoras_espera_max: ESPERA,
   };
   const from = vi.fn((table: string) => {
     const q: Record<string, unknown> = {};
-    let pendingUpdate: Record<string, unknown> | null = null;
+    let pending: Op | null = null;
     const eqs: Array<[string, unknown]> = [];
+    const iss: Array<[string, unknown]> = [];
     for (const m of ['select', 'order', 'limit']) q[m] = vi.fn(() => q);
-    q.eq = vi.fn((col: string, val: unknown) => {
-      eqs.push([col, val]);
-      return q;
-    });
-    q.update = vi.fn((vals: Record<string, unknown>) => {
-      pendingUpdate = vals;
-      return q;
-    });
+    q.eq = vi.fn((col: string, val: unknown) => { eqs.push([col, val]); return q; });
+    q.is = vi.fn((col: string, val: unknown) => { iss.push([col, val]); return q; });
+    q.update = vi.fn((vals: Record<string, unknown>) => { pending = { table, op: 'update', vals, eqs, iss }; return q; });
+    q.insert = vi.fn((vals: Record<string, unknown>) => { pending = { table, op: 'insert', vals, eqs, iss }; return q; });
+    q.upsert = vi.fn((vals: Record<string, unknown>, opts: Record<string, unknown>) => { pending = { table, op: 'upsert', vals, opts, eqs, iss }; return q; });
+    q.delete = vi.fn(() => { pending = { table, op: 'delete', eqs, iss }; return q; });
     q.then = (res: (v: unknown) => unknown) => {
-      if (pendingUpdate) {
-        updates.push({ table, vals: pendingUpdate, eqs });
+      if (pending) {
+        ops.push(pending);
         const inyectado = (fixtures[`__error_${table}`] as { message: string }[] | undefined)?.[0];
-        return res({ data: null, error: inyectado ?? null });
+        // Un update devuelve las filas afectadas (el PUT decide insert si 0).
+        const data = pending.op === 'update' ? (fixtures[`__updrows_${table}`] ?? [{}]) : null;
+        return res({ data, error: inyectado ?? null });
       }
       return res({ data: fixtures[table] ?? [], error: null });
     };
     return q;
   });
-  return { from, updates, fixtures };
+  return { from, ops, fixtures, get updates() {
+    return ops.filter((o) => o.op === 'update').map((o) => ({ table: o.table, vals: o.vals!, eqs: o.eqs }));
+  } };
 }
 
 const OK_HEADERS = { 'x-track-isroot': 'S', 'x-track-user': 'jgomez' };
@@ -83,7 +103,7 @@ describe('/api/demoras/modelo', () => {
     expect(res.status).toBe(200);
   });
 
-  it('GET arma el payload completo: modelo, config, historial y escenarios', async () => {
+  it('GET arma el payload completo: modelo, config, historial, escenarios, ventanas y espera máxima', async () => {
     const res = await GET(getReq('escenario=1000'));
     const body = await res.json();
     expect(res.status).toBe(200);
@@ -91,6 +111,8 @@ describe('/api/demoras/modelo', () => {
     expect(body.data.config).toHaveLength(2);
     expect(body.data.historial[0].cambiado_por).toBe('jgomez');
     expect(body.data.escenarios).toEqual([1000]);
+    expect(body.data.ventanas).toHaveLength(1);
+    expect(body.data.esperaMax[0].hora_max).toBe('09:00:00');
   });
 
   it('GET sin escenario -> 400', async () => {
@@ -146,5 +168,74 @@ describe('/api/demoras/modelo', () => {
     const res = await PUT(putReq({ modelo: { bajada_max: 45 } }));
     expect(res.status).toBe(400);
     expect(db.updates).toHaveLength(0);
+  });
+
+  it('las perillas de activación están whitelisteadas', async () => {
+    const res = await PUT(putReq({
+      escenario: 1000,
+      modelo: { activacion_gracia_minutos: 25, activacion_percentil: 0.75 },
+    }));
+    expect(res.status).toBe(200);
+    const up = db.updates.find((u) => u.table === 'demoras_modelo');
+    expect(up!.vals).toEqual({ activacion_gracia_minutos: 25, activacion_percentil: 0.75, updated_by: 'jgomez' });
+  });
+
+  it('PUT de ventanas upsertea por PK y descarta tipos o días inválidos', async () => {
+    const res = await PUT(putReq({
+      escenario: 1000,
+      ventanas: [
+        { tipo_servicio: 'URGENTE', dia_tipo: 'SABADO', hora_inicio: '08:00', hora_fin: '13:00' },
+        { tipo_servicio: 'FRUTA', dia_tipo: 'HABIL', hora_inicio: '08:00' },
+        { tipo_servicio: 'URGENTE', dia_tipo: 'FERIADO', hora_fin: '13:00' },
+      ],
+    }));
+    expect(res.status).toBe(200);
+    const ups = db.ops.filter((o) => o.table === 'demoras_ventanas' && o.op === 'upsert');
+    expect(ups).toHaveLength(1);
+    expect(ups[0].vals).toMatchObject({
+      escenario_id: 1000, tipo_servicio: 'URGENTE', dia_tipo: 'SABADO',
+      hora_inicio: '08:00', hora_fin: '13:00', updated_by: 'jgomez',
+    });
+    expect(ups[0].opts).toEqual({ onConflict: 'escenario_id,tipo_servicio,dia_tipo' });
+  });
+
+  it('PUT de espera máxima: la default (zona null) se actualiza con is(zona_id, null)', async () => {
+    const res = await PUT(putReq({
+      escenario: 1000,
+      esperaMax: [{ tipo_servicio: 'URGENTE', dia_tipo: 'HABIL', zona_id: null, hora_max: '10:00' }],
+    }));
+    expect(res.status).toBe(200);
+    const up = db.ops.find((o) => o.table === 'demoras_espera_max' && o.op === 'update');
+    expect(up!.vals).toMatchObject({ hora_max: '10:00', updated_by: 'jgomez' });
+    expect(up!.iss).toContainEqual(['zona_id', null]);
+    // La fila existía (el update devolvió filas): no hay insert.
+    expect(db.ops.some((o) => o.table === 'demoras_espera_max' && o.op === 'insert')).toBe(false);
+  });
+
+  it('PUT de espera máxima: un override nuevo cae a insert cuando el update no encontró fila', async () => {
+    db.fixtures['__updrows_demoras_espera_max'] = [];
+    const res = await PUT(putReq({
+      escenario: 1000,
+      esperaMax: [{ tipo_servicio: 'URGENTE', dia_tipo: 'HABIL', zona_id: 72, hora_max: '11:00' }],
+    }));
+    expect(res.status).toBe(200);
+    const ins = db.ops.find((o) => o.table === 'demoras_espera_max' && o.op === 'insert');
+    expect(ins!.vals).toMatchObject({
+      escenario_id: 1000, tipo_servicio: 'URGENTE', dia_tipo: 'HABIL', zona_id: 72, hora_max: '11:00',
+    });
+  });
+
+  it('PUT de espera máxima: hora_max null borra el override de zona (nunca la default)', async () => {
+    const res = await PUT(putReq({
+      escenario: 1000,
+      esperaMax: [
+        { tipo_servicio: 'URGENTE', dia_tipo: 'HABIL', zona_id: 72, hora_max: null },
+        { tipo_servicio: 'URGENTE', dia_tipo: 'HABIL', zona_id: null, hora_max: null },
+      ],
+    }));
+    expect(res.status).toBe(200);
+    const dels = db.ops.filter((o) => o.table === 'demoras_espera_max' && o.op === 'delete');
+    expect(dels).toHaveLength(1);
+    expect(dels[0].eqs).toContainEqual(['zona_id', 72]);
   });
 });
