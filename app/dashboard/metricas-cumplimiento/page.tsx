@@ -298,6 +298,13 @@ function MetricasCumplimientoContent() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <a
+              href="/dashboard/metricas-cumplimiento/documentacion"
+              className="rounded-md border border-stats-border px-2.5 py-1 text-[0.78rem] text-stats-foreground hover:bg-stats-surface-2"
+              title="Cómo se calcula todo lo de esta pantalla, explicado para cualquiera — con botón para imprimir o guardar en PDF"
+            >
+              Documentación
+            </a>
             {data?.rango?.max_fecha && (
               <span className="hidden items-center gap-1.5 rounded-md px-1.5 font-stats-mono text-[0.74rem] text-stats-muted-fg sm:inline-flex">
                 <span className="h-[7px] w-[7px] rounded-full bg-stats-success" aria-hidden="true" />
