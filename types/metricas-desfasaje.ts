@@ -112,12 +112,41 @@ export interface AnalisisPeor {
   desfasaje: number;
 }
 
+/**
+ * El "porqué" del veredicto sobre la población común del corte: quién
+ * acertó qué, las CAUSAS de los puntos que perdió el motor (clasificadas
+ * mirando la corrida vigente a la toma de cada pedido) y el contrafáctico
+ * honesto (¿cuánto daría publicando el número crudo del modelo?).
+ */
+export interface AnalisisDiagnostico {
+  n: number;
+  ambos: number;
+  solo_despacho: number;
+  solo_motor: number;
+  ninguno: number;
+  /** Causas de los pedidos donde SOLO el Despacho acertó. */
+  c_techo: number;
+  c_escalera: number;
+  c_sobrestimo: number;
+  c_subestimo: number;
+  c_operativo: number;
+  /** Por qué perdió el Despacho donde solo acertó el motor. */
+  despacho_colchon: number;
+  despacho_tarde: number;
+  despacho_le25: number | null;
+  motor_le25: number | null;
+  /** Contrafáctico: % ≤25 publicando la demora CRUDA del modelo. */
+  cruda_le25: number | null;
+  cruda_n: number;
+}
+
 export interface DesfasajeAnalisisData {
   rango: { desde: string; hasta: string } | null;
   fuente: FuenteAnalisis | null;
   /** Día elegido para el detalle (por_dia siempre trae el rango entero). */
   fecha: string | null;
   resumen: AnalisisResumen | null;
+  diagnostico: AnalisisDiagnostico | null;
   por_dia: AnalisisDia[];
   por_hora: AnalisisHora[];
   por_zona: AnalisisZona[];

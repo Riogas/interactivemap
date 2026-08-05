@@ -18,6 +18,7 @@ import { TIPOS_DESFASAJE } from '@/types/metricas-desfasaje';
 import { formatMin } from './metricas-theme';
 import {
   buildAnalisisFetch, lecturaZona, veredicto, diasGanados, fechaCorta, pctText, sesgoText,
+  narrarDiagnostico,
   FUENTE_ANALISIS_LABEL, DIAS_ANALISIS,
 } from './desfasaje-analisis-logic';
 
@@ -215,6 +216,47 @@ export function DesfasajeAnalisis({
               )}
             </div>
           )}
+
+          {/* ── El porqué del veredicto: causas y palancas, con sinceridad ── */}
+          {data.diagnostico && (() => {
+            const nar = narrarDiagnostico(data.diagnostico);
+            return (
+              <div className="rounded-lg border border-stats-border p-3">
+                <p className="text-[0.72rem] font-semibold uppercase tracking-wide text-stats-muted-fg">
+                  El porqué del veredicto
+                </p>
+                <p className="mt-1 text-sm font-semibold text-stats-foreground">{nar.titulo}</p>
+                {nar.parrafos.map((p2) => (
+                  <p key={p2.slice(0, 40)} className="mt-2 text-[0.85rem] leading-relaxed text-stats-foreground">
+                    {p2}
+                  </p>
+                ))}
+                {nar.causas.length > 0 && (
+                  <div className="mt-3">
+                    <p className="mb-1 text-[0.72rem] font-semibold uppercase tracking-wide text-stats-muted-fg">
+                      Dónde perdió puntos el motor, y qué palanca tiene cada causa
+                    </p>
+                    <div className="space-y-2">
+                      {nar.causas.map((c) => (
+                        <div key={c.clave}>
+                          <div className="flex flex-wrap items-center gap-2 text-[0.85rem]">
+                            <span className="font-semibold text-stats-foreground">{c.label}</span>
+                            <span className="font-stats-mono text-stats-muted-fg">
+                              {c.n.toLocaleString('es-UY')} pedidos · {(c.peso * 100).toLocaleString('es-UY', { maximumFractionDigits: 0 })}% de lo perdido
+                            </span>
+                            <span className="inline-block h-[7px] w-32 overflow-hidden rounded-full bg-stats-surface-2 align-middle">
+                              <span className="block h-full rounded-full" style={{ width: `${Math.min(100, c.peso * 100)}%`, background: COLOR_DESPACHO }} />
+                            </span>
+                          </div>
+                          <p className="text-[0.8rem] leading-relaxed text-stats-muted-fg">{c.palanca}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Por día (click en la fila = filtrar el detalle) ── */}
           <div className="overflow-x-auto">

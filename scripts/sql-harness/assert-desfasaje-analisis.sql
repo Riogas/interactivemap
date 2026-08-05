@@ -160,6 +160,30 @@ BEGIN
 END $$;
 SELECT 'ok fail-closed: empresas [] = vacio; empresa ajena no ve nada' AS r;
 
+-- ─── Diagnostico: quien acerto que, y por que perdio el motor ─────────
+DO $$
+DECLARE r jsonb; dg jsonb;
+BEGIN
+  r := metricas_desfasaje_analisis(jsonb_build_object(
+    'escenario', 1000, 'desde', '2026-06-20', 'hasta', '2026-06-21',
+    'min_zona', 1));
+  dg := r->'diagnostico';
+
+  -- Comun 3: 402 ambos; 401 solo motor (Despacho +40 tarde); 404 solo
+  -- Despacho (motor -30 = sobrestimo; sin corrida vinculada -> la causa
+  -- cae por signo, no por auditoria).
+  IF (dg->>'n')::int             IS DISTINCT FROM 3 THEN RAISE EXCEPTION 'diag n = %', dg->>'n'; END IF;
+  IF (dg->>'ambos')::int         IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'diag ambos = %', dg->>'ambos'; END IF;
+  IF (dg->>'solo_despacho')::int IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'diag solo_despacho = %', dg->>'solo_despacho'; END IF;
+  IF (dg->>'solo_motor')::int    IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'diag solo_motor = %', dg->>'solo_motor'; END IF;
+  IF (dg->>'ninguno')::int       IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'diag ninguno = %', dg->>'ninguno'; END IF;
+  IF (dg->>'c_sobrestimo')::int  IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'diag c_sobrestimo = %', dg->>'c_sobrestimo'; END IF;
+  IF (dg->>'despacho_tarde')::int IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'diag despacho_tarde = %', dg->>'despacho_tarde'; END IF;
+  -- Sin corridas vinculadas no hay contrafactico de la cruda.
+  IF (dg->>'cruda_n')::int       IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'diag cruda_n = %', dg->>'cruda_n'; END IF;
+END $$;
+SELECT 'ok diagnostico: buckets + causa por signo + contrafactico ausente sin corridas' AS r;
+
 -- ─── Teardown ──────────────────────────────────────────────────────────
 DELETE FROM metricas_cumplimiento WHERE pedido_id IN (401, 402, 403, 404) AND escenario = 1000;
 SELECT 'ok teardown desfasaje-analisis' AS r;
