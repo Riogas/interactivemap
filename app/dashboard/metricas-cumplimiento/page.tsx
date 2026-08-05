@@ -31,9 +31,10 @@ import { EscenarioComparativa } from '@/components/metricas/EscenarioComparativa
 import { DemoraComparativa } from '@/components/metricas/DemoraComparativa';
 import { DesfasajeCard } from '@/components/metricas/DesfasajeCard';
 import { DesfasajeAnalisis } from '@/components/metricas/DesfasajeAnalisis';
+import { EvolucionDiaCard } from '@/components/metricas/EvolucionDiaCard';
 import { INFO_TEXTS, DIMENSION_LABEL, COLOR_TIPO, TIPO_LABEL, formatMin, formatPct } from '@/components/metricas/metricas-theme';
 
-type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | 'analisis' | null;
+type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | 'analisis' | 'evolucion' | null;
 
 // ─── Sub-tablas chicas usadas SOLO dentro del ExpandModal (E2: "tabla completa
 // de datos de esa sección" para tendencia/por-tipo, complementando el chart). ──
@@ -548,6 +549,22 @@ function MetricasCumplimientoContent() {
             )}
           </CardShell>
 
+          {/* ── Evolución del día EN VIVO ──
+              La sala de control de HOY: se refresca sola cada 60 s y por
+              cada corrida deja una fila en la línea de tiempo (motor,
+              Despacho, fases del arranque y cumplimiento acumulado). */}
+          <CardShell
+            title="Evolución del día"
+            hint="EN VIVO · se actualiza sola cada 60 s"
+            infoTitle="Evolución del día"
+            infoText="Cada corrida del motor (10 min) deja su fila: qué publicó el motor y qué tenía el Despacho, cuántas zonas estaban en cada fase del arranque predictivo, y el % ≤25' acumulado del día calculado en vivo desde los pedidos entregados (la promesa del motor es la de la corrida vigente a la toma)."
+            onExpand={() => setExpandedSection('evolucion')}
+            className="col-span-12"
+            style={{ animationDelay: '360ms' }}
+          >
+            <EvolucionDiaCard escenario={escenarioSel} empresaSel={empresaSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
+          </CardShell>
+
           {/* ── Demora informada vs. calculada ──
               Última card: mira un dato distinto del resto de la pantalla
               (demora prospectiva, no cumplimiento histórico). */}
@@ -620,7 +637,9 @@ function MetricasCumplimientoContent() {
                       ? 'Acierto de la demora'
                       : expandedSection === 'analisis'
                         ? 'Análisis del acierto'
-                        : `Detalle por ${dimLabel.singular}`
+                        : expandedSection === 'evolucion'
+                          ? 'Evolución del día — en vivo'
+                          : `Detalle por ${dimLabel.singular}`
         }
       >
         {data && expandedSection === 'tendencia' && (
@@ -669,6 +688,15 @@ function MetricasCumplimientoContent() {
         )}
         {expandedSection === 'analisis' && (
           <DesfasajeAnalisis
+            escenario={escenarioSel}
+            empresaSel={empresaSel}
+            isRoot={unrestricted}
+            empresasIds={empresasIdsForHeader}
+            funcionalidades={funcionalidades}
+          />
+        )}
+        {expandedSection === 'evolucion' && (
+          <EvolucionDiaCard
             escenario={escenarioSel}
             empresaSel={empresaSel}
             isRoot={unrestricted}
