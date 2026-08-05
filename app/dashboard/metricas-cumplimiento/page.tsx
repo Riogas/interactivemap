@@ -32,9 +32,10 @@ import { DemoraComparativa } from '@/components/metricas/DemoraComparativa';
 import { DesfasajeCard } from '@/components/metricas/DesfasajeCard';
 import { DesfasajeAnalisis } from '@/components/metricas/DesfasajeAnalisis';
 import { EvolucionDiaCard } from '@/components/metricas/EvolucionDiaCard';
+import { ZonaCorridaCard } from '@/components/metricas/ZonaCorridaCard';
 import { INFO_TEXTS, DIMENSION_LABEL, COLOR_TIPO, TIPO_LABEL, formatMin, formatPct } from '@/components/metricas/metricas-theme';
 
-type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | 'analisis' | 'evolucion' | null;
+type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | 'analisis' | 'evolucion' | 'zonacorrida' | null;
 
 // ─── Sub-tablas chicas usadas SOLO dentro del ExpandModal (E2: "tabla completa
 // de datos de esa sección" para tendencia/por-tipo, complementando el chart). ──
@@ -572,6 +573,22 @@ function MetricasCumplimientoContent() {
             <EvolucionDiaCard escenario={escenarioSel} empresaSel={empresaSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
           </CardShell>
 
+          {/* ── Radiografía por zona ──
+              Pedido de Diego (audio 12): por zona HOY — Despacho vs motor
+              vs brecha + acierto del día por zona en vivo, con combo para
+              elegir cualquier corrida del día. */}
+          <CardShell
+            title="Radiografía por zona"
+            hint="HOY · elegí la corrida en el combo · acierto por zona en vivo"
+            infoTitle="Radiografía por zona"
+            infoText="La foto de una corrida del día, zona por zona: qué demora publicó el motor, qué tenía cargado el Despacho, la brecha entre ambos y el estado de la zona (fase del arranque o móviles activos). La última columna es el % de acierto (≤25') del DÍA en cada zona, calculado en vivo desde los pedidos entregados, para ver dónde está errando cada sistema."
+            onExpand={() => setExpandedSection('zonacorrida')}
+            className="col-span-12"
+            style={{ animationDelay: '380ms' }}
+          >
+            <ZonaCorridaCard escenario={escenarioSel} empresaSel={empresaSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
+          </CardShell>
+
           {/* ── Demora informada vs. calculada ──
               Última card: mira un dato distinto del resto de la pantalla
               (demora prospectiva, no cumplimiento histórico). */}
@@ -646,7 +663,9 @@ function MetricasCumplimientoContent() {
                         ? 'Análisis del acierto'
                         : expandedSection === 'evolucion'
                           ? 'Evolución del día — en vivo'
-                          : `Detalle por ${dimLabel.singular}`
+                          : expandedSection === 'zonacorrida'
+                            ? 'Radiografía por zona'
+                            : `Detalle por ${dimLabel.singular}`
         }
       >
         {data && expandedSection === 'tendencia' && (
@@ -704,6 +723,15 @@ function MetricasCumplimientoContent() {
         )}
         {expandedSection === 'evolucion' && (
           <EvolucionDiaCard
+            escenario={escenarioSel}
+            empresaSel={empresaSel}
+            isRoot={unrestricted}
+            empresasIds={empresasIdsForHeader}
+            funcionalidades={funcionalidades}
+          />
+        )}
+        {expandedSection === 'zonacorrida' && (
+          <ZonaCorridaCard
             escenario={escenarioSel}
             empresaSel={empresaSel}
             isRoot={unrestricted}
