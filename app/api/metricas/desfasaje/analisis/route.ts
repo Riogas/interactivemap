@@ -28,7 +28,7 @@ export const dynamic = 'force-dynamic';
 const DIAS_VALIDOS = [7, 30, 90] as const;
 
 const EMPTY_DATA: DesfasajeAnalisisData = {
-  rango: null, fuente: null, fecha: null, resumen: null,
+  rango: null, fuente: null, fecha: null, resumen: null, diagnostico: null,
   por_dia: [], por_hora: [], por_zona: [], peores: [],
 };
 

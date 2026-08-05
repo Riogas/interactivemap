@@ -7,7 +7,9 @@ import {
   fechaCorta,
   pctText,
   sesgoText,
+  narrarDiagnostico,
 } from './desfasaje-analisis-logic';
+import type { AnalisisDiagnostico } from '@/types/metricas-desfasaje';
 import type { AnalisisDia } from '@/types/metricas-desfasaje';
 
 const FUNC = 'Estadisticas Cumplimiento';
@@ -102,5 +104,50 @@ describe('formatos', () => {
   it('sesgoText con signo explícito en los positivos', () => {
     expect(sesgoText(11.5)).toBe('+11,5');
     expect(sesgoText(-10.7)).toBe('-10,7');
+  });
+});
+
+describe('narrarDiagnostico() — la autopsia real del 4/8 como fixture', () => {
+  // Salida REAL de la RPC para el 4/8 (2.393 comparables).
+  const DIAG_4_8: AnalisisDiagnostico = {
+    n: 2393, ambos: 956, solo_despacho: 793, solo_motor: 271, ninguno: 373,
+    c_techo: 31, c_escalera: 127, c_sobrestimo: 595, c_subestimo: 40, c_operativo: 0,
+    despacho_colchon: 178, despacho_tarde: 93,
+    despacho_le25: 0.7309, motor_le25: 0.5127, cruda_le25: 0.5625, cruda_n: 2393,
+  };
+
+  it('dice quién ganó y ordena las causas por peso, con la dominante primero', () => {
+    const nar = narrarDiagnostico(DIAG_4_8);
+    expect(nar.titulo).toContain('Despacho ganó');
+    expect(nar.causas[0].clave).toBe('c_sobrestimo');
+    expect(nar.causas[0].n).toBe(595);
+    // El operativo (0) no se lista: solo causas con pedidos.
+    expect(nar.causas.some((c) => c.clave === 'c_operativo')).toBe(false);
+  });
+
+  it('el contrafáctico es SINCERO: con la cruda a 17 pts, dice que falta MODELO, no publicación', () => {
+    const nar = narrarDiagnostico(DIAG_4_8);
+    const contrafactico = nar.parrafos.find((p2) => p2.includes('CRUDO'));
+    expect(contrafactico).toBeDefined();
+    expect(contrafactico).toContain('de MODELO');
+    expect(contrafactico).not.toContain('fricción de PUBLICACIÓN');
+  });
+
+  it('cuando la cruda empata al Despacho, el mensaje cambia a "es publicación"', () => {
+    const nar = narrarDiagnostico({ ...DIAG_4_8, cruda_le25: 0.74 });
+    const contrafactico = nar.parrafos.find((p2) => p2.includes('CRUDO'));
+    expect(contrafactico).toContain('PUBLICACIÓN');
+  });
+
+  it('la nota anti-inflación cuenta el colchón y la subpromesa del Despacho', () => {
+    const nar = narrarDiagnostico(DIAG_4_8);
+    const anti = nar.parrafos.find((p2) => p2.includes('Inflar demoras'));
+    expect(anti).toContain('178');
+    expect(anti).toContain('93');
+  });
+
+  it('empate técnico cuando la diferencia es menor a medio punto', () => {
+    const nar = narrarDiagnostico({ ...DIAG_4_8, despacho_le25: 0.731, motor_le25: 0.733 });
+    expect(nar.titulo).toContain('Empate');
   });
 });

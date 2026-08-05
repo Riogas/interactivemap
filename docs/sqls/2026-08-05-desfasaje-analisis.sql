@@ -46,7 +46,7 @@ DECLARE
   v_result         jsonb;
 
   EMPTY_PAYLOAD CONSTANT jsonb := jsonb_build_object(
-    'rango', null, 'fuente', null, 'fecha', null,
+    'rango', null, 'fuente', null, 'fecha', null, 'diagnostico', null,
     'por_dia', '[]'::jsonb, 'por_hora', '[]'::jsonb,
     'por_zona', '[]'::jsonb, 'peores', '[]'::jsonb
   );
@@ -91,7 +91,8 @@ BEGIN
   END IF;
 
   WITH base AS MATERIALIZED (
-    SELECT fecha, zona_nro, fch_hora_para, fch_hora_finalizacion,
+    SELECT fecha, zona_nro, tipo_servicio, corrida_calc_at,
+           fch_hora_para, fch_hora_finalizacion,
            desfasaje_informado_mins AS d_inf,
            desfasaje_calc_mins      AS d_cal,
            CASE WHEN v_fuente = 'calculada' THEN desfasaje_calc_mins
@@ -183,12 +184,72 @@ BEGIN
     WHERE d > 0 AND fch_hora_para IS NOT NULL
     ORDER BY d DESC
     LIMIT 15
+  ),
+  -- ── Diagnostico: POR QUE gano quien gano, con causas nombradas ──────
+  -- Cada pedido de la comun del corte se clasifica: quien acerto, y si el
+  -- motor fallo, POR QUE (mirando la corrida vigente a la toma):
+  --   TECHO_SIN_MOVIL : la corrida publicaba sin moviles (techo/arranque).
+  --   ESCALERA        : el numero CRUDO del modelo acertaba, pero lo
+  --                     publicado venia frenado por el suavizado.
+  --   MODELO_SOBRESTIMO / MODELO_SUBESTIMO : el propio modelo erro.
+  --   OPERATIVO       : la entrega real paso de 90' — eso no lo arregla
+  --                     ninguna formula de demora.
+  -- Ademas, el contrafactico HONESTO: cuanto habria dado el motor
+  -- publicando el numero crudo del modelo (sin escalera/clamp/redondeo).
+  diag_base AS (
+    SELECT b.*,
+           dc.sin_capacidad, dc.suavizado_aplicado, dc.demora_cruda,
+           EXTRACT(EPOCH FROM (b.fch_hora_finalizacion - b.fch_hora_para)) / 60.0 AS real_min
+    FROM base b
+    LEFT JOIN demoras_calculadas dc
+           ON dc.corrida_at = b.corrida_calc_at AND dc.escenario = v_esc
+          AND dc.zona_id = b.zona_nro AND dc.tipo_servicio = b.tipo_servicio
+    WHERE b.d_inf IS NOT NULL AND b.d_cal IS NOT NULL
+      AND (v_fecha IS NULL OR b.fecha = v_fecha)
+  ),
+  diag_class AS (
+    SELECT *,
+           (abs(d_inf) <= 25) AS hit_d,
+           (abs(d_cal) <= 25) AS hit_m,
+           CASE WHEN demora_cruda IS NOT NULL
+                THEN abs(real_min - demora_cruda) <= 25 END AS hit_cruda,
+           CASE
+             WHEN abs(d_cal) <= 25 THEN NULL
+             WHEN d_cal > 25 AND real_min > 90 THEN 'OPERATIVO'
+             WHEN d_cal > 25 THEN 'MODELO_SUBESTIMO'
+             WHEN sin_capacidad IS TRUE THEN 'TECHO_SIN_MOVIL'
+             WHEN suavizado_aplicado IS TRUE AND demora_cruda IS NOT NULL
+                  AND abs(real_min - demora_cruda) <= 25 THEN 'ESCALERA'
+             ELSE 'MODELO_SOBRESTIMO'
+           END AS causa_miss
+    FROM diag_base
+  ),
+  diagnostico AS (
+    SELECT count(*)::int AS n,
+           count(*) FILTER (WHERE hit_d AND hit_m)::int         AS ambos,
+           count(*) FILTER (WHERE hit_d AND NOT hit_m)::int     AS solo_despacho,
+           count(*) FILTER (WHERE NOT hit_d AND hit_m)::int     AS solo_motor,
+           count(*) FILTER (WHERE NOT hit_d AND NOT hit_m)::int AS ninguno,
+           count(*) FILTER (WHERE hit_d AND NOT hit_m AND causa_miss = 'TECHO_SIN_MOVIL')::int   AS c_techo,
+           count(*) FILTER (WHERE hit_d AND NOT hit_m AND causa_miss = 'ESCALERA')::int          AS c_escalera,
+           count(*) FILTER (WHERE hit_d AND NOT hit_m AND causa_miss = 'MODELO_SOBRESTIMO')::int AS c_sobrestimo,
+           count(*) FILTER (WHERE hit_d AND NOT hit_m AND causa_miss = 'MODELO_SUBESTIMO')::int  AS c_subestimo,
+           count(*) FILTER (WHERE hit_d AND NOT hit_m AND causa_miss = 'OPERATIVO')::int         AS c_operativo,
+           count(*) FILTER (WHERE NOT hit_d AND hit_m AND d_inf < -25)::int AS despacho_colchon,
+           count(*) FILTER (WHERE NOT hit_d AND hit_m AND d_inf > 25)::int  AS despacho_tarde,
+           round(count(*) FILTER (WHERE hit_d)::numeric / nullif(count(*), 0), 4) AS despacho_le25,
+           round(count(*) FILTER (WHERE hit_m)::numeric / nullif(count(*), 0), 4) AS motor_le25,
+           round(count(*) FILTER (WHERE hit_cruda)::numeric
+                 / nullif(count(*) FILTER (WHERE hit_cruda IS NOT NULL), 0), 4)   AS cruda_le25,
+           count(*) FILTER (WHERE hit_cruda IS NOT NULL)::int AS cruda_n
+    FROM diag_class
   )
   SELECT jsonb_build_object(
     'rango',  jsonb_build_object('desde', v_desde, 'hasta', v_hasta),
     'fuente', v_fuente,
     'fecha',  v_fecha,
     'resumen', (SELECT CASE WHEN x.n > 0 THEN to_jsonb(x) ELSE NULL END FROM resumen x),
+    'diagnostico', (SELECT CASE WHEN x.n > 0 THEN to_jsonb(x) ELSE NULL END FROM diagnostico x),
     'por_dia',  coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.fecha) FROM por_dia x), '[]'::jsonb),
     'por_hora', coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.hora)  FROM por_hora x), '[]'::jsonb),
     'por_zona', coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.p80 DESC) FROM por_zona x), '[]'::jsonb),
