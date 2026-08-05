@@ -36,3 +36,36 @@ export interface EvolucionDiaData {
   corridas: EvolucionCorrida[];
   resumen: EvolucionResumen | null;
 }
+
+// ─── Radiografía por zona de una corrida (RPC metricas_zona_corrida) ────────
+// El pedido de Diego (audio 12): por zona, HOY — Despacho, motor, brecha y
+// % de acierto del día, con combo para elegir cualquier corrida.
+
+export interface ZonaCorridaFila {
+  zona_id: number;
+  tipo_servicio: string;
+  motor: number;
+  despacho: number | null;
+  /** motor − despacho (null cuando el Despacho no informa esa zona). */
+  brecha: number | null;
+  arranque_fase: 'PREDICTIVO' | 'GRACIA_VENCIDA' | 'TRANSITO' | null;
+  sin_capacidad: boolean;
+  cola_por_delante: number | null;
+  ritmo_usado: number | null;
+  moviles_prioridad: number | null;
+  moviles_transito: number | null;
+  /** Acierto del día POR ZONA, en vivo (null/0 si aún no entregó nada). */
+  entregados: number | null;
+  comun: number | null;
+  d_le25: number | null;
+  m_le25: number | null;
+}
+
+export interface ZonaCorridaData {
+  fecha: string | null;
+  /** La corrida cuya foto se muestra (ISO). */
+  corrida: string | null;
+  /** Todas las corridas del día, para el combo del horario. */
+  corridas: string[];
+  zonas: ZonaCorridaFila[];
+}
