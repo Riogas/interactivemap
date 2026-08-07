@@ -624,10 +624,16 @@ DO $do$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
     PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'demoras-caja-negra';
+    -- Ventana de 3 minutos, no de 15: el trigger ya captura en el
+    -- instante, asi que este job es solo la red por si el trigger no
+    -- corrio. Con una ventana larga hace mas daño que bien -- si se
+    -- borra una captura degradada, la vuelve a tomar todavia mas tarde
+    -- (paso: re-capturo con 774 s de desfase corridas que se habian
+    -- descartado justamente por estar desfasadas).
     PERFORM cron.schedule(
       'demoras-caja-negra',
       '15 seconds',
-      $job$SELECT demoras_corrida_backfill(15, 4)$job$
+      $job$SELECT demoras_corrida_backfill(3, 2)$job$
     );
   END IF;
 END

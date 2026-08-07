@@ -195,6 +195,58 @@ $function$;
 COMMENT ON FUNCTION demoras_variantes_reprocesar(integer, date, date, integer[]) IS
   'Reprocesa las variantes indicadas sobre todas las corridas capturadas de un rango de dias, en orden cronologico (la escalera depende del camino y se reinicia cada dia). Es lo que permite dar de alta una variante nueva y tener veredicto sobre la historia en minutos, sin esperar dias.';
 
+-- ─── 3bis. El backfill del laboratorio, ya sin ventana temporal ──────
+-- Con las variantes calculandose desde la caja negra, el laboratorio ya
+-- NO necesita correr pegado a la corrida: puede espejar cualquier
+-- corrida capturada, cuando sea. La ventana en minutos que tenia la v1
+-- (y que existia porque leia estado vivo) desaparece; ahora la
+-- condicion es simplemente "tiene caja negra y no tiene variantes".
+DROP FUNCTION IF EXISTS demoras_variantes_backfill(integer, integer);
+
+CREATE OR REPLACE FUNCTION demoras_variantes_backfill(p_max_corridas integer DEFAULT 6)
+RETURNS integer
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+  r          record;
+  v_corridas integer := 0;
+BEGIN
+  IF NOT pg_try_advisory_xact_lock(2180637406::bigint) THEN
+    RETURN 0;
+  END IF;
+
+  FOR r IN
+    SELECT m.escenario, m.corrida_at
+    FROM demoras_corrida_meta m
+    WHERE NOT EXISTS (
+      SELECT 1 FROM demoras_calculadas_variantes v
+      WHERE v.escenario = m.escenario AND v.corrida_at = m.corrida_at)
+    ORDER BY m.corrida_at, m.escenario
+    LIMIT p_max_corridas
+  LOOP
+    PERFORM demoras_variantes_snapshot(r.corrida_at, r.escenario);
+    v_corridas := v_corridas + 1;
+  END LOOP;
+
+  RETURN v_corridas;
+END;
+$function$;
+
+COMMENT ON FUNCTION demoras_variantes_backfill(integer) IS
+  'Espeja con todas las variantes activas las corridas que tienen caja negra y todavia no tienen variantes, en orden cronologico. Sin ventana temporal: el simulador puro no depende del estado vivo, asi que da igual cuando se corra.';
+
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'demoras-variantes';
+    PERFORM cron.schedule(
+      'demoras-variantes', '* * * * *',
+      $job$SELECT demoras_variantes_backfill(6)$job$
+    );
+  END IF;
+END
+$do$;
+
 -- ─── 4. La cola de reprocesos de la pantalla ─────────────────────────
 -- El reproceso de una semana son cientos de corridas: no puede colgar
 -- de un request HTTP. La pantalla encola aca y consulta el progreso.
