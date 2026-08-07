@@ -390,6 +390,15 @@ COMMENT ON FUNCTION demoras_simular_corrida(timestamptz, integer, jsonb, jsonb) 
 -- el dia en que se activo la caja negra): sin esto, la simulacion
 -- arranca sin escalera mientras el motor venia arrastrandola desde la
 -- manana, y el control de fidelidad marca diferencias que no son bugs.
+--
+-- El DROP de la firma vieja NO es decorativo: agregar un parametro con
+-- DEFAULT no reemplaza la funcion, crea una SEGUNDA. Y como la vieja
+-- matchea exacto una llamada de tres argumentos, Postgres la prefiere:
+-- demoras_evaluar_perillas seguia usando la version anterior mientras
+-- demoras_simular_control usaba la nueva. Es el mismo error que ya habia
+-- dejado al trigger de captura llamando a una funcion ambigua.
+DROP FUNCTION IF EXISTS demoras_simular_dia(date, integer, jsonb);
+
 CREATE OR REPLACE FUNCTION demoras_simular_dia(
   p_fecha date, p_escenario integer, p_perillas jsonb DEFAULT '{}'::jsonb,
   p_prev_inicial jsonb DEFAULT NULL)
@@ -438,7 +447,7 @@ BEGIN
 END;
 $function$;
 
-COMMENT ON FUNCTION demoras_simular_dia(date, integer, jsonb) IS
+COMMENT ON FUNCTION demoras_simular_dia(date, integer, jsonb, jsonb) IS
   'Simula un dia completo corrida por corrida, arrastrando la escalera de suavizado de la propia simulacion. Es la unidad de trabajo del reproceso y del optimizador.';
 
 -- ─── 4. El control de fidelidad ──────────────────────────────────────
