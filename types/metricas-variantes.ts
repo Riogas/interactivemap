@@ -85,3 +85,39 @@ export interface VariantesScoreboardData {
   motor: MotorScore | null;
   variantes: VarianteScore[];
 }
+
+export const LAB_JOB_ESTADOS = ['PENDIENTE', 'CORRIENDO', 'LISTO', 'ERROR'] as const;
+export type LabJobEstado = (typeof LAB_JOB_ESTADOS)[number];
+
+/**
+ * Un reproceso encolado en `demoras_lab_jobs`: recalcular lo que cada
+ * variante hubiera publicado sobre un rango de días ya capturado. Lo
+ * ejecuta el worker de pg_cron (cada minuto, de a uno), así que la
+ * pantalla solo encola y mira el estado.
+ */
+export interface LabJob {
+  id: number;
+  escenario: number;
+  desde: string;
+  hasta: string;
+  /** null = todas las variantes activas. */
+  variantes: number[] | null;
+  estado: LabJobEstado;
+  corridas: number | null;
+  filas: number | null;
+  error: string | null;
+  pedido_por: string | null;
+  creado_at: string;
+  iniciado_at: string | null;
+  terminado_at: string | null;
+  /**
+   * Cuánto lleva/llevó corriendo, medido con el reloj de la base (la fila
+   * recién creada todavía no lo trae, de ahí el opcional).
+   */
+  duracion_seg?: number | null;
+}
+
+export interface LabJobsData {
+  escenario: number | null;
+  jobs: LabJob[];
+}
