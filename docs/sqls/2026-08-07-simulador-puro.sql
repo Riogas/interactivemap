@@ -345,8 +345,14 @@ COMMENT ON FUNCTION demoras_simular_corrida(timestamptz, integer, jsonb, jsonb) 
   'Recalcula una corrida completa con cualquier parametria, leyendo SOLO de la caja negra (ni una tabla viva). p_prev es el mapa "zona|tipo" -> suavizada de la corrida anterior de ESTA simulacion (la escalera propia). Ver docs/sqls/2026-08-07-simulador-puro.sql.';
 
 -- ─── 3. Un dia entero, arrastrando la escalera ───────────────────────
+-- p_prev_inicial: la escalera con la que arranca la PRIMERA corrida
+-- simulada. Importa cuando el dia no esta capturado entero (por ejemplo
+-- el dia en que se activo la caja negra): sin esto, la simulacion
+-- arranca sin escalera mientras el motor venia arrastrandola desde la
+-- manana, y el control de fidelidad marca diferencias que no son bugs.
 CREATE OR REPLACE FUNCTION demoras_simular_dia(
-  p_fecha date, p_escenario integer, p_perillas jsonb DEFAULT '{}'::jsonb)
+  p_fecha date, p_escenario integer, p_perillas jsonb DEFAULT '{}'::jsonb,
+  p_prev_inicial jsonb DEFAULT NULL)
 RETURNS TABLE(corrida_at timestamptz, zona_id integer, tipo_servicio text,
               demora_cruda numeric, demora_suavizada numeric, demora_informada integer)
 LANGUAGE plpgsql
@@ -355,7 +361,7 @@ LANGUAGE plpgsql
 AS $function$
 DECLARE
   c      record;
-  v_prev jsonb := '{}'::jsonb;
+  v_prev jsonb := coalesce(p_prev_inicial, '{}'::jsonb);
 BEGIN
   -- Se materializa cada corrida UNA sola vez. La version anterior
   -- llamaba al simulador dos veces por corrida (una para devolver y otra
@@ -404,9 +410,24 @@ RETURNS TABLE(corridas integer, filas integer, difs_informada integer,
 LANGUAGE sql
 -- VOLATILE porque demoras_simular_dia lo es (tabla temporal).
 AS $function$
-  WITH sim AS (
+  WITH prev0 AS (
+    -- La escalera del motor en la corrida ANTERIOR a la primera
+    -- capturada del dia: sin esto el control marca como divergencia el
+    -- arranque frio de la simulacion.
+    SELECT coalesce(jsonb_object_agg(d.zona_id::text || '|' || d.tipo_servicio,
+                                     to_jsonb(d.demora_suavizada)), '{}'::jsonb) AS p
+    FROM demoras_calculadas d
+    WHERE d.escenario = p_escenario
+      AND d.corrida_at = (
+        SELECT max(d2.corrida_at) FROM demoras_calculadas d2
+        WHERE d2.escenario = p_escenario
+          AND d2.corrida_at >= (p_fecha::timestamp AT TIME ZONE 'America/Montevideo')
+          AND d2.corrida_at < (SELECT min(m.corrida_at) FROM demoras_corrida_meta m
+                               WHERE m.escenario = p_escenario AND m.fecha_local = p_fecha))
+  ),
+  sim AS (
     -- Sin perillas: la parametria de cada corrida, tal como estaba.
-    SELECT * FROM demoras_simular_dia(p_fecha, p_escenario, '{}'::jsonb)
+    SELECT s.* FROM prev0, demoras_simular_dia(p_fecha, p_escenario, '{}'::jsonb, prev0.p) s
   ),
   j AS (
     SELECT s.corrida_at AS at, s.demora_informada AS si, s.demora_cruda AS sc,
