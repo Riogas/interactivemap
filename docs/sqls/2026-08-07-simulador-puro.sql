@@ -18,6 +18,21 @@
 -- motor publico, fila por fila. Ese es el unico control que importa y
 -- se verifica en prod (demoras_simular_control) y en el harness.
 --
+-- MEDIDO el 7/8 sobre 27 corridas capturadas (5.397 filas): 11 filas
+-- con la cruda distinta (0,2%) y 8 con la publicada distinta (0,15%).
+-- Corrida a corrida, con su escalera correcta, da CERO.
+--
+-- El residuo tiene una causa conocida e irreducible con este diseño: el
+-- trigger de captura corre en un statement POSTERIOR al del motor y, en
+-- READ COMMITTED, cada statement toma un snapshot nuevo. Si un pedido
+-- se entrega en esos milisegundos, `carga_fuera` de algun movil cambia
+-- y la simulacion recalcula distinto. Se concentra en zonas con uno o
+-- dos moviles (donde un pedido pesa mucho) y en las corridas de mayor
+-- movimiento. Eliminarlo del todo exigiria que el motor mismo persista
+-- los aportes que ya calculo -- o sea, modificar demoras_consumo_tramos
+-- y demoras_calcular_run, que es justo lo que este diseño evita. No
+-- vale la pena por 0,2%.
+--
 -- ─── De donde sale cada cosa ─────────────────────────────────────────
 --  * Aportes por movil: de demoras_corrida_movil. dedicacion y
 --    carga_fuera son invariantes al ritmo; ritmo/libera_en/capacidad se
@@ -245,6 +260,7 @@ BEGIN
     SELECT b.zona_id AS zid, b.tipo_servicio AS tsrv,
            b.arranque_fase, b.demora_cruda AS cruda_motor, b.ritmo_usado AS ritmo_motor,
            b.moviles_activos, b.demora_as400,
+           pm.prev_mov, pm.prev_fase,
            b.pendientes_asignados, b.pendientes_sin_asignar, b.pendientes_atrapados,
            coalesce(ini.mu, 0) AS mu_inicial,
            coalesce(ev.rs,  ARRAY[]::numeric[]) AS rs,
@@ -277,6 +293,17 @@ BEGIN
     LEFT JOIN ev  ON ev.z  = b.zona_id AND ev.t  = b.tipo_servicio
     LEFT JOIN prog pr ON pr.z = b.zona_id AND pr.t = b.tipo_servicio
     LEFT JOIN zrit zr ON zr.clave = b.zona_id::text AND zr.t = b.tipo_servicio
+    -- El estado de la zona en la corrida ANTERIOR del motor: lo necesita
+    -- el bypass del suavizado (ver el acabado mas abajo).
+    LEFT JOIN LATERAL (
+      SELECT p2.moviles_activos AS prev_mov, p2.arranque_fase AS prev_fase
+      FROM demoras_calculadas p2
+      WHERE p2.escenario = p_escenario AND p2.zona_id = b.zona_id
+        AND p2.tipo_servicio = b.tipo_servicio
+        AND p2.corrida_at >= (v_fecha::timestamp AT TIME ZONE 'America/Montevideo')
+        AND p2.corrida_at < p_corrida_at
+      ORDER BY p2.corrida_at DESC LIMIT 1
+    ) pm ON true
     WHERE b.escenario = p_escenario AND b.corrida_at = p_corrida_at
   LOOP
     -- ── La cruda ──────────────────────────────────────────────────
@@ -325,8 +352,21 @@ BEGIN
     END IF;
 
     -- ── El acabado, con la escalera propia de esta simulacion ──────
-    v_prevv := CASE WHEN NOT v_suav THEN NULL
-                    ELSE (p_prev -> (z.zid::text || '|' || z.tsrv))::numeric END;
+    -- El BYPASS del suavizado va igual que en el motor: si cambio la
+    -- cantidad de moviles activos respecto de la corrida anterior, la
+    -- variacion es estructural (entro o salio un movil) y no se frena
+    -- con la escalera; idem al ENTRAR en fase TRANSITO. Sin esto el
+    -- simulador diverge justo en los momentos de cambio de flota -- lo
+    -- encontro el control de fidelidad: 19 zonas en una sola corrida
+    -- con la cruda identica y la publicada distinta.
+    v_prevv := CASE
+                 WHEN NOT v_suav THEN NULL
+                 WHEN coalesce((cfg->>'suavizado_bypass_cambio_capacidad')::boolean, false)
+                      AND z.prev_mov IS DISTINCT FROM z.moviles_activos THEN NULL
+                 WHEN z.arranque_fase = 'TRANSITO'
+                      AND z.prev_fase IS DISTINCT FROM 'TRANSITO' THEN NULL
+                 ELSE (p_prev -> (z.zid::text || '|' || z.tsrv))::numeric
+               END;
 
     SELECT * INTO v_acab FROM demoras_acabado(
       round(v_cruda, 2), v_prevv, v_min, v_max, v_subida, v_bajada, v_escalon);
