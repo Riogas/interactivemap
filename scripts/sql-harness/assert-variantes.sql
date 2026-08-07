@@ -49,7 +49,7 @@ SELECT 'PEDIDO', 5000 + (mv * 100) + g, 1000, DATE '2026-08-05', 'URGENTE', 'URG
 FROM generate_series(1, 7) g, (VALUES (820), (821)) AS m(mv);
 
 -- Cola: 3 pedidos pendientes en la 820, ninguno en la 821.
-INSERT INTO pedidos (pedido_id, escenario, zona_nro, servicio_nombre, estado_nro, sub_estado_nro,
+INSERT INTO pedidos (id, escenario, zona_nro, servicio_nombre, estado_nro, sub_estado_nro,
                      fch_para, fch_hora_para, movil, empresa_fletera_id)
 SELECT 6000 + g, 1000, 820, 'URGENTE', 1, 1,
        DATE '2026-08-06', timestamptz '2026-08-06 09:00-03', NULL, 7
@@ -265,7 +265,7 @@ SELECT 'ok version: una corrida calculada con otra parametria no se espeja' AS r
 -- ─── Teardown ──────────────────────────────────────────────────────────
 DELETE FROM demoras_calculadas_variantes WHERE escenario = 1000;
 DELETE FROM demoras_calculadas WHERE escenario = 1000 AND zona_id IN (820, 821, 822);
-DELETE FROM pedidos WHERE escenario = 1000 AND pedido_id BETWEEN 6001 AND 6003;
+DELETE FROM pedidos WHERE escenario = 1000 AND id BETWEEN 6001 AND 6003;
 DELETE FROM metricas_cumplimiento WHERE escenario = 1000 AND pedido_id BETWEEN 87000 AND 87999;
 DELETE FROM metricas_cumplimiento WHERE escenario = 1000 AND movil IN (820, 821);
 DELETE FROM moviles_dia WHERE escenario_id = 1000 AND movil_id IN (820, 821);
