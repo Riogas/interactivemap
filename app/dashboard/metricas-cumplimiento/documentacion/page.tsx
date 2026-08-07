@@ -339,19 +339,48 @@ export function DocContent() {
             Probar una idea nueva es un alta en el catálogo — no toca el motor ni requiere programar nada.
           </p>
           <p className="text-[0.86rem] leading-relaxed text-gray-700">
-            <strong>Por qué se graba en el momento y no se calcula después.</strong> El laboratorio corre aparte del
-            motor, sobre las corridas que éste ya publicó, dentro del minuto siguiente. No puede reconstruir corridas
-            viejas: las variantes que recalculan el ritmo necesitan el estado del mundo de ese instante (qué móviles
-            estaban activos, qué pedidos había en cola) y ese estado ya no existe unas horas más tarde. Se comprobó al
-            armarlo: al rellenar hacia atrás las corridas del día anterior, esas variantes prometían 105 minutos contra
-            84 del campeón, casi todas contra el techo. Por eso una corrida que quedó afuera de la ventana no se
-            rellena — preferimos no tener el dato antes que tenerlo mal.
+            <strong>Por qué se graba en el momento y no se calcula después.</strong> Las variantes que recalculan el
+            ritmo necesitan el estado del mundo de ese instante (qué móviles estaban activos, qué pedidos había en
+            cola) y ese estado ya no existe unas horas más tarde. Se comprobó al armarlo: al rellenar hacia atrás las
+            corridas del día anterior, esas variantes prometían 105 minutos contra 84 del campeón, casi todas contra el
+            techo. Preferimos no tener el dato antes que tenerlo mal — y de ahí salió la caja negra de la sección
+            siguiente.
+          </p>
+        </section>
+
+        {/* ── 8. La caja negra ── */}
+        <section className="doc-section mb-10">
+          <h2 className="mb-3 text-xl font-bold text-gray-900">8 · La caja negra: la copia fiel de cada corrida</h2>
+          <p className="mb-3 text-[0.88rem] leading-relaxed text-gray-700">
+            Cada vez que el motor calcula, se guarda además <strong>todo el estado del mundo que usó para hacerlo</strong>:
+            qué móviles estaban activos en cada zona y si eran de prioridad o de tránsito, qué fracción de su tiempo le
+            dedicaba cada uno a esa zona, a qué ritmo venía trabajando y de dónde salió ese ritmo, cuántos pedidos
+            llevaba encima fuera de la zona y en qué minuto se liberaba, qué pedidos formaban la cola y desde cuándo
+            estaban asignados, la parametría completa de esa corrida y el calendario que la gobernaba.
+          </p>
+          <p className="mb-3 text-[0.88rem] leading-relaxed text-gray-700">
+            Con esa copia, cualquier corrida de cualquier día se puede <strong>volver a calcular con la parametría que
+            uno quiera</strong>, cuantas veces se quiera, sin depender de que el mundo siga como estaba. Es lo que
+            convierte al laboratorio en algo instantáneo: dar de alta una combinación nueva y tener veredicto sobre toda
+            la historia guardada es cuestión de minutos, en vez de esperar una semana a que se acumulen días.
+          </p>
+          <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-[0.86rem] leading-relaxed text-gray-700">
+            <strong>La captura ocurre en el mismo instante que la corrida</strong>, dentro de la misma operación de base
+            de datos. No es prolijidad: está medido. Cuando la copia se tomaba un minuto más tarde, el recálculo ya no
+            reproducía lo que el motor había publicado en 37 zonas de 201; con diez minutos de atraso, en 121. La razón
+            es simple: la carga de cada móvil cambia todo el tiempo. Por eso también <strong>una corrida ya copiada no se
+            vuelve a copiar</strong> — la primera copia es siempre la mejor.
+          </div>
+          <p className="text-[0.86rem] leading-relaxed text-gray-700">
+            El control de que todo esto es fiel es directo: volver a calcular un día con su parametría original tiene
+            que dar exactamente lo que el motor publicó, corrida por corrida y zona por zona. Cualquier diferencia
+            significa que la copia o el recálculo están mal — nunca que el motor lo está.
           </p>
         </section>
 
         {/* ── 8. Glosario ── */}
         <section className="doc-section mb-8">
-          <h2 className="mb-3 text-xl font-bold text-gray-900">8 · Glosario</h2>
+          <h2 className="mb-3 text-xl font-bold text-gray-900">9 · Glosario</h2>
           <dl className="grid gap-x-6 gap-y-2 text-[0.86rem] md:grid-cols-2">
             <div><dt className="font-semibold text-gray-900">Despacho</dt><dd className="text-gray-600">El sistema AS400 donde la operativa carga las demoras a mano. Naranja en todos los gráficos.</dd></div>
             <div><dt className="font-semibold text-gray-900">Motor</dt><dd className="text-gray-600">El cálculo automático de demora, cada 10 minutos por zona. Azul en todos los gráficos.</dd></div>

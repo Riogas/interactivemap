@@ -10,7 +10,7 @@
  */
 
 import type { TipoDesfasaje } from '@/types/metricas-desfasaje';
-import type { MotorScore, VarianteKnobs, VarianteScore } from '@/types/metricas-variantes';
+import type { LabJob, MotorScore, VarianteKnobs, VarianteScore } from '@/types/metricas-variantes';
 
 export type VariantesFetchIntent =
   | { skip: true }
@@ -209,4 +209,132 @@ export function narrativaLab(params: {
     ? 'Cumple la regla de promoción: se puede llevar al motor.'
     : `Todavía no se promociona: ${promo.motivo.toLowerCase()}`;
   return `${partes.join(' · ')}. ${cierre}`;
+}
+
+/* ─────────────────── Reproceso (cola demoras_lab_jobs) ─────────────────── */
+
+/** Mismo tope que la RPC metricas_lab_job_crear: reprocesar es caro. */
+export const MAX_DIAS_REPROCESO = 31;
+
+export type ReprocesoFetchIntent =
+  | { skip: true }
+  | {
+      skip: false;
+      url: string;
+      method: 'GET' | 'POST';
+      headers: Record<string, string>;
+      body?: string;
+    };
+
+/**
+ * Mismo contrato fail-closed que buildVariantesFetch, con una vuelta de
+ * tuerca: esto ESCRIBE (encola un reproceso que reescribe las variantes
+ * de todo un rango, para todas las empresas), así que el único alcance
+ * aceptable es root — un usuario con empresas asignadas ni siquiera
+ * llega a pedirlo.
+ *
+ * Con `crear` presente es el alta (POST); sin él, la consulta de la cola
+ * (GET).
+ */
+export function buildReprocesoFetch(params: {
+  escenario: number | null;
+  isRoot: boolean;
+  funcionalidades: string[];
+  crear?: { desde: string; hasta: string; variantes: number[] | null } | null;
+}): ReprocesoFetchIntent {
+  const { escenario, isRoot, funcionalidades, crear } = params;
+  if (escenario == null) return { skip: true };
+  if (!isRoot) return { skip: true };
+
+  const headers: Record<string, string> = {
+    'x-track-funcs': funcionalidades.map((f) => String(f).trim()).filter((f) => f.length > 0).join(','),
+    'x-track-isroot': 'S',
+  };
+
+  const url = `/api/metricas/variantes/reproceso?escenario=${encodeURIComponent(String(escenario))}`;
+
+  if (crear == null) {
+    return { skip: false, url, method: 'GET', headers };
+  }
+
+  // Selección vacía no es "todas" (eso se pide con variantes: null): es un
+  // pedido sin sentido y no vale la pena molestar al servidor.
+  if (crear.variantes != null && crear.variantes.length === 0) return { skip: true };
+
+  headers['Content-Type'] = 'application/json';
+  return {
+    skip: false,
+    url,
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      desde: crear.desde,
+      hasta: crear.hasta,
+      variantes: crear.variantes,
+    }),
+  };
+}
+
+/** ¿Hay algo en la cola todavía? Es lo que dispara el refresco cada 5s. */
+export function hayJobActivo(jobs: LabJob[]): boolean {
+  return jobs.some((j) => j.estado === 'PENDIENTE' || j.estado === 'CORRIENDO');
+}
+
+/** "2026-08-01" → "1/8" (sin Intl: el formato es siempre el mismo). */
+function diaMes(fecha: string): string {
+  const [, m, d] = fecha.split('-');
+  return `${Number(d)}/${Number(m)}`;
+}
+
+/** Miles con punto, a mano — no depende del ICU que traiga el runtime. */
+function numeroMiles(n: number): string {
+  const entero = Math.abs(Math.round(n)).toString();
+  const conPuntos = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return n < 0 ? `-${conPuntos}` : conPuntos;
+}
+
+/** Segundos → "45 s" / "3 min" / "3 min 20 s". null si no hay dato. */
+export function duracionTexto(seg: number | null | undefined): string | null {
+  if (seg == null || !Number.isFinite(seg) || seg < 0) return null;
+  const total = Math.round(seg);
+  if (total < 60) return `${total} s`;
+  const min = Math.floor(total / 60);
+  const resto = total % 60;
+  return resto === 0 ? `${min} min` : `${min} min ${resto} s`;
+}
+
+/**
+ * El estado de un trabajo en una línea, en lenguaje llano: el rango y el
+ * alcance siempre adelante (es lo que identifica al trabajo para el que
+ * lo pidió) y después qué pasó con él.
+ */
+export function resumenJob(job: LabJob): string {
+  const rango = job.desde === job.hasta ? `${diaMes(job.desde)}` : `${diaMes(job.desde)} al ${diaMes(job.hasta)}`;
+  const cuantas = job.variantes?.length ?? 0;
+  const alcance =
+    job.variantes == null
+      ? 'todas las variantes'
+      : cuantas === 1
+        ? '1 variante'
+        : `${cuantas} variantes`;
+  const cabeza = `${rango} · ${alcance}`;
+  const dur = duracionTexto(job.duracion_seg);
+
+  switch (job.estado) {
+    case 'PENDIENTE':
+      return `${cabeza} — en cola, arranca en el próximo minuto.`;
+    case 'CORRIENDO':
+      return `${cabeza} — corriendo${dur != null ? ` hace ${dur}` : ''}…`;
+    case 'LISTO': {
+      const detalle =
+        job.corridas != null
+          ? `${numeroMiles(job.corridas)} corridas${job.filas != null ? ` y ${numeroMiles(job.filas)} filas` : ''}`
+          : 'sin corridas para ese rango';
+      return `${cabeza} — listo: ${detalle}${dur != null ? ` en ${dur}` : ''}.`;
+    }
+    case 'ERROR':
+      return `${cabeza} — falló: ${job.error ?? 'sin detalle del error'}`;
+    default:
+      return cabeza;
+  }
 }

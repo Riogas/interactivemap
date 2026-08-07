@@ -350,31 +350,44 @@ CREATE OR REPLACE FUNCTION demoras_simular_dia(
 RETURNS TABLE(corrida_at timestamptz, zona_id integer, tipo_servicio text,
               demora_cruda numeric, demora_suavizada numeric, demora_informada integer)
 LANGUAGE plpgsql
-STABLE
+-- VOLATILE (no STABLE): usa una tabla temporal para no simular dos veces
+-- cada corrida. No escribe nada persistente.
 AS $function$
 DECLARE
   c      record;
   v_prev jsonb := '{}'::jsonb;
 BEGIN
+  -- Se materializa cada corrida UNA sola vez. La version anterior
+  -- llamaba al simulador dos veces por corrida (una para devolver y otra
+  -- para armar la escalera de la siguiente): con 83 corridas por dia y
+  -- un optimizador que evalua decenas de combinaciones, ese descuido
+  -- costaba el doble de todo.
+  CREATE TEMP TABLE IF NOT EXISTS _sim_corrida (
+    zona_id integer, tipo_servicio text, demora_cruda numeric,
+    demora_suavizada numeric, demora_informada integer
+  ) ON COMMIT DROP;
+
   FOR c IN
     SELECT m.corrida_at AS at
     FROM demoras_corrida_meta m
     WHERE m.escenario = p_escenario AND m.fecha_local = p_fecha
     ORDER BY m.corrida_at
   LOOP
+    TRUNCATE _sim_corrida;
+    INSERT INTO _sim_corrida
+    SELECT s.zona_id, s.tipo_servicio, s.demora_cruda, s.demora_suavizada, s.demora_informada
+    FROM demoras_simular_corrida(c.at, p_escenario, p_perillas, v_prev) s;
+
     RETURN QUERY
-    WITH s AS (
-      SELECT * FROM demoras_simular_corrida(c.at, p_escenario, p_perillas, v_prev)
-    )
-    SELECT c.at, s.zona_id, s.tipo_servicio, s.demora_cruda, s.demora_suavizada, s.demora_informada
-    FROM s;
+    SELECT c.at, x.zona_id, x.tipo_servicio, x.demora_cruda, x.demora_suavizada, x.demora_informada
+    FROM _sim_corrida x;
 
     -- La escalera: el prev de la proxima corrida es lo que acaba de
     -- publicar ESTA simulacion.
     SELECT coalesce(jsonb_object_agg(x.zona_id::text || '|' || x.tipo_servicio,
                                      to_jsonb(x.demora_suavizada)), '{}'::jsonb)
       INTO v_prev
-      FROM demoras_simular_corrida(c.at, p_escenario, p_perillas, v_prev) x;
+      FROM _sim_corrida x;
   END LOOP;
 END;
 $function$;
@@ -389,7 +402,7 @@ CREATE OR REPLACE FUNCTION demoras_simular_control(p_fecha date, p_escenario int
 RETURNS TABLE(corridas integer, filas integer, difs_informada integer,
               difs_cruda integer, peor_cruda numeric)
 LANGUAGE sql
-STABLE
+-- VOLATILE porque demoras_simular_dia lo es (tabla temporal).
 AS $function$
   WITH sim AS (
     -- Sin perillas: la parametria de cada corrida, tal como estaba.

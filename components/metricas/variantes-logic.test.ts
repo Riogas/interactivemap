@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import type { MotorScore, VarianteKnobs, VarianteScore } from '@/types/metricas-variantes';
+import type { LabJob, MotorScore, VarianteKnobs, VarianteScore } from '@/types/metricas-variantes';
 import {
   PROMO_MARGEN_PTS,
   PROMO_MIN_DIAS_EVALUADOS,
   PROMO_MIN_DIAS_GANADOS,
+  buildReprocesoFetch,
   buildVariantesFetch,
   diasVsMotor,
+  duracionTexto,
   evaluarPromocion,
   fechaMontevideoHoy,
+  hayJobActivo,
   knobChips,
   narrativaLab,
   restarDias,
+  resumenJob,
 } from './variantes-logic';
 
 const KNOBS_NULOS: VarianteKnobs = {
@@ -218,5 +222,151 @@ describe('narrativaLab', () => {
     expect(texto).toContain('vs el motor real');
     expect(texto).toContain('vs el Despacho');
     expect(texto).not.toContain('Campeón (');
+  });
+});
+
+function job(over: Partial<LabJob>): LabJob {
+  return {
+    id: 1,
+    escenario: 1000,
+    desde: '2026-08-01',
+    hasta: '2026-08-07',
+    variantes: null,
+    estado: 'PENDIENTE',
+    corridas: null,
+    filas: null,
+    error: null,
+    pedido_por: 'dmedaglia@riogas.com.uy',
+    creado_at: '2026-08-07T12:00:00Z',
+    iniciado_at: null,
+    terminado_at: null,
+    duracion_seg: null,
+    ...over,
+  };
+}
+
+describe('buildReprocesoFetch', () => {
+  const base = {
+    escenario: 1000,
+    isRoot: true,
+    funcionalidades: ['Estadisticas Cumplimiento'],
+  };
+
+  it('sin escenario saltea', () => {
+    expect(buildReprocesoFetch({ ...base, escenario: null })).toEqual({ skip: true });
+  });
+
+  it('fail-closed: el que no es root no reprocesa, tenga las empresas que tenga', () => {
+    expect(buildReprocesoFetch({ ...base, isRoot: false })).toEqual({ skip: true });
+    expect(
+      buildReprocesoFetch({
+        ...base,
+        isRoot: false,
+        crear: { desde: '2026-08-01', hasta: '2026-08-07', variantes: null },
+      }),
+    ).toEqual({ skip: true });
+  });
+
+  it('sin crear es la consulta de la cola (GET, sin body)', () => {
+    const intent = buildReprocesoFetch(base);
+    if (intent.skip) throw new Error('no debería saltear');
+    expect(intent.method).toBe('GET');
+    expect(intent.url).toBe('/api/metricas/variantes/reproceso?escenario=1000');
+    expect(intent.headers['x-track-isroot']).toBe('S');
+    expect(intent.headers['x-track-funcs']).toBe('Estadisticas Cumplimiento');
+    expect(intent.body).toBeUndefined();
+  });
+
+  it('con crear arma el POST con el rango y todas las variantes', () => {
+    const intent = buildReprocesoFetch({
+      ...base,
+      crear: { desde: '2026-08-01', hasta: '2026-08-07', variantes: null },
+    });
+    if (intent.skip) throw new Error('no debería saltear');
+    expect(intent.method).toBe('POST');
+    expect(intent.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(intent.body ?? '{}')).toEqual({
+      desde: '2026-08-01',
+      hasta: '2026-08-07',
+      variantes: null,
+    });
+  });
+
+  it('manda la selección de variantes tal cual', () => {
+    const intent = buildReprocesoFetch({
+      ...base,
+      crear: { desde: '2026-08-05', hasta: '2026-08-07', variantes: [3, 7] },
+    });
+    if (intent.skip) throw new Error('no debería saltear');
+    expect(JSON.parse(intent.body ?? '{}').variantes).toEqual([3, 7]);
+  });
+
+  it('selección vacía no es «todas»: no se pide nada', () => {
+    expect(
+      buildReprocesoFetch({ ...base, crear: { desde: '2026-08-01', hasta: '2026-08-07', variantes: [] } }),
+    ).toEqual({ skip: true });
+  });
+});
+
+describe('hayJobActivo', () => {
+  it('pendiente o corriendo cuentan; listo y error no', () => {
+    expect(hayJobActivo([])).toBe(false);
+    expect(hayJobActivo([job({ estado: 'LISTO' }), job({ id: 2, estado: 'ERROR' })])).toBe(false);
+    expect(hayJobActivo([job({ estado: 'LISTO' }), job({ id: 2, estado: 'PENDIENTE' })])).toBe(true);
+    expect(hayJobActivo([job({ estado: 'CORRIENDO' })])).toBe(true);
+  });
+});
+
+describe('duracionTexto', () => {
+  it('formatea segundos y minutos, y no inventa cuando no hay dato', () => {
+    expect(duracionTexto(null)).toBeNull();
+    expect(duracionTexto(undefined)).toBeNull();
+    expect(duracionTexto(-3)).toBeNull();
+    expect(duracionTexto(45)).toBe('45 s');
+    expect(duracionTexto(120)).toBe('2 min');
+    expect(duracionTexto(200)).toBe('3 min 20 s');
+  });
+});
+
+describe('resumenJob', () => {
+  it('pendiente: dice el rango, el alcance y que espera al worker', () => {
+    const texto = resumenJob(job({}));
+    expect(texto).toContain('1/8 al 7/8');
+    expect(texto).toContain('todas las variantes');
+    expect(texto).toContain('en cola');
+  });
+
+  it('un solo día no se escribe como rango', () => {
+    expect(resumenJob(job({ desde: '2026-08-07', hasta: '2026-08-07' }))).toContain('7/8 · todas');
+  });
+
+  it('cuenta las variantes elegidas, en singular y en plural', () => {
+    expect(resumenJob(job({ variantes: [4] }))).toContain('1 variante ');
+    expect(resumenJob(job({ variantes: [4, 5, 6] }))).toContain('3 variantes');
+  });
+
+  it('corriendo muestra hace cuánto', () => {
+    const texto = resumenJob(job({ estado: 'CORRIENDO', duracion_seg: 95 }));
+    expect(texto).toContain('corriendo hace 1 min 35 s');
+  });
+
+  it('listo muestra corridas y filas con separador de miles', () => {
+    const texto = resumenJob(job({ estado: 'LISTO', corridas: 1240, filas: 16120, duracion_seg: 180 }));
+    expect(texto).toContain('1.240 corridas');
+    expect(texto).toContain('16.120 filas');
+    expect(texto).toContain('en 3 min');
+  });
+
+  it('listo sin corridas lo dice en vez de mostrar un cero pelado', () => {
+    expect(resumenJob(job({ estado: 'LISTO', corridas: null, filas: null }))).toContain('sin corridas');
+  });
+
+  it('error muestra el mensaje de la base', () => {
+    const texto = resumenJob(job({ estado: 'ERROR', error: 'division by zero' }));
+    expect(texto).toContain('falló: division by zero');
+  });
+
+  it('error sin mensaje no inventa uno', () => {
+    expect(resumenJob(job({ estado: 'ERROR', error: null }))).toContain('sin detalle');
   });
 });

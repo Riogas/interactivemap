@@ -318,6 +318,13 @@ COMMENT ON FUNCTION demoras_ritmo_niveles(integer, date) IS
   'Las estadisticas del ritmo en los cuatro niveles CRUDOS (zona, movil, chofer, global), sin resolver cascada, en una sola pasada sobre demoras_ritmo_muestras. Alimenta demoras_corrida_ritmo y al simulador.';
 
 -- ─── 4. La captura ───────────────────────────────────────────────────
+-- La firma cambio (se agrego p_forzar con DEFAULT): CREATE OR REPLACE NO
+-- reemplaza en ese caso, CREA UNA SEGUNDA funcion, y entonces cualquier
+-- llamada con dos argumentos queda ambigua (42725). Paso de verdad el
+-- 7/8 y el trigger fallaba en silencio porque su EXCEPTION se tragaba
+-- el error -- de ahi tambien la tabla de errores de mas abajo.
+DROP FUNCTION IF EXISTS demoras_corrida_snapshot(timestamptz, integer);
+
 CREATE OR REPLACE FUNCTION demoras_corrida_snapshot(
   p_corrida_at timestamptz, p_escenario integer, p_forzar boolean DEFAULT false)
 RETURNS integer
@@ -494,6 +501,25 @@ COMMENT ON FUNCTION demoras_corrida_ritmo_dia(date, integer) IS
 -- alguien cancela la corrida a mano.
 -- El costo medido de la captura es ~0,3 s (el ritmo del dia, que era la
 -- parte cara, se movio al job).
+-- Un blindaje que solo hace RAISE WARNING es un blindaje MUDO: el
+-- warning va al log de Postgres, que nadie mira, y una captura rota
+-- puede pasar semanas invisible. Paso el 7/8 (la funcion quedo con dos
+-- firmas y el trigger fallaba en silencio). Por eso los fallos se
+-- escriben en una tabla que la pantalla puede leer.
+CREATE TABLE IF NOT EXISTS demoras_lab_errores (
+  id         bigserial PRIMARY KEY,
+  ocurrio_at timestamptz NOT NULL DEFAULT now(),
+  origen     text NOT NULL,
+  corrida_at timestamptz,
+  escenario  integer,
+  detalle    text
+);
+
+COMMENT ON TABLE demoras_lab_errores IS
+  'Los fallos que los blindajes del laboratorio atrapan. Existe porque un RAISE WARNING no lo lee nadie: sin esta tabla, una captura rota puede pasar semanas invisible.';
+
+CREATE INDEX IF NOT EXISTS idx_lab_errores_at ON demoras_lab_errores (ocurrio_at DESC);
+
 CREATE OR REPLACE FUNCTION demoras_corrida_capturar_trg()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -502,10 +528,12 @@ DECLARE r record;
 BEGIN
   FOR r IN SELECT DISTINCT n.corrida_at AS at, n.escenario AS esc FROM nuevas n LOOP
     BEGIN
-      PERFORM demoras_corrida_snapshot(r.at, r.esc);
+      PERFORM demoras_corrida_snapshot(r.at, r.esc, false);
     EXCEPTION WHEN OTHERS THEN
       RAISE WARNING 'caja negra: fallo la captura de % / escenario % -- % (la corrida real no se toca)',
         r.at, r.esc, SQLERRM;
+      INSERT INTO demoras_lab_errores (origen, corrida_at, escenario, detalle)
+      VALUES ('captura', r.at, r.esc, SQLERRM);
     END;
   END LOOP;
   RETURN NULL;
@@ -525,7 +553,7 @@ BEGIN
 END
 $do$;
 
-COMMENT ON FUNCTION demoras_corrida_snapshot(timestamptz, integer) IS
+COMMENT ON FUNCTION demoras_corrida_snapshot(timestamptz, integer, boolean) IS
   'Captura el estado del mundo de una corrida ya commiteada: parametria y universo (meta), el aporte de cada movil (irrecuperable), los pedidos de la cola con el dato crudo, y una vez por dia las estadisticas del ritmo en sus cuatro niveles. La dispara el job demoras-variantes. Ver docs/sqls/2026-08-07-caja-negra-corridas.sql.';
 
 -- ─── 5. El job de captura: cada 15 SEGUNDOS ──────────────────────────
