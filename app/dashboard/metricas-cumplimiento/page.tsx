@@ -33,9 +33,10 @@ import { DesfasajeCard } from '@/components/metricas/DesfasajeCard';
 import { DesfasajeAnalisis } from '@/components/metricas/DesfasajeAnalisis';
 import { EvolucionDiaCard } from '@/components/metricas/EvolucionDiaCard';
 import { ZonaCorridaCard } from '@/components/metricas/ZonaCorridaCard';
+import { VariantesLabCard } from '@/components/metricas/VariantesLabCard';
 import { INFO_TEXTS, DIMENSION_LABEL, COLOR_TIPO, TIPO_LABEL, formatMin, formatPct } from '@/components/metricas/metricas-theme';
 
-type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | 'analisis' | 'evolucion' | 'zonacorrida' | null;
+type ExpandedSection = 'tendencia' | 'tipo' | 'ranking' | 'tabla' | 'escenarios' | 'demora' | 'desfasaje' | 'analisis' | 'evolucion' | 'zonacorrida' | 'variantes' | null;
 
 // ─── Sub-tablas chicas usadas SOLO dentro del ExpandModal (E2: "tabla completa
 // de datos de esa sección" para tendencia/por-tipo, complementando el chart). ──
@@ -589,6 +590,22 @@ function MetricasCumplimientoContent() {
             <ZonaCorridaCard escenario={escenarioSel} empresaSel={empresaSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
           </CardShell>
 
+          {/* ── Laboratorio de variantes ──
+              Pedido de Diego (audio 7/8): cada corrida graba lo que
+              HUBIERA publicado cada configuración alternativa, y esta
+              card rankea cuál viene ganando — sin retro-backtests. */}
+          <CardShell
+            title="Laboratorio de variantes"
+            hint="champion-challenger · qué configuración viene ganando"
+            infoTitle="Laboratorio de variantes"
+            infoText="En cada corrida, además de lo que publica, el motor graba lo que HUBIERA publicado cada variante del catálogo (promedio en vez de mediana, factor ×0,80, escalón de 10', sin escalera, piso de 20'…), cada una con su propia escalera de suavizado. Esta card cruza esas promesas alternativas contra las entregas reales: la mejor combinación aparece sola, por día y acumulado. Una variante solo se declara PROMOVIBLE si le gana al motor la mayoría de los días y por margen acumulado — nunca por un día suelto."
+            onExpand={() => setExpandedSection('variantes')}
+            className="col-span-12"
+            style={{ animationDelay: '380ms' }}
+          >
+            <VariantesLabCard escenario={escenarioSel} empresaSel={empresaSel} isRoot={unrestricted} empresasIds={empresasIdsForHeader} funcionalidades={funcionalidades} />
+          </CardShell>
+
           {/* ── Demora informada vs. calculada ──
               Última card: mira un dato distinto del resto de la pantalla
               (demora prospectiva, no cumplimiento histórico). */}
@@ -665,7 +682,9 @@ function MetricasCumplimientoContent() {
                           ? 'Evolución del día — en vivo'
                           : expandedSection === 'zonacorrida'
                             ? 'Radiografía por zona'
-                            : `Detalle por ${dimLabel.singular}`
+                            : expandedSection === 'variantes'
+                              ? 'Laboratorio de variantes'
+                              : `Detalle por ${dimLabel.singular}`
         }
       >
         {data && expandedSection === 'tendencia' && (
@@ -732,6 +751,15 @@ function MetricasCumplimientoContent() {
         )}
         {expandedSection === 'zonacorrida' && (
           <ZonaCorridaCard
+            escenario={escenarioSel}
+            empresaSel={empresaSel}
+            isRoot={unrestricted}
+            empresasIds={empresasIdsForHeader}
+            funcionalidades={funcionalidades}
+          />
+        )}
+        {expandedSection === 'variantes' && (
+          <VariantesLabCard
             escenario={escenarioSel}
             empresaSel={empresaSel}
             isRoot={unrestricted}

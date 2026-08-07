@@ -20,6 +20,9 @@ import { EXPLICACION_ACIERTO } from '@/components/metricas/desfasaje-logic';
 import {
   PERILLAS_DOC, GRUPOS_PERILLAS, VIAJE_PEDIDO, EJEMPLO_PREDICTIVO,
 } from '@/components/metricas/documentacion-data';
+import {
+  PROMO_MARGEN_PTS, PROMO_MIN_DIAS_EVALUADOS, PROMO_MIN_DIAS_GANADOS,
+} from '@/components/metricas/variantes-logic';
 
 const COLOR_DESPACHO = '#D55E00';
 const COLOR_MOTOR = '#2456A6';
@@ -302,13 +305,53 @@ export function DocContent() {
             <li><strong>Demora calculada vs. informada:</strong> las dos líneas del día, zona por zona, con el "porqué" de cada número en el desglose.</li>
             <li><strong>Acierto de la demora:</strong> las franjas de desfasaje por pedido entregado, con el KPI ≤25′ y el modo Comparar sobre la población común.</li>
             <li><strong>Análisis del acierto:</strong> dónde y cuándo falla cada promesa — por día (con veredicto), por hora de la toma, peores zonas y peores casos, filtrable por día.</li>
+            <li><strong>Laboratorio de variantes:</strong> el ranking de configuraciones alternativas del motor (ver sección 7): cuál viene acertando más, por día y acumulado.</li>
             <li><strong>Los KPI de arriba:</strong> el cumplimiento operativo clásico (tiempo asignado → cumplido) por chofer, móvil y zona.</li>
           </ul>
         </section>
 
-        {/* ── 7. Glosario ── */}
+        {/* ── 7. El laboratorio de variantes ── */}
+        <section className="doc-section mb-10">
+          <h2 className="mb-3 text-xl font-bold text-gray-900">7 · El laboratorio de variantes</h2>
+          <p className="mb-3 text-[0.88rem] leading-relaxed text-gray-700">
+            Cada vez que el motor corre, además de lo que publica, graba lo que <strong>hubiera publicado</strong> cada
+            configuración alternativa de un catálogo: el promedio en vez de la mediana, el ritmo de la zona en vez del
+            del chofer, la calibración ×1,00 / ×0,80 / ×0,75, el escalón de 10′ en vez de 15′, sin escalera de
+            suavizado, la escalera más ágil (de a 30′), el piso de 20′, y combinaciones. Cada variante arrastra{' '}
+            <strong>su propia escalera</strong> contra su corrida anterior — por eso esto no se puede reconstruir
+            después con cuentas para atrás: hay que grabarlo en el momento.
+          </p>
+          <p className="mb-3 text-[0.88rem] leading-relaxed text-gray-700">
+            La card <strong>Laboratorio de variantes</strong> cruza esas promesas alternativas contra las entregas
+            reales (la misma vara que todo el resto: promesa vigente a la toma, agendados excluidos, mismo conjunto de
+            pedidos para todas) y muestra la mejor combinación sola, sin que nadie tenga que correr un análisis a mano.
+          </p>
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-[0.86rem] leading-relaxed text-gray-700">
+            <strong>La regla de promoción (anti-ruido).</strong> Con más de diez variantes compitiendo, «la mejor del día»
+            suele ganar por suerte. Una variante solo se declara <strong>PROMOVIBLE</strong> al motor si: (a) tiene al
+            menos {PROMO_MIN_DIAS_EVALUADOS} días evaluables con volumen suficiente, (b) le ganó al motor real en al
+            menos {PROMO_MIN_DIAS_GANADOS} de esos días, y (c) el acumulado le saca al menos {PROMO_MARGEN_PTS} puntos
+            de acierto. Un día suelto no promociona a nadie.
+          </div>
+          <p className="mb-3 text-[0.86rem] leading-relaxed text-gray-700">
+            La variante <strong>Campeón (control)</strong> replica exactamente al motor: si su porcentaje no coincide
+            con el del motor real, el que está fallando es el laboratorio (la card lo vigila con el chip «espejo»).
+            Probar una idea nueva es un alta en el catálogo — no toca el motor ni requiere programar nada.
+          </p>
+          <p className="text-[0.86rem] leading-relaxed text-gray-700">
+            <strong>Por qué se graba en el momento y no se calcula después.</strong> El laboratorio corre aparte del
+            motor, sobre las corridas que éste ya publicó, dentro del minuto siguiente. No puede reconstruir corridas
+            viejas: las variantes que recalculan el ritmo necesitan el estado del mundo de ese instante (qué móviles
+            estaban activos, qué pedidos había en cola) y ese estado ya no existe unas horas más tarde. Se comprobó al
+            armarlo: al rellenar hacia atrás las corridas del día anterior, esas variantes prometían 105 minutos contra
+            84 del campeón, casi todas contra el techo. Por eso una corrida que quedó afuera de la ventana no se
+            rellena — preferimos no tener el dato antes que tenerlo mal.
+          </p>
+        </section>
+
+        {/* ── 8. Glosario ── */}
         <section className="doc-section mb-8">
-          <h2 className="mb-3 text-xl font-bold text-gray-900">7 · Glosario</h2>
+          <h2 className="mb-3 text-xl font-bold text-gray-900">8 · Glosario</h2>
           <dl className="grid gap-x-6 gap-y-2 text-[0.86rem] md:grid-cols-2">
             <div><dt className="font-semibold text-gray-900">Despacho</dt><dd className="text-gray-600">El sistema AS400 donde la operativa carga las demoras a mano. Naranja en todos los gráficos.</dd></div>
             <div><dt className="font-semibold text-gray-900">Motor</dt><dd className="text-gray-600">El cálculo automático de demora, cada 10 minutos por zona. Azul en todos los gráficos.</dd></div>
