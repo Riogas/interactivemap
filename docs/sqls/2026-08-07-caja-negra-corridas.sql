@@ -630,9 +630,19 @@ BEGIN
     -- borra una captura degradada, la vuelve a tomar todavia mas tarde
     -- (paso: re-capturo con 774 s de desfase corridas que se habian
     -- descartado justamente por estar desfasadas).
+    --
+    -- Y cada MINUTO, no cada 15 segundos. Arranco a 15 s cuando la
+    -- captura dependia de este job; con el trigger andando quedo como
+    -- pura redundancia, y salia cara: 16.511 ejecuciones en 72 horas
+    -- que le metian presion al arranque de workers de pg_cron. En esas
+    -- 72 horas hubo 17 "job startup timeout" del propio job y, lo que
+    -- importa, UNO del motor (8/8 12:20, 1 de 432) -- una corrida
+    -- perdida. Con el trigger capturando el 100% con desfase 0 sobre
+    -- 246 corridas, bajar a un minuto es gratis y le saca presion al
+    -- cron que comparte con el motor.
     PERFORM cron.schedule(
       'demoras-caja-negra',
-      '15 seconds',
+      '* * * * *',
       $job$SELECT demoras_corrida_backfill(3, 2)$job$
     );
   END IF;
