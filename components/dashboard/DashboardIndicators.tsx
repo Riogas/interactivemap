@@ -490,7 +490,7 @@ function Indicator({ icon, label, value, subtitle, color = 'blue', pulse = false
         backdrop-blur-sm rounded-md px-2 py-1 lg:px-2.5 lg:py-1.5 border
         ${colorClasses[color]}
         ${pulse ? 'animate-pulse' : ''}
-        hover:scale-105 transition-transform ${onClick ? 'cursor-pointer' : 'cursor-default'}
+        transition-transform ${onClick ? 'hover:scale-105 cursor-pointer' : 'cursor-default'}
         whitespace-nowrap
         h-[36px] lg:h-[44px] flex items-center
       `}

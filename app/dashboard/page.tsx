@@ -34,6 +34,7 @@ import { getScopedEmpresas, shouldScopeByEmpresa, canSeeAllEmpresas, isRoot } fr
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConPedidosMatching, getMovilesConOperacionEnFecha } from '@/lib/moviles/visibility';
 import { computeSelectAllIds } from '@/lib/moviles/select-all';
+import { gateNavbarSinAsignarClick } from '@/lib/sa-navbar-gate';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
@@ -3904,7 +3905,7 @@ function DashboardContent() {
             scope={scope}
             saScopeZonaIds={saScopeZonaIds}
             canVerAcumulados={canVerAcumulados}
-            onSinAsignarClick={onSinAsignarClick}
+            onSinAsignarClick={gateNavbarSinAsignarClick(canVerSinAsignarUnitario, onSinAsignarClick)}
             onEntregadosClick={onEntregadosClick}
             onPorcentajeClick={onPorcentajeClick}
             zonasSinMovilServiceFilter={movilesZonasServiceFilter}
