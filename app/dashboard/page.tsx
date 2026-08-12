@@ -33,6 +33,7 @@ import { useSaScopeZonaIds } from '@/hooks/dashboard/useSaScopeZonaIds';
 import { getScopedEmpresas, shouldScopeByEmpresa, canSeeAllEmpresas, isRoot } from '@/lib/auth-scope';
 import type { ScopeFilter } from '@/lib/scope-filter';
 import { getHiddenMovilIds, getHiddenMovilIdsFromEstadosMap, isMovilActiveForUI, getMovilesConPedidosMatching, getMovilesConOperacionEnFecha } from '@/lib/moviles/visibility';
+import { computeSelectAllIds } from '@/lib/moviles/select-all';
 import TrackingModal from '@/components/ui/TrackingModal';
 import LeaderboardModal from '@/components/ui/LeaderboardModal';
 import ZonaMovilesViewModal from '@/components/ui/ZonaMovilesViewModal';
@@ -2328,15 +2329,14 @@ function DashboardContent() {
   }, []);
 
   // Handler para seleccionar todos los móviles
+  // USE_NEW: selección atómica de activos + inactivos del día en un solo
+  // setState, SIN excluir hiddenMovilIds — en moviles_dia un inactivo del día
+  // con operativa también tiene oculto_operativo=true, y excluirlos dejaba
+  // "Seleccionar todos" sin los inactivos (sin camino de vuelta salvo F5).
+  // Debe devolver el mismo universo que la auto-selección inicial §4.1.
   const handleSelectAll = useCallback(() => {
     userExplicitlyCleared.current = false;
-    const hidden = hiddenMovilIdsRef.current;
-    // USE_NEW: seleccionar atómicamente activos + inactivos del día visibles en un
-    // solo setState, evitando el two-pass (activos primero → inactivos por auto-sync).
-    const base = USE_NEW
-      ? movilesFiltered.filter(m => m.activo === true || m.inactivoDelDia === true)
-      : movilesFiltered;
-    const filteredIds = base.filter(m => !hidden.has(m.id)).map(m => m.id);
+    const filteredIds = computeSelectAllIds(movilesFiltered, hiddenMovilIdsRef.current, USE_NEW);
     bumpSelectionVersion();
     setSelectedMoviles(filteredIds);
     setFocusedMovil(undefined);
