@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { authStorage } from '@/lib/auth-storage';
-import { formatearCuerpo, parametrosDe, tonoDeStatus } from './docs-logic';
+import { CLASE_CAJA_TONO, CLASE_TEXTO_TONO, formatearCuerpo, parametrosDe, tonoDeStatus } from './docs-logic';
 import { queryString, rutaConValores, type ValoresPeticion } from './ejemplos';
 import { IconoAlerta, IconoCerrar, IconoLlave, IconoPlay, IconoReloj } from './Iconos';
 import { Badge, BloqueCodigo, BotonCopiar, ChipMetodo } from './Piezas';
@@ -272,7 +272,7 @@ export function TryIt({
           onClick={() => (esEscritura ? setConfirmando(true) : ejecutar())}
           className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-[0.82rem] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
             esEscritura
-              ? 'bg-stats-destructive text-white hover:brightness-110'
+              ? 'bg-stats-destructive text-stats-destructive-fg hover:brightness-110'
               : 'bg-stats-primary text-stats-primary-fg hover:brightness-110'
           }`}
         >
@@ -310,7 +310,7 @@ export function TryIt({
           >
             <div className="flex items-start gap-3">
               <span
-                className={`mt-0.5 shrink-0 ${ambiente.esProduccion ? 'text-stats-destructive' : 'text-stats-warning'}`}
+                className={`mt-0.5 shrink-0 ${CLASE_TEXTO_TONO[ambiente.tono]}`}
               >
                 <IconoAlerta size={22} />
               </span>
@@ -320,7 +320,7 @@ export function TryIt({
                 </h4>
                 <p className="mt-1 text-[0.8rem] leading-relaxed text-stats-muted-fg">
                   Esto no es una simulación: la llamada sale contra{' '}
-                  <strong className={ambiente.esProduccion ? 'text-stats-destructive' : 'text-stats-warning'}>
+                  <strong className={CLASE_TEXTO_TONO[ambiente.tono]}>
                     {ambiente.etiqueta}
                   </strong>{' '}
                   y los datos que toque quedan tocados.
@@ -329,23 +329,15 @@ export function TryIt({
             </div>
 
             <div
-              className={`mt-4 rounded-lg border px-3 py-2 ${
-                ambiente.esProduccion
-                  ? 'border-stats-destructive/40 bg-stats-destructive-soft'
-                  : 'border-stats-warning/40 bg-stats-warning-soft'
-              }`}
+              className={`mt-4 rounded-lg border px-3 py-2 ${CLASE_CAJA_TONO[ambiente.tono]}`}
             >
               <p
-                className={`text-[0.72rem] font-bold uppercase tracking-wide ${
-                  ambiente.esProduccion ? 'text-stats-destructive' : 'text-stats-warning'
-                }`}
+                className={`text-[0.72rem] font-bold uppercase tracking-wide ${CLASE_TEXTO_TONO[ambiente.tono]}`}
               >
                 Ambiente: {ambiente.etiqueta}
               </p>
               <p
-                className={`mt-0.5 text-[0.74rem] leading-snug ${
-                  ambiente.esProduccion ? 'text-stats-destructive' : 'text-stats-warning'
-                }`}
+                className={`mt-0.5 text-[0.74rem] leading-snug ${CLASE_TEXTO_TONO[ambiente.tono]}`}
               >
                 {ambiente.detalle}
               </p>
@@ -385,7 +377,7 @@ export function TryIt({
                 type="button"
                 disabled={textoConfirmacion.trim() !== pathEfectivo || ejecutando}
                 onClick={() => ejecutar(pathEfectivo)}
-                className="rounded-lg bg-stats-destructive px-3.5 py-1.5 text-[0.8rem] font-semibold text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg bg-stats-destructive px-3.5 py-1.5 text-[0.8rem] font-semibold text-stats-destructive-fg transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {ejecutando ? 'Ejecutando…' : `Ejecutar ${endpoint.metodo.toUpperCase()}`}
               </button>

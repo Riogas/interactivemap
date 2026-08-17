@@ -30,10 +30,11 @@ cambios después de regenerar, es porque las APIs cambiaron de verdad.
 
 **Sin direcciones internas.** En `servers[]` el generador deja solo el hostname público
 (`https://track.glp.riogas.com.uy`): este JSON vive en el repo y el repo se clona, así
-que las IPs de la red interna no se versionan. El ambiente en el que se está parado lo
-agrega `GET /api/docs/spec` al servir, desde `DOCS_BASE_URL`, `APP_BASE_URL` o el `Host`
-del request (`lib/docs/servidores.ts`). Lo mismo vale para `anotaciones.yaml`: los
-consumidores se nombran ("Sender de GeneXus / SGM"), no se los direcciona.
+que las IPs de la red interna no se versionan. El origen contra el que ejecuta el
+"Try it" lo agrega `GET /api/docs/spec` al servir, resuelto en el servidor
+(`lib/docs/servidores.ts`; ver [El origen del Try it](#el-origen-del-try-it)). Lo mismo
+vale para `anotaciones.yaml`: los consumidores se nombran ("Sender de GeneXus / SGM"),
+no se los direcciona.
 
 Regenerar es obligatorio cuando se agrega, borra o renombra un `route.ts`, cuando se
 agrega un método HTTP a uno existente, o cuando se cambia el docblock de cabecera.
@@ -260,6 +261,37 @@ Códigos que devuelve el gate: `NO_TOKEN` (401), `TOKEN_INVALIDO` (401, firma o 
 `TOKEN_VENCIDO` (401), `SECRETO_NO_CONFIGURADO` (503), lo que conteste secapi
 (401/403), `SECAPI_ERROR` / `SECAPI_RESPUESTA_INVALIDA` / `SECAPI_INACCESIBLE` (503).
 
+### El origen del Try it
+
+`POST /api/docs/try` ejecuta la llamada **desde el servidor, con el Bearer y el cookie
+jar del root que abrió el portal**. Contra qué URL sale eso es una decisión de
+seguridad, no de configuración, así que **no puede salir de un header**: `Host`,
+`x-forwarded-host`, `Origin` y `Referer` los elige quien manda el request.
+
+| | |
+|---|---|
+| **Variable** | `DOCS_TRY_ORIGEN` (una sola; opcional) |
+| **Para qué** | Fijar el origen contra el que ejecuta el "Try it" y que publica `servers[]`. Solo hace falta si la llamada tiene que entrar por nginx (por ejemplo, para probar el WAF) o si el proceso escucha en un host que no es el loopback. |
+| **Si falta** | Se usa `http://127.0.0.1:$PORT` — Next escribe `process.env.PORT` con el puerto real al arrancar, y el default del repo es `3002`. Es el caso normal: el "Try it" llama a esta misma app. |
+| **Si está mal escrita** | No se adivina nada: `503 ORIGEN_NO_CONFIGURADO` y no se llama a nadie (mismo criterio que el resto del portal — fail-closed). |
+| **Formato** | Un origen `http(s)`. Si trae path, query o credenciales se descartan: solo se usa `origin`. |
+
+```bash
+# .env.production — solo si hace falta
+DOCS_TRY_ORIGEN=https://track.tu-dominio.com
+```
+
+**Por qué existe esta sección.** La primera versión armaba la base con
+`${x-forwarded-proto}://${Host}` cuando no había env configurada — y no la había en
+ningún ambiente. Con eso, un `POST /api/docs/try` con `Host: 169.254.169.254` hacía que
+el servidor saliera a buscar `http://169.254.169.254/api/...` mandando las credenciales
+del root: SSRF con exfiltración. La comprobación final "el destino tiene que ser del
+propio host" no lo frenaba porque comparaba contra esa misma base derivada del `Host`:
+una comparación autorreferencial nunca rechaza nada. Hoy la comparación es contra el
+origen resuelto en el servidor, y los tests de `__tests__/docs-try.test.ts` mandan
+`Host` / `x-forwarded-host` apuntando a `evil.example.com`, `169.254.169.254` y
+`localhost:5432` para comprobar que el destino no se mueve.
+
 ### El guard de la página es cosmético
 
 El de `app/docs/layout.tsx` es `'use client'`: corre en el navegador con datos que el
@@ -297,9 +329,10 @@ que vuelve a pasar por `requireRoot`. Reglas, con sus tests en
 
 | Regla | Por qué |
 |---|---|
-| Solo paths `/api/...` del propio host. Se rechaza URL absoluta, `//host`, `..`, `%2e`, `\` | Nunca es un proxy abierto. Además del filtro textual, se re-verifica el origen de la URL ya armada. |
+| Solo paths `/api/...` del **origen de confianza** (ver abajo). Se rechaza URL absoluta, `//host`, `..`, `%2e`, `\`, y `/api/docs/try` con cualquier disfraz (barra final, barra doble, mayúsculas) | Nunca es un proxy abierto ni se llama a sí mismo. Además del filtro textual, se re-verifica que la URL ya armada caiga en el origen de confianza. |
 | `GET`/`HEAD` directo; `POST`/`PUT`/`PATCH`/`DELETE` exigen `confirmacion` == el path exacto (si no, **428 `CONFIRMACION_REQUERIDA`**) | El ambiente puede ser producción y el que abre el portal es root. |
 | `cookie` / `authorization` los pone el servidor con la sesión del root; los que mande el cliente se descartan y se informan en `headersDescartados` | Que el portal no sea una forma de mandar credenciales ajenas. |
+| Todo `x-track-*` (`x-track-isroot`, `x-track-funcs`, `x-track-empresas-ids`) se descarta del payload y lo propaga el handler desde el request entrante | Son los headers en los que se apoya `lib/api-auth-gates.ts`: dejar que el payload los eligiera convertía al ejecutor en una escalada de privilegios. El portal ejecuta con el mismo scope que tiene el root en su navegador. |
 | Timeout 30 s (**504 `TIMEOUT`**) y respuesta truncada a 1 MB (`truncado: true`) | Un endpoint colgado no cuelga el portal. |
 | El request va **en base64** en `{ payload }` | El WAF de nginx delante de TrackMovil rechaza con 403 los bodies con sintaxis de shell, y un cuerpo de ejemplo legítimo puede tenerla. |
 
@@ -307,9 +340,12 @@ El ejecutor devuelve siempre `200` cuando **pudo** ejecutar: el status del endpo
 llamado viene adentro, en `status`. Un `4xx`/`5xx` de `/api/docs/try` es un problema del
 ejecutor (gate, path, confirmación), no del endpoint.
 
-El ambiente que muestra el diálogo de confirmación se deriva del host: si dice `dev` es
-DEV, **todo lo demás se muestra como PRODUCCIÓN, en rojo** — incluido `localhost`. El
-error caro es ejecutar un DELETE creyendo que se está en desarrollo, no al revés.
+El ambiente que muestra el diálogo de confirmación se deriva del host del navegador,
+con el mismo criterio que Goya: `localhost` / `127.0.0.1` → **LOCAL** (verde), un host
+que diga `dev` → **DEV** (ámbar), cualquier otra cosa → **PRODUCCIÓN** (rojo). Antes
+`localhost` también caía en PRODUCCIÓN; la intención era buena, pero el efecto era que
+en la máquina de cualquiera que abriera el portal el cartel rojo estaba siempre, y un
+cartel que aparece siempre deja de significar algo.
 
 ---
 
@@ -317,10 +353,12 @@ error caro es ejecutar un DELETE creyendo que se está en desarrollo, no al rev�
 
 - Diseño: `docs/superpowers/specs/2026-08-17-portal-docs-apis-design.md`
 - Guard: `lib/docs/root-guard.ts` · Merge: `lib/docs/merge-spec.ts` · YAML: `lib/docs/yaml-min.ts`
-- Servers en tiempo de servido: `lib/docs/servidores.ts`
+- Origen de confianza (`DOCS_TRY_ORIGEN`): `lib/docs/servidores.ts`
 - Reglas del "Try it": `lib/docs/try-request.ts`
 - Generador: `scripts/generate-openapi-spec.mjs`
-- Visor: `components/docs/` (lógica pura en `docs-logic.ts` y `ejemplos.ts`)
+- Visor: `components/docs/` (lógica pura en `docs-logic.ts` y `ejemplos.ts`; el
+  render de las anotaciones con `` `código` `` inline, en `texto-rico.tsx`)
 - Tests: `__tests__/docs-root-guard.test.ts` · `__tests__/docs-servidores.test.ts` ·
   `__tests__/docs-try.test.ts` · `__tests__/docs-merge-anotaciones.test.ts` ·
-  `__tests__/docs-anotaciones-cobertura.test.ts` · `components/docs/docs-logic.test.ts`
+  `__tests__/docs-anotaciones-cobertura.test.ts` · `__tests__/docs-texto-rico.test.ts` ·
+  `components/docs/docs-logic.test.ts`

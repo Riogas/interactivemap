@@ -343,7 +343,7 @@ export function tieneConsumidorVb6(op: Operacion): boolean {
   return consumidoresDe(op).some((c) => /\bvb6\b|visual\s*basic/i.test(c));
 }
 
-export type ClaveAmbiente = 'DEV' | 'PROD';
+export type ClaveAmbiente = 'LOCAL' | 'DEV' | 'PROD';
 
 export interface Ambiente {
   clave: ClaveAmbiente;
@@ -351,32 +351,78 @@ export interface Ambiente {
   detalle: string;
   /** true = todo lo que se ejecute impacta datos reales. */
   esProduccion: boolean;
+  /** Tono del cartel: verde LOCAL, ámbar DEV, rojo PRODUCCIÓN. */
+  tono: TonoBadge;
 }
 
+/** Clase de color de texto por tono. Se listan enteras para que Tailwind las vea. */
+export const CLASE_TEXTO_TONO: Record<TonoBadge, string> = {
+  peligro: 'text-stats-destructive',
+  aviso: 'text-stats-warning',
+  ok: 'text-stats-success',
+  neutro: 'text-stats-muted-fg',
+};
+
+/** Borde + fondo suave por tono, para los carteles del diálogo de confirmación. */
+export const CLASE_CAJA_TONO: Record<TonoBadge, string> = {
+  peligro: 'border-stats-destructive/40 bg-stats-destructive-soft',
+  aviso: 'border-stats-warning/40 bg-stats-warning-soft',
+  ok: 'border-stats-success/40 bg-stats-success-soft',
+  neutro: 'border-stats-border bg-stats-surface-2',
+};
+
+/** `localhost`, `127.0.0.1` o `[::1]`, con o sin puerto. */
+const HOST_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
 /**
- * Ambiente derivado del host del navegador.
+ * Ambiente derivado del host del navegador. Mismo criterio que Goya:
+ * `localhost`/`127.0.0.1` → LOCAL (verde), un host que dice "dev" → DEV (ámbar),
+ * cualquier otra cosa → PRODUCCIÓN (rojo).
  *
- * Regla deliberadamente binaria: si el host dice "dev" es DEV, y **todo lo demás es
- * PROD**. Un `localhost` también se muestra como PROD, y está bien: el error caro es
- * ejecutar un DELETE creyendo que se está en desarrollo, no al revés.
+ * Antes era binario y `localhost` caía en PRODUCCIÓN. La intención era buena (el error
+ * caro es ejecutar un DELETE creyendo que estás en desarrollo), pero el efecto era el
+ * contrario: en la máquina de cualquiera que abriera el portal el cartel rojo estaba
+ * SIEMPRE, y un cartel que aparece siempre deja de significar algo. Ahora el rojo
+ * aparece solo cuando de verdad hay datos reales del otro lado.
+ *
+ * Un host vacío (todavía no montó el efecto que lee `window.location`) se trata como
+ * PRODUCCIÓN: mientras no se sabe dónde se está, se avisa lo peor.
  *
  * @param host `window.location.host` (o el que se quiera evaluar)
  */
 export function ambienteDeHost(host: string): Ambiente {
-  const esDev = /dev/i.test(host);
-  return esDev
-    ? {
-        clave: 'DEV',
-        etiqueta: 'DEV',
-        detalle: `Ambiente de desarrollo (${host}). Lo que ejecutes acá no toca producción.`,
-        esProduccion: false,
-      }
-    : {
-        clave: 'PROD',
-        etiqueta: 'PRODUCCIÓN',
-        detalle: `El host (${host}) no dice "dev": se asume PRODUCCIÓN. Todo lo que ejecutes impacta datos reales.`,
-        esProduccion: true,
-      };
+  const h = (host ?? '').trim().toLowerCase();
+
+  if (HOST_LOCAL.test(h)) {
+    return {
+      clave: 'LOCAL',
+      etiqueta: 'LOCAL',
+      detalle: `Tu propia máquina (${h}). Lo que ejecutes no sale de acá.`,
+      esProduccion: false,
+      tono: 'ok',
+    };
+  }
+
+  if (h.includes('dev')) {
+    return {
+      clave: 'DEV',
+      etiqueta: 'DEV',
+      detalle: `Ambiente de desarrollo (${h}). Lo que ejecutes acá no toca producción.`,
+      esProduccion: false,
+      tono: 'aviso',
+    };
+  }
+
+  return {
+    clave: 'PROD',
+    etiqueta: 'PRODUCCIÓN',
+    detalle:
+      h === ''
+        ? 'Todavía no se sabe en qué host está parado el portal: se asume PRODUCCIÓN. Todo lo que ejecutes puede impactar datos reales.'
+        : `El host (${h}) no es local ni dice "dev": se asume PRODUCCIÓN. Todo lo que ejecutes impacta datos reales.`,
+    esProduccion: true,
+    tono: 'peligro',
+  };
 }
 
 /** Color del status de una respuesta: 2xx ok, 4xx aviso, 5xx peligro. */

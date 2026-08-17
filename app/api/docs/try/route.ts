@@ -15,10 +15,14 @@
  * Codificado, el WAF ve una tira de base64 y el cuerpo llega entero.
  *
  * Reglas (lib/docs/try-request.ts, con sus tests):
- *   - solo paths `/api/...` del PROPIO host; nunca es un proxy abierto;
+ *   - solo paths `/api/...` del ORIGEN DE CONFIANZA, que se resuelve en el servidor
+ *     (`DOCS_TRY_ORIGEN` o el `PORT` del proceso) y **nunca** desde un header del
+ *     request: el `Host` lo elige el cliente, y creerle era SSRF con el Bearer y el
+ *     cookie jar del root adentro. Nunca es un proxy abierto;
  *   - GET/HEAD van directo; POST/PUT/PATCH/DELETE exigen `confirmacion` == path exacto;
- *   - `cookie` / `authorization` los pone este handler con la sesión del root: los que
- *     mande el cliente se descartan (y se listan en `headersDescartados`);
+ *   - `cookie` / `authorization` y los `x-track-*` (la autorización de la app) los pone
+ *     este handler desde el request entrante: los que mande el payload se descartan (y
+ *     se listan en `headersDescartados`);
  *   - timeout 30 s, respuesta truncada a 1 MB.
  *
  * Respuestas:
@@ -28,17 +32,19 @@
  *       PATH_INVALIDO, PATH_FUERA_DE_API, PATH_BLOQUEADO)
  *   401/403 el gate root (sin token, token inválido, sin permiso)
  *   428 CONFIRMACION_REQUERIDA — escritura sin el path escrito
- *   503 SecuritySuite no contestó / no se pudo resolver el host propio
+ *   503 SecuritySuite no contestó (SECAPI_*), o no hay origen de confianza
+ *       (ORIGEN_NO_CONFIGURADO)
  *   504 TIMEOUT — el endpoint llamado no respondió en 30 s
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRoot } from '@/lib/docs/root-guard';
-import { servidorActual } from '@/lib/docs/servidores';
+import { ENV_ORIGEN, origenDeConfianza } from '@/lib/docs/servidores';
 import {
   construirUrl,
   decodificarPayload,
   validarPeticion,
+  HEADERS_PROPAGABLES,
   LIMITE_RESPUESTA_BYTES,
   TIMEOUT_TRY_MS,
   type PeticionTry,
@@ -97,8 +103,17 @@ async function leerCuerpoLimitado(res: Response): Promise<CuerpoLeido> {
 }
 
 /**
- * Headers con los que sale la llamada: los que pidió el root (ya saneados) más las
- * credenciales de SU sesión, que las pone el servidor y no el cliente.
+ * Headers con los que sale la llamada.
+ *
+ * El ORDEN es la regla de seguridad: primero lo que pidió el root (ya saneado), y
+ * ENCIMA —con `set()` incondicional— lo que decide el servidor. Al revés (que era como
+ * estaba: los propagables solo si el payload no los traía) el payload ganaba, y como
+ * `x-track-isroot` / `x-track-funcs` / `x-track-empresas-ids` son la autorización real
+ * de la app (`lib/api-auth-gates.ts`), el ejecutor era una escalada de privilegios.
+ *
+ * Los `x-track-*` salen del REQUEST ENTRANTE, así que el portal ejecuta con el mismo
+ * scope que tiene el root en su navegador: ni más, ni menos. Si el request no los trae,
+ * se borran (no se hereda nada del payload).
  */
 function headersDeSalida(request: NextRequest, peticion: PeticionTry): Headers {
   const headers = new Headers();
@@ -106,16 +121,18 @@ function headersDeSalida(request: NextRequest, peticion: PeticionTry): Headers {
 
   const autorizacion = request.headers.get('authorization');
   if (autorizacion) headers.set('authorization', autorizacion);
+  else headers.delete('authorization');
 
   const cookie = request.headers.get('cookie');
   if (cookie) headers.set('cookie', cookie);
+  else headers.delete('cookie');
 
   // Los gates de scope de la app leen estos headers; si el portal los perdiera, un
   // GET al dashboard volvería vacío y parecería un bug del endpoint.
-  for (const propagable of ['x-track-isroot', 'x-track-funcs', 'x-track-empresas-ids']) {
-    if (headers.has(propagable)) continue;
+  for (const propagable of HEADERS_PROPAGABLES) {
     const valor = request.headers.get(propagable);
     if (valor) headers.set(propagable, valor);
+    else headers.delete(propagable);
   }
 
   headers.set('accept', headers.get('accept') ?? 'application/json, text/plain;q=0.9, */*;q=0.8');
@@ -150,19 +167,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const peticion = validacion.peticion;
 
-  const base = servidorActual(request);
-  if (base === null) {
+  // El destino NO sale de ningún header del request (Host, x-forwarded-host, Origin,
+  // Referer: los elige el cliente). Ver lib/docs/servidores.ts.
+  const origen = origenDeConfianza();
+  if (origen === null) {
     return NextResponse.json(
       {
         success: false,
-        error: 'El servidor no pudo resolver su propia URL base (sin Host ni APP_BASE_URL).',
-        code: 'ORIGEN_DESCONOCIDO',
+        error: `El servidor no pudo resolver un origen de confianza. Revisá ${ENV_ORIGEN} (o PORT) — ver docs/api/README.md.`,
+        code: 'ORIGEN_NO_CONFIGURADO',
       },
       { status: 503 },
     );
   }
 
-  const destino = construirUrl(base, peticion);
+  const destino = construirUrl(origen, peticion);
   if (!destino.ok) {
     return NextResponse.json(
       { success: false, error: destino.error, code: destino.code },

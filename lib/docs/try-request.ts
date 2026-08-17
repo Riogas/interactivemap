@@ -13,17 +13,24 @@
  *    (`http://…`), cualquier `//host` (protocol-relative) y cualquier traversal
  *    (`..`, `%2e`, `%2f`, `\`). Y después de armar la URL se vuelve a comprobar que
  *    el origen resultante sea el propio: la validación textual sola no alcanza.
+ *    El origen lo resuelve `lib/docs/servidores.ts` desde `DOCS_TRY_ORIGEN` o el
+ *    `PORT` del proceso — **nunca** desde un header del request.
  *
  * 2. **Las escrituras se confirman escribiendo el path.** POST/PUT/PATCH/DELETE
  *    exigen `confirmacion === <path exacto>`; si no coincide → 428
  *    CONFIRMACION_REQUERIDA. El ambiente puede ser producción y el que abre el
  *    portal es root: un POST accidental no se puede desandar.
  *
- * 3. **Los headers de credencial los pone el servidor, no el cliente.** `cookie` y
- *    `authorization` viajan con la sesión del root que abrió el portal; si el
- *    payload los trae, se descartan (y se informa cuáles, no se descartan en
- *    silencio). Lo mismo con los hop-by-hop y los `x-forwarded-*`, que mentirían
- *    sobre el origen del request.
+ * 3. **Los headers de credencial y de autorización los pone el servidor, no el
+ *    cliente.** `cookie` y `authorization` viajan con la sesión del root que abrió el
+ *    portal; si el payload los trae, se descartan (y se informa cuáles, no se
+ *    descartan en silencio). Lo mismo con los hop-by-hop y los `x-forwarded-*`, que
+ *    mentirían sobre el origen del request, y con **todo el prefijo `x-track-`**:
+ *    `x-track-isroot`, `x-track-funcs` y `x-track-empresas-ids` son exactamente los
+ *    headers en los que se apoya `lib/api-auth-gates.ts`, así que dejar que el
+ *    payload los eligiera convertía al ejecutor en una escalada de privilegios
+ *    (pasás el gate root del portal y después te fabricás el scope que quieras).
+ *    Esos tres los propaga el handler desde el request entrante, siempre.
  *
  * 4. **Timeout de 30 s y respuesta truncada a 1 MB.** Un endpoint colgado no puede
  *    colgar el portal, y un dump de medio millón de filas no puede volar el browser.
@@ -50,8 +57,36 @@ export const TIMEOUT_TRY_MS = 30_000;
 /**
  * El ejecutor no se llama a sí mismo: sería una recursión con la sesión del root
  * adentro, y no hay ningún caso de uso que lo necesite.
+ *
+ * Se comparan normalizados (ver `normalizarParaBloqueo`): con la igualdad exacta,
+ * `/api/docs/try/` con barra final esquivaba el candado y Next servía igual el handler.
  */
 const PATHS_BLOQUEADOS: readonly string[] = ['/api/docs/try'];
+
+/**
+ * Forma canónica del path para compararlo con la lista de bloqueados: minúsculas,
+ * barras repetidas colapsadas y sin barra final. Es el mismo criterio que usa secapi.
+ *
+ * Solo se usa para comparar; lo que se reenvía es el path tal como vino.
+ */
+function normalizarParaBloqueo(path: string): string {
+  const canonico = path.toLowerCase().replace(/\/{2,}/g, '/');
+  return canonico.length > 1 ? canonico.replace(/\/+$/, '') : canonico;
+}
+
+/**
+ * Headers de autorización propios de TrackMovil que el handler propaga SIEMPRE desde
+ * el request entrante, y que el payload no puede elegir (ver `headerProhibido`).
+ *
+ * Son los que lee `lib/api-auth-gates.ts` (`requireFuncionalidad`): el scope efectivo
+ * del que llama. Se propagan para que un GET al dashboard desde el portal devuelva lo
+ * mismo que devolvería desde el navegador del root — ni más ni menos.
+ */
+export const HEADERS_PROPAGABLES: readonly string[] = [
+  'x-track-isroot',
+  'x-track-funcs',
+  'x-track-empresas-ids',
+];
 
 /**
  * Headers que NO se reenvían aunque el payload los traiga.
@@ -61,7 +96,8 @@ const PATHS_BLOQUEADOS: readonly string[] = ['/api/docs/try'];
  * - hop-by-hop (`connection`, `te`, `upgrade`, …) y `content-length`/`host`: los
  *   maneja el runtime, mandarlos a mano rompe el request;
  * - `x-forwarded-*` / `x-real-ip`: mentirían sobre el origen del request en los logs
- *   y en cualquier gate que mire la IP.
+ *   y en cualquier gate que mire la IP;
+ * - todo `x-track-*`: es la autorización de la app (ver `HEADERS_PROPAGABLES`).
  */
 export const HEADERS_PROHIBIDOS: ReadonlySet<string> = new Set([
   'authorization',
@@ -104,10 +140,22 @@ function tieneControl(texto: string): boolean {
 /** Nombre de header válido según RFC 7230 (token). */
 const NOMBRE_HEADER = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
-/** true si el header no se puede reenviar (lista de arriba, `proxy-*` o `sec-*`). */
+/**
+ * true si el header no se puede reenviar: la lista de arriba, o los prefijos
+ * `proxy-`, `sec-` y `x-track-`.
+ *
+ * El prefijo `x-track-` se bloquea entero y no solo los tres nombres conocidos: el día
+ * que alguien sume un `x-track-loquesea` a un gate, el ejecutor ya no se lo deja elegir
+ * al payload sin que nadie se acuerde de venir a tocar esta lista.
+ */
 export function headerProhibido(nombre: string): boolean {
   const n = nombre.trim().toLowerCase();
-  return HEADERS_PROHIBIDOS.has(n) || n.startsWith('proxy-') || n.startsWith('sec-');
+  return (
+    HEADERS_PROHIBIDOS.has(n) ||
+    n.startsWith('proxy-') ||
+    n.startsWith('sec-') ||
+    n.startsWith('x-track-')
+  );
 }
 
 export interface HeadersSaneados {
@@ -237,7 +285,7 @@ export function validarPath(bruto: unknown): ({ ok: true } & PathValidado) | Fal
     return fallo(400, 'PATH_FUERA_DE_API', 'Solo se pueden ejecutar endpoints bajo /api/.');
   }
 
-  if (PATHS_BLOQUEADOS.includes(soloPath)) {
+  if (PATHS_BLOQUEADOS.includes(normalizarParaBloqueo(soloPath))) {
     return fallo(400, 'PATH_BLOQUEADO', 'El ejecutor no se llama a sí mismo.');
   }
 
@@ -339,31 +387,44 @@ export function validarPeticion(bruto: unknown): ValidacionTry {
 }
 
 /**
- * Arma la URL final y comprueba —otra vez, ya resuelta— que sea del propio host.
+ * Arma la URL final y comprueba —otra vez, ya resuelta— que caiga en el ORIGEN DE
+ * CONFIANZA.
  *
- * La validación textual de `validarPath` puede dejar pasar formas raras que el
- * parser de URL interprete distinto; esta es la red de seguridad que decide.
+ * `origenConfianza` viene de `origenDeConfianza()` (env `DOCS_TRY_ORIGEN` o el `PORT`
+ * del proceso), nunca de un header del request. Ese es el punto: la versión anterior
+ * comparaba el destino contra la base derivada del `Host`, o sea contra un valor que
+ * elegía el mismo que mandaba el request, y por eso nunca rechazaba nada. Es el único
+ * parámetro de origen que recibe esta función justamente para que no exista una "base"
+ * alternativa que alguien pueda pasar sin darse cuenta.
  *
- * @param base   origen propio de la app (ej. `http://localhost:3002`)
+ * @param origenConfianza origen resuelto en el servidor (ej. `http://127.0.0.1:3002`)
  * @param peticion la petición ya validada
  */
-export function construirUrl(base: string, peticion: PeticionTry): { ok: true; url: string } | Fallo {
-  let origen: URL;
+export function construirUrl(
+  origenConfianza: string,
+  peticion: PeticionTry,
+): { ok: true; url: string } | Fallo {
+  let confianza: URL;
   try {
-    origen = new URL(base);
+    confianza = new URL(origenConfianza);
   } catch {
-    return fallo(503, 'ORIGEN_DESCONOCIDO', 'El servidor no pudo resolver su propia URL base.');
+    return fallo(503, 'ORIGEN_NO_CONFIGURADO', 'El servidor no pudo resolver su origen de confianza.');
+  }
+  if (confianza.protocol !== 'http:' && confianza.protocol !== 'https:') {
+    return fallo(503, 'ORIGEN_NO_CONFIGURADO', 'El origen de confianza tiene que ser http(s).');
   }
 
   let destino: URL;
   try {
-    destino = new URL(peticion.path, origen);
+    // La base es el ORIGEN pelado, no la URL tal cual vino: si `origenConfianza`
+    // trajera un path, un `path` relativo podría resolver contra él.
+    destino = new URL(peticion.path, confianza.origin);
   } catch {
     return fallo(400, 'PATH_INVALIDO', 'El path no forma una URL válida.');
   }
 
-  if (destino.origin !== origen.origin) {
-    return fallo(400, 'PATH_INVALIDO', 'El destino quedó fuera del host de la app.');
+  if (destino.origin !== confianza.origin) {
+    return fallo(400, 'PATH_INVALIDO', 'El destino quedó fuera del origen de confianza de la app.');
   }
   if (!destino.pathname.startsWith('/api/')) {
     return fallo(400, 'PATH_FUERA_DE_API', 'Solo se pueden ejecutar endpoints bajo /api/.');

@@ -52,8 +52,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { spec } = mergearAnotaciones(openapiGenerado as unknown as Record<string, unknown>, yaml);
 
   // El openapi.json versionado trae solo el hostname público: las direcciones internas
-  // no van en el repo. El ambiente concreto se agrega recién acá, al servir.
-  spec.servers = servidoresDelDocumento(request, spec.servers);
+  // no van en el repo. El origen de confianza (el que ejecuta el "Try it") se agrega
+  // recién acá, al servir, y sale de la env o del PORT — nunca del Host del request.
+  spec.servers = servidoresDelDocumento(spec.servers);
 
   return NextResponse.json(spec, {
     headers: {

@@ -1376,7 +1376,7 @@ function StatsContent() {
       )}
 
       {error && (
-        <div className="m-6 p-4 rounded-xl text-sm border bg-stats-destructive-soft border-stats-destructive/40 text-stats-destructive dark:bg-stats-destructive/10 dark:border-stats-destructive/30 dark:text-stats-destructive-soft">
+        <div className="m-6 p-4 rounded-xl text-sm border bg-stats-destructive-soft border-stats-destructive/40 text-stats-destructive dark:bg-stats-destructive/10 dark:border-stats-destructive/30">
           {error}
         </div>
       )}

@@ -1,89 +1,130 @@
 /**
  * Tests de lib/docs/servidores.ts.
  *
- * El punto de este módulo: docs/api/openapi.json se versiona y el repo se clona, así que
- * ahí no van direcciones internas. El ambiente concreto se resuelve al servir.
+ * Dos cosas se prueban acá y las dos importan:
+ *
+ * 1. docs/api/openapi.json se versiona y el repo se clona, así que ahí no van
+ *    direcciones internas: el origen se resuelve al servir.
+ * 2. **Ese origen no puede salir de un header.** Es el origen contra el que
+ *    `POST /api/docs/try` ejecuta con el Bearer y el cookie jar del root, así que si lo
+ *    eligiera el `Host` del request sería un SSRF con exfiltración de credenciales
+ *    (era exactamente el agujero que tenía este archivo).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { servidorActual, servidoresDelDocumento } from '@/lib/docs/servidores';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { readFile } from 'fs/promises';
+import path from 'path';
+import { ENV_ORIGEN, PUERTO_POR_DEFECTO, origenDeConfianza, servidoresDelDocumento } from '@/lib/docs/servidores';
+
+beforeEach(() => {
+  // El fail-closed avisa por consola; en los tests no ensucia la salida.
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+});
 
 const GENERADOS = [{ url: 'https://track.glp.riogas.com.uy', description: 'producción' }];
 
-function req(headers: Record<string, string> = {}): { headers: Headers } {
-  return { headers: new Headers(headers) };
+/** Un `process.env` de mentira: los tests no tocan el del proceso. */
+function env(valores: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
+  return valores as NodeJS.ProcessEnv;
 }
 
-const ENV_ORIGINAL = { docs: process.env.DOCS_BASE_URL, app: process.env.APP_BASE_URL };
-
-beforeEach(() => {
-  delete process.env.DOCS_BASE_URL;
-  delete process.env.APP_BASE_URL;
-});
-
-afterEach(() => {
-  if (ENV_ORIGINAL.docs === undefined) delete process.env.DOCS_BASE_URL;
-  else process.env.DOCS_BASE_URL = ENV_ORIGINAL.docs;
-  if (ENV_ORIGINAL.app === undefined) delete process.env.APP_BASE_URL;
-  else process.env.APP_BASE_URL = ENV_ORIGINAL.app;
-});
-
-describe('servidorActual', () => {
-  it('DOCS_BASE_URL gana sobre todo lo demás', () => {
-    process.env.DOCS_BASE_URL = 'https://track.glp.riogas.com.uy/';
-    process.env.APP_BASE_URL = 'http://localhost:3002';
-
-    expect(servidorActual(req({ host: 'otro:9999' }))).toBe('https://track.glp.riogas.com.uy');
-  });
-
-  it('si no hay DOCS_BASE_URL usa APP_BASE_URL', () => {
-    process.env.APP_BASE_URL = 'http://localhost:3002';
-
-    expect(servidorActual(req({ host: 'otro:9999' }))).toBe('http://localhost:3002');
-  });
-
-  it('sin env cae al Host del request, respetando x-forwarded-proto', () => {
-    expect(servidorActual(req({ host: 'track.glp.riogas.com.uy', 'x-forwarded-proto': 'https' }))).toBe(
+describe('origenDeConfianza', () => {
+  it(`${ENV_ORIGEN} gana y se usa tal cual`, () => {
+    expect(origenDeConfianza(env({ DOCS_TRY_ORIGEN: 'https://track.glp.riogas.com.uy' }))).toBe(
       'https://track.glp.riogas.com.uy',
     );
-    expect(servidorActual(req({ host: 'localhost:3002' }))).toBe('http://localhost:3002');
+    // Con PORT seteado igual gana la env.
+    expect(origenDeConfianza(env({ DOCS_TRY_ORIGEN: 'http://localhost:9999', PORT: '3002' }))).toBe(
+      'http://localhost:9999',
+    );
   });
 
-  it('sin env y sin Host devuelve null (no inventa una URL)', () => {
-    expect(servidorActual(req())).toBeNull();
+  it('de la env se queda con el origen: path, query y credenciales se descartan', () => {
+    expect(origenDeConfianza(env({ DOCS_TRY_ORIGEN: 'https://track.glp.riogas.com.uy/algo?x=1' }))).toBe(
+      'https://track.glp.riogas.com.uy',
+    );
+    expect(origenDeConfianza(env({ DOCS_TRY_ORIGEN: 'http://usuario:clave@127.0.0.1:3002' }))).toBe(
+      'http://127.0.0.1:3002',
+    );
+  });
+
+  it('sin env cae al loopback con el PORT del proceso', () => {
+    expect(origenDeConfianza(env({ PORT: '3002' }))).toBe('http://127.0.0.1:3002');
+    expect(origenDeConfianza(env({ PORT: '3000' }))).toBe('http://127.0.0.1:3000');
+  });
+
+  it('sin env y sin PORT usa el puerto del repo', () => {
+    expect(origenDeConfianza(env())).toBe(`http://127.0.0.1:${PUERTO_POR_DEFECTO}`);
+  });
+
+  it('el módulo no lee headers en ningún lado (regresión del SSRF)', async () => {
+    const fuente = await readFile(path.join(process.cwd(), 'lib', 'docs', 'servidores.ts'), 'utf-8');
+    // Sin comentarios: el docblock habla de headers justamente para explicar por qué
+    // no se los mira, y eso no puede hacer fallar al test.
+    const codigo = fuente.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+    expect(codigo).not.toMatch(/headers/i);
+    expect(codigo).not.toMatch(/x-forwarded/i);
+    expect(codigo).not.toMatch(/\breferer\b/i);
+  });
+
+  it('una env mal escrita no se adivina: devuelve null (fail-closed)', () => {
+    expect(origenDeConfianza(env({ DOCS_TRY_ORIGEN: 'no-es-una-url' }))).toBeNull();
+    expect(origenDeConfianza(env({ DOCS_TRY_ORIGEN: 'file:///etc/passwd' }))).toBeNull();
+    expect(origenDeConfianza(env({ DOCS_TRY_ORIGEN: 'gopher://169.254.169.254' }))).toBeNull();
+  });
+
+  it('un PORT con basura tampoco se adivina', () => {
+    expect(origenDeConfianza(env({ PORT: 'tres mil' }))).toBeNull();
+    expect(origenDeConfianza(env({ PORT: '99999' }))).toBeNull();
+    expect(origenDeConfianza(env({ PORT: '0' }))).toBeNull();
   });
 });
 
 describe('servidoresDelDocumento', () => {
-  it('pone el ambiente actual primero y conserva el resto', () => {
-    process.env.DOCS_BASE_URL = 'http://localhost:3002';
-
-    expect(servidoresDelDocumento(req(), GENERADOS)).toEqual([
-      { url: 'http://localhost:3002', description: 'ambiente actual' },
-      { url: 'https://track.glp.riogas.com.uy', description: 'producción' },
-    ]);
+  it('pone el origen del ejecutor primero y conserva el resto', () => {
+    process.env.DOCS_TRY_ORIGEN = 'http://localhost:3002';
+    try {
+      expect(servidoresDelDocumento(GENERADOS)).toEqual([
+        { url: 'http://localhost:3002', description: 'origen del ejecutor (Try it)' },
+        { url: 'https://track.glp.riogas.com.uy', description: 'producción' },
+      ]);
+    } finally {
+      delete process.env.DOCS_TRY_ORIGEN;
+    }
   });
 
-  it('no duplica cuando el ambiente actual ya está en el documento', () => {
-    process.env.DOCS_BASE_URL = 'https://track.glp.riogas.com.uy';
-
-    expect(servidoresDelDocumento(req(), GENERADOS)).toEqual([
-      { url: 'https://track.glp.riogas.com.uy', description: 'ambiente actual' },
-    ]);
+  it('no duplica cuando el origen ya está en el documento', () => {
+    process.env.DOCS_TRY_ORIGEN = 'https://track.glp.riogas.com.uy';
+    try {
+      expect(servidoresDelDocumento(GENERADOS)).toEqual([
+        { url: 'https://track.glp.riogas.com.uy', description: 'origen del ejecutor (Try it)' },
+      ]);
+    } finally {
+      delete process.env.DOCS_TRY_ORIGEN;
+    }
   });
 
-  it('si no se puede resolver el ambiente deja el documento como está', () => {
-    expect(servidoresDelDocumento(req(), GENERADOS)).toEqual(GENERADOS);
+  it('si el origen no se puede resolver deja el documento como está', () => {
+    process.env.DOCS_TRY_ORIGEN = 'no-es-una-url';
+    try {
+      expect(servidoresDelDocumento(GENERADOS)).toEqual(GENERADOS);
+    } finally {
+      delete process.env.DOCS_TRY_ORIGEN;
+    }
   });
 
   it('tolera un servers generado que no sea un array de servidores', () => {
-    process.env.DOCS_BASE_URL = 'http://localhost:3002';
-
-    expect(servidoresDelDocumento(req(), undefined)).toEqual([
-      { url: 'http://localhost:3002', description: 'ambiente actual' },
-    ]);
-    expect(servidoresDelDocumento(req(), [{ nombre: 'sin url' }, 3, null])).toEqual([
-      { url: 'http://localhost:3002', description: 'ambiente actual' },
-    ]);
+    process.env.DOCS_TRY_ORIGEN = 'http://localhost:3002';
+    try {
+      expect(servidoresDelDocumento(undefined)).toEqual([
+        { url: 'http://localhost:3002', description: 'origen del ejecutor (Try it)' },
+      ]);
+      expect(servidoresDelDocumento([{ nombre: 'sin url' }, 3, null])).toEqual([
+        { url: 'http://localhost:3002', description: 'origen del ejecutor (Try it)' },
+      ]);
+    } finally {
+      delete process.env.DOCS_TRY_ORIGEN;
+    }
   });
 });

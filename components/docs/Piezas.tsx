@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { IconoCheck, IconoCopiar } from './Iconos';
 import { COLOR_METODO } from './docs-logic';
+import { conCodigo } from './texto-rico';
 import type { TonoBadge } from './tipos';
 
 /**
@@ -170,21 +171,12 @@ export function Seccion({
             {icono}
             {titulo}
           </h3>
-          {hint && <p className="mt-0.5 text-[0.74rem] text-stats-muted-fg">{hint}</p>}
+          {hint && <p className="mt-0.5 text-[0.74rem] text-stats-muted-fg">{conCodigo(hint, 'hint')}</p>}
         </div>
         {acciones}
       </div>
       {children}
     </section>
-  );
-}
-
-/** Texto largo de una anotación o de un docblock: respeta los saltos de línea. */
-export function TextoLargo({ children, className = '' }: { children: string; className?: string }) {
-  return (
-    <p className={`whitespace-pre-line text-[0.82rem] leading-relaxed text-stats-muted-fg ${className}`}>
-      {children.trim()}
-    </p>
   );
 }
 
@@ -220,7 +212,9 @@ export function Kpi({
     <>
       <div className={`font-stats-mono text-3xl font-bold tabular-nums ${color}`}>{valor}</div>
       <div className="mt-1 text-[0.78rem] font-medium text-stats-foreground">{etiqueta}</div>
-      {detalle && <div className="mt-0.5 text-[0.72rem] leading-snug text-stats-muted-fg">{detalle}</div>}
+      {detalle && (
+        <div className="mt-0.5 text-[0.72rem] leading-snug text-stats-muted-fg">{conCodigo(detalle, 'kpi')}</div>
+      )}
     </>
   );
 

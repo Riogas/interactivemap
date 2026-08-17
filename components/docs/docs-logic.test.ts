@@ -189,16 +189,30 @@ describe('parametrosDe', () => {
 });
 
 describe('ambienteDeHost', () => {
-  it('un host con "dev" es DEV', () => {
-    expect(ambienteDeHost('track-dev.riogas.com.uy').clave).toBe('DEV');
-    expect(ambienteDeHost('192.168.2.22:3002').clave).toBe('PROD');
+  it('la máquina del que desarrolla es LOCAL, en verde', () => {
+    for (const host of ['localhost:3002', 'localhost', '127.0.0.1:3000', '[::1]:3002']) {
+      const local = ambienteDeHost(host);
+      expect(local.clave, host).toBe('LOCAL');
+      expect(local.esProduccion, host).toBe(false);
+      expect(local.tono, host).toBe('ok');
+    }
   });
 
-  it('todo lo que no dice "dev" se asume PRODUCCIÓN', () => {
-    const prod = ambienteDeHost('track.glp.riogas.com.uy');
+  it('un host con "dev" es DEV, en ámbar', () => {
+    const dev = ambienteDeHost('track-dev.riogas.com.uy');
 
-    expect(prod.clave).toBe('PROD');
-    expect(prod.esProduccion).toBe(true);
+    expect(dev.clave).toBe('DEV');
+    expect(dev.esProduccion).toBe(false);
+    expect(dev.tono).toBe('aviso');
+  });
+
+  it('todo lo demás se asume PRODUCCIÓN, en rojo', () => {
+    for (const host of ['track.glp.riogas.com.uy', '192.168.2.22:3002', '']) {
+      const prod = ambienteDeHost(host);
+      expect(prod.clave, host).toBe('PROD');
+      expect(prod.esProduccion, host).toBe(true);
+      expect(prod.tono, host).toBe('peligro');
+    }
   });
 });
 

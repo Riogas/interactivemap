@@ -20,7 +20,8 @@ import {
   IconoPlay,
   IconoUsuarios,
 } from './Iconos';
-import { Badge, BloqueCodigo, BotonCopiar, ChipMetodo, Seccion, SinAnotar, TextoLargo } from './Piezas';
+import { Badge, BloqueCodigo, BotonCopiar, ChipMetodo, Seccion, SinAnotar } from './Piezas';
+import { TextoRico, conCodigo } from './texto-rico';
 import { TryIt } from './TryIt';
 import type { Endpoint } from './tipos';
 
@@ -118,7 +119,7 @@ export function EndpointDetalle({
 
       {op.description && op.description.trim() !== op.summary?.trim() && (
         <Seccion titulo="Qué hace" icono={<IconoInfo size={15} />}>
-          <TextoLargo>{op.description}</TextoLargo>
+          <TextoRico texto={op.description} />
         </Seccion>
       )}
 
@@ -157,7 +158,7 @@ export function EndpointDetalle({
 
           {op['x-auth-nota'] && (
             <div className="rounded-lg border border-stats-border bg-stats-surface-2 px-3 py-2">
-              <TextoLargo className="text-stats-foreground">{op['x-auth-nota']}</TextoLargo>
+              <TextoRico texto={op['x-auth-nota']} className="text-stats-foreground" />
             </div>
           )}
         </div>
@@ -171,7 +172,7 @@ export function EndpointDetalle({
               <li key={c}>
                 <Badge tono="neutro">
                   <IconoEnchufe size={12} />
-                  {c}
+                  <span>{conCodigo(c, `consumidor-${c}`)}</span>
                 </Badge>
               </li>
             ))}
@@ -214,7 +215,9 @@ export function EndpointDetalle({
                         <span className="text-stats-muted-fg">no</span>
                       )}
                     </td>
-                    <td className="py-1.5 text-stats-muted-fg">{p.description ?? '—'}</td>
+                    <td className="py-1.5 text-stats-muted-fg">
+                      {p.description ? conCodigo(p.description, `param-${p.in}-${p.name}`) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -228,7 +231,7 @@ export function EndpointDetalle({
         <Seccion titulo="Cuerpo del request" icono={<IconoCodigo size={15} />}>
           {cuerpo ? (
             <div className="space-y-3">
-              {cuerpo.description && <TextoLargo>{cuerpo.description}</TextoLargo>}
+              {cuerpo.description && <TextoRico texto={cuerpo.description} />}
               {(cuerpo['x-campos']?.length ?? 0) > 0 && (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[30rem] text-left text-[0.78rem]">
@@ -252,7 +255,9 @@ export function EndpointDetalle({
                               <span className="text-stats-muted-fg">no</span>
                             )}
                           </td>
-                          <td className="py-1.5 text-stats-muted-fg">{c.descripcion ?? '—'}</td>
+                          <td className="py-1.5 text-stats-muted-fg">
+                            {c.descripcion ? conCodigo(c.descripcion, `campo-${c.nombre}`) : '—'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -297,7 +302,9 @@ export function EndpointDetalle({
                     <Badge tono={tonoDeStatus(Number(codigo))} className="font-stats-mono">
                       {codigo}
                     </Badge>
-                    <span className="text-[0.82rem] text-stats-foreground">{resp?.description ?? '—'}</span>
+                    <span className="text-[0.82rem] text-stats-foreground">
+                      {resp?.description ? conCodigo(resp.description, `resp-${codigo}`) : '—'}
+                    </span>
                   </div>
                   {ejemplo !== undefined && (
                     <div className="mt-2">
@@ -343,8 +350,12 @@ export function EndpointDetalle({
                       <span className="font-stats-mono text-stats-destructive">{e.codigo ?? '—'}</span>
                       {e.code && <div className="font-stats-mono text-[0.7rem] text-stats-muted-fg">{e.code}</div>}
                     </td>
-                    <td className="py-1.5 pr-3 text-stats-foreground">{e.cuando ?? '—'}</td>
-                    <td className="py-1.5 text-stats-muted-fg">{e.solucion ?? '—'}</td>
+                    <td className="py-1.5 pr-3 text-stats-foreground">
+                      {e.cuando ? conCodigo(e.cuando, `error-cuando-${i}`) : '—'}
+                    </td>
+                    <td className="py-1.5 text-stats-muted-fg">
+                      {e.solucion ? conCodigo(e.solucion, `error-solucion-${i}`) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -356,7 +367,7 @@ export function EndpointDetalle({
       {/* ── Notas ────────────────────────────────────────────────────────── */}
       {op['x-notas'] && (
         <Seccion titulo="Notas" icono={<IconoInfo size={15} />}>
-          <TextoLargo>{op['x-notas']}</TextoLargo>
+          <TextoRico texto={op['x-notas']} />
         </Seccion>
       )}
 
@@ -397,7 +408,7 @@ export function EndpointDetalle({
         icono={<IconoPlay size={15} />}
         hint="La llamada sale del servidor, contra este mismo ambiente, con tu sesión."
         acciones={
-          <Badge tono={ambiente.esProduccion ? 'peligro' : 'aviso'} title={ambiente.detalle}>
+          <Badge tono={ambiente.tono} title={ambiente.detalle}>
             {ambiente.etiqueta}
           </Badge>
         }

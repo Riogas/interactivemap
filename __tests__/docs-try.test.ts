@@ -28,7 +28,10 @@ import { POST } from '@/app/api/docs/try/route';
 
 const SECRETO = 'secreto-de-prueba-que-no-es-el-default-0123456789';
 const SECAPI_URL = 'http://secapi.test';
+/** La URL con la que el navegador del root llega al portal (o sea: el `Host` que manda). */
 const ORIGEN = 'http://localhost:3002';
+/** Contra dónde ejecuta el servidor cuando no hay DOCS_TRY_ORIGEN: loopback + PORT. */
+const DESTINO = 'http://127.0.0.1:3002';
 
 function token(payload: Record<string, unknown> = { username: 'dmedaglia', userId: 42 }): string {
   return jwt.sign({ iss: 'security-suite', sistema: 'RiogasTracking', ...payload }, SECRETO, {
@@ -63,16 +66,17 @@ let permisoSecapi: { estado: number; cuerpo: unknown };
 const ENV = {
   jwt: process.env.JWT_SECRET,
   secapi: process.env.SECURITY_SUITE_URL,
-  docsBase: process.env.DOCS_BASE_URL,
-  appBase: process.env.APP_BASE_URL,
+  origenTry: process.env.DOCS_TRY_ORIGEN,
+  port: process.env.PORT,
 };
 
 beforeEach(() => {
   resetDocsGuardCache();
   process.env.JWT_SECRET = SECRETO;
   process.env.SECURITY_SUITE_URL = SECAPI_URL;
-  delete process.env.DOCS_BASE_URL;
-  delete process.env.APP_BASE_URL;
+  // Sin DOCS_TRY_ORIGEN: se ejercita el camino por default (127.0.0.1:PORT).
+  delete process.env.DOCS_TRY_ORIGEN;
+  process.env.PORT = '3002';
 
   respuestaDestino = { status: 200, statusText: 'OK', cuerpo: '{"ok":true}' };
   permisoSecapi = { estado: 200, cuerpo: { permitido: 'GRANTED', razon: 'ROOT' } };
@@ -104,8 +108,8 @@ afterEach(() => {
   for (const [clave, valor] of [
     ['JWT_SECRET', ENV.jwt],
     ['SECURITY_SUITE_URL', ENV.secapi],
-    ['DOCS_BASE_URL', ENV.docsBase],
-    ['APP_BASE_URL', ENV.appBase],
+    ['DOCS_TRY_ORIGEN', ENV.origenTry],
+    ['PORT', ENV.port],
   ] as const) {
     if (valor === undefined) delete process.env[clave];
     else process.env[clave] = valor;
@@ -188,11 +192,158 @@ describe('POST /api/docs/try — solo el propio host, solo /api/', () => {
     expect(llamadasAlDestino()).toHaveLength(0);
   });
 
-  it('el ejecutor no se llama a sí mismo', async () => {
-    const res = await POST(pedido({ metodo: 'GET', path: '/api/docs/try' }));
+  it('el ejecutor no se llama a sí mismo, ni con barra final, ni en mayúscula, ni con barra doble', async () => {
+    // '/API/...' ni llega acá: lo frena antes el filtro de '/api/' (PATH_FUERA_DE_API).
+    for (const path of ['/api/docs/try', '/api/docs/try/', '/api/Docs/Try', '/api/docs//try', '/api/docs/try//']) {
+      const res = await POST(pedido({ metodo: 'GET', path }));
+      expect(res.status, path).toBe(400);
+      await expect(res.json(), path).resolves.toMatchObject({ code: 'PATH_BLOQUEADO' });
+    }
+    expect(llamadasAlDestino()).toHaveLength(0);
+  });
 
-    expect(res.status).toBe(400);
-    await expect(res.json()).resolves.toMatchObject({ code: 'PATH_BLOQUEADO' });
+  it('el candado no se lleva puesto un path que solo empieza igual', async () => {
+    const res = await POST(pedido({ metodo: 'GET', path: '/api/docs/spec' }));
+
+    expect(res.status).toBe(200);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// El destino NO sale de un header (regresión del SSRF)
+//
+// El `Host` (y `x-forwarded-host`, `origin`, `referer`) los elige quien manda el
+// request. Cuando el ejecutor los usaba para armar la URL base, un
+// `Host: 169.254.169.254` alcanzaba para que la llamada saliera al metadata service
+// de la nube con el Bearer y el cookie jar del root adentro.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/docs/try — el destino nunca sale de un header', () => {
+  const HOSTS_MALICIOSOS = [
+    'evil.example.com',
+    '169.254.169.254',
+    'localhost:5432',
+    '127.0.0.1:6379',
+    'metadata.google.internal',
+  ];
+
+  it('el Host del request no cambia el destino del fetch', async () => {
+    for (const host of HOSTS_MALICIOSOS) {
+      fetchMock.mockClear();
+      await POST(pedido({ metodo: 'GET', path: '/api/latest' }, { host }));
+
+      const [[url]] = llamadasAlDestino();
+      expect(url, host).toBe(`${DESTINO}/api/latest`);
+    }
+  });
+
+  it('x-forwarded-host y x-forwarded-proto tampoco', async () => {
+    for (const host of HOSTS_MALICIOSOS) {
+      fetchMock.mockClear();
+      await POST(
+        pedido(
+          { metodo: 'GET', path: '/api/latest' },
+          { 'x-forwarded-host': host, 'x-forwarded-proto': 'https' },
+        ),
+      );
+
+      const [[url]] = llamadasAlDestino();
+      expect(url, host).toBe(`${DESTINO}/api/latest`);
+    }
+  });
+
+  it('origin y referer tampoco', async () => {
+    await POST(
+      pedido(
+        { metodo: 'GET', path: '/api/latest' },
+        { origin: 'http://169.254.169.254', referer: 'http://169.254.169.254/x' },
+      ),
+    );
+
+    const [[url]] = llamadasAlDestino();
+    expect(url).toBe(`${DESTINO}/api/latest`);
+  });
+
+  it('con DOCS_TRY_ORIGEN el destino es ese y solo ese, aunque el Host diga otra cosa', async () => {
+    process.env.DOCS_TRY_ORIGEN = 'https://track-dev.riogas.com.uy';
+
+    await POST(pedido({ metodo: 'GET', path: '/api/latest' }, { host: '169.254.169.254' }));
+
+    const [[url]] = llamadasAlDestino();
+    expect(url).toBe('https://track-dev.riogas.com.uy/api/latest');
+  });
+
+  it('si no hay origen de confianza no se ejecuta nada: 503 ORIGEN_NO_CONFIGURADO', async () => {
+    process.env.DOCS_TRY_ORIGEN = 'no-es-una-url';
+
+    const res = await POST(pedido({ metodo: 'GET', path: '/api/latest' }, { host: 'evil.example.com' }));
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({ code: 'ORIGEN_NO_CONFIGURADO' });
+    expect(llamadasAlDestino()).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Los headers de autorización de la app los pone el servidor
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/docs/try — x-track-* no los elige el payload', () => {
+  it('un payload que se fabrica el scope root no llega al endpoint', async () => {
+    const res = await POST(
+      pedido({
+        metodo: 'GET',
+        path: '/api/latest',
+        headers: {
+          'x-track-isroot': 'S',
+          'x-track-funcs': 'Todo,Absolutamente Todo',
+          'x-track-empresas-ids': '1,2,3,4,5',
+        },
+      }),
+    );
+
+    const [[, init]] = llamadasAlDestino();
+    const headers = init.headers as Headers;
+    expect(headers.get('x-track-isroot')).toBeNull();
+    expect(headers.get('x-track-funcs')).toBeNull();
+    expect(headers.get('x-track-empresas-ids')).toBeNull();
+
+    // Y se avisa: no se descartan en silencio.
+    const cuerpo = await res.json();
+    expect(cuerpo.headersDescartados).toEqual(
+      expect.arrayContaining(['x-track-isroot', 'x-track-funcs', 'x-track-empresas-ids']),
+    );
+  });
+
+  it('los que valen son los del request entrante, y el payload no los pisa', async () => {
+    await POST(
+      pedido(
+        {
+          metodo: 'GET',
+          path: '/api/latest',
+          headers: { 'x-track-isroot': 'S', 'x-track-empresas-ids': '1,2,3' },
+        },
+        { 'x-track-isroot': 'N', 'x-track-funcs': 'Metricas', 'x-track-empresas-ids': '7' },
+      ),
+    );
+
+    const [[, init]] = llamadasAlDestino();
+    const headers = init.headers as Headers;
+    expect(headers.get('x-track-isroot')).toBe('N');
+    expect(headers.get('x-track-funcs')).toBe('Metricas');
+    expect(headers.get('x-track-empresas-ids')).toBe('7');
+  });
+
+  it('cualquier x-track-* nuevo también queda bloqueado (prefijo, no lista)', () => {
+    const { headers, descartados } = sanearHeaders({
+      'x-track-loquevenga': 'S',
+      'X-Track-IsRoot': 'S',
+      'x-api-key': 'k',
+    });
+
+    expect(headers).toEqual({ 'x-api-key': 'k' });
+    expect(descartados.sort()).toEqual(['X-Track-IsRoot', 'x-track-loquevenga']);
   });
 });
 
@@ -215,7 +366,7 @@ describe('POST /api/docs/try — ejecución', () => {
     expect(typeof cuerpo.duracionMs).toBe('number');
 
     const [[url, init]] = llamadasAlDestino();
-    expect(url).toBe('http://localhost:3002/api/pedidos?escenario=1000');
+    expect(url).toBe(`${DESTINO}/api/pedidos?escenario=1000`);
     expect(init.method).toBe('GET');
   });
 
@@ -268,7 +419,7 @@ describe('POST /api/docs/try — ejecución', () => {
     await expect(res.json()).resolves.toMatchObject({ success: true, status: 202 });
 
     const [[url, init]] = llamadasAlDestino();
-    expect(url).toBe('http://localhost:3002/api/import/gps');
+    expect(url).toBe(`${DESTINO}/api/import/gps`);
     expect(init.method).toBe('POST');
     expect(JSON.parse(String(init.body))).toEqual({ gps: [{ movil: 330 }] });
   });
@@ -389,14 +540,59 @@ describe('decodificarPayload', () => {
 });
 
 describe('construirUrl', () => {
-  it('el destino nunca sale del origen propio', () => {
+  it('el destino nunca sale del origen de confianza', () => {
     const validada = validarPeticion({ metodo: 'GET', path: '/api/latest', query: { a: '1' } });
     expect(validada.ok).toBe(true);
     if (!validada.ok) return;
 
-    expect(construirUrl(ORIGEN, validada.peticion)).toEqual({
+    expect(construirUrl(DESTINO, validada.peticion)).toEqual({
       ok: true,
-      url: 'http://localhost:3002/api/latest?a=1',
+      url: `${DESTINO}/api/latest?a=1`,
+    });
+  });
+
+  /**
+   * La red de seguridad tiene que decidir contra el origen de confianza que se le pasa,
+   * no contra algo derivado de la petición. Se arma una `PeticionTry` a mano (saltando
+   * `validarPath`, que ya rechaza estas formas) para probar que la comparación final
+   * rechaza de verdad y no es un adorno.
+   */
+  const aMano = (path: string) => ({
+    metodo: 'GET' as const,
+    path,
+    query: {},
+    headers: {},
+    headersDescartados: [],
+    body: undefined,
+    esEscritura: false,
+  });
+
+  it('un path que nombra otro host se rechaza aunque haya pasado la validación textual', () => {
+    for (const path of ['http://169.254.169.254/api/x', '//evil.example.com/api/x', 'https://evil.test/api/x']) {
+      expect(construirUrl(DESTINO, aMano(path)), path).toMatchObject({
+        ok: false,
+        code: 'PATH_INVALIDO',
+      });
+    }
+  });
+
+  it('sin un origen de confianza válido no arma nada (503, no adivina)', () => {
+    expect(construirUrl('', aMano('/api/latest'))).toMatchObject({
+      ok: false,
+      status: 503,
+      code: 'ORIGEN_NO_CONFIGURADO',
+    });
+    expect(construirUrl('file:///etc', aMano('/api/latest'))).toMatchObject({
+      ok: false,
+      status: 503,
+      code: 'ORIGEN_NO_CONFIGURADO',
+    });
+  });
+
+  it('un origen de confianza con path no sirve de base para resolver relativos', () => {
+    expect(construirUrl('http://127.0.0.1:3002/subruta/', aMano('/api/latest'))).toEqual({
+      ok: true,
+      url: 'http://127.0.0.1:3002/api/latest',
     });
   });
 });

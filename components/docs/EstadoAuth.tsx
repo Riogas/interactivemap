@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react';
 import { badgePrincipal, resumenAuth } from './docs-logic';
 import { IconoAlerta, IconoArchivo, IconoEscudoAlerta, IconoInfo, IconoLlave } from './Iconos';
-import { Badge, ChipMetodo, Kpi, Seccion, TextoLargo } from './Piezas';
+import { Badge, ChipMetodo, Kpi, Seccion } from './Piezas';
+import { TextoRico } from './texto-rico';
 import type { Endpoint, SpecDocs } from './tipos';
 
 /**
@@ -221,7 +222,7 @@ export function FueraDelCatalogo({ spec }: { spec: SpecDocs | null }) {
 
       {excluidos.length === 0 ? (
         <Seccion titulo="Nada excluido" icono={<IconoInfo size={15} />}>
-          <TextoLargo>Todos los `route.ts` del repo están en el catálogo.</TextoLargo>
+          <TextoRico texto="Todos los `route.ts` del repo están en el catálogo." />
         </Seccion>
       ) : (
         <ul className="space-y-3">
