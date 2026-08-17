@@ -158,26 +158,48 @@ type VerificacionJwt =
  *
  * Un token que no pasa por acá no llega nunca a `/api/db/permisos`.
  */
+function esHexPuro(s: string): boolean {
+  return s.length % 2 === 0 && /^[0-9a-f]+$/i.test(s);
+}
+
+/**
+ * El ecosistema tiene DOS emisores que firman con el MISMO valor de secreto pero
+ * derivan bytes distintos: GeneXus (el login de la UI de secapi) hace
+ * `Hex.decode(secreto)` — 32 bytes con un secreto de 64 hex — y secapi
+ * `/api/db/login`, que es por donde entra TrackMovil, lo firma como UTF-8 — 64
+ * bytes. Probamos las dos derivaciones del mismo secreto; no amplía la
+ * superficie (ambas claves salen del secreto, que el atacante sigue sin tener).
+ */
+function clavesCandidatas(secreto: string): Array<string | Buffer> {
+  const claves: Array<string | Buffer> = [secreto];
+  if (esHexPuro(secreto)) claves.push(Buffer.from(secreto, 'hex'));
+  return claves;
+}
+
 function verificarJwt(token: string, secreto: string): VerificacionJwt {
-  try {
-    const payload = jwt.verify(token, secreto, { algorithms: ALGORITMOS });
-    // `verify` devuelve string cuando el token no lleva un payload JSON. No es un token
-    // de secapi: se rechaza igual que una firma inválida.
-    if (typeof payload === 'string') {
+  let vencido = false;
+  for (const clave of clavesCandidatas(secreto)) {
+    try {
+      const payload = jwt.verify(token, clave, { algorithms: ALGORITMOS });
+      // `verify` devuelve string cuando el token no lleva un payload JSON. No es un token
+      // de secapi: se rechaza igual que una firma inválida.
+      if (typeof payload === 'string') {
+        return { ok: false, status: 401, code: 'TOKEN_INVALIDO' };
+      }
+      return { ok: true, payload };
+    } catch (error) {
+      // TokenExpiredError solo se tira si la firma cerró: era la clave correcta.
+      if (error instanceof jwt.TokenExpiredError) {
+        vencido = true;
+        continue;
+      }
+      // Firma que no cierra con esta clave: puede cerrar con la otra derivación.
+      if (error instanceof jwt.JsonWebTokenError) continue;
+      console.error('[docs/root-guard] error inesperado verificando el JWT', error);
       return { ok: false, status: 401, code: 'TOKEN_INVALIDO' };
     }
-    return { ok: true, payload };
-  } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
-      return { ok: false, status: 401, code: 'TOKEN_VENCIDO' };
-    }
-    // JsonWebTokenError cubre firma inválida, alg no permitido, malformado y NotBefore.
-    if (error instanceof jwt.JsonWebTokenError) {
-      return { ok: false, status: 401, code: 'TOKEN_INVALIDO' };
-    }
-    console.error('[docs/root-guard] error inesperado verificando el JWT', error);
-    return { ok: false, status: 401, code: 'TOKEN_INVALIDO' };
   }
+  return { ok: false, status: 401, code: vencido ? 'TOKEN_VENCIDO' : 'TOKEN_INVALIDO' };
 }
 
 /**

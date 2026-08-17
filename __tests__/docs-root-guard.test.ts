@@ -137,6 +137,43 @@ describe('requireRoot — el token tiene que estar firmado por secapi', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // GeneXus (el login de la UI de secapi) firma con el secreto hex-decodificado;
+  // secapi /api/db/login (por donde entra TrackMovil) lo firma como UTF-8. El
+  // guard tiene que aceptar los dos: el mismo usuario puede llegar por cualquiera.
+  it('con secreto hex acepta el token que firma GeneXus (hex-decode)', async () => {
+    process.env.JWT_SECRET = 'a3f1c0de4b5e6f7089abcdef0123456789abcdef0123456789abcdef01234567';
+    fetchMock.mockResolvedValue(respuesta({ permitido: 'GRANTED', razon: 'ROOT' }));
+    const genexus = jwt.sign(
+      { iss: 'security-suite', username: 'dmedaglia', userId: 42 },
+      Buffer.from(process.env.JWT_SECRET, 'hex'),
+      { expiresIn: '7d' },
+    );
+
+    const r = await requireRoot(req({ authorization: `Bearer ${genexus}` }));
+
+    expect(r.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('con secreto hex sigue aceptando el token estilo /api/db/login (UTF-8)', async () => {
+    process.env.JWT_SECRET = 'a3f1c0de4b5e6f7089abcdef0123456789abcdef0123456789abcdef01234567';
+    fetchMock.mockResolvedValue(respuesta({ permitido: 'GRANTED', razon: 'ROOT' }));
+
+    const r = await requireRoot(req({ authorization: `Bearer ${tokenFirmado({ username: 'dmedaglia', userId: 42 }, { expiresIn: '7d' }, process.env.JWT_SECRET)}` }));
+
+    expect(r.ok).toBe(true);
+  });
+
+  it('con secreto hex, otra clave hex sigue siendo 401', async () => {
+    process.env.JWT_SECRET = 'a3f1c0de4b5e6f7089abcdef0123456789abcdef0123456789abcdef01234567';
+    const impostor = jwt.sign({ iss: 'security-suite', username: 'dmedaglia', userId: 42 }, Buffer.from('ff'.repeat(32), 'hex'), { expiresIn: '7d' });
+
+    const r = await requireRoot(req({ authorization: `Bearer ${impostor}` }));
+
+    expect(r).toEqual({ ok: false, status: 401, code: 'TOKEN_INVALIDO' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('un token vencido es 401 TOKEN_VENCIDO (aunque la firma sea buena)', async () => {
     const vencido = tokenFirmado({ username: 'dmedaglia', userId: 42 }, { expiresIn: '-1h' });
 
