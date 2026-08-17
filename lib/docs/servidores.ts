@@ -2,7 +2,7 @@
  * Lista de `servers` del documento OpenAPI, resuelta en TIEMPO DE SERVIDO.
  *
  * Por qué no está en docs/api/openapi.json: ese archivo vive en el repo, y el repo se
- * clona. Las direcciones internas (`http://192.168.2.22:3002` y compañía) no van
+ * clona. Las direcciones internas del ambiente no van
  * versionadas — el generador deja solo el hostname público y el ambiente concreto se
  * agrega acá, cuando `GET /api/docs/spec` responde.
  *

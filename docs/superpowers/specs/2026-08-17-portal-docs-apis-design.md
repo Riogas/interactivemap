@@ -63,10 +63,10 @@ Hechos que condicionan el diseño:
 2. **`solo_root` no significa lo que parece.** El bypass del motor es por
    `usuarios.es_root='S'`, que hoy tiene una sola cuenta. Los roles llamados "Root"
    (57/55/52) son otra cosa. Ver §6.
-3. **secapi-dev y secapi-prod comparten base de datos** (`192.168.2.117:5432/securitysuite`,
-   idéntica en `.env` y en `pm2.config.js`). Todo alta de RBAC impacta producción al instante.
-4. **El WAF de nginx de TrackMovil** rechaza con 403 los requests cuyo body o query
-   contenga `curl`, `bash`, `wget`, `python`, `eval`, `base64`, `;`, `||`, `$(`.
+3. **secapi-dev y secapi-prod comparten la misma instancia de Postgres** (idéntica en `.env` y
+   en `pm2.config.js`). Todo alta de RBAC impacta producción al instante.
+4. **El WAF de nginx de TrackMovil** rechaza con 403 los requests cuyo body o query contenga
+   ciertos patrones de shell. Los patrones exactos están en la config del server, no acá.
 
 ## 4. Decisiones
 
@@ -134,8 +134,8 @@ sin salto de red.
 | `POST /api/docs/try` | Ejecuta la llamada server-side con la sesión del root y devuelve status, headers y cuerpo. Pasa por `requireRoot`. |
 
 `POST /api/docs/try` recibe `{ payload }` donde `payload` es el request a ejecutar
-(método, path, query, headers, body) **codificado en base64**. No es ofuscación: es lo
-que permite que un ejemplo con `curl` o `;` en el cuerpo atraviese el WAF de nginx de
+(método, path, query, headers, body) **codificado en base64**. No es ofuscación: es lo que
+permite que un ejemplo con sintaxis de shell en el cuerpo atraviese el WAF de nginx de
 TrackMovil, que inspecciona el body del request entrante.
 
 Reglas de ejecución:
@@ -223,5 +223,5 @@ Por aplicación:
 4. `GET /api/docs/spec` devuelve todos los endpoints que el generador encontró, y el
    conteo coincide con el inventario relevado (§3).
 5. El Try it ejecuta un GET real y muestra la respuesta; un POST sin confirmación es rechazado.
-6. En TrackMovil, un Try it con `;` en el cuerpo atraviesa el WAF.
+6. En TrackMovil, un Try it con sintaxis de shell en el cuerpo atraviesa el WAF.
 7. El test antienvejecimiento falla si se agrega un endpoint y no se lo anota.

@@ -56,10 +56,14 @@ function respuesta(cuerpo: unknown, estado = 200): Response {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 const JWT_SECRET_ORIGINAL = process.env.JWT_SECRET;
+const SECAPI_URL_ORIGINAL = process.env.SECURITY_SUITE_URL;
+const SECAPI_URL = 'http://secapi.test';
 
 beforeEach(() => {
   resetDocsGuardCache();
   process.env.JWT_SECRET = SECRETO;
+  // Sin fallback en el guard: si esta env falta, devuelve 503 a propósito.
+  process.env.SECURITY_SUITE_URL = SECAPI_URL;
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -68,6 +72,8 @@ beforeEach(() => {
 afterEach(() => {
   if (JWT_SECRET_ORIGINAL === undefined) delete process.env.JWT_SECRET;
   else process.env.JWT_SECRET = JWT_SECRET_ORIGINAL;
+  if (SECAPI_URL_ORIGINAL === undefined) delete process.env.SECURITY_SUITE_URL;
+  else process.env.SECURITY_SUITE_URL = SECAPI_URL_ORIGINAL;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -171,6 +177,32 @@ describe('requireRoot — sin secreto real no se abre', () => {
     const r = await requireRoot(req({ authorization: `Bearer ${tokenFirmado()}` }));
 
     expect(r).toEqual({ ok: false, status: 503, code: 'SECRETO_NO_CONFIGURADO' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sin SECURITY_SUITE_URL devuelve 503 y no consulta a nadie', async () => {
+    // Antes caía a http://localhost:3001: le preguntaba "¿es root?" a lo que
+    // estuviera escuchando ese puerto, y alcanzaba con que contestara GRANTED.
+    delete process.env.SECURITY_SUITE_URL;
+
+    const r = await requireRoot(req({ authorization: `Bearer ${tokenFirmado()}` }));
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(503);
+    expect(r.code).toBe('SECAPI_URL_NO_CONFIGURADA');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('un secreto más corto que el mínimo se trata como no configurado', async () => {
+    process.env.JWT_SECRET = 'corto';
+
+    const r = await requireRoot({ headers: new Headers({ authorization: 'Bearer x.y.z' }) });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(503);
+    expect(r.code).toBe('SECRETO_NO_CONFIGURADO');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

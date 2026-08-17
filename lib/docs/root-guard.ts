@@ -43,8 +43,17 @@ import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
 import type { Algorithm, JwtPayload } from 'jsonwebtoken';
 
-/** Misma env que ya usan app/api/auth/permisos y app/api/auth/login. */
-const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
+/**
+ * Misma env que ya usan app/api/auth/permisos y app/api/auth/login.
+ * Sin fallback a propósito: un default apuntando a localhost le pregunta
+ * "¿este usuario es root?" a lo que sea que esté escuchando en ese puerto, y
+ * alcanza con que conteste GRANTED. Si falta, el guard devuelve 503.
+ */
+function urlSecapi(): string | null {
+  const bruto = (process.env.SECURITY_SUITE_URL ?? '').trim();
+  if (!bruto) return null;
+  return bruto.replace(/\/$/, '');
+}
 
 /**
  * Default que trae el código de secapi (`src/lib/auth/responses.ts`, `src/app/api/db/menu/route.ts`).
@@ -128,10 +137,15 @@ function extraerToken(request: { headers: Headers }): string | null {
  *
  * @returns el secreto, o null si no hay uno usable (ausente, vacío o el default del repo).
  */
+/** Largo mínimo exigido: verificar HS256 contra un secreto corto no prueba nada,
+ *  se rompe offline a partir de cualquier token capturado. */
+const LARGO_MINIMO_SECRETO = 32;
+
 function leerSecreto(): string | null {
   const secreto = (process.env.JWT_SECRET ?? '').trim();
   if (secreto === '') return null;
   if (secreto === SECRETO_DEFAULT_SECAPI) return null;
+  if (secreto.length < LARGO_MINIMO_SECRETO) return null;
   return secreto;
 }
 
@@ -217,11 +231,20 @@ export async function requireRoot(request: { headers: Headers }): Promise<RootGu
 }
 
 async function consultarSecapi(token: string, payload: JwtPayload): Promise<RootGuardResult> {
+  const baseSecapi = urlSecapi();
+  if (!baseSecapi) {
+    console.error(
+      '[docs/root-guard] SECURITY_SUITE_URL no está configurada: /docs no se abre. ' +
+        'Sin ella no hay contra quién verificar el permiso (ver docs/api/README.md).',
+    );
+    return { ok: false, status: 503, code: 'SECAPI_URL_NO_CONFIGURADA' };
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${SECURITY_SUITE_URL}/api/db/permisos`, {
+    const res = await fetch(`${baseSecapi}/api/db/permisos`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
