@@ -94,13 +94,58 @@ endpoints:
       - Sender de GeneXus / SGM
     auth: |                          # → x-auth-nota (el x-auth generado NO se pisa)
       Cómo se autentica de verdad.
+    auth_badges:                     # → x-auth-badges (opcional; ver abajo)
+      - x-api-key
+      - token en body
+    parametros:                      # → parameters[] (mergea por nombre+en)
+      - nombre: escenario
+        en: query                    # query | path
+        tipo: int
+        requerido: true
+        descripcion: Escenario operativo.
+        ejemplo: 1000                # prellena el formulario del "Try it"
+    cuerpo:                          # → requestBody
+      contentType: application/json  # default: application/json
+      requerido: true
+      descripcion: |
+        Qué forma tiene el cuerpo.
+      campos:                        # → tabla de campos del visor
+        - nombre: pedidos
+          tipo: array
+          requerido: true
+          descripcion: Uno o más pedidos.
+      ejemplo: |
+        { "pedidos": [] }
+    respuestas:                      # → completa responses[código]
+      "200":
+        descripcion: Qué devuelve.
+        ejemplo: |
+          { "success": true }
+    errores:                         # → x-errores (tabla "errores conocidos")
+      - codigo: 403
+        code: API_KEY_MISSING
+        cuando: Falta el header x-api-key.
+        solucion: Agregarlo. La key es por ambiente.
     notas: |                         # → x-notas
       Lo que hay que saber antes de tocarlo.
-    ejemplos:                        # → x-ejemplos
+    ejemplos:                        # → x-ejemplos (se suman a los generados)
       - titulo: curl
         codigo: |
           curl ...
 ```
+
+**`auth_badges`** solo cambia la ETIQUETA que muestra el visor, nunca lo que el portal
+reporta como gates. Valores conocidos: `jwt`, `x-api-key`, `token en body`, `sesion`,
+`sin auth`. Se usa cuando el gate real no se deduce del nombre de la función — el caso
+típico es `/api/import/gps`, que acepta el token adentro del cuerpo. Marcar un endpoint
+como `x-api-key` **no** lo saca de la lista de "sin ningún gate": esa lista sale de
+`x-auth`, que se lee del código y no se puede pisar desde acá.
+
+**Ejemplos `curl` / `fetch` / VB6**: el visor los genera solo, contra el host del
+ambiente en el que se está parado (`window.location.origin`) y con los valores que haya
+cargados en el formulario. El de VB6 aparece **solo si algún consumidor anotado dice
+"VB6"** (o "Visual Basic"). Los de `ejemplos:` se suman al final: son llamadas reales,
+no plantillas.
 
 También se pueden describir módulos (el primer segmento después de `/api`), y eso se
 vuelca en los tags del documento:
@@ -115,6 +160,30 @@ modulos:
 Una anotación cuya clave no matchea ningún endpoint **no se descarta en silencio**: sale
 en `x-anotaciones.huerfanas` y se ve en el portal. Es la señal de que un endpoint se
 renombró o se borró.
+
+### El test que impide que esto envejezca
+
+`__tests__/docs-anotaciones-cobertura.test.ts` falla si:
+
+1. `anotaciones.yaml` no parsea (el portal seguiría andando, sirviendo solo lo generado
+   — el test es lo que hace que alguien se entere);
+2. hay una anotación huérfana;
+3. **hay un endpoint en `openapi.json` sin entrada en `anotaciones.yaml`**;
+4. sobra una excepción (un endpoint listado como "sin anotar" que ya está anotado o que
+   ya no existe);
+5. algún `/api/import/*` se quedó sin anotar o sin `consumidores`.
+
+El punto 3 tiene una lista explícita de excepciones, `SIN_ANOTAR_HOY`, con los 73
+endpoints que al 2026-08-17 salen solo con lo que el generador infiere. Esa lista existe
+para que el test arranque en verde y falle **solo con los nuevos**.
+
+**La lista solo se achica.** Cuando anotes uno, sacalo de ahí (el punto 4 te obliga). Si
+de verdad hay que sumar uno, el motivo va escrito en el PR — no se agrega para "que pase
+el test".
+
+```bash
+pnpm vitest run __tests__/docs-anotaciones-cobertura.test.ts
+```
 
 ### YAML soportado
 
@@ -205,10 +274,53 @@ No hay que tocar código ni marcar `usuarios.es_root`.
 
 ---
 
+---
+
+## El portal: qué se ve y qué se puede hacer
+
+`/docs` (componentes en `components/docs/`) muestra, por endpoint: método y path,
+badges de autenticación, quién lo consume, parámetros de path y query, cuerpo del
+request con su schema, respuestas por código con ejemplo, errores conocidos, y ejemplos
+copiables en curl / fetch / VB6. Navegación por módulo y buscador por path, método,
+módulo y texto de la descripción.
+
+Arranca en **"Estado de la autenticación"**: cuántos endpoints no validan nada, cuáles
+son, y cuáles se apoyan en un header forjable. No está escondido detrás de un acordeón a
+propósito — es lo que un root necesita ver primero, y es la razón por la que el portal
+tiene el gate que tiene.
+
+### Probar un endpoint (`POST /api/docs/try`)
+
+La llamada **no sale del navegador**: sale del servidor, desde `app/api/docs/try/route.ts`,
+que vuelve a pasar por `requireRoot`. Reglas, con sus tests en
+`__tests__/docs-try.test.ts`:
+
+| Regla | Por qué |
+|---|---|
+| Solo paths `/api/...` del propio host. Se rechaza URL absoluta, `//host`, `..`, `%2e`, `\` | Nunca es un proxy abierto. Además del filtro textual, se re-verifica el origen de la URL ya armada. |
+| `GET`/`HEAD` directo; `POST`/`PUT`/`PATCH`/`DELETE` exigen `confirmacion` == el path exacto (si no, **428 `CONFIRMACION_REQUERIDA`**) | El ambiente puede ser producción y el que abre el portal es root. |
+| `cookie` / `authorization` los pone el servidor con la sesión del root; los que mande el cliente se descartan y se informan en `headersDescartados` | Que el portal no sea una forma de mandar credenciales ajenas. |
+| Timeout 30 s (**504 `TIMEOUT`**) y respuesta truncada a 1 MB (`truncado: true`) | Un endpoint colgado no cuelga el portal. |
+| El request va **en base64** en `{ payload }` | El WAF de nginx delante de TrackMovil rechaza con 403 los bodies con sintaxis de shell, y un cuerpo de ejemplo legítimo puede tenerla. |
+
+El ejecutor devuelve siempre `200` cuando **pudo** ejecutar: el status del endpoint
+llamado viene adentro, en `status`. Un `4xx`/`5xx` de `/api/docs/try` es un problema del
+ejecutor (gate, path, confirmación), no del endpoint.
+
+El ambiente que muestra el diálogo de confirmación se deriva del host: si dice `dev` es
+DEV, **todo lo demás se muestra como PRODUCCIÓN, en rojo** — incluido `localhost`. El
+error caro es ejecutar un DELETE creyendo que se está en desarrollo, no al revés.
+
+---
+
 ## Referencias
 
 - Diseño: `docs/superpowers/specs/2026-08-17-portal-docs-apis-design.md`
 - Guard: `lib/docs/root-guard.ts` · Merge: `lib/docs/merge-spec.ts` · YAML: `lib/docs/yaml-min.ts`
 - Servers en tiempo de servido: `lib/docs/servidores.ts`
+- Reglas del "Try it": `lib/docs/try-request.ts`
 - Generador: `scripts/generate-openapi-spec.mjs`
-- Tests: `__tests__/docs-root-guard.test.ts` · `__tests__/docs-servidores.test.ts`
+- Visor: `components/docs/` (lógica pura en `docs-logic.ts` y `ejemplos.ts`)
+- Tests: `__tests__/docs-root-guard.test.ts` · `__tests__/docs-servidores.test.ts` ·
+  `__tests__/docs-try.test.ts` · `__tests__/docs-merge-anotaciones.test.ts` ·
+  `__tests__/docs-anotaciones-cobertura.test.ts` · `components/docs/docs-logic.test.ts`

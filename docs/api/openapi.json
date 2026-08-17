@@ -1338,6 +1338,40 @@
         "x-generado": true
       }
     },
+    "/api/docs/try": {
+      "post": {
+        "description": "Ejecuta, desde el servidor y con la sesión del root que abrió el portal, una\nllamada a una API de esta misma app, y devuelve status, headers y cuerpo.\n\nGate: requireRoot (lib/docs/root-guard.ts) — el mismo que GET /api/docs/spec:\nfirma del JWT verificada + consulta a SecuritySuite, fail-closed.\n\nCuerpo del request:\n  { payload: \"<base64 de {metodo, path, query, headers, body, confirmacion}>\" }\n\nEl base64 NO es ofuscación: el WAF de nginx delante de TrackMovil rechaza con 403\nlos bodies con sintaxis de shell, y un ejemplo de request legítimo puede tenerla.\nCodificado, el WAF ve una tira de base64 y el cuerpo llega entero.\n\nReglas (lib/docs/try-request.ts, con sus tests):\n  - solo paths `/api/...` del PROPIO host; nunca es un proxy abierto;\n  - GET/HEAD van directo; POST/PUT/PATCH/DELETE exigen `confirmacion` == path exacto;\n  - `cookie` / `authorization` los pone este handler con la sesión del root: los que\n    mande el cliente se descartan (y se listan en `headersDescartados`);\n  - timeout 30 s, respuesta truncada a 1 MB.\n\nRespuestas:\n  200 { status, statusText, headers, body, duracionMs, truncado, ... } — el 200 es\n      del ejecutor: el status del endpoint llamado va adentro, en `status`.\n  400 payload/método/path inválidos (PAYLOAD_INVALIDO, METODO_INVALIDO,\n      PATH_INVALIDO, PATH_FUERA_DE_API, PATH_BLOQUEADO)\n  401/403 el gate root (sin token, token inválido, sin permiso)\n  428 CONFIRMACION_REQUERIDA — escritura sin el path escrito\n  503 SecuritySuite no contestó / no se pudo resolver el host propio\n  504 TIMEOUT — el endpoint llamado no respondió en 30 s",
+        "operationId": "postApiDocsTry",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "502": {
+            "description": "Error del upstream"
+          },
+          "503": {
+            "description": "Servicio no disponible"
+          },
+          "504": {
+            "description": "Timeout del upstream"
+          }
+        },
+        "summary": "Ejecuta, desde el servidor y con la sesión del root que abrió el portal, una llamada a una API de esta misma app, y devuelve status, headers y cuerpo.",
+        "tags": [
+          "docs"
+        ],
+        "x-archivo": "app/api/docs/try/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireRoot (verificado contra secapi)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
     "/api/email-config": {
       "get": {
         "description": "GET  /api/email-config — config GLOBAL de notificación de incidentes por correo\nPUT  /api/email-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")\n\nConfig GLOBAL ÚNICA (una sola fila id=1 en email_settings), mismo modelo de\nconfianza que /api/realtime-config: header x-track-isroot y/o x-track-funcs\nconfiados client-side.\n\nA diferencia de /api/realtime-config, el GET acá TAMBIÉN está gateado\n(la config incluye credenciales SMTP) y NUNCA devuelve smtp_password —\nen su lugar expone `hasPassword: boolean` para que el front sepa si ya\nhay una contraseña guardada.",
@@ -4654,9 +4688,9 @@
     }
   ],
   "x-resumen": {
-    "archivosRuta": 92,
+    "archivosRuta": 93,
     "archivosExcluidos": 2,
-    "endpoints": 128,
+    "endpoints": 129,
     "endpointsSinDocblock": 42,
     "endpointsSinGate": 29,
     "modulos": 40

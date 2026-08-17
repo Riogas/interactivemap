@@ -5,6 +5,15 @@
  * Regla única: **la anotación siempre gana**. Lo generado no envejece pero tampoco
  * sabe quién consume un endpoint ni por qué existe; eso lo pone la anotación.
  *
+ * Con UNA excepción: `x-auth` —los gates que el generador leyó del código— no se pisa
+ * nunca. Si una anotación pudiera declarar que un endpoint está protegido, el apartado
+ * "Estado de la autenticación" del portal dejaría de ser un relevamiento del código y
+ * pasaría a ser una opinión. `auth_badges` solo cambia la etiqueta que se muestra.
+ *
+ * Claves soportadas por endpoint (ver docs/api/README.md): `resumen`, `descripcion`,
+ * `consumidores`, `auth`, `auth_badges`, `parametros`, `cuerpo`, `respuestas`,
+ * `errores`, `notas`, `ejemplos`.
+ *
  * Las anotaciones que apuntan a un endpoint que ya no existe no se descartan en
  * silencio: salen en `x-anotaciones.huerfanas` para que se vean en el portal. Un
  * catálogo que miente es peor que uno incompleto.
@@ -20,6 +29,97 @@ function esObjeto(v: unknown): v is Objeto {
 
 /** Métodos que puede tener una clave de anotación (`POST /api/import/gps`). */
 const METODOS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
+
+/** Texto de un valor de YAML, o undefined si no hay nada usable. */
+function texto(valor: unknown): string | undefined {
+  if (typeof valor === 'string' && valor.trim() !== '') return valor;
+  if (typeof valor === 'number' || typeof valor === 'boolean') return String(valor);
+  return undefined;
+}
+
+/**
+ * `parametros:` → `parameters[]` de OpenAPI.
+ *
+ * Se mergea por (nombre, en): si el generador ya sacó el param del docblock, la
+ * anotación lo completa (tipo, ejemplo, mejor descripción) en vez de duplicarlo.
+ */
+function mergearParametros(operacion: Objeto, anotados: unknown): void {
+  if (!Array.isArray(anotados)) return;
+
+  const previos = Array.isArray(operacion.parameters) ? (operacion.parameters as Objeto[]) : [];
+  const salida = [...previos];
+
+  for (const bruto of anotados) {
+    if (!esObjeto(bruto)) continue;
+    const nombre = texto(bruto.nombre ?? bruto.name);
+    if (!nombre) continue;
+    const donde = texto(bruto.en ?? bruto.in) ?? 'query';
+
+    const param: Objeto = {
+      name: nombre,
+      in: donde,
+      required: bruto.requerido === true || donde === 'path',
+      description: texto(bruto.descripcion),
+      schema: { type: texto(bruto.tipo) ?? 'string' },
+    };
+    if (bruto.ejemplo !== undefined && bruto.ejemplo !== null) param.example = bruto.ejemplo;
+
+    const idx = salida.findIndex((p) => esObjeto(p) && p.name === nombre && p.in === donde);
+    if (idx >= 0) salida[idx] = { ...salida[idx], ...param };
+    else salida.push(param);
+  }
+
+  operacion.parameters = salida;
+}
+
+/** `cuerpo:` → `requestBody` (con `x-campos` para la tabla de campos del visor). */
+function mergearCuerpo(operacion: Objeto, anotado: unknown): void {
+  if (!esObjeto(anotado)) return;
+
+  const contentType = texto(anotado.contentType ?? anotado.content_type) ?? 'application/json';
+  const contenido: Objeto = {};
+  if (anotado.ejemplo !== undefined && anotado.ejemplo !== null) contenido.example = anotado.ejemplo;
+  if (anotado.schema !== undefined) contenido.schema = anotado.schema;
+
+  const campos = Array.isArray(anotado.campos)
+    ? anotado.campos.filter(esObjeto).map((c) => ({
+        nombre: texto(c.nombre) ?? '',
+        tipo: texto(c.tipo),
+        requerido: c.requerido === true,
+        descripcion: texto(c.descripcion),
+      }))
+    : [];
+
+  operacion.requestBody = {
+    description: texto(anotado.descripcion),
+    required: anotado.requerido === true,
+    content: { [contentType]: contenido },
+    'x-campos': campos,
+  };
+}
+
+/** `respuestas:` → completa `responses[código]` con descripción y ejemplo. */
+function mergearRespuestas(operacion: Objeto, anotadas: unknown): void {
+  if (!esObjeto(anotadas)) return;
+
+  const respuestas = esObjeto(operacion.responses) ? (operacion.responses as Objeto) : {};
+
+  for (const [codigo, valor] of Object.entries(anotadas)) {
+    if (!esObjeto(valor)) continue;
+    const previa = esObjeto(respuestas[codigo]) ? (respuestas[codigo] as Objeto) : {};
+    const descripcion = texto(valor.descripcion) ?? texto(previa.description);
+
+    const nueva: Objeto = { ...previa };
+    if (descripcion) nueva.description = descripcion;
+    if (valor.ejemplo !== undefined && valor.ejemplo !== null) {
+      const contentType = texto(valor.contentType) ?? 'application/json';
+      nueva.content = { [contentType]: { example: valor.ejemplo } };
+    }
+    respuestas[codigo] = nueva;
+  }
+
+  operacion.responses = respuestas;
+}
 
 export interface ResultadoMerge {
   spec: Objeto;
@@ -90,8 +190,15 @@ export function mergearAnotaciones(specGenerado: Objeto, yamlCrudo: string | nul
       if (typeof valor.descripcion === 'string') operacion.description = valor.descripcion;
       if (valor.consumidores !== undefined) operacion['x-consumidores'] = valor.consumidores;
       if (valor.auth !== undefined) operacion['x-auth-nota'] = valor.auth;
+      // `x-auth` (lo que el generador leyó del código) NO se pisa nunca: los badges
+      // declarados solo cambian cómo se etiqueta, no qué gates dice que hay.
+      if (valor.auth_badges !== undefined) operacion['x-auth-badges'] = valor.auth_badges;
       if (valor.notas !== undefined) operacion['x-notas'] = valor.notas;
       if (valor.ejemplos !== undefined) operacion['x-ejemplos'] = valor.ejemplos;
+      if (valor.errores !== undefined) operacion['x-errores'] = valor.errores;
+      mergearParametros(operacion, valor.parametros);
+      mergearCuerpo(operacion, valor.cuerpo);
+      mergearRespuestas(operacion, valor.respuestas);
       operacion['x-anotado'] = true;
       anotados++;
     }
