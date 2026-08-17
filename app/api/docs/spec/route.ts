@@ -10,9 +10,10 @@
  *
  * Respuestas:
  *   200 documento OpenAPI 3.1 (application/json)
- *   401 sin token / token inválido
+ *   401 sin token, firma inválida (TOKEN_INVALIDO) o token vencido (TOKEN_VENCIDO)
  *   403 el usuario no tiene la funcionalidad 'docs' de la app 5
- *   503 SecuritySuite no contestó (fail-closed: no se abre el catálogo)
+ *   503 SecuritySuite no contestó, o el proceso no tiene un JWT_SECRET real
+ *       (SECRETO_NO_CONFIGURADO). Fail-closed: no se abre el catálogo.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,6 +21,7 @@ import { readFile } from 'fs/promises';
 import path from 'path';
 import { requireRoot } from '@/lib/docs/root-guard';
 import { mergearAnotaciones } from '@/lib/docs/merge-spec';
+import { servidoresDelDocumento } from '@/lib/docs/servidores';
 // Import estático: queda dentro del bundle. Leerlo del filesystem en runtime es
 // justamente lo que dejó roto a /api/doc (busca un .md que no existe en el deploy).
 import openapiGenerado from '@/docs/api/openapi.json';
@@ -48,6 +50,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const yaml = await leerAnotaciones();
   const { spec } = mergearAnotaciones(openapiGenerado as unknown as Record<string, unknown>, yaml);
+
+  // El openapi.json versionado trae solo el hostname público: las direcciones internas
+  // no van en el repo. El ambiente concreto se agrega recién acá, al servir.
+  spec.servers = servidoresDelDocumento(request, spec.servers);
 
   return NextResponse.json(spec, {
     headers: {

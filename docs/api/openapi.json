@@ -9,14 +9,6 @@
     {
       "url": "https://track.glp.riogas.com.uy",
       "description": "producción"
-    },
-    {
-      "url": "http://192.168.2.22:3002",
-      "description": "dev (node-dev)"
-    },
-    {
-      "url": "http://localhost:3002",
-      "description": "local"
     }
   ],
   "tags": [
@@ -1324,7 +1316,7 @@
     },
     "/api/docs/spec": {
       "get": {
-        "description": "Devuelve el catálogo de APIs de TrackMovil: el OpenAPI 3.1 generado por\n`pnpm docs:api` mergeado con las anotaciones a mano de docs/api/anotaciones.yaml.\n\nGate: requireRoot (lib/docs/root-guard.ts) — verificado contra SecuritySuite en cada\nrequest, fail-closed. NO usa x-track-isroot: este endpoint publica qué endpoints de\nla app no validan nada, así que un gate por header forjable no alcanza.\n\nRespuestas:\n  200 documento OpenAPI 3.1 (application/json)\n  401 sin token / token inválido\n  403 el usuario no tiene la funcionalidad 'docs' de la app 5\n  503 SecuritySuite no contestó (fail-closed: no se abre el catálogo)",
+        "description": "Devuelve el catálogo de APIs de TrackMovil: el OpenAPI 3.1 generado por\n`pnpm docs:api` mergeado con las anotaciones a mano de docs/api/anotaciones.yaml.\n\nGate: requireRoot (lib/docs/root-guard.ts) — verificado contra SecuritySuite en cada\nrequest, fail-closed. NO usa x-track-isroot: este endpoint publica qué endpoints de\nla app no validan nada, así que un gate por header forjable no alcanza.\n\nRespuestas:\n  200 documento OpenAPI 3.1 (application/json)\n  401 sin token, firma inválida (TOKEN_INVALIDO) o token vencido (TOKEN_VENCIDO)\n  403 el usuario no tiene la funcionalidad 'docs' de la app 5\n  503 SecuritySuite no contestó, o el proceso no tiene un JWT_SECRET real\n      (SECRETO_NO_CONFIGURADO). Fail-closed: no se abre el catálogo.",
         "operationId": "getApiDocsSpec",
         "responses": {
           "200": {

@@ -34,7 +34,7 @@ endpoints:
   POST /api/import/pedidos:
     resumen: Alta y actualización de pedidos que manda el sender de GeneXus.
     consumidores:
-      - Sender de GeneXus / SGM (192.168.7.6)
+      - Sender de GeneXus / SGM
     auth: |
       requireApiKey → header `x-api-key` comparado con INTERNAL_API_KEY (timing-safe).
       Sin la env configurada el endpoint devuelve 500 SERVER_MISCONFIGURED, no 200:

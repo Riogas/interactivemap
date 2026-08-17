@@ -414,11 +414,11 @@ function generar() {
         'portal es solo-root.',
       ].join('\n'),
     },
-    servers: [
-      { url: 'https://track.glp.riogas.com.uy', description: 'producción' },
-      { url: 'http://192.168.2.22:3002', description: 'dev (node-dev)' },
-      { url: 'http://localhost:3002', description: 'local' },
-    ],
+    // Solo el hostname público. Las direcciones internas NO se versionan: este JSON
+    // vive en el repo y el repo se clona. El ambiente en el que se está parado lo
+    // agrega GET /api/docs/spec en tiempo de servido, a partir de DOCS_BASE_URL /
+    // APP_BASE_URL o del Host del request (lib/docs/servidores.ts).
+    servers: [{ url: 'https://track.glp.riogas.com.uy', description: 'producción' }],
     tags: [...modulos].sort().map((m) => ({ name: m })),
     paths: ordenar(paths),
     components: {

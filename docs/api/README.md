@@ -28,6 +28,13 @@ El generador **no tiene timestamps ni claves desordenadas a propósito**: correr
 veces sobre el mismo código produce byte a byte el mismo archivo. Si `git diff` marca
 cambios después de regenerar, es porque las APIs cambiaron de verdad.
 
+**Sin direcciones internas.** En `servers[]` el generador deja solo el hostname público
+(`https://track.glp.riogas.com.uy`): este JSON vive en el repo y el repo se clona, así
+que las IPs de la red interna no se versionan. El ambiente en el que se está parado lo
+agrega `GET /api/docs/spec` al servir, desde `DOCS_BASE_URL`, `APP_BASE_URL` o el `Host`
+del request (`lib/docs/servidores.ts`). Lo mismo vale para `anotaciones.yaml`: los
+consumidores se nombran ("Sender de GeneXus / SGM"), no se los direcciona.
+
 Regenerar es obligatorio cuando se agrega, borra o renombra un `route.ts`, cuando se
 agrega un método HTTP a uno existente, o cuando se cambia el docblock de cabecera.
 
@@ -143,16 +150,55 @@ los muestra al final: que estén fuera del detalle no significa que no existan.
 ## Acceso
 
 `/docs` y `GET /api/docs/spec` son **solo para usuarios root**. El gate real es
-server-side (`lib/docs/root-guard.ts`): le pregunta a SecuritySuite por el objeto
-`docs` / acción `view` de la app 5 en cada request, cachea 5 minutos el sí y 30 segundos
-el no, y ante cualquier error **deniega** (fail-closed). No usa `x-track-isroot`: ese
-header lo pone el front y es forjable, y este catálogo publica justamente qué endpoints
-no validan nada.
+server-side (`lib/docs/root-guard.ts`) y hace dos cosas, en este orden:
 
-El guard de `app/docs/layout.tsx` es cosmético. No puede ser server-side porque el JWT de
+1. **Verifica el JWT** (`jwt.verify`, HS256): firma y vencimiento. Es local, sin red.
+2. **Le pregunta a SecuritySuite** por el objeto `docs` / acción `view` de la app 5, en
+   cada request. Cachea 5 minutos el sí y 30 segundos el no, y ante cualquier error
+   **deniega** (fail-closed).
+
+No usa `x-track-isroot`: ese header lo pone el front y es forjable, y este catálogo
+publica justamente qué endpoints no validan nada.
+
+### `JWT_SECRET` es obligatoria para que `/docs` abra
+
+**Hay que setear `JWT_SECRET` con el mismo valor con el que firma SecuritySuite.** Si la
+variable falta, está vacía, o vale el default que trae el código de secapi
+(`security-suite-secret-key`), el guard responde **503 `SECRETO_NO_CONFIGURADO`** y el
+portal no se abre. No hay modo degradado.
+
+```bash
+# .env.production / .env.local
+JWT_SECRET=<el mismo secreto que tiene secapi en su .env>
+```
+
+Por qué tan duro:
+
+- **Ninguna app del ecosistema verifica hoy la firma del token.** La decodifican con
+  base64 y le creen al payload. Con eso,
+  `Bearer <header>.<base64 de {"username":"dmedaglia"}>.<lo que sea>` alcanza para
+  hacerse pasar por cualquiera. El portal `/docs` publica el inventario completo de las
+  APIs y marca cuáles no validan nada: es el peor lugar posible para dejar ese agujero,
+  así que acá se cierra (y solo acá — la autenticación del resto de la app no se tocó).
+- **Verificar contra el default del repo es no verificar.** `security-suite-secret-key`
+  está escrito en el código de secapi, que está en un repo: cualquiera que lo lea firma
+  tokens válidos. Aceptarlo daría una falsa sensación de blindaje, que es peor que no
+  tener ninguno.
+- **Fail-closed ante mala configuración.** Un deploy al que se le olvidó la variable
+  tiene que romper visible (503) y no abrir el catálogo "hasta que alguien lo note".
+
+Códigos que devuelve el gate: `NO_TOKEN` (401), `TOKEN_INVALIDO` (401, firma o formato),
+`TOKEN_VENCIDO` (401), `SECRETO_NO_CONFIGURADO` (503), lo que conteste secapi
+(401/403), `SECAPI_ERROR` / `SECAPI_RESPUESTA_INVALIDA` / `SECAPI_INACCESIBLE` (503).
+
+### El guard de la página es cosmético
+
+El de `app/docs/layout.tsx` es `'use client'`: corre en el navegador con datos que el
+navegador controla, así que **no es seguridad**. No puede ser server-side porque el JWT de
 SecuritySuite vive en `sessionStorage` (`lib/auth-storage.ts`), no en una cookie, así que
-un Server Component no lo ve. La página no tiene catálogo propio: todo lo que muestra se
-lo pide a `GET /api/docs/spec`, que sí valida en el servidor.
+un Server Component no lo ve. Alcanza porque la página no tiene catálogo propio: todo lo
+que muestra se lo pide a `GET /api/docs/spec`, que sí valida en el servidor. Si algún día
+la página trae contenido que no pase por ese endpoint, hay que mover el gate al servidor.
 
 Para darle acceso a alguien: asignarle el rol **Root** de RiogasTracking en SecuritySuite.
 No hay que tocar código ni marcar `usuarios.es_root`.
@@ -163,5 +209,6 @@ No hay que tocar código ni marcar `usuarios.es_root`.
 
 - Diseño: `docs/superpowers/specs/2026-08-17-portal-docs-apis-design.md`
 - Guard: `lib/docs/root-guard.ts` · Merge: `lib/docs/merge-spec.ts` · YAML: `lib/docs/yaml-min.ts`
+- Servers en tiempo de servido: `lib/docs/servidores.ts`
 - Generador: `scripts/generate-openapi-spec.mjs`
-- Tests del guard: `__tests__/docs-root-guard.test.ts`
+- Tests: `__tests__/docs-root-guard.test.ts` · `__tests__/docs-servidores.test.ts`
