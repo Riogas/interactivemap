@@ -202,6 +202,18 @@ describe('POST /api/docs/try — solo el propio host, solo /api/', () => {
     expect(llamadasAlDestino()).toHaveLength(0);
   });
 
+  it('el candado tampoco se lo lleva puesto un segmento punto', async () => {
+    // El bloqueo textual no ve los segmentos punto: `new URL` los resuelve
+    // (RFC 3986) y '/api/docs/./try' aterriza en '/api/docs/try'. Por eso
+    // `construirUrl` vuelve a mirar el pathname ya resuelto.
+    for (const path of ['/api/docs/./try', '/api/./docs/try', '/api/docs/./try/']) {
+      const res = await POST(pedido({ metodo: 'GET', path }));
+      expect(res.status, path).toBe(400);
+      await expect(res.json(), path).resolves.toMatchObject({ code: 'PATH_BLOQUEADO' });
+    }
+    expect(llamadasAlDestino()).toHaveLength(0);
+  });
+
   it('el candado no se lleva puesto un path que solo empieza igual', async () => {
     const res = await POST(pedido({ metodo: 'GET', path: '/api/docs/spec' }));
 
@@ -339,10 +351,10 @@ describe('POST /api/docs/try — x-track-* no los elige el payload', () => {
     const { headers, descartados } = sanearHeaders({
       'x-track-loquevenga': 'S',
       'X-Track-IsRoot': 'S',
-      'x-api-key': 'k',
+      'accept-language': 'es-UY',
     });
 
-    expect(headers).toEqual({ 'x-api-key': 'k' });
+    expect(headers).toEqual({ 'accept-language': 'es-UY' });
     expect(descartados.sort()).toEqual(['X-Track-IsRoot', 'x-track-loquevenga']);
   });
 });
@@ -443,7 +455,7 @@ describe('POST /api/docs/try — ejecución', () => {
         {
           metodo: 'GET',
           path: '/api/latest',
-          headers: { authorization: 'Bearer robado', cookie: 'a=b', 'x-api-key': 'la-del-usuario' },
+          headers: { authorization: 'Bearer robado', cookie: 'a=b', 'x-api-key': 'adivinada' },
         },
         { cookie: 'sb-token=sesion-del-root' },
       ),
@@ -453,7 +465,11 @@ describe('POST /api/docs/try — ejecución', () => {
     const headers = init.headers as Headers;
     expect(headers.get('authorization')).toMatch(/^Bearer eyJ/); // el del root, no 'robado'
     expect(headers.get('cookie')).toBe('sb-token=sesion-del-root');
-    expect(headers.get('x-api-key')).toBe('la-del-usuario'); // este sí es del usuario
+    // x-api-key autoriza los endpoints de importación (`requireApiKey`): es una
+    // credencial de la app, así que corre la misma regla que los x-track-*.
+    // No es explotable sin conocer INTERNAL_API_KEY, pero el payload no elige
+    // con qué se autoriza.
+    expect(headers.get('x-api-key')).toBe(null);
 
     const cuerpo = await (await POST(pedido({ metodo: 'GET', path: '/api/latest', headers: { cookie: 'x=1' } }))).json();
     expect(cuerpo.headersDescartados).toContain('cookie');
@@ -510,8 +526,10 @@ describe('sanearHeaders', () => {
       'content-type': 'application/json; charset=utf-8',
     });
 
-    expect(headers).toEqual({ 'x-api-key': 'k', 'content-type': 'application/json; charset=utf-8' });
-    expect(descartados.sort()).toEqual(['Authorization', 'Cookie', 'Host', 'x-forwarded-for'].sort());
+    expect(headers).toEqual({ 'content-type': 'application/json; charset=utf-8' });
+    expect(descartados.sort()).toEqual(
+      ['Authorization', 'Cookie', 'Host', 'x-api-key', 'x-forwarded-for'].sort(),
+    );
   });
 
   it('descarta valores con CR/LF (inyección de headers)', () => {

@@ -457,8 +457,24 @@ function generar() {
 }
 
 const documento = generar();
+const json = JSON.stringify(documento, null, 2) + '\n';
+
+// `--check` no escribe: compara. El test antienvejecimiento lee el openapi.json
+// que está en disco, así que solo detectaba drift si alguien había corrido el
+// generador antes. Con esto la suite falla cuando el catálogo commiteado dejó
+// de describir al código.
+if (process.argv.includes('--check')) {
+  const enDisco = fs.existsSync(SALIDA) ? fs.readFileSync(SALIDA, 'utf-8') : '';
+  if (enDisco !== json) {
+    console.error('docs/api/openapi.json quedó viejo respecto del código. Corré: npm run docs:api');
+    process.exit(1);
+  }
+  console.log('docs/api/openapi.json está al día.');
+  process.exit(0);
+}
+
 fs.mkdirSync(path.dirname(SALIDA), { recursive: true });
-fs.writeFileSync(SALIDA, JSON.stringify(documento, null, 2) + '\n', 'utf-8');
+fs.writeFileSync(SALIDA, json, 'utf-8');
 
 const r = documento['x-resumen'];
 console.log(`docs:api → ${rutaRelativa(SALIDA)}`);

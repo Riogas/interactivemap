@@ -41,7 +41,11 @@
   --color-stats-surface-2: #F1F5F9;
   --color-stats-border: #E2E8F0;
   --color-stats-foreground: #0F172A;
-  --color-stats-muted-fg: #64748B;
+  /* #64748B daba 4,34:1 sobre surface-2 (#F1F5F9): por debajo del 4,5:1 de AA,
+     y el visor de /docs lo usa en texto de 0,65-0,8rem, donde AA-large no vale.
+     #5E6C82 sube a 4,86:1 sobre surface-2, 5,09:1 sobre background y 5,33:1
+     sobre surface, sin salirse del slate de la paleta. */
+  --color-stats-muted-fg: #5E6C82;
 
   /* Fonts: Fira Sans (body) + Fira Code (data/tabular numbers) */
   --font-stats-sans: var(--font-stats-sans-base, 'Fira Sans'), system-ui, sans-serif;

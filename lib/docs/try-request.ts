@@ -121,6 +121,11 @@ export const HEADERS_PROHIBIDOS: ReadonlySet<string> = new Set([
   'x-forwarded-port',
   'x-forwarded-proto',
   'x-real-ip',
+  // Autoriza los endpoints de importación/integración (`requireApiKey`). No es
+  // explotable sin conocer INTERNAL_API_KEY, pero vale la misma regla que para
+  // los `x-track-*`: los headers con los que la app autoriza no los elige el
+  // payload.
+  'x-api-key',
 ]);
 
 /**
@@ -428,6 +433,14 @@ export function construirUrl(
   }
   if (!destino.pathname.startsWith('/api/')) {
     return fallo(400, 'PATH_FUERA_DE_API', 'Solo se pueden ejecutar endpoints bajo /api/.');
+  }
+
+  // Y la recursión, sobre el path que se va a pedir de verdad. `validarPeticion`
+  // la bloquea sobre el TEXTO que mandó el cliente, pero `new URL` resuelve los
+  // segmentos punto (RFC 3986): `/api/docs/./try` pasa el filtro textual y
+  // aterriza igual en `/api/docs/try`.
+  if (PATHS_BLOQUEADOS.includes(normalizarParaBloqueo(destino.pathname))) {
+    return fallo(400, 'PATH_BLOQUEADO', 'El ejecutor no se llama a sí mismo.');
   }
 
   const qs = new URLSearchParams(peticion.query).toString();
