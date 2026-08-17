@@ -1,0 +1,85 @@
+# Anotaciones a mano del catálogo de APIs de TrackMovil.
+#
+# Este archivo NO se genera: es la capa que aporta lo que ningún parser puede inferir
+# —quién consume el endpoint, por qué existe, ejemplos reales— y se mergea encima de
+# docs/api/openapi.json al servir GET /api/docs/spec. Lo de acá SIEMPRE gana.
+#
+# Cómo agregar una entrada: docs/api/README.md
+#
+# Ojo con el subconjunto de YAML soportado (lib/docs/yaml-min.ts): indentación con
+# espacios, sin anclas ni tags. Para texto largo usar el bloque `|`.
+
+version: 1
+
+# Descripción de los módulos (el primer segmento después de /api). Se vuelca en tags[].
+modulos:
+  import:
+    descripcion: |
+      Ingesta desde sistemas externos. Es la única familia de endpoints de TrackMovil
+      que NO usa la sesión del dashboard: entra por API key o por token en el body,
+      porque del otro lado hay un sender de GeneXus y la app móvil, no un navegador.
+
+      Los que pasan por requireApiKey (lib/auth-middleware.ts) tienen un bypass global:
+      con ENABLE_SECURITY_CHECKS='false' devuelven true sin mirar nada. En producción
+      esa env tiene que estar sin setear o en 'true'. /api/import/gps NO tiene ese
+      bypass: compara con safeCompare directo.
+  metricas:
+    descripcion: |
+      Motor de demora y su instrumental de medición (acierto, desfasaje, variantes).
+      Todas las métricas de acierto van filtradas a servicio_nombre='URGENTE': el
+      nocturno es el 5% del volumen con un sesgo de −26 minutos y arrastra el global.
+
+endpoints:
+
+  POST /api/import/pedidos:
+    resumen: Alta y actualización de pedidos que manda el sender de GeneXus.
+    consumidores:
+      - Sender de GeneXus / SGM (192.168.7.6)
+    auth: |
+      requireApiKey → header `x-api-key` comparado con INTERNAL_API_KEY (timing-safe).
+      Sin la env configurada el endpoint devuelve 500 SERVER_MISCONFIGURED, no 200:
+      es fail-closed a propósito.
+    notas: |
+      El sender manda FchHoraAsignado, que es lo que alimenta el hecho de cumplimiento
+      (tiempo asignado → cumplido por escenario). Si ese campo viene vacío el pedido
+      entra igual pero queda fuera de las métricas.
+
+      El WAF de nginx delante de TrackMovil rechaza con 403 los bodies que contengan
+      `curl`, `bash`, `wget`, `python`, `eval`, `base64`, `;`, `||` o `$(`. No es la
+      app la que responde: si ves un 403 en HTML, es el WAF.
+    ejemplos:
+      - titulo: curl
+        codigo: |
+          curl -X POST https://track.glp.riogas.com.uy/api/import/pedidos \
+            -H "x-api-key: $INTERNAL_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"pedidos":[{"pedido_id":"123","escenario_id":1000}]}'
+
+  POST /api/import/gps:
+    resumen: Ingesta de posiciones GPS de la app móvil de los repartidores.
+    consumidores:
+      - App móvil MoveIT (Flutter, package `MoveIT`)
+      - Procesos internos con INTERNAL_API_KEY
+    auth: |
+      Dos caminos alternativos, cualquiera alcanza:
+        1. Header `X-API-Key` = INTERNAL_API_KEY (uso interno).
+        2. Campo `token` DENTRO DEL BODY = GPS_TRACKING_TOKEN (app móvil).
+      Los dos con safeCompare (timing-safe). El token en el body es una decisión vieja
+      de la app móvil, no un patrón a repetir en endpoints nuevos.
+    notas: |
+      No escribe directo: encola en lib/gps-batch-queue y el trigger
+      sync_gps_latest_position hace el upsert a gps_latest_positions. Por eso un POST
+      con 200 no garantiza que la posición ya se vea en /api/latest.
+
+  GET /api/metricas/desfasaje:
+    resumen: Franjas de desfasaje entre la demora proyectada y la real, por pedido entregado.
+    consumidores:
+      - Card "Desfasaje" de /dashboard/stats (componentes de components/metricas)
+    notas: |
+      El cálculo entero vive en la RPC `metricas_desfasaje`
+      (docs/sqls/2026-08-03-desfasaje-demoras.sql); el handler solo valida, resuelve el
+      scope por empresa y llama. Si el número no cierra, el bug casi siempre está en la
+      RPC, no acá.
+
+      El scope por empresa se INTERSECTA con lo que pide el usuario: el query param
+      `empresa` nunca amplía lo que el rol permite ver.

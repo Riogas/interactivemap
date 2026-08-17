@@ -1,0 +1,4672 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TrackMovil — API",
+    "version": "0.1.0",
+    "description": "Catálogo de las APIs propias de TrackMovil (RiogasTracking, app 5 en SecuritySuite).\n\nGENERADO por `pnpm docs:api` a partir de app/api/**/route.ts. No editar a mano:\nlas descripciones, los consumidores y los ejemplos van en docs/api/anotaciones.yaml,\nque se mergea encima al servir GET /api/docs/spec.\n\n`x-auth` refleja los gates que el handler REALMENTE invoca. `x-auth.sinGate: true`\nsignifica que el endpoint no valida nada: es información sensible y por eso este\nportal es solo-root."
+  },
+  "servers": [
+    {
+      "url": "https://track.glp.riogas.com.uy",
+      "description": "producción"
+    },
+    {
+      "url": "http://192.168.2.22:3002",
+      "description": "dev (node-dev)"
+    },
+    {
+      "url": "http://localhost:3002",
+      "description": "local"
+    }
+  ],
+  "tags": [
+    {
+      "name": "admin"
+    },
+    {
+      "name": "all-positions"
+    },
+    {
+      "name": "audit"
+    },
+    {
+      "name": "auth"
+    },
+    {
+      "name": "coordinates"
+    },
+    {
+      "name": "debug"
+    },
+    {
+      "name": "demoras"
+    },
+    {
+      "name": "docs"
+    },
+    {
+      "name": "email-config"
+    },
+    {
+      "name": "empresas"
+    },
+    {
+      "name": "escenario-settings"
+    },
+    {
+      "name": "fleteras-zonas"
+    },
+    {
+      "name": "geocode"
+    },
+    {
+      "name": "import"
+    },
+    {
+      "name": "incidents"
+    },
+    {
+      "name": "latest"
+    },
+    {
+      "name": "manual"
+    },
+    {
+      "name": "metricas"
+    },
+    {
+      "name": "movil"
+    },
+    {
+      "name": "movil-session"
+    },
+    {
+      "name": "moviles-actividad-dia"
+    },
+    {
+      "name": "moviles-dia"
+    },
+    {
+      "name": "moviles-extended"
+    },
+    {
+      "name": "moviles-with-activity"
+    },
+    {
+      "name": "moviles-zonas"
+    },
+    {
+      "name": "notificaciones"
+    },
+    {
+      "name": "overpass"
+    },
+    {
+      "name": "pedido-detalle"
+    },
+    {
+      "name": "pedidos"
+    },
+    {
+      "name": "pedidos-pendientes"
+    },
+    {
+      "name": "pedidos-servicios"
+    },
+    {
+      "name": "pedidos-servicios-pendientes"
+    },
+    {
+      "name": "proxy"
+    },
+    {
+      "name": "puntos-interes"
+    },
+    {
+      "name": "realtime-config"
+    },
+    {
+      "name": "server-time"
+    },
+    {
+      "name": "services"
+    },
+    {
+      "name": "servicio-detalle"
+    },
+    {
+      "name": "user-preferences"
+    },
+    {
+      "name": "zonas"
+    }
+  ],
+  "paths": {
+    "/api/admin/escenario-settings": {
+      "get": {
+        "description": "Retorna la lista de escenarios con sus settings actuales.\nSi un escenario no tiene row en escenario_settings, los campos usan sus defaults.",
+        "operationId": "getApiAdminEscenarioSettings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Retorna la lista de escenarios con sus settings actuales.",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/escenario-settings/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Conf. Globales x Escenario"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Retorna la lista de escenarios con sus settings actuales.\nSi un escenario no tiene row en escenario_settings, los campos usan sus defaults.",
+        "operationId": "putApiAdminEscenarioSettings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Retorna la lista de escenarios con sus settings actuales.",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/escenario-settings/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Conf. Globales x Escenario"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/login-blocks": {
+      "get": {
+        "operationId": "getApiAdminLoginBlocks",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/admin/login-blocks",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/login-blocks/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Query Inicios de sesion"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/login-blocks/{id}": {
+      "delete": {
+        "operationId": "deleteApiAdminLoginBlocksId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "DELETE /api/admin/login-blocks/{id}",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/login-blocks/[id]/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Query Inicios de sesion"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/login-logs": {
+      "get": {
+        "operationId": "getApiAdminLoginLogs",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/admin/login-logs",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/login-logs/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Query Inicios de sesion"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/login-security/config": {
+      "get": {
+        "operationId": "getApiAdminLoginSecurityConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/admin/login-security/config",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/login-security/config/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Query Inicios de sesion"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "operationId": "putApiAdminLoginSecurityConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "PUT /api/admin/login-security/config",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/login-security/config/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Query Inicios de sesion"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/login-security/unblock": {
+      "post": {
+        "description": "POST /api/admin/login-security/unblock — Desbloquear usuario o IP manualmente\n\nBody: { type: 'user' | 'ip', value: string }\nEfecto: soft-unblock en login_blocks (is_active=false, unblocked_at, unblocked_by)\nAudit trail: registra quién hizo el unblock y cuándo.\n\nGate: funcionalidad 'Query Inicios de sesion'",
+        "operationId": "postApiAdminLoginSecurityUnblock",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/admin/login-security/unblock — Desbloquear usuario o IP manualmente",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/login-security/unblock/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Query Inicios de sesion"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/login-security/usuario-detalle": {
+      "get": {
+        "operationId": "getApiAdminLoginSecurityUsuarioDetalle",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "502": {
+            "description": "Error del upstream"
+          }
+        },
+        "summary": "GET /api/admin/login-security/usuario-detalle",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/login-security/usuario-detalle/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Query Inicios de sesion"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/notificaciones": {
+      "get": {
+        "operationId": "getApiAdminNotificaciones",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Creado"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/admin/notificaciones",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/notificaciones/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Administrar notificaciones"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "operationId": "postApiAdminNotificaciones",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Creado"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/admin/notificaciones",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/notificaciones/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Administrar notificaciones"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/notificaciones/upload": {
+      "post": {
+        "operationId": "postApiAdminNotificacionesUpload",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/admin/notificaciones/upload",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/notificaciones/upload/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Administrar notificaciones"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/notificaciones/{id}": {
+      "delete": {
+        "operationId": "deleteApiAdminNotificacionesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "DELETE /api/admin/notificaciones/{id}",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/notificaciones/[id]/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Administrar notificaciones"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "operationId": "putApiAdminNotificacionesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "PUT /api/admin/notificaciones/{id}",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/notificaciones/[id]/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Administrar notificaciones"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/notificaciones/{id}/lecturas": {
+      "get": {
+        "operationId": "getApiAdminNotificacionesIdLecturas",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/admin/notificaciones/{id}/lecturas",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/notificaciones/[id]/lecturas/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Administrar notificaciones"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/recalcular-cap-entrega-all": {
+      "post": {
+        "description": "Recalcula zonas_cap_entrega para TODOS los moviles de TODOS los escenarios\n(o de un escenario especifico si se pasa escenarioId en el body).\n\nUtil para el refresh inicial tras aplicar la migration de peso_transito_alpha.\n\nGate: funcionalidad 'Recalcular Cap. Entrega global'\n\nBody (opcional):\n  { \"escenarioId\": 1 }  — si se omite, procesa todos los escenarios\n\nResponse:\n  { success: true, total: N, processed: N, errors: [...] }",
+        "operationId": "postApiAdminRecalcularCapEntregaAll",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Recalcula zonas_cap_entrega para TODOS los moviles de TODOS los escenarios (o de un escenario especifico si se pasa escenarioId en el body).",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/recalcular-cap-entrega-all/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Recalcular Cap. Entrega global"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/reset-manual": {
+      "post": {
+        "operationId": "postApiAdminResetManual",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/admin/reset-manual",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/reset-manual/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Subir manuales de usuario"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/upload-manual": {
+      "post": {
+        "operationId": "postApiAdminUploadManual",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/admin/upload-manual",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/upload-manual/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Subir manuales de usuario"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/usuarios-empresa": {
+      "get": {
+        "operationId": "getApiAdminUsuariosEmpresa",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          },
+          "502": {
+            "description": "Error del upstream"
+          }
+        },
+        "summary": "GET /api/admin/usuarios-empresa",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/usuarios-empresa/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Gestion de Usuarios"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/admin/usuarios-empresa/toggle": {
+      "post": {
+        "operationId": "postApiAdminUsuariosEmpresaToggle",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "502": {
+            "description": "Error del upstream"
+          }
+        },
+        "summary": "POST /api/admin/usuarios-empresa/toggle",
+        "tags": [
+          "admin"
+        ],
+        "x-archivo": "app/api/admin/usuarios-empresa/toggle/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Gestion de Usuarios"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/all-positions": {
+      "get": {
+        "operationId": "getApiAllPositions",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/all-positions",
+        "tags": [
+          "all-positions"
+        ],
+        "x-archivo": "app/api/all-positions/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/audit": {
+      "post": {
+        "description": "Endpoint que recibe eventos de auditoría desde el interceptor de fetch\ndel cliente (AuditProvider). El body es un array de eventos; los insertamos\nen batch en audit_log junto con user_id/username derivados del JWT.\n\nEste endpoint NO pasa por rate limit (está en la exclusión del proxy) ni\nrequiere auth formal — si hay token lo usa; si no, guarda como usuario anón.\nMotivo: queremos capturar todo incluso si el JWT expiró mientras navegaban.",
+        "operationId": "postApiAudit",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Endpoint que recibe eventos de auditoría desde el interceptor de fetch del cliente (AuditProvider).",
+        "tags": [
+          "audit"
+        ],
+        "x-archivo": "app/api/audit/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/audit/config": {
+      "get": {
+        "description": "GET  /api/audit/config — estado actual del toggle (público, sin auth)\nPOST /api/audit/config — cambia el toggle (solo root)\n\nGET: retorna { enabled, updated_at, updated_by }. Cache server 5s.\nPOST: body { enabled: boolean }. Auth:\n  - JWT válido en `Authorization: Bearer ...` (firmado por Security Suite,\n    contiene userId/username pero NO isRoot — solo prueba autenticación).\n  - Header `x-track-isroot: 'S'` indicando que el cliente reporta ser root.\n    Mismo patrón que /api/audit (header `x-track-user` confiado del cliente).\n    La seguridad es consistente con el resto del codebase: los gates admin\n    son client-side. Para endurecer en el futuro habría que añadir un check\n    contra el Security Suite o una tabla de roles en la DB.",
+        "operationId": "getApiAuditConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/audit/config — estado actual del toggle (público, sin auth) POST /api/audit/config — cambia el toggle (solo root)",
+        "tags": [
+          "audit"
+        ],
+        "x-archivo": "app/api/audit/config/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "GET  /api/audit/config — estado actual del toggle (público, sin auth)\nPOST /api/audit/config — cambia el toggle (solo root)\n\nGET: retorna { enabled, updated_at, updated_by }. Cache server 5s.\nPOST: body { enabled: boolean }. Auth:\n  - JWT válido en `Authorization: Bearer ...` (firmado por Security Suite,\n    contiene userId/username pero NO isRoot — solo prueba autenticación).\n  - Header `x-track-isroot: 'S'` indicando que el cliente reporta ser root.\n    Mismo patrón que /api/audit (header `x-track-user` confiado del cliente).\n    La seguridad es consistente con el resto del codebase: los gates admin\n    son client-side. Para endurecer en el futuro habría que añadir un check\n    contra el Security Suite o una tabla de roles en la DB.",
+        "operationId": "postApiAuditConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/audit/config — estado actual del toggle (público, sin auth) POST /api/audit/config — cambia el toggle (solo root)",
+        "tags": [
+          "audit"
+        ],
+        "x-archivo": "app/api/audit/config/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/audit/list": {
+      "get": {
+        "description": "Endpoint para la UI de /admin/auditoria. Devuelve eventos con paginación\ny filtros opcionales (user, event_type, endpoint, rango de fechas).\nLee con service_role para ver todo (bypass RLS).",
+        "operationId": "getApiAuditList",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Endpoint para la UI de /admin/auditoria.",
+        "tags": [
+          "audit"
+        ],
+        "x-archivo": "app/api/audit/list/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "postApiAuthLogin",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "POST /api/auth/login",
+        "tags": [
+          "auth"
+        ],
+        "x-archivo": "app/api/auth/login/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "description": "🚪 Logout — limpieza de cookies residuales de Supabase.\n\nYa no usamos `supabase.auth.signInAnonymously()` en el login, pero históricamente\nsí: pueden quedar cookies `sb-<ref>-auth-token` expiradas en los browsers de los\nusuarios. Si no se borran, el cliente las sigue enviando en las requests al WS\nde Realtime y Supabase las rechaza (sesión expirada + anonymous_provider_disabled),\ndejando Realtime colgado \"Conectando\".\n\nEste endpoint recorre las cookies del request, marca todas las `sb-*-auth-token`\ncon Max-Age=0 en la respuesta para que el browser las elimine.",
+        "operationId": "postApiAuthLogout",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "🚪 Logout — limpieza de cookies residuales de Supabase.",
+        "tags": [
+          "auth"
+        ],
+        "x-archivo": "app/api/auth/logout/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/auth/permisos": {
+      "post": {
+        "operationId": "postApiAuthPermisos",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/auth/permisos",
+        "tags": [
+          "auth"
+        ],
+        "x-archivo": "app/api/auth/permisos/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/coordinates": {
+      "get": {
+        "operationId": "getApiCoordinates",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/coordinates",
+        "tags": [
+          "coordinates"
+        ],
+        "x-archivo": "app/api/coordinates/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/debug/toggle": {
+      "get": {
+        "description": "Ver estado actual de los flags de debug.\n\nPOST /api/debug/toggle\nPrender/apagar logs en runtime sin reiniciar PM2.\n\nBody: { \"flag\": \"gps\" | \"movZonas\", \"value\": true | false }\nO sin body para toggle automático de GPS.\n\nEjemplos:\n  curl -X POST https://track.rfriogas.com/api/debug/toggle -H \"X-API-Key: ...\" -H \"Content-Type: application/json\" -d '{\"flag\":\"gps\",\"value\":true}'\n  curl -X POST https://track.rfriogas.com/api/debug/toggle -H \"X-API-Key: ...\"   # toggle GPS\n  curl    https://track.rfriogas.com/api/debug/toggle -H \"X-API-Key: ...\"         # ver estado",
+        "operationId": "getApiDebugToggle",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Ver estado actual de los flags de debug.",
+        "tags": [
+          "debug"
+        ],
+        "x-archivo": "app/api/debug/toggle/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Ver estado actual de los flags de debug.\n\nPOST /api/debug/toggle\nPrender/apagar logs en runtime sin reiniciar PM2.\n\nBody: { \"flag\": \"gps\" | \"movZonas\", \"value\": true | false }\nO sin body para toggle automático de GPS.\n\nEjemplos:\n  curl -X POST https://track.rfriogas.com/api/debug/toggle -H \"X-API-Key: ...\" -H \"Content-Type: application/json\" -d '{\"flag\":\"gps\",\"value\":true}'\n  curl -X POST https://track.rfriogas.com/api/debug/toggle -H \"X-API-Key: ...\"   # toggle GPS\n  curl    https://track.rfriogas.com/api/debug/toggle -H \"X-API-Key: ...\"         # ver estado",
+        "operationId": "postApiDebugToggle",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Ver estado actual de los flags de debug.",
+        "tags": [
+          "debug"
+        ],
+        "x-archivo": "app/api/debug/toggle/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/demoras": {
+      "get": {
+        "description": "Obtener todas las demoras (para Capas de Información en el mapa)\n\nQuery params:\n  - escenarioId: filtrar por escenario\n  - zonaId: filtrar por zona\n  - activa: filtrar por estado (default: todas)\n  - empresaIds: CSV de empresa_fletera_id (scoping vía fleteras_zonas)",
+        "operationId": "getApiDemoras",
+        "parameters": [
+          {
+            "description": "filtrar por escenario",
+            "in": "query",
+            "name": "escenarioId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "filtrar por zona",
+            "in": "query",
+            "name": "zonaId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "filtrar por estado (default: todas)",
+            "in": "query",
+            "name": "activa",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV de empresa_fletera_id (scoping vía fleteras_zonas)",
+            "in": "query",
+            "name": "empresaIds",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Obtener todas las demoras (para Capas de Información en el mapa)",
+        "tags": [
+          "demoras"
+        ],
+        "x-archivo": "app/api/demoras/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/demoras/comparativa": {
+      "get": {
+        "description": "Serie del día y brecha por zona entre la demora que calcula TrackMovil y\nla que informa el AS400. Lee `demoras_calculadas`, que guarda el snapshot\ndel AS400 en cada corrida — el import del AS400 pisa su propia tabla, así\nque sin ese snapshot no habría con qué comparar.\n\nQuery params:\n  - escenario  (requerido, int)\n  - fecha      (opcional, YYYY-MM-DD; default hoy en Montevideo)\n  - tipo       (opcional, URGENTE|NOCTURNO|SERVICE; default URGENTE)\n  - zona       (opcional, int) — si viene, `serie` es de esa zona\n  - empresaIds (opcional, CSV de empresa_fletera_id) — scope de zonas del\n    caller no-root, resuelto vía `fleteras_zonas` (mismo patrón que\n    app/api/demoras/route.ts y app/api/zonas/route.ts).\n\nOJO: el AS400 solo informa URGENTE. Para NOCTURNO y SERVICE `as400` viene\nnull y la brecha no se puede calcular; la UI lo dice explícitamente.\n\nPaginación (B1 — bloqueante de la revisión final): un día entero de\n`demoras_calculadas` son ~10.500 filas SOLO de URGENTE (106 zonas × 99\ncorridas). Supabase/PostgREST corta en 1000 filas por request SIN avisar,\ny como el `.order('corrida_at')` va antes del corte sobrevivían las\ncorridas MÁS VIEJAS: el gráfico terminaba a las 08:30 y la tabla de brecha\npromediaba solo la primera hora y media del día. Se pagina con `.range()`\nen bloques de PAGE_SIZE, mismo patrón que\napp/api/metricas/cumplimiento/run/route.ts (fetchCumplidos/fetchExistentes).\n\nFilas sin capacidad (B2): `sin_capacidad = true` significa que la zona no\ntenía NINGÚN móvil activo y la fila informó el techo (`max_minutos`) por\ndefinición, no por cálculo. A las 07:00 el 72% de la flota está inactiva,\nasí que el arranque del día produce una masa de filas con 120 fijo que, si\nentran al promedio, arruinan la calibración contra el AS400. Se traen las\nbanderas que explican un 120 (`sin_capacidad`, `clampeado`, `ritmo_origen`)\ny se EXCLUYEN esas filas del promedio de brecha, informando cuántas se\nexcluyeron. La serie las conserva (la card las marca en el gráfico).\n\n`escenario_configurado` (B3, corregido en el review final de rama — I6):\nel gate real es `demoras_modelo`, no `demoras_config`. Desde la tanda\nCONSUMO_TRAMOS, `demoras_calcular_run` recorre `FOR m IN SELECT * FROM\ndemoras_modelo ...` — un escenario se calcula si y solo si tiene fila ahí,\ntenga o no fila en `demoras_config` (sin esa, simplemente no escribe nada\npara ningún tipo, igual que hoy con un tipo sin fila). Mirar\n`demoras_config` colaba un falso positivo: un escenario con\n`demoras_config` pero SIN `demoras_modelo` entra al loop del orquestador y\nnunca se calcula, y la card decía \"todavía no hay corridas para hoy\" para\nsiempre — exactamente la explicación falsa que este flag existe para\nevitar.\n\nAuth-scope (fix round 1 — gap Critical del review: el endpoint no acotaba\npor empresa y getServerSupabaseClient() usa service_role, bypass total de\nRLS):\n  - x-track-isroot : 'S' → sin restricción, ve todas las zonas (mismo\n    header que app/api/metricas/dashboard/route.ts).\n  - No-root: requiere `empresaIds` con al menos una empresa cuyo scope en\n    `fleteras_zonas` resuelva a >=1 zona. Fail-closed: sin empresaIds\n    válidos, o si el set de zonas resuelto queda vacío, se devuelve\n    payload vacío SIN tocar `demoras_calculadas` (ni siquiera se pide el\n    cliente de Supabase). `serie` y `zonas` quedan acotados a ese set.\n\nGates de autorización (Task 8 — la card de esta comparativa vive en la\nmisma pantalla que /api/metricas/dashboard, así que comparte su mismo\numbral de acceso, en el mismo orden):\n  - requireAllowlistedEmail(auth.user?.email, METRICAS_DASHBOARD_ALLOWED_EMAILS):\n    chequea el email de la sesión AUTENTICADA (no spoofeable) contra la\n    misma allowlist que metricas/dashboard.\n  - requireFuncionalidad('Estadisticas Cumplimiento'): mismo gate por\n    header x-track-funcs que metricas/dashboard (root bypassea siempre).\n  Los headers x-track-isroot / x-track-empresas-ids que resuelven el scope\n  de zonas más abajo son forjables por el cliente — estos dos gates previos\n  son la defensa real para datos sensibles.",
+        "operationId": "getApiDemorasComparativa",
+        "parameters": [
+          {
+            "description": "requerido, int",
+            "in": "query",
+            "name": "escenario",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, YYYY-MM-DD; default hoy en Montevideo",
+            "in": "query",
+            "name": "fecha",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, URGENTE|NOCTURNO|SERVICE; default URGENTE",
+            "in": "query",
+            "name": "tipo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, int — si viene, `serie` es de esa zona",
+            "in": "query",
+            "name": "zona",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, CSV de empresa_fletera_id — scope de zonas del caller no-root, resuelto vía `fleteras_zonas` (mismo patrón que app/api/demoras/route.ts y app/api/zonas/route.ts).",
+            "in": "query",
+            "name": "empresaIds",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Serie del día y brecha por zona entre la demora que calcula TrackMovil y la que informa el AS400.",
+        "tags": [
+          "demoras"
+        ],
+        "x-archivo": "app/api/demoras/comparativa/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/demoras/modelo": {
+      "get": {
+        "description": "GET/PUT /api/demoras/modelo — configuración del motor de demora informada\n(Preferencias Globales → sección \"Motor de demora\").\n\nGET ?escenario=N → { modelo (fila completa de demoras_modelo), config\n(demoras_config por tipo), historial (últimas versiones), escenarios }.\n\nPUT { escenario, modelo?: {campos}, config?: [{tipo_servicio, ...}] } →\nUPDATE con whitelist de campos. La VALIDACIÓN de dominio vive en los\nCHECKs de la base (única fuente de verdad — los mismos que protegen al\nmotor): un valor inválido vuelve como 400 con el mensaje del CHECK. El\ntrigger de demoras_modelo versiona y snapshotea en\ndemoras_modelo_historial; las corridas siguientes quedan estampadas con\nla versión nueva (modelo_version).\n\nGate: root (x-track-isroot=S) O funcionalidad \"Preferencias Globales\" —\nmismo criterio y mismo patrón que app/api/realtime-config/route.ts (es\nla misma pantalla). updated_by = header x-track-user.",
+        "operationId": "getApiDemorasModelo",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET/PUT /api/demoras/modelo — configuración del motor de demora informada (Preferencias Globales → sección \"Motor de demora\").",
+        "tags": [
+          "demoras"
+        ],
+        "x-archivo": "app/api/demoras/modelo/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "GET/PUT /api/demoras/modelo — configuración del motor de demora informada\n(Preferencias Globales → sección \"Motor de demora\").\n\nGET ?escenario=N → { modelo (fila completa de demoras_modelo), config\n(demoras_config por tipo), historial (últimas versiones), escenarios }.\n\nPUT { escenario, modelo?: {campos}, config?: [{tipo_servicio, ...}] } →\nUPDATE con whitelist de campos. La VALIDACIÓN de dominio vive en los\nCHECKs de la base (única fuente de verdad — los mismos que protegen al\nmotor): un valor inválido vuelve como 400 con el mensaje del CHECK. El\ntrigger de demoras_modelo versiona y snapshotea en\ndemoras_modelo_historial; las corridas siguientes quedan estampadas con\nla versión nueva (modelo_version).\n\nGate: root (x-track-isroot=S) O funcionalidad \"Preferencias Globales\" —\nmismo criterio y mismo patrón que app/api/realtime-config/route.ts (es\nla misma pantalla). updated_by = header x-track-user.",
+        "operationId": "putApiDemorasModelo",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET/PUT /api/demoras/modelo — configuración del motor de demora informada (Preferencias Globales → sección \"Motor de demora\").",
+        "tags": [
+          "demoras"
+        ],
+        "x-archivo": "app/api/demoras/modelo/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/docs/spec": {
+      "get": {
+        "description": "Devuelve el catálogo de APIs de TrackMovil: el OpenAPI 3.1 generado por\n`pnpm docs:api` mergeado con las anotaciones a mano de docs/api/anotaciones.yaml.\n\nGate: requireRoot (lib/docs/root-guard.ts) — verificado contra SecuritySuite en cada\nrequest, fail-closed. NO usa x-track-isroot: este endpoint publica qué endpoints de\nla app no validan nada, así que un gate por header forjable no alcanza.\n\nRespuestas:\n  200 documento OpenAPI 3.1 (application/json)\n  401 sin token / token inválido\n  403 el usuario no tiene la funcionalidad 'docs' de la app 5\n  503 SecuritySuite no contestó (fail-closed: no se abre el catálogo)",
+        "operationId": "getApiDocsSpec",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Devuelve el catálogo de APIs de TrackMovil: el OpenAPI 3.1 generado por `pnpm docs:api` mergeado con las anotaciones a mano de docs/api/anotaciones.yaml.",
+        "tags": [
+          "docs"
+        ],
+        "x-archivo": "app/api/docs/spec/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireRoot (verificado contra secapi)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/email-config": {
+      "get": {
+        "description": "GET  /api/email-config — config GLOBAL de notificación de incidentes por correo\nPUT  /api/email-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")\n\nConfig GLOBAL ÚNICA (una sola fila id=1 en email_settings), mismo modelo de\nconfianza que /api/realtime-config: header x-track-isroot y/o x-track-funcs\nconfiados client-side.\n\nA diferencia de /api/realtime-config, el GET acá TAMBIÉN está gateado\n(la config incluye credenciales SMTP) y NUNCA devuelve smtp_password —\nen su lugar expone `hasPassword: boolean` para que el front sepa si ya\nhay una contraseña guardada.",
+        "operationId": "getApiEmailConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/email-config — config GLOBAL de notificación de incidentes por correo PUT /api/email-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")",
+        "tags": [
+          "email-config"
+        ],
+        "x-archivo": "app/api/email-config/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "GET  /api/email-config — config GLOBAL de notificación de incidentes por correo\nPUT  /api/email-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")\n\nConfig GLOBAL ÚNICA (una sola fila id=1 en email_settings), mismo modelo de\nconfianza que /api/realtime-config: header x-track-isroot y/o x-track-funcs\nconfiados client-side.\n\nA diferencia de /api/realtime-config, el GET acá TAMBIÉN está gateado\n(la config incluye credenciales SMTP) y NUNCA devuelve smtp_password —\nen su lugar expone `hasPassword: boolean` para que el front sepa si ya\nhay una contraseña guardada.",
+        "operationId": "putApiEmailConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/email-config — config GLOBAL de notificación de incidentes por correo PUT /api/email-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")",
+        "tags": [
+          "email-config"
+        ],
+        "x-archivo": "app/api/email-config/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/email-config/test": {
+      "post": {
+        "description": "POST /api/email-config/test — envía un mail de prueba con la config de\nnotificación de incidentes (gate: root o funcionalidad \"Preferencias Globales\").\n\nAcepta un body opcional con overrides (para probar antes de guardar, ej: el\nadmin cambia el host y quiere probar sin haber apretado \"Guardar\" todavía).\nSi el body no trae `smtpPassword`, se usa la password ya guardada (no se\npuede probar sin password si nunca se guardó una).",
+        "operationId": "postApiEmailConfigTest",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          }
+        },
+        "summary": "POST /api/email-config/test — envía un mail de prueba con la config de notificación de incidentes (gate: root o funcionalidad \"Preferencias Globales\").",
+        "tags": [
+          "email-config"
+        ],
+        "x-archivo": "app/api/email-config/test/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/empresas": {
+      "get": {
+        "operationId": "getApiEmpresas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/empresas",
+        "tags": [
+          "empresas"
+        ],
+        "x-archivo": "app/api/empresas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/escenario-settings": {
+      "get": {
+        "description": "Lectura publica de los settings de un escenario.\nNo requiere autenticacion (los settings son datos operacionales, no sensibles).\nUsado por el hook useEscenarioSettings en el cliente.",
+        "operationId": "getApiEscenarioSettings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Lectura publica de los settings de un escenario.",
+        "tags": [
+          "escenario-settings"
+        ],
+        "x-archivo": "app/api/escenario-settings/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/fleteras-zonas": {
+      "delete": {
+        "operationId": "deleteApiFleterasZonas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Creado"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "409": {
+            "description": "Conflicto"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "DELETE /api/fleteras-zonas",
+        "tags": [
+          "fleteras-zonas"
+        ],
+        "x-archivo": "app/api/fleteras-zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "get": {
+        "operationId": "getApiFleterasZonas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Creado"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "409": {
+            "description": "Conflicto"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/fleteras-zonas",
+        "tags": [
+          "fleteras-zonas"
+        ],
+        "x-archivo": "app/api/fleteras-zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "operationId": "postApiFleterasZonas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Creado"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "409": {
+            "description": "Conflicto"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/fleteras-zonas",
+        "tags": [
+          "fleteras-zonas"
+        ],
+        "x-archivo": "app/api/fleteras-zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "operationId": "putApiFleterasZonas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Creado"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "409": {
+            "description": "Conflicto"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "PUT /api/fleteras-zonas",
+        "tags": [
+          "fleteras-zonas"
+        ],
+        "x-archivo": "app/api/fleteras-zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/geocode": {
+      "get": {
+        "description": "Proxy server-side hacia el Nominatim self-hosted de Riogas.\nResuelve dos problemas del cliente:\n  - Mixed-content: la app corre en https y Nominatim es http interno.\n  - CORS: el navegador no puede pegarle directo al host interno.\n\nQuery params:\n  - q     (requerido) texto a buscar (nombre de calle, dirección, etc.)\n  - bbox  (opcional)  viewport actual del mapa como \"lonMin,latMin,lonMax,latMax\".\n                      Si viene, se restringe la búsqueda a ese recuadro (bounded=1).\n  - limit (opcional)  máximo de resultados (default 8, máx 15).\n\nDevuelve el JSON crudo de Nominatim (format=jsonv2 + polygon_geojson=1),\nde modo que el cliente pueda pintar la geometría de la calle encontrada.",
+        "operationId": "getApiGeocode",
+        "parameters": [
+          {
+            "description": "requerido — texto a buscar (nombre de calle, dirección, etc.)",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional — viewport actual del mapa como \"lonMin,latMin,lonMax,latMax\". Si viene, se restringe la búsqueda a ese recuadro (bounded=1).",
+            "in": "query",
+            "name": "bbox",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional — máximo de resultados (default 8, máx 15).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "502": {
+            "description": "Error del upstream"
+          }
+        },
+        "summary": "Proxy server-side hacia el Nominatim self-hosted de Riogas.",
+        "tags": [
+          "geocode"
+        ],
+        "x-archivo": "app/api/geocode/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/demoras": {
+      "delete": {
+        "operationId": "deleteApiImportDemoras",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "DELETE /api/import/demoras",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/demoras/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "operationId": "postApiImportDemoras",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/import/demoras",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/demoras/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "operationId": "putApiImportDemoras",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "PUT /api/import/demoras",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/demoras/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/empresas": {
+      "post": {
+        "description": "Importar UNA empresa fletera desde fuente externa (GeneXus/AS400)\n\nBody: un solo objeto {...} con los campos de la empresa\n\nCampos aceptados (PascalCase o snake_case):\n- EFleteraId / empresa_fletera_id (requerido)\n- EscenarioId / escenario_id (default: 1000)\n- Nombre / nombre (requerido)\n- RazonSocial / razon_social\n- Rut / rut\n- Direccion / direccion\n- Telefono / telefono\n- Email / email\n- ContactoNombre / contacto_nombre\n- ContactoTelefono / contacto_telefono\n- Estado / estado (default: 1)\n- Observaciones / observaciones\n\n@returns 200 - Empresa importada correctamente\n@returns 400 - Datos de entrada invalidos\n@returns 500 - Error del servidor o base de datos",
+        "operationId": "postApiImportEmpresas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Importar UNA empresa fletera desde fuente externa (GeneXus/AS400)",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/empresas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/gps": {
+      "delete": {
+        "description": "Eliminar registros GPS por IDs\n\nAUTENTICACIÓN:\n- Opción 1: Header X-API-Key (para uso interno)\n- Opción 2: Token en el body (para app móvil)",
+        "operationId": "deleteApiImportGps",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "202": {
+            "description": "Aceptado (procesamiento diferido)"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Eliminar registros GPS por IDs",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/gps/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-api-key"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Insertar registros de GPS tracking\n\nAUTENTICACIÓN:\n- Opción 1: Header X-API-Key (para uso interno)\n- Opción 2: Token en el body (para app móvil)",
+        "operationId": "postApiImportGps",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "202": {
+            "description": "Aceptado (procesamiento diferido)"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Insertar registros de GPS tracking",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/gps/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-api-key"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/movZonaServicio": {
+      "delete": {
+        "description": "Eliminar asignaciones por movil_id, zona_id o ambos.\nRecomputa contadores + sincroniza zonas_cap_entrega para los móviles afectados (best-effort).",
+        "operationId": "deleteApiImportMovZonaServicio",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Eliminar asignaciones por movil_id, zona_id o ambos.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/movZonaServicio/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-api-key",
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Importar asignaciones móvil-zona desde Genexus.\n\nFormato esperado (TipoDeServicio a nivel raíz es OBLIGATORIO):\n{\n  \"TipoDeServicio\": \"URGENTE\",\n  \"MovZonas\": [\n    { \"EscenarioId\": 1000, \"TipoDeZona\": \"Distribucion\", \"Zona\": \"3\", \"PrioridadOTransito\": 1, \"Moviles\": [304, 305] },\n    { \"EscenarioId\": 1000, \"TipoDeZona\": \"Distribucion\", \"Zona\": \"10\", \"PrioridadOTransito\": 0, \"Movil\": 330 },\n    ...\n  ]\n}\n\nComportamiento:\n  1) Borra filas de moviles_zonas del escenario con tipo_de_servicio = TipoDeServicio (+ vacíos)\n  2) Inserta las nuevas filas\n  3) Recomputa contadores + sincroniza zonas_cap_entrega para todos los móviles afectados (best-effort)",
+        "operationId": "postApiImportMovZonaServicio",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Importar asignaciones móvil-zona desde Genexus.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/movZonaServicio/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-api-key",
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Mismo comportamiento que POST: importar asignaciones móvil-zona desde Genexus.\n\nTipoDeServicio a nivel raíz es OBLIGATORIO.\nBorra filas del escenario con ese tipo_de_servicio (+ vacíos) e inserta las nuevas.\nRecomputa contadores + sincroniza zonas_cap_entrega para todos los móviles afectados (best-effort).",
+        "operationId": "putApiImportMovZonaServicio",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Mismo comportamiento que POST: importar asignaciones móvil-zona desde Genexus.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/movZonaServicio/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-api-key",
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/movZonaServicioFletera": {
+      "get": {
+        "description": "Consultar zonas de una empresa fletera.\n\nQuery params:\n  - escenarioId (requerido)\n  - efletera / empresaFleteraId (requerido)\n  - tipoDeZona (opcional)\n  - tipoDeServicio (opcional)",
+        "operationId": "getApiImportMovZonaServicioFletera",
+        "parameters": [
+          {
+            "description": "requerido",
+            "in": "query",
+            "name": "escenarioId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "/ empresaFleteraId (requerido)",
+            "in": "query",
+            "name": "efletera",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional",
+            "in": "query",
+            "name": "tipoDeZona",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional",
+            "in": "query",
+            "name": "tipoDeServicio",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Consultar zonas de una empresa fletera.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/movZonaServicioFletera/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Consultar zonas de una empresa fletera.\n\nQuery params:\n  - escenarioId (requerido)\n  - efletera / empresaFleteraId (requerido)\n  - tipoDeZona (opcional)\n  - tipoDeServicio (opcional)",
+        "operationId": "postApiImportMovZonaServicioFletera",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Consultar zonas de una empresa fletera.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/movZonaServicioFletera/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Consultar zonas de una empresa fletera.\n\nQuery params:\n  - escenarioId (requerido)\n  - efletera / empresaFleteraId (requerido)\n  - tipoDeZona (opcional)\n  - tipoDeServicio (opcional)",
+        "operationId": "putApiImportMovZonaServicioFletera",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Consultar zonas de una empresa fletera.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/movZonaServicioFletera/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/moviles": {
+      "delete": {
+        "description": "Eliminar móviles por IDs\n\n@returns 200 - Móviles eliminados correctamente\n@returns 400 - Datos de entrada inválidos\n@returns 500 - Error del servidor o base de datos",
+        "operationId": "deleteApiImportMoviles",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Eliminar móviles por IDs",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/moviles/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Importar móviles desde fuente externa (GeneXus)\n\n@returns 200 - Móviles importados correctamente\n@returns 400 - Datos de entrada inválidos\n@returns 500 - Error del servidor o base de datos",
+        "operationId": "postApiImportMoviles",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Importar móviles desde fuente externa (GeneXus)",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/moviles/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Actualizar móviles existentes (upsert)\n\n@returns 200 - Móviles actualizados correctamente\n@returns 400 - Datos de entrada inválidos\n@returns 500 - Error del servidor o base de datos",
+        "operationId": "putApiImportMoviles",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Actualizar móviles existentes (upsert)",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/moviles/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/pedidos": {
+      "delete": {
+        "description": "Eliminar pedidos por IDs",
+        "operationId": "deleteApiImportPedidos",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Eliminar pedidos por IDs",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/pedidos/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Importar o actualizar pedidos desde fuente externa (UPSERT)\nSi el pedido existe (mismo id), lo actualiza. Si no existe, lo inserta.",
+        "operationId": "postApiImportPedidos",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Importar o actualizar pedidos desde fuente externa (UPSERT) Si el pedido existe (mismo id), lo actualiza.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/pedidos/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Actualizar pedidos existentes (upsert)",
+        "operationId": "putApiImportPedidos",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Actualizar pedidos existentes (upsert)",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/pedidos/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/puntos-interes": {
+      "post": {
+        "description": "Upsert masivo de puntos de interés desde Excel.\n\nLógica de matcheo por ID (respeta el id de la planilla):\n  - El id del Excel es la conflict key — upsert por id.\n  - Si (usuario_email, nombre) ya existe en BD con un id DISTINTO al del Excel:\n    DELETE el row conflictivo + INSERT el row del Excel con su id.\n  - POIs privados se sobrescriben igual que cualquier otro (sin skip).\n  - POIs que no vienen en el Excel quedan intocados.\n\nBody esperado:\n{\n  rows: Array<{\n    id: number;\n    nombre: string;\n    categoria?: string;\n    latitud: number;\n    longitud: number;\n    visible?: boolean;\n    tipo?: string;\n    telefono?: number | null;\n    descripcion?: string | null;\n    usuario_email: string;\n    icono?: string;\n    escenario_id?: number | null;\n    empresa_fletera_id?: number | null;\n  }>\n}\n\nResponse:\n{\n  success: true;\n  created: number[];       // ids procesados via upsert (insert+update)\n  replaced: Array<{ deletedId: number; newId: number; nombre: string; usuario_email: string }>;\n  count: number;           // created.length\n}",
+        "operationId": "postApiImportPuntosInteres",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Upsert masivo de puntos de interés desde Excel.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/puntos-interes/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/puntos-venta": {
+      "post": {
+        "description": "Importa o actualiza puntos de venta desde un archivo Excel (.xlsx).\n\nBody: multipart/form-data\n  - file: archivo .xlsx\n  - usuario: string (email o username del usuario que importa)\n\nColumnas esperadas en el Excel (header row + filas de datos):\n  ID              (requerido, number)  -> punto_venta_id\n  Nombre          (requerido, string)\n  Direccion       (opcional, string)\n  CoordX          (latitud, number)\n  CoordY          (longitud, number)\n  Telefono        (opcional, number)\n  escenario_id    (opcional, number)\n  empresa_fletera_id (opcional, number)\n\nDevuelve: { success: true, count: number, data: any[] }",
+        "operationId": "postApiImportPuntosVenta",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Importa o actualiza puntos de venta desde un archivo Excel (.xlsx).",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/puntos-venta/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/puntoventa": {
+      "delete": {
+        "description": "Eliminar puntos de venta por IDs",
+        "operationId": "deleteApiImportPuntoventa",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Eliminar puntos de venta por IDs",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/puntoventa/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Importar puntos de venta desde fuente externa",
+        "operationId": "postApiImportPuntoventa",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Importar puntos de venta desde fuente externa",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/puntoventa/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Importar puntos de venta desde fuente externa",
+        "operationId": "putApiImportPuntoventa",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Importar puntos de venta desde fuente externa",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/puntoventa/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/services": {
+      "delete": {
+        "description": "Eliminar services por IDs",
+        "operationId": "deleteApiImportServices",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Eliminar services por IDs",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/services/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Importar o actualizar services desde fuente externa (UPSERT)\nSi el service existe (mismo id), lo actualiza. Si no existe, lo inserta.",
+        "operationId": "postApiImportServices",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Importar o actualizar services desde fuente externa (UPSERT) Si el service existe (mismo id), lo actualiza.",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/services/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Actualizar services existentes (upsert)",
+        "operationId": "putApiImportServices",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Actualizar services existentes (upsert)",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/services/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/import/zonas": {
+      "delete": {
+        "description": "Eliminar zonas por IDs",
+        "operationId": "deleteApiImportZonas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Eliminar zonas por IDs",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Importar zonas desde fuente externa",
+        "operationId": "postApiImportZonas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Importar zonas desde fuente externa",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Actualizar zonas existentes (upsert)",
+        "operationId": "putApiImportZonas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Actualizar zonas existentes (upsert)",
+        "tags": [
+          "import"
+        ],
+        "x-archivo": "app/api/import/zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireApiKey"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/incidents": {
+      "post": {
+        "description": "Recibe metadata del incidente y crea la fila en la tabla incidents.\nEl video ya fue subido directamente a Supabase Storage desde el cliente\nusando la signed upload URL de /api/incidents/upload-url — este endpoint\nNO recibe el blob, solo JSON con metadata.\n\nBody JSON:\n  - video_path: string (path en el bucket, devuelto por /upload-url)\n  - description: string (mínimo 10 chars)\n  - duration_s?: number\n  - mime_type?: string\n  - size_bytes?: number\n  - contact_email?: string\n  - contact_celular: string (obligatorio)\n  - reporter_nombre?: string\n\nNotificación: si INCIDENT_WEBHOOK_URL está definido, se hace un POST\nfire-and-forget al webhook (ej: n8n). El webhook falla silenciosamente.",
+        "operationId": "postApiIncidents",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "413": {
+            "description": "Payload demasiado grande"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Recibe metadata del incidente y crea la fila en la tabla incidents.",
+        "tags": [
+          "incidents"
+        ],
+        "x-archivo": "app/api/incidents/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/incidents/list": {
+      "get": {
+        "description": "Devuelve la lista de incidencias con signed URLs para ver el video.\nLee con service_role (bypass RLS). Usar desde /admin/incidencias.",
+        "operationId": "getApiIncidentsList",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Devuelve la lista de incidencias con signed URLs para ver el video.",
+        "tags": [
+          "incidents"
+        ],
+        "x-archivo": "app/api/incidents/list/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/incidents/upload": {
+      "post": {
+        "description": "Recibe el blob del video de incidencia en el body y lo sube al bucket\n\"incident-videos\" de Supabase Storage usando el service_role desde el\nserver. El blob NUNCA viaja directo del browser a Supabase Storage.\n\nPor qué: el host interno de Supabase (supabase.glp.riogas.com.uy) usa un\ncert de una CA interna de RioGas. Browsers fuera de la red rechazan el PUT\ndirecto a la signed URL con ERR_CERT_AUTHORITY_INVALID. Proxyando el upload\npor nuestro backend, el browser solo habla con el dominio del track (cert\nválido). Es el espejo del proxy de descarga en [id]/video/route.ts.\n\nRequest:\n  - Content-Type: video/webm | video/mp4\n  - body: bytes del video\n  - header x-track-user: obligatorio (gate, igual que /upload-url)\n\nRespuesta:\n  { success: true, path: string }",
+        "operationId": "postApiIncidentsUpload",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "413": {
+            "description": "Payload demasiado grande"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Recibe el blob del video de incidencia en el body y lo sube al bucket \"incident-videos\" de Supabase Storage usando el service_role desde el server.",
+        "tags": [
+          "incidents"
+        ],
+        "x-archivo": "app/api/incidents/upload/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/incidents/upload-url": {
+      "post": {
+        "description": "Genera una signed upload URL para subir el video de incidencia\ndirectamente al bucket \"incident-videos\" de Supabase Storage desde\nel browser — sin pasar el blob por nginx ni por el body parser.\n\nEl cliente sube el blob con un PUT al signedUrl y luego llama\nPOST /api/incidents con solo la metadata (description, video_path, etc.)\n\nBody JSON:\n  - mime: string (video/webm, video/mp4)\n\nRespuesta:\n  { success: true, signedUrl: string, token: string, path: string }\n\nLa signed URL expira en el default de Supabase Storage (1 hora), más que\nsuficiente para que el cliente complete el upload antes de que expire.",
+        "operationId": "postApiIncidentsUploadUrl",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Genera una signed upload URL para subir el video de incidencia directamente al bucket \"incident-videos\" de Supabase Storage desde el browser — sin pasar el blob por nginx ni por el body parser.",
+        "tags": [
+          "incidents"
+        ],
+        "x-archivo": "app/api/incidents/upload-url/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/incidents/{id}": {
+      "delete": {
+        "description": "PATCH /api/incidents/[id] → actualiza status/notes.\nDELETE /api/incidents/[id] → borra el video del bucket + la fila.",
+        "operationId": "deleteApiIncidentsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "PATCH /api/incidents/[id] → actualiza status/notes.",
+        "tags": [
+          "incidents"
+        ],
+        "x-archivo": "app/api/incidents/[id]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      },
+      "patch": {
+        "description": "PATCH /api/incidents/[id] → actualiza status/notes.\nDELETE /api/incidents/[id] → borra el video del bucket + la fila.",
+        "operationId": "patchApiIncidentsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "PATCH /api/incidents/[id] → actualiza status/notes.",
+        "tags": [
+          "incidents"
+        ],
+        "x-archivo": "app/api/incidents/[id]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/incidents/{id}/video": {
+      "get": {
+        "description": "Streamea el video de la incidencia desde Supabase Storage hacia el cliente,\nproxyado por nuestro backend. Resuelve dos cosas a la vez:\n\n1) Algunos clientes (redes corporativas con SSL interception, certificados\n   raíz custom) no pueden conectarse directamente a Supabase Storage por\n   ERR_CERT_AUTHORITY_INVALID. Sirviendo el video desde nuestro propio\n   dominio se evita la conexión directa al bucket.\n2) Mantiene los signed URLs de Supabase fuera del cliente — el acceso al\n   bucket se hace solo con service_role desde el server, y el control de\n   autorización lo aplicamos acá (auth + rol root requerido).\n\nSoporta Range requests para que el browser pueda seekear el video.",
+        "operationId": "getApiIncidentsIdVideo",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "206": {
+            "description": "Respuesta"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          },
+          "502": {
+            "description": "Error del upstream"
+          }
+        },
+        "summary": "Streamea el video de la incidencia desde Supabase Storage hacia el cliente, proxyado por nuestro backend.",
+        "tags": [
+          "incidents"
+        ],
+        "x-archivo": "app/api/incidents/[id]/video/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/latest": {
+      "get": {
+        "operationId": "getApiLatest",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/latest",
+        "tags": [
+          "latest"
+        ],
+        "x-archivo": "app/api/latest/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/manual/current": {
+      "get": {
+        "operationId": "getApiManualCurrent",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "GET /api/manual/current",
+        "tags": [
+          "manual"
+        ],
+        "x-archivo": "app/api/manual/current/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/metricas/cumplimiento/run": {
+      "post": {
+        "description": "⚠ DEPRECADO COMO PATH DE ESCRITURA (2026-08-03). El cron real llama a la\nFUNCIÓN SQL `metricas_cumplimiento_run` desde 2026-07-24, y desde la\ntanda de desfasaje (docs/sqls/2026-08-03-desfasaje-demoras.sql) la\nfunción calcula columnas que este path NO conoce: compromiso,\ndemora_informada_mins, desfasajes y el espejo en pedidos. Un backfill\nmanual por acá crea hechos DEGRADADOS (esas columnas NULL) y su purga\npuede borrar hechos que el path SQL sí considera válidos. Para backfill\nmanual usar SIEMPRE la función SQL en el SQL Editor:\n  SELECT metricas_cumplimiento_run('YYYY-MM-DD', 'YYYY-MM-DD');\nEste endpoint queda solo como referencia histórica hasta migrarlo a\ndelegar en la RPC (pendiente).\n\nJob del cron nocturno (pg_cron 00:15 UY, ver docs/sqls/2026-07-22-metricas-cumplimiento-cron.sql)\nque puebla la tabla de hechos `metricas_cumplimiento` con la demora\nasignado→cumplido de cada pedido/service cumplido en el rango.\n\nAuth: header `x-metricas-token` comparado (timing-safe, safeCompare) contra\nenv `METRICAS_CRON_TOKEN`. Gate como PRIMER paso del handler (AC4) — sin\ntoken válido no se toca la BD.\n\nRango: sin params, procesa el día CERRADO anterior (Montevideo) + reprocesa\nlos últimos REPROCESS_DIAS días (late arrivals) — ver defaultRunRange().\nAcepta `?desde=&hasta=` (YYYY-MM-DD) para backfill manual (AC5).\n\nIdempotente: upsert por PK (origen,pedido_id,escenario) + purga de hechos\nprevios del rango que dejaron de calificar (OQ5 del plan).\n\nVer docs/METRICAS_CUMPLIMIENTO.md para el modelo completo.",
+        "operationId": "postApiMetricasCumplimientoRun",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "⚠ DEPRECADO COMO PATH DE ESCRITURA (2026-08-03).",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/cumplimiento/run/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/metricas/dashboard": {
+      "get": {
+        "description": "Datos agregados (KPIs con percentiles exactos, tendencia, por-tipo,\nranking) para /dashboard/metricas-cumplimiento. Consume la RPC\n`metricas_dashboard(p jsonb)` (ver docs/sqls/2026-07-28-metricas-escenario-primero.sql),\nque lee directo de la tabla de hechos `metricas_cumplimiento` (nunca de las\nvistas `vw_metricas_cumplimiento_*` — promediar promedios da mal).\n\nEl ESCENARIO es la clave principal: un chofer/móvil/zona puede repetirse\nen escenarios distintos y jamás debe sumarse entre ellos. La RPC devuelve\nademás `escenarios` (los disponibles en el scope, para el selector) y\n`comparativa` (todos los escenarios sobre el mismo período).\n\nOJO: `escenario` NO es un límite de autorización y nunca lo fue — el\nusuario ya lo elegía tipeándolo en el login. El scope real es la allowlist\npor email + el filtro de empresa fletera, que también acota qué escenarios\nse listan.\n\nQuery params:\n  - escenario  (requerido, int)\n  - desde/hasta (opcional, YYYY-MM-DD) — período elegido; si faltan, la RPC\n    resuelve el último período disponible según `ventana` (1ra carga).\n  - ventana    (opcional, 'diario'|'semanal'|'mensual', default 'diario')\n  - dimension  (opcional, 'chofer'|'movil'|'zona', default 'chofer')\n  - tipos      (opcional, CSV de tipo_servicio; vacío/ausente = todos)\n  - empresa    (opcional, int) — empresa fletera elegida en el filtro.\n    Se INTERSECTA server-side con el scope del header (nunca amplía).\n\nAuth-scope vía headers (mismo patrón que capacidad-snapshot):\n  - x-track-isroot       : 'S' -> sin restricción de empresa (root)\n  - x-track-empresas-ids : CSV de empresa_fletera_id del scope del caller\n\nGate de funcionalidad (server-side, `lib/api-auth-gates.ts`): requiere\n'Estadisticas Cumplimiento' (o `x-track-isroot: S`) — reproduce server-side\nel guard client-only de `app/dashboard/metricas-cumplimiento/layout.tsx`.\n\nFail-closed (AC11 spec): no-root con header ausente/vacío -> payload vacío\nSIN ejecutar la RPC pesada. La API nunca amplía scope: si `empresa` no\npertenece al set permitido de un no-root, se ignora (intersección vacía).",
+        "operationId": "getApiMetricasDashboard",
+        "parameters": [
+          {
+            "description": "requerido, int",
+            "in": "query",
+            "name": "escenario",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "/hasta (opcional, YYYY-MM-DD) — período elegido; si faltan, la RPC resuelve el último período disponible según `ventana` (1ra carga).",
+            "in": "query",
+            "name": "desde",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, 'diario'|'semanal'|'mensual', default 'diario'",
+            "in": "query",
+            "name": "ventana",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, 'chofer'|'movil'|'zona', default 'chofer'",
+            "in": "query",
+            "name": "dimension",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, CSV de tipo_servicio; vacío/ausente = todos",
+            "in": "query",
+            "name": "tipos",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, int — empresa fletera elegida en el filtro. Se INTERSECTA server-side con el scope del header (nunca amplía).",
+            "in": "query",
+            "name": "empresa",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Datos agregados (KPIs con percentiles exactos, tendencia, por-tipo, ranking) para /dashboard/metricas-cumplimiento.",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/dashboard/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/metricas/desfasaje": {
+      "get": {
+        "description": "Franjas de 5 minutos del desfasaje |demora proyectada − demora real| por\npedido entregado (URGENTE/NOCTURNO no agendados), contra la demora\ninformada del AS400 y la calculada por el motor, más la población común\npara comparar acierto. Todo el cálculo vive en la RPC\n`metricas_desfasaje` (docs/sqls/2026-08-03-desfasaje-demoras.sql) — este\nhandler solo valida, resuelve scope y llama.\n\nQuery params:\n  - escenario (requerido, int)\n  - tipo      (opcional, URGENTE|NOCTURNO; ausente = ambos)\n  - dias      (opcional, 7|30|90; default 30) — rango [hoy−(dias−1), hoy]\n    en fecha Montevideo. Se manda desde/hasta explícitos a la RPC para que\n    el rango sea el que el usuario eligió, no el que la RPC defaultee.\n  - empresa   (opcional, int) — se INTERSECTA con el scope, nunca amplía.\n\nGates (mismo orden y helpers que app/api/metricas/dashboard/route.ts —\nla card vive en la misma pantalla y comparte su umbral de acceso):\n  requireAuth → requireAllowlistedEmail(METRICAS_DASHBOARD_ALLOWED_EMAILS)\n  → requireFuncionalidad('Estadisticas Cumplimiento') → scope por headers\n  x-track-isroot / x-track-empresas-ids (fail-closed sin tocar la RPC).",
+        "operationId": "getApiMetricasDesfasaje",
+        "parameters": [
+          {
+            "description": "requerido, int",
+            "in": "query",
+            "name": "escenario",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, URGENTE|NOCTURNO; ausente = ambos",
+            "in": "query",
+            "name": "tipo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, 7|30|90; default 30 — rango [hoy−(dias−1), hoy] en fecha Montevideo. Se manda desde/hasta explícitos a la RPC para que el rango sea el que el usuario eligió, no el que la RPC defaultee.",
+            "in": "query",
+            "name": "dias",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, int — se INTERSECTA con el scope, nunca amplía.",
+            "in": "query",
+            "name": "empresa",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Franjas de 5 minutos del desfasaje |demora proyectada − demora real| por pedido entregado (URGENTE/NOCTURNO no agendados), contra la demora informada del AS400 y la calculada por el motor, más la p...",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/desfasaje/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/metricas/desfasaje/analisis": {
+      "get": {
+        "description": "El análisis del acierto (\"dónde y cuándo falla\"): población común por\ndía (Despacho vs motor), por hora de la toma, peores zonas y peores\nincumplimientos — todo vivo sobre metricas_cumplimiento. El cálculo\nentero vive en la RPC `metricas_desfasaje_analisis`\n(docs/sqls/2026-08-05-desfasaje-analisis.sql); este handler solo valida,\nresuelve scope y llama — mismo contrato y gates que\napp/api/metricas/desfasaje/route.ts (es la misma pantalla).\n\nQuery params (además de los de /api/metricas/desfasaje):\n  - fuente (opcional, informada|calculada; default informada) — qué\n    proyección se autopsia en por_hora/por_zona/peores.\n  - fecha  (opcional, YYYY-MM-DD) — filtra el detalle a UN día\n    (por_dia no se filtra: es el índice del selector de días).",
+        "operationId": "getApiMetricasDesfasajeAnalisis",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "El análisis del acierto (\"dónde y cuándo falla\"): población común por día (Despacho vs motor), por hora de la toma, peores zonas y peores incumplimientos — todo vivo sobre metricas_cumplimiento. El...",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/desfasaje/analisis/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/metricas/evolucion-dia": {
+      "get": {
+        "description": "La sala de control del día EN VIVO: una fila por corrida del motor con\nlo publicado (motor y Despacho), las fases del arranque predictivo y el\nacumulado de cumplimiento calculado directo de `pedidos` (sin esperar\nel job nocturno). Todo el cálculo vive en la RPC\n`metricas_evolucion_dia` (docs/sqls/2026-08-05-evolucion-dia.sql);\neste handler valida, resuelve scope y llama — mismos gates que el resto\nde la pantalla de estadística cumplimiento.\n\nQuery params: escenario (req), tipo? (URGENTE|NOCTURNO), fecha?\n(YYYY-MM-DD, default hoy Montevideo), empresa? (se intersecta con el\nscope; filtra las ENTREGAS — las corridas son publicaciones por zona).",
+        "operationId": "getApiMetricasEvolucionDia",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "La sala de control del día EN VIVO: una fila por corrida del motor con lo publicado (motor y Despacho), las fases del arranque predictivo y el acumulado de cumplimiento calculado directo de `pedido...",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/evolucion-dia/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/metricas/variantes": {
+      "get": {
+        "description": "El scoreboard del Laboratorio de variantes (pedido de Diego, audio\n7/8): qué hubiera publicado cada configuración alternativa del motor\n(otro estadístico, otro factor, otro escalón, sin escalera…) contra\nlas entregas reales, por día y acumulado, versus el Despacho y versus\nel motor real. Incluye el control de sanidad campeon_ok.\n\nCálculo en la RPC `metricas_variantes_scoreboard`\n(docs/sqls/2026-08-07-variantes-scoreboard.sql); gates y scope\nidénticos al resto de la pantalla de estadística cumplimiento.\n\nQuery params: escenario (req), tipo? (URGENTE|NOCTURNO), desde?\n(YYYY-MM-DD), hasta? (YYYY-MM-DD), tolerancia? (5..60), empresa?.",
+        "operationId": "getApiMetricasVariantes",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "El scoreboard del Laboratorio de variantes (pedido de Diego, audio 7/8): qué hubiera publicado cada configuración alternativa del motor (otro estadístico, otro factor, otro escalón, sin escalera…) ...",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/variantes/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/metricas/variantes/reproceso": {
+      "get": {
+        "description": "/api/metricas/variantes/reproceso — la cola de reprocesos del\nLaboratorio de variantes.\n\n  POST → encola un reproceso (RPC `metricas_lab_job_crear`)\n  GET  → los últimos trabajos con su estado (RPC `metricas_lab_jobs_listar`)\n\nReprocesar una semana son cientos de corridas simuladas de a una y en\norden: no puede colgar de un request HTTP. Por eso acá solo se encola,\ny el worker de pg_cron (`demoras-lab-reproceso`, cada minuto) lo\nejecuta. Ver docs/sqls/2026-08-07-lab-jobs-rpc.sql.\n\nGates: los mismos que la lectura del scoreboard (requireAuth +\nallowlist de email + funcionalidad + scope fail-closed) MÁS root\nobligatorio: esto escribe sobre todo el rango y para todas las\nempresas, así que no hay recorte por empresa que lo haga seguro.\n\nQuery param: escenario (req, numérico).\nBody del POST: { desde?, hasta? (YYYY-MM-DD), variantes?: number[]|null }.",
+        "operationId": "getApiMetricasVariantesReproceso",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "409": {
+            "description": "Conflicto"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "/api/metricas/variantes/reproceso — la cola de reprocesos del Laboratorio de variantes.",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/variantes/reproceso/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "/api/metricas/variantes/reproceso — la cola de reprocesos del\nLaboratorio de variantes.\n\n  POST → encola un reproceso (RPC `metricas_lab_job_crear`)\n  GET  → los últimos trabajos con su estado (RPC `metricas_lab_jobs_listar`)\n\nReprocesar una semana son cientos de corridas simuladas de a una y en\norden: no puede colgar de un request HTTP. Por eso acá solo se encola,\ny el worker de pg_cron (`demoras-lab-reproceso`, cada minuto) lo\nejecuta. Ver docs/sqls/2026-08-07-lab-jobs-rpc.sql.\n\nGates: los mismos que la lectura del scoreboard (requireAuth +\nallowlist de email + funcionalidad + scope fail-closed) MÁS root\nobligatorio: esto escribe sobre todo el rango y para todas las\nempresas, así que no hay recorte por empresa que lo haga seguro.\n\nQuery param: escenario (req, numérico).\nBody del POST: { desde?, hasta? (YYYY-MM-DD), variantes?: number[]|null }.",
+        "operationId": "postApiMetricasVariantesReproceso",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "409": {
+            "description": "Conflicto"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "/api/metricas/variantes/reproceso — la cola de reprocesos del Laboratorio de variantes.",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/variantes/reproceso/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/metricas/zona-corrida": {
+      "get": {
+        "description": "La radiografía POR ZONA de una corrida del día (pedido de Diego, audio\n12): qué demora dio el Despacho en cada zona, qué dio el motor, la\nbrecha, la fase del arranque, y el % de acierto DEL DÍA por zona\ncalculado en vivo desde pedidos. El combo de corridas permite elegir\ncualquier horario del día; sin `corrida` se muestra la última.\n\nCálculo en la RPC `metricas_zona_corrida`\n(docs/sqls/2026-08-05-zona-corrida.sql); gates y scope idénticos al\nresto de la pantalla de estadística cumplimiento.\n\nQuery params: escenario (req), tipo? (URGENTE|NOCTURNO), fecha?\n(YYYY-MM-DD, default hoy), corrida? (ISO timestamptz), empresa?.",
+        "operationId": "getApiMetricasZonaCorrida",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "La radiografía POR ZONA de una corrida del día (pedido de Diego, audio 12): qué demora dio el Despacho en cada zona, qué dio el motor, la brecha, la fase del arranque, y el % de acierto DEL DÍA por...",
+        "tags": [
+          "metricas"
+        ],
+        "x-archivo": "app/api/metricas/zona-corrida/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Estadisticas Cumplimiento"
+          ],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAllowlistedEmail (env)",
+            "requireAuth (sesión Supabase)",
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/movil-session/{id}": {
+      "get": {
+        "description": "Obtiene datos de sesión del chofer para un móvil específico\ndesde el endpoint externo /tracking/getSessionData",
+        "operationId": "getApiMovilSessionId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Obtiene datos de sesión del chofer para un móvil específico desde el endpoint externo /tracking/getSessionData",
+        "tags": [
+          "movil-session"
+        ],
+        "x-archivo": "app/api/movil-session/[id]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/movil/{id}": {
+      "get": {
+        "operationId": "getApiMovilId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/movil/{id}",
+        "tags": [
+          "movil"
+        ],
+        "x-archivo": "app/api/movil/[id]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/moviles-actividad-dia": {
+      "get": {
+        "description": "Devuelve el universo de móviles con actividad en una fecha histórica:\npedidos ∪ services ∪ GPS de esa fecha.\n\nNO filtra por mostrar_en_mapa ni por estado_nro actual.\nEl estado_nro actual se incluye en la respuesta solo para ícono/tachado en UI.\n\nSolo para fechas pasadas (no hoy, no futuras).",
+        "operationId": "getApiMovilesActividadDia",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Devuelve el universo de móviles con actividad en una fecha histórica: pedidos ∪ services ∪ GPS de esa fecha.",
+        "tags": [
+          "moviles-actividad-dia"
+        ],
+        "x-archivo": "app/api/moviles-actividad-dia/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/moviles-dia": {
+      "get": {
+        "description": "Devuelve la lista de móviles del read model moviles_dia para un (escenario, fecha).\n\nQuery params:\n- escenario: integer (requerido)\n- fecha: YYYY-MM-DD (requerido)\n- empresas: CSV de empresa_fletera_id (opcional, requerido para no-root)\n\nScoping server-side por empresa (mismo modelo que /api/pedidos):\n- Si x-track-isroot === 'S': sin filtro de empresa (root ve todo).\n- Si NO es root y empresas llega con IDs: filtrar por esos IDs.\n- Si NO es root y empresas está vacío/ausente: fail-closed -> devuelve { data: [] }.\n\nFiltro de ruido para fechas históricas (fecha < hoy):\n- En fechas pasadas, solo devuelve filas donde activo=true OR inactivo_del_dia=true.\n  Esto excluye filas \"zombie\" donde ambos son false — móviles que llegaron a\n  moviles_dia por un UPDATE del sync AS400 o un GPS sin operativa, pero que\n  no tuvieron pedidos ni services ese día.\n- En HOY, devuelve todas las filas sin filtro adicional (la UI maneja activo/inactivoDelDia).\n- Este filtro es la capa defensiva. El fix real es la migration SQL\n  2026-06-09-fix-moviles-dia-ruido.sql que restringe los triggers y elimina el ruido\n  retroactivamente. Una vez aplicada, este filtro pasa a ser un no-op.",
+        "operationId": "getApiMovilesDia",
+        "parameters": [
+          {
+            "description": "integer (requerido)",
+            "in": "query",
+            "name": "escenario",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "YYYY-MM-DD (requerido)",
+            "in": "query",
+            "name": "fecha",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV de empresa_fletera_id (opcional, requerido para no-root)",
+            "in": "query",
+            "name": "empresas",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Devuelve la lista de móviles del read model moviles_dia para un (escenario, fecha).",
+        "tags": [
+          "moviles-dia"
+        ],
+        "x-archivo": "app/api/moviles-dia/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/moviles-dia/rebuild": {
+      "post": {
+        "operationId": "postApiMovilesDiaRebuild",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/moviles-dia/rebuild",
+        "tags": [
+          "moviles-dia"
+        ],
+        "x-archivo": "app/api/moviles-dia/rebuild/route.ts",
+        "x-auth": {
+          "funcionalidades": [
+            "Reconstruir read model moviles_dia"
+          ],
+          "gates": [
+            "requireFuncionalidad"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/moviles-extended": {
+      "get": {
+        "operationId": "getApiMovilesExtended",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/moviles-extended",
+        "tags": [
+          "moviles-extended"
+        ],
+        "x-archivo": "app/api/moviles-extended/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/moviles-with-activity": {
+      "get": {
+        "description": "Devuelve la lista de números de móvil (moviles.nro) distintos que tienen\nal menos un pedido, al menos un service, O al menos una posición GPS\nen la fecha indicada.\n\nFuentes de actividad:\n  1. pedidos.fch_para = date (formato YYYY-MM-DD)\n  2. services.fch_para = date (formato YYYYMMDD)\n  3. gps_tracking_history.fecha_hora dentro del día (via RPC moviles_con_gps_en_dia)\n\nEl estado del móvil (activo/inactivo) NO filtra — un móvil inactivo\nque tuvo recorrido a la mañana debe seguir apareciendo en el modal.\n\nSi empresaIds está presente, solo incluye móviles de esas empresas fleteras.\n\nRespuesta: { success: true, data: number[] }\n\nUsado por TrackingModal para filtrar la lista de móviles por actividad real\nen la fecha de recorrido seleccionada.",
+        "operationId": "getApiMovilesWithActivity",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Devuelve la lista de números de móvil (moviles.nro) distintos que tienen al menos un pedido, al menos un service, O al menos una posición GPS en la fecha indicada.",
+        "tags": [
+          "moviles-with-activity"
+        ],
+        "x-archivo": "app/api/moviles-with-activity/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/moviles-zonas": {
+      "get": {
+        "description": "Obtener asignaciones móvil-zona\n\nQuery params:\n  - movilId: filtrar por móvil específico\n  - zonaId: filtrar por zona específica\n  - escenarioId: filtrar por escenario (default: todos)\n  - activa: filtrar por estado (default: true)\n  - empresaIds: CSV de empresa_fletera_id (scoping zona + movil)",
+        "operationId": "getApiMovilesZonas",
+        "parameters": [
+          {
+            "description": "filtrar por móvil específico",
+            "in": "query",
+            "name": "movilId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "filtrar por zona específica",
+            "in": "query",
+            "name": "zonaId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "filtrar por escenario (default: todos)",
+            "in": "query",
+            "name": "escenarioId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "filtrar por estado (default: true)",
+            "in": "query",
+            "name": "activa",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV de empresa_fletera_id (scoping zona + movil)",
+            "in": "query",
+            "name": "empresaIds",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Obtener asignaciones móvil-zona",
+        "tags": [
+          "moviles-zonas"
+        ],
+        "x-archivo": "app/api/moviles-zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Guardar asignaciones desde el modal de Zonas.\n\nBody esperado:\n{\n  \"escenario_id\": 1000,           // opcional, default 1000\n  \"asignaciones\": {\n    \"<zona_id>\": [\n      { \"movilId\": 304, \"tipo\": \"prioridad\" },\n      { \"movilId\": 305, \"tipo\": \"transito\" }\n    ],\n    ...\n  }\n}\n\nComportamiento: REEMPLAZA todas las asignaciones del escenario indicado\ncon las nuevas. Esto mantiene consistencia con el import de Genexus.\n\nRecompute: después del upsert, recomputa contadores cant_ped/cant_serv/capacidad\ny sincroniza zonas_cap_entrega para cada movilNro afectado (todos los movilId\núnicos del body) — best-effort, no aborta el response si falla.",
+        "operationId": "postApiMovilesZonas",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Guardar asignaciones desde el modal de Zonas.",
+        "tags": [
+          "moviles-zonas"
+        ],
+        "x-archivo": "app/api/moviles-zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/notificaciones/pending": {
+      "get": {
+        "operationId": "getApiNotificacionesPending",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/notificaciones/pending",
+        "tags": [
+          "notificaciones"
+        ],
+        "x-archivo": "app/api/notificaciones/pending/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/notificaciones/{id}/state": {
+      "post": {
+        "operationId": "postApiNotificacionesIdState",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "POST /api/notificaciones/{id}/state",
+        "tags": [
+          "notificaciones"
+        ],
+        "x-archivo": "app/api/notificaciones/[id]/state/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/overpass": {
+      "get": {
+        "description": "Devuelve la geometría COMPLETA de una calle (todos sus tramos/ways de OSM\nunidos), no solo el segmento que matcheó Nominatim. Esto permite \"pintar la\ncalle de principio a fin\" en el mapa.\n\nEn OSM una calle suele estar partida en muchos `way` con el mismo `name`.\nNominatim devuelve uno solo; Overpass los junta todos.\n\nQuery params:\n  - name (requerido) nombre exacto de la calle (ej. \"Avenida Millán\")\n  - bbox (opcional)  \"lonMin,latMin,lonMax,latMax\" para acotar la búsqueda\n                     (evita traer calles homónimas de otras ciudades).\n  - city (opcional)  nombre de ciudad/localidad para acotar por área admin.\n\nRespuesta: { type: 'MultiLineString', coordinates: [[[lon,lat],...],...] }\no { error } si falla. El cliente cae al segmento de Nominatim si esto falla.\n\nConfig: OVERPASS_URL (default público overpass-api.de). Cuando exista un\nOverpass self-hosted interno, solo cambiar esta env.",
+        "operationId": "getApiOverpass",
+        "parameters": [
+          {
+            "description": "requerido — nombre exacto de la calle (ej. \"Avenida Millán\")",
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional — \"lonMin,latMin,lonMax,latMax\" para acotar la búsqueda (evita traer calles homónimas de otras ciudades).",
+            "in": "query",
+            "name": "bbox",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional — nombre de ciudad/localidad para acotar por área admin.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "502": {
+            "description": "Error del upstream"
+          }
+        },
+        "summary": "Devuelve la geometría COMPLETA de una calle (todos sus tramos/ways de OSM unidos), no solo el segmento que matcheó Nominatim.",
+        "tags": [
+          "overpass"
+        ],
+        "x-archivo": "app/api/overpass/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/pedido-detalle/{pedidoId}": {
+      "get": {
+        "operationId": "getApiPedidoDetallePedidoId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pedidoId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/pedido-detalle/{pedidoId}",
+        "tags": [
+          "pedido-detalle"
+        ],
+        "x-archivo": "app/api/pedido-detalle/[pedidoId]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/pedidos": {
+      "get": {
+        "description": "Obtener pedidos con filtros opcionales\nQuery params:\n- escenario: numero de escenario\n- movil: ID del movil\n- estado: estado del pedido\n- fecha: fecha del pedido (formato YYYY-MM-DD)\n- empresa_fletera_id: ID de empresa fletera (single, legacy)\n- empresas_fleteras: IDs de empresas fleteras separados por coma (multi, preferido)\n- conCoordenadas: 'true' para obtener solo pedidos con lat/lng\n\nScoping server-side por empresa:\n- Si x-track-isroot === 'S': sin filtro de empresa (root ve todo).\n- Si NO es root y empresas_fleteras llega con IDs: filtrar por esos IDs.\n- Si NO es root y empresas_fleteras esta vacio/ausente: fail-closed -> devuelve lista vacia.\n\nExclusion global:\n- estado_nro=2 && sub_estado_nro=17 (REG. HISTORICO) se excluye siempre.\n  Estos registros no deben aparecer en ningun conteo, mapa ni lista.\n\nArrastre de pendientes del dia anterior (feature 2026-05-29):\n- Cuando fecha === hoy (America/Montevideo), el filtro de fch_para incluye\n  tambien ayer (D-1). Esto amplia el dataset para la vista de hoy.\n- El cliente (pedidosCompletos/servicesCompletos) se encarga de separar la vista\n  pendientes/finalizados: solo deja pasar el arrastre cuando estado_nro === 1.\n  Los finalizados de ayer nunca se muestran en la vista de hoy (asimetria intencional).",
+        "operationId": "getApiPedidos",
+        "parameters": [
+          {
+            "description": "numero de escenario",
+            "in": "query",
+            "name": "escenario",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ID del movil",
+            "in": "query",
+            "name": "movil",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "estado del pedido",
+            "in": "query",
+            "name": "estado",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "fecha del pedido (formato YYYY-MM-DD)",
+            "in": "query",
+            "name": "fecha",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ID de empresa fletera (single, legacy)",
+            "in": "query",
+            "name": "empresa_fletera_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "IDs de empresas fleteras separados por coma (multi, preferido)",
+            "in": "query",
+            "name": "empresas_fleteras",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "'true' para obtener solo pedidos con lat/lng",
+            "in": "query",
+            "name": "conCoordenadas",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Obtener pedidos con filtros opcionales Query params: - escenario: numero de escenario - movil: ID del movil - estado: estado del pedido - fecha: fecha del pedido (formato YYYY-MM-DD) - empresa_flet...",
+        "tags": [
+          "pedidos"
+        ],
+        "x-archivo": "app/api/pedidos/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/pedidos-pendientes": {
+      "get": {
+        "operationId": "getApiPedidosPendientes",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/pedidos-pendientes",
+        "tags": [
+          "pedidos-pendientes"
+        ],
+        "x-archivo": "app/api/pedidos-pendientes/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/pedidos-pendientes/{movilId}": {
+      "get": {
+        "operationId": "getApiPedidosPendientesMovilId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "movilId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/pedidos-pendientes/{movilId}",
+        "tags": [
+          "pedidos-pendientes"
+        ],
+        "x-archivo": "app/api/pedidos-pendientes/[movilId]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/pedidos-servicios-pendientes/{movilId}": {
+      "get": {
+        "operationId": "getApiPedidosServiciosPendientesMovilId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "movilId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/pedidos-servicios-pendientes/{movilId}",
+        "tags": [
+          "pedidos-servicios-pendientes"
+        ],
+        "x-archivo": "app/api/pedidos-servicios-pendientes/[movilId]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/pedidos-servicios/{movilId}": {
+      "get": {
+        "operationId": "getApiPedidosServiciosMovilId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "movilId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/pedidos-servicios/{movilId}",
+        "tags": [
+          "pedidos-servicios"
+        ],
+        "x-archivo": "app/api/pedidos-servicios/[movilId]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/proxy/login": {
+      "post": {
+        "operationId": "postApiProxyLogin",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "POST /api/proxy/login",
+        "tags": [
+          "proxy"
+        ],
+        "x-archivo": "app/api/proxy/login/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/puntos-interes": {
+      "delete": {
+        "description": "Eliminar un punto de interés",
+        "operationId": "deleteApiPuntosInteres",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Eliminar un punto de interés",
+        "tags": [
+          "puntos-interes"
+        ],
+        "x-archivo": "app/api/puntos-interes/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "get": {
+        "description": "Obtener puntos privados del usuario + todos los públicos",
+        "operationId": "getApiPuntosInteres",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Obtener puntos privados del usuario + todos los públicos",
+        "tags": [
+          "puntos-interes"
+        ],
+        "x-archivo": "app/api/puntos-interes/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "patch": {
+        "description": "Actualizar un punto de interés\nBody: { id, usuario_email, nombre?, descripcion?, icono?, tipo?, visible? }",
+        "operationId": "patchApiPuntosInteres",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Actualizar un punto de interés Body: { id, usuario_email, nombre?, descripcion?, icono?, tipo?, visible? }",
+        "tags": [
+          "puntos-interes"
+        ],
+        "x-archivo": "app/api/puntos-interes/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Crear o actualizar un punto de interés (UPSERT)\nBody: { id?, nombre, descripcion, icono, latitud, longitud, tipo?, usuario_email }\nSi se incluye 'id' y existe, se actualiza. Si no existe o no se incluye 'id', se crea uno nuevo.",
+        "operationId": "postApiPuntosInteres",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "404": {
+            "description": "No encontrado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Crear o actualizar un punto de interés (UPSERT) Body: { id?, nombre, descripcion, icono, latitud, longitud, tipo?, usuario_email } Si se incluye 'id' y existe, se actualiza.",
+        "tags": [
+          "puntos-interes"
+        ],
+        "x-archivo": "app/api/puntos-interes/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/puntos-interes/import-osm": {
+      "delete": {
+        "description": "Elimina todos los POIs importados de OSM para un usuario.\nIdentifica POIs de OSM por descripcion que empieza con \"[\" (prefijo de categoría).\nQuery: ?usuario_email=xxx&categoria=Riogas (categoria opcional — valor es el label)",
+        "operationId": "deleteApiPuntosInteresImportOsm",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Elimina todos los POIs importados de OSM para un usuario.",
+        "tags": [
+          "puntos-interes"
+        ],
+        "x-archivo": "app/api/puntos-interes/import-osm/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      },
+      "get": {
+        "description": "Devuelve las categorías disponibles para importar",
+        "operationId": "getApiPuntosInteresImportOsm",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Devuelve las categorías disponibles para importar",
+        "tags": [
+          "puntos-interes"
+        ],
+        "x-archivo": "app/api/puntos-interes/import-osm/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      },
+      "post": {
+        "description": "Ejecuta la importación de POIs desde OpenStreetMap",
+        "operationId": "postApiPuntosInteresImportOsm",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Ejecuta la importación de POIs desde OpenStreetMap",
+        "tags": [
+          "puntos-interes"
+        ],
+        "x-archivo": "app/api/puntos-interes/import-osm/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/realtime-config": {
+      "get": {
+        "description": "GET  /api/realtime-config — config GLOBAL de Realtime/Intervalos (lectura pública)\nPUT  /api/realtime-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")\n\nConfig GLOBAL ÚNICA para todo el sistema (una sola fila id=1 en realtime_settings).\nAntes estos 9 valores se guardaban por-usuario en user_preferences y un cambio\nde un admin no lo veían los demás. Ahora son compartidos por todos los usuarios.\n\nGET es público (sin auth) porque TODO usuario logueado necesita leer la config\nal cargar el dashboard. Cache server 5s (igual que /api/audit/config).\n\nModelo de confianza del PUT: igual que /api/audit/config — header x-track-isroot\ny/o x-track-funcs confiados client-side (consistente con el resto del codebase).",
+        "operationId": "getApiRealtimeConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/realtime-config — config GLOBAL de Realtime/Intervalos (lectura pública) PUT /api/realtime-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")",
+        "tags": [
+          "realtime-config"
+        ],
+        "x-archivo": "app/api/realtime-config/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "GET  /api/realtime-config — config GLOBAL de Realtime/Intervalos (lectura pública)\nPUT  /api/realtime-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")\n\nConfig GLOBAL ÚNICA para todo el sistema (una sola fila id=1 en realtime_settings).\nAntes estos 9 valores se guardaban por-usuario en user_preferences y un cambio\nde un admin no lo veían los demás. Ahora son compartidos por todos los usuarios.\n\nGET es público (sin auth) porque TODO usuario logueado necesita leer la config\nal cargar el dashboard. Cache server 5s (igual que /api/audit/config).\n\nModelo de confianza del PUT: igual que /api/audit/config — header x-track-isroot\ny/o x-track-funcs confiados client-side (consistente con el resto del codebase).",
+        "operationId": "putApiRealtimeConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "403": {
+            "description": "Acceso denegado"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/realtime-config — config GLOBAL de Realtime/Intervalos (lectura pública) PUT /api/realtime-config — actualiza la config (gate: root o funcionalidad \"Preferencias Globales\")",
+        "tags": [
+          "realtime-config"
+        ],
+        "x-archivo": "app/api/realtime-config/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/server-time": {
+      "get": {
+        "description": "Retorna la hora actual del servidor en ISO 8601.\nSin autenticacion. Sin cache.\nUsado por useServerTime() para calcular el offset cliente-servidor.",
+        "operationId": "getApiServerTime",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Retorna la hora actual del servidor en ISO 8601.",
+        "tags": [
+          "server-time"
+        ],
+        "x-archivo": "app/api/server-time/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/services": {
+      "get": {
+        "description": "Obtener services con filtros opcionales\nQuery params:\n- escenario: número de escenario\n- movil: ID del móvil\n- moviles: IDs de móviles (comma-separated)\n- estado: estado del service\n- fecha: fecha del service (formato YYYY-MM-DD)\n- empresa_fletera_id: ID de empresa fletera (single, legacy)\n- empresas_fleteras: IDs de empresas fleteras separados por coma (multi, preferido)\n- conCoordenadas: 'true' para obtener solo services con lat/lng\n\nScoping server-side por empresa:\n- Si x-track-isroot === 'S': sin filtro de empresa (root ve todo).\n- Si NO es root y empresas_fleteras llega con IDs: filtrar por esos IDs.\n- Si NO es root y empresas_fleteras está vacío/ausente: fail-closed → devuelve lista vacía.",
+        "operationId": "getApiServices",
+        "parameters": [
+          {
+            "description": "número de escenario",
+            "in": "query",
+            "name": "escenario",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ID del móvil",
+            "in": "query",
+            "name": "movil",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "IDs de móviles (comma-separated)",
+            "in": "query",
+            "name": "moviles",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "estado del service",
+            "in": "query",
+            "name": "estado",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "fecha del service (formato YYYY-MM-DD)",
+            "in": "query",
+            "name": "fecha",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ID de empresa fletera (single, legacy)",
+            "in": "query",
+            "name": "empresa_fletera_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "IDs de empresas fleteras separados por coma (multi, preferido)",
+            "in": "query",
+            "name": "empresas_fleteras",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "'true' para obtener solo services con lat/lng",
+            "in": "query",
+            "name": "conCoordenadas",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Obtener services con filtros opcionales Query params: - escenario: número de escenario - movil: ID del móvil - moviles: IDs de móviles (comma-separated) - estado: estado del service - fecha: fecha ...",
+        "tags": [
+          "services"
+        ],
+        "x-archivo": "app/api/services/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/servicio-detalle/{servicioId}": {
+      "get": {
+        "operationId": "getApiServicioDetalleServicioId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "servicioId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "GET /api/servicio-detalle/{servicioId}",
+        "tags": [
+          "servicio-detalle"
+        ],
+        "x-archivo": "app/api/servicio-detalle/[servicioId]/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    },
+    "/api/user-preferences": {
+      "get": {
+        "description": "Obtener preferencias del usuario",
+        "operationId": "getApiUserPreferences",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Obtener preferencias del usuario",
+        "tags": [
+          "user-preferences"
+        ],
+        "x-archivo": "app/api/user-preferences/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      },
+      "put": {
+        "description": "Guardar/actualizar preferencias del usuario (upsert)\nBody: { user_id: string, preferences: UserPreferences }",
+        "operationId": "putApiUserPreferences",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Guardar/actualizar preferencias del usuario (upsert) Body: { user_id: string, preferences: UserPreferences }",
+        "tags": [
+          "user-preferences"
+        ],
+        "x-archivo": "app/api/user-preferences/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/zonas": {
+      "get": {
+        "description": "Obtener todas las zonas disponibles\n\nQuery params opcionales:\n  - empresaIds: CSV de empresa_fletera_id (filtra zonas vía fleteras_zonas)\n  - escenarioId: filtra fleteras_zonas por escenario al resolver el set permitido",
+        "operationId": "getApiZonas",
+        "parameters": [
+          {
+            "description": "CSV de empresa_fletera_id (filtra zonas vía fleteras_zonas)",
+            "in": "query",
+            "name": "empresaIds",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "filtra fleteras_zonas por escenario al resolver el set permitido",
+            "in": "query",
+            "name": "escenarioId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Obtener todas las zonas disponibles",
+        "tags": [
+          "zonas"
+        ],
+        "x-archivo": "app/api/zonas/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [],
+          "sinGate": true
+        },
+        "x-generado": true
+      }
+    },
+    "/api/zonas/capacidad-snapshot": {
+      "get": {
+        "description": "Devuelve el snapshot consolidado de capacidad de entrega por zona.\nConsume la vista vw_zona_capacidad (creada en docs/sqls/2026-05-22-vw-zona-capacidad.sql).\n\nQuery params:\n  - escenario        (requerido, int)\n  - tipoServicio     (requerido, 'PEDIDOS' | 'SERVICES')\n  - subFiltroPedidos (opcional, 'NOCTURNO' | 'URGENTE' | 'TODOS') — reservado para PR2\n  - zonas            (opcional, CSV de zona_id; si se omite, devuelve todas las del scope)\n\nAuth-scope via headers (enviados por el cliente desde AuthContext):\n  - x-track-isroot          : 'S' → sin restricción de empresa (ve todo)\n  - x-track-empresas-ids    : CSV de emp_fletera_id (scope de empresa fletera)\n  - x-track-funcs           : CSV de nombres de funcionalidades del caller\n\nFeature gate:\n  - \"Ped s/asignar x zona\": si el caller tiene esta funcionalidad,\n    pedidos_sin_asignar es count real y se incluye pedidos_sin_asignar_detalle.\n    Si NO la tiene, pedidos_sin_asignar = 0 y el campo detalle se omite.\n\nNota: el endpoint devuelve datos crudos (capacidad puede ser negativa).\nEl cap a 0 / -9999 es responsabilidad del cliente (PR2).\n\nPR: PR1 — Backend zona-capacidad-snapshot",
+        "operationId": "getApiZonasCapacidadSnapshot",
+        "parameters": [
+          {
+            "description": "requerido, int",
+            "in": "query",
+            "name": "escenario",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "requerido, 'PEDIDOS' | 'SERVICES'",
+            "in": "query",
+            "name": "tipoServicio",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, 'NOCTURNO' | 'URGENTE' | 'TODOS' — reservado para PR2",
+            "in": "query",
+            "name": "subFiltroPedidos",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "opcional, CSV de zona_id; si se omite, devuelve todas las del scope",
+            "in": "query",
+            "name": "zonas",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Request inválido"
+          },
+          "500": {
+            "description": "Error interno"
+          }
+        },
+        "summary": "Devuelve el snapshot consolidado de capacidad de entrega por zona.",
+        "tags": [
+          "zonas"
+        ],
+        "x-archivo": "app/api/zonas/capacidad-snapshot/route.ts",
+        "x-auth": {
+          "funcionalidades": [],
+          "gates": [
+            "header x-track-isroot (spoofeable)",
+            "requireAuth (sesión Supabase)"
+          ],
+          "sinGate": false
+        },
+        "x-generado": true
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sesionSupabase": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Sesión de Supabase Auth validada por requireAuth (lib/auth-middleware.ts)."
+      },
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "API key de integraciones externas (sender GeneXus/SGM, VB6)."
+      },
+      "tokenSecapi": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "JWT emitido por SecuritySuite. Es el que verifica lib/docs/root-guard.ts contra secapi."
+      }
+    }
+  },
+  "x-excluidos": [
+    {
+      "archivo": "app/api/proxy/[...path]/route.ts",
+      "motivo": "Catch-all que reenvía a la API legacy de GeneXus (EXTERNAL_API_URL). Se documenta que el proxy existe y a dónde apunta, no cada endpoint del otro lado."
+    },
+    {
+      "archivo": "app/api/doc/route.ts",
+      "motivo": "Endpoint roto: lee API_DOCUMENTATION.md, un archivo que ya no existe en el repo, y devuelve 500 siempre. Queda anotado hasta que se decida borrarlo o reescribirlo apuntando a este portal."
+    }
+  ],
+  "x-resumen": {
+    "archivosRuta": 92,
+    "archivosExcluidos": 2,
+    "endpoints": 128,
+    "endpointsSinDocblock": 42,
+    "endpointsSinGate": 29,
+    "modulos": 40
+  }
+}
