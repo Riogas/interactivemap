@@ -50,6 +50,8 @@ ALTER TABLE demoras_variantes_resultados
 ALTER TABLE demoras_variantes_propuestas
   DROP CONSTRAINT IF EXISTS demoras_variantes_propuestas_escenario_huella_key;
 ALTER TABLE demoras_variantes_propuestas
+  DROP CONSTRAINT IF EXISTS demoras_variantes_propuestas_escenario_tipo_huella_key;
+ALTER TABLE demoras_variantes_propuestas
   ADD CONSTRAINT demoras_variantes_propuestas_escenario_tipo_huella_key
   UNIQUE (escenario, tipo_servicio, huella);
 
@@ -180,7 +182,7 @@ DECLARE
   v_var     smallint;
   v_nuevo   smallint;
 BEGIN
-  IF NOT pg_try_advisory_xact_lock(2180637409, hashtext(p_tipo)) THEN
+  IF NOT pg_try_advisory_xact_lock(2180637409::bigint + hashtext(p_tipo)) THEN
     RETURN;
   END IF;
 
