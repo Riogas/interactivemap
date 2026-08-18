@@ -1,0 +1,1091 @@
+# Anotaciones a mano del catálogo de APIs de TrackMovil.
+#
+# Este archivo NO se genera: es la capa que aporta lo que ningún parser puede inferir
+# —quién consume el endpoint, por qué existe, qué recibe, qué falla, ejemplos reales— y
+# se mergea encima de docs/api/openapi.json al servir GET /api/docs/spec. Lo de acá
+# SIEMPRE gana, salvo `x-auth` (los gates leídos del código), que no se pisa nunca.
+#
+# Cómo agregar una entrada: docs/api/README.md
+#
+# Ojo con el subconjunto de YAML soportado (lib/docs/yaml-min.ts): indentación con
+# espacios, sin anclas ni tags. Para texto largo usar el bloque `|`.
+#
+# Cobertura: TODOS los endpoints con consumidor externo (/api/import/*) y los del
+# camino crítico del dashboard. El test __tests__/docs-anotaciones-cobertura.test.ts
+# falla si aparece un endpoint nuevo sin anotar.
+
+version: 1
+
+# Descripción de los módulos (el primer segmento después de /api). Se vuelca en tags[].
+modulos:
+  import:
+    descripcion: |
+      Ingesta desde sistemas externos. Es la única familia de endpoints de TrackMovil
+      que NO usa la sesión del dashboard: entra por API key o por token en el body,
+      porque del otro lado hay un sender de GeneXus y la app móvil, no un navegador.
+
+      Contrato común de la familia:
+        - `x-api-key` = INTERNAL_API_KEY, comparado timing-safe (lib/auth-middleware.ts).
+        - El body llega en Latin-1 (ISO-8859-1) salvo que el Content-Type diga otra
+          cosa: el sender de GeneXus/AS400 casi nunca declara charset y `request.text()`
+          corrompería las ñ y los acentos.
+        - Los campos vienen en PascalCase (EscenarioId, ClienteNombre, ...) y el handler
+          los mapea a snake_case. También acepta snake_case directo.
+        - El body puede venir envuelto (`{ pedidos: [...] }`), como array pelado o como
+          un objeto único: los tres se normalizan a array.
+
+      Los que pasan por requireApiKey tienen un bypass global: con
+      ENABLE_SECURITY_CHECKS='false' devuelven true sin mirar nada. En producción esa
+      env tiene que estar sin setear o en 'true'. /api/import/gps NO tiene ese bypass:
+      compara con safeCompare directo.
+  auth:
+    descripcion: |
+      Login y permisos. TrackMovil no tiene usuarios propios: delega en SecuritySuite
+      (secapi) por HTTP y guarda el JWT que le devuelve. El JWT NO trae el flag de root
+      —su payload es {iss, username, userId, sistema}—, así que "es root" siempre se
+      resuelve preguntando, nunca leyendo el token.
+  docs:
+    descripcion: |
+      Este portal. Es el único módulo de la app cuyo gate verifica la FIRMA del JWT
+      (HS256, JWT_SECRET) además de consultar el permiso a SecuritySuite, y es
+      fail-closed: si secapi no contesta, no abre.
+  metricas:
+    descripcion: |
+      Motor de demora y su instrumental de medición (acierto, desfasaje, variantes).
+      Todas las métricas de acierto van filtradas a servicio_nombre='URGENTE': el
+      nocturno es el 5% del volumen con un sesgo de −26 minutos y arrastra el global.
+
+endpoints:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Integración con GeneXus / AS400 — el sender
+  # ══════════════════════════════════════════════════════════════════════════
+
+  POST /api/import/pedidos:
+    resumen: Alta y actualización de pedidos que manda el sender de GeneXus.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: |
+      requireApiKey → header `x-api-key` comparado con INTERNAL_API_KEY (timing-safe).
+      Sin la env configurada el endpoint devuelve 500 SERVER_MISCONFIGURED, no 200:
+      es fail-closed a propósito.
+    auth_badges:
+      - x-api-key
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: |
+        `{ pedidos: [...] }`, un array pelado o un pedido suelto: las tres formas se
+        aceptan. Los campos van en PascalCase (GeneXus) o snake_case.
+      campos:
+        - nombre: id
+          tipo: string
+          requerido: true
+          descripcion: Clave del pedido en el AS400. Es la conflict key del upsert.
+        - nombre: EscenarioId
+          tipo: int
+          requerido: true
+          descripcion: Escenario operativo (1000 = producción).
+        - nombre: Movil
+          tipo: int
+          requerido: false
+          descripcion: Móvil asignado. Vacío = pedido sin asignar.
+        - nombre: FchHoraAsignado
+          tipo: datetime
+          requerido: false
+          descripcion: Hora de asignación al móvil. Alimenta las métricas de cumplimiento.
+        - nombre: FchHoraMaxEntComp
+          tipo: datetime
+          requerido: false
+          descripcion: Compromiso de entrega (SLA). Sin esto el pedido no entra en el atraso vs. compromiso.
+        - nombre: DemoraInformada
+          tipo: int
+          requerido: false
+          descripcion: Minutos de demora que informó el Despacho al tomar el pedido.
+        - nombre: EstadoNro / SubEstadoNro
+          tipo: int
+          requerido: false
+          descripcion: Estado del pedido. estado_nro=2 + sub_estado_nro=3 es cumplido genuino.
+      ejemplo: |
+        {
+          "pedidos": [
+            {
+              "id": "1000-123456",
+              "EscenarioId": 1000,
+              "Movil": 330,
+              "ClienteNombre": "PEREZ JUAN",
+              "ClienteDireccion": "AV MILLAN 3456",
+              "ServicioNombre": "URGENTE",
+              "EstadoNro": 1,
+              "SubEstadoNro": 0,
+              "FchHoraAsignado": "2026-08-17T10:15:00",
+              "FchHoraMaxEntComp": "2026-08-17T11:15:00",
+              "DemoraInformada": 60,
+              "ZonaNro": 3
+            }
+          ]
+        }
+    respuestas:
+      "200":
+        descripcion: Pedidos insertados o actualizados.
+        ejemplo: |
+          {
+            "success": true,
+            "message": "1 pedidos procesados correctamente (insertados o actualizados)",
+            "data": [ { "id": "1000-123456" } ]
+          }
+      "400":
+        descripcion: JSON inválido o array vacío. La respuesta incluye `bodyPreview` con los primeros 500 caracteres recibidos.
+      "403":
+        descripcion: API key ausente (API_KEY_MISSING) o inválida (API_KEY_INVALID).
+      "500":
+        descripcion: INTERNAL_API_KEY sin configurar (SERVER_MISCONFIGURED) o error de la base.
+    errores:
+      - codigo: 403
+        code: API_KEY_MISSING
+        cuando: El request no trae el header `x-api-key`.
+        solucion: Agregar el header. Ojo que el nombre es todo en minúsculas en el envío de GeneXus.
+      - codigo: 403
+        code: API_KEY_INVALID
+        cuando: La key no coincide con INTERNAL_API_KEY del ambiente.
+        solucion: Cada ambiente tiene su propia key. La de dev no sirve en prod.
+      - codigo: 500
+        code: SERVER_MISCONFIGURED
+        cuando: El proceso no tiene INTERNAL_API_KEY seteada.
+        solucion: Es un problema del deploy, no del que llama. Revisar el .env del server.
+      - codigo: 403
+        code: (HTML, no JSON)
+        cuando: El body trae sintaxis de shell (`curl`, `bash`, `;`, `||`, `$(`, `base64`).
+        solucion: No lo devuelve la app sino el WAF de nginx. Se reconoce porque la respuesta es HTML.
+    notas: |
+      El sender manda FchHoraAsignado, que es lo que alimenta el hecho de cumplimiento
+      (tiempo asignado → cumplido por escenario). Si ese campo viene vacío el pedido
+      entra igual pero queda fuera de las métricas.
+
+      El handler tolera lo que el AS400 manda mal: fechas "0000-00-00", años fuera de
+      [1900, 2100], el formato YYYYMMDD sin ceros a la izquierda ("202624" = 4/2/2026),
+      caracteres de control sin escapar y comillas dobles sin escapar dentro de un
+      string. Nada de eso es un bug del endpoint: es el contrato real con el AS400.
+    ejemplos:
+      - titulo: curl (real)
+        lenguaje: bash
+        codigo: |
+          curl -X POST https://track.glp.riogas.com.uy/api/import/pedidos \
+            -H "x-api-key: $INTERNAL_API_KEY" \
+            -H "Content-Type: application/json; charset=iso-8859-1" \
+            -d '{"pedidos":[{"id":"1000-123456","EscenarioId":1000,"Movil":330}]}'
+
+  PUT /api/import/pedidos:
+    resumen: Actualización de pedidos ya existentes (mismo contrato que el POST).
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    notas: |
+      En la práctica el sender usa POST para todo (es un upsert). El PUT existe para
+      los updates parciales y responde `{ success, message, data }`.
+
+  DELETE /api/import/pedidos:
+    resumen: Baja de pedidos por id.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    notas: |
+      Borra de verdad, no marca de baja. Devuelve `deleted_count`. Un pedido borrado
+      desaparece del mapa pero su hecho de cumplimiento ya calculado no se recalcula.
+
+  POST /api/import/services:
+    resumen: Alta y actualización de services (el otro tipo de trabajo del móvil).
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: '`{ services: [...] }`, array pelado u objeto único. Mismo tratamiento de charset y de PascalCase que /api/import/pedidos.'
+      ejemplo: |
+        {
+          "services": [
+            {
+              "id": "1000-S-9987",
+              "EscenarioId": 1000,
+              "Movil": 412,
+              "ServicioNombre": "SERVICE",
+              "ClienteDireccion": "CAMINO MALDONADO 5500"
+            }
+          ]
+        }
+    notas: |
+      Los services comparten pantalla y métricas con los pedidos pero son tablas
+      distintas. Al importar se recalcula la capacidad de entrega del móvil
+      (recomputeMovilAndCapEntrega), igual que en pedidos.
+
+  PUT /api/import/services:
+    resumen: Actualización de services existentes.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  DELETE /api/import/services:
+    resumen: Baja de services por id.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  POST /api/import/moviles:
+    resumen: Alta y actualización del padrón de móviles.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: '`{ moviles: [...] }` o array pelado. Campos en PascalCase de GeneXus.'
+      ejemplo: |
+        {
+          "moviles": [
+            {
+              "Movil": 330,
+              "EscenarioId": 1000,
+              "Nombre": "MOVIL 330",
+              "EFleteraId": 5,
+              "PtoVtaLat": -34.8721,
+              "PtoVtaLng": -56.1654
+            }
+          ]
+        }
+    notas: |
+      Si el móvil tiene coordenadas de punto de venta y todavía no reportó GPS hoy, el
+      import siembra una posición inicial en gps_tracking_history (gps-autocreate) para
+      que aparezca en el mapa desde el arranque del día en vez de estar invisible hasta
+      el primer ping real.
+
+  PUT /api/import/moviles:
+    resumen: Actualización del padrón de móviles.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  DELETE /api/import/moviles:
+    resumen: Baja de móviles del padrón.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  POST /api/import/zonas:
+    resumen: Alta de zonas operativas.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: '`{ zonas: [...] }`, array pelado o zona única.'
+      ejemplo: |
+        { "zonas": [ { "zona_id": 3, "escenario_id": 1000, "nombre": "CENTRO" } ] }
+    notas: |
+      Es un INSERT, no un upsert: reimportar una zona existente choca contra la PK.
+      Las zonas también se espejan con Goya por otro camino (zonificación), así que
+      antes de importar acá conviene saber por dónde entró el dato.
+
+  PUT /api/import/zonas:
+    resumen: Actualización de zonas.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  DELETE /api/import/zonas:
+    resumen: Baja de zonas.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  POST /api/import/demoras:
+    resumen: Demoras informadas por el Despacho (AS400), por zona y tipo de servicio.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: |
+        Acepta el formato del AS400 (`CodZonas`) y el formato directo
+        (`{ demoras: [...] }`). El primero se detecta por la presencia de `CodZonas`.
+      campos:
+        - nombre: EscenarioId
+          tipo: int
+          requerido: true
+          descripcion: Escenario. Si falta, se asume 1000.
+        - nombre: TipoDeZona
+          tipo: string
+          requerido: false
+          descripcion: Distribucion, etc. Va a la columna zona_tipo.
+        - nombre: TipoDeServicio
+          tipo: string
+          requerido: false
+          descripcion: URGENTE / NOCTURNO / SERVICE. Va a la columna descripcion.
+        - nombre: CodZonas
+          tipo: array
+          requerido: true
+          descripcion: '`[{ Zona, ZonaActiva: "S"|"N", Demora, ZonaNombre }]` — una fila por zona.'
+      ejemplo: |
+        {
+          "EscenarioId": 1000,
+          "TipoDeZona": "Distribucion",
+          "TipoDeServicio": "URGENTE",
+          "CodZonas": [
+            { "Zona": "3", "ZonaActiva": "S", "Demora": 60, "ZonaNombre": "CENTRO" },
+            { "Zona": "4", "ZonaActiva": "S", "Demora": 75, "ZonaNombre": "CERRO" }
+          ]
+        }
+    notas: |
+      Esta es la demora que el Despacho le informa al cliente, y es contra la que se
+      compara la del motor de TrackMovil en la card "Demora calculada vs. informada".
+      El Despacho solo informa URGENTE.
+
+  PUT /api/import/demoras:
+    resumen: Actualización de las demoras informadas por el Despacho.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  DELETE /api/import/demoras:
+    resumen: Baja de demoras informadas.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  POST /api/import/empresas:
+    resumen: Padrón de empresas fleteras.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: 'Campos en PascalCase (EFleteraId, Nombre, RazonSocial, Rut, ...) o snake_case.'
+      ejemplo: |
+        {
+          "empresas": [
+            { "EFleteraId": 5, "EscenarioId": 1000, "Nombre": "FLETERA DEL SUR", "Rut": "210000000000" }
+          ]
+        }
+    notas: |
+      La empresa fletera es la unidad de scope de TODO el dashboard: un usuario no-root
+      ve solo lo de sus empresas. Un alta acá sin el atributo correspondiente en
+      SecuritySuite deja datos que nadie puede ver.
+
+  POST /api/import/puntoventa:
+    resumen: Padrón de puntos de venta (la base desde la que sale cada móvil).
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    notas: |
+      Las coordenadas del punto de venta son el fallback de posición de un móvil que
+      todavía no reportó GPS en el día (PTOVTA_FALLBACK en /api/all-positions).
+
+  PUT /api/import/puntoventa:
+    resumen: Actualización de puntos de venta (upsert por punto_venta_id).
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  DELETE /api/import/puntoventa:
+    resumen: Baja de puntos de venta.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  POST /api/import/movZonaServicio:
+    resumen: Asignación de zonas a móviles por tipo de servicio.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: |
+        Dos formatos de GeneXus, los dos soportados:
+          A (legacy): un móvil por item, campo `Movil`.
+          B (nuevo):  varios móviles por item, campo `Moviles: [304, 305]`.
+        En el formato B se genera una fila por móvil.
+      ejemplo: |
+        {
+          "items": [
+            {
+              "Moviles": [304, 305],
+              "EscenarioId": 1000,
+              "TipoDeZona": "Distribucion",
+              "TipoDeServicio": "URGENTE",
+              "Zona": "3",
+              "PrioridadOTransito": 1
+            }
+          ]
+        }
+    notas: |
+      `PrioridadOTransito` es lo que el motor de demora usa para saber si el móvil está
+      en la zona por prioridad o de tránsito. Cambiarlo mueve la capacidad calculada de
+      la zona en la corrida siguiente.
+
+  PUT /api/import/movZonaServicio:
+    resumen: Actualización de la asignación de zonas por móvil y servicio.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  DELETE /api/import/movZonaServicio:
+    resumen: Baja de asignaciones de zona por móvil y servicio.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  GET /api/import/movZonaServicioFletera:
+    resumen: Devuelve las zonas asignadas a las empresas fleteras (lectura del mismo contrato de import).
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    notas: |
+      Es el único GET de la familia import: existe para que el sender pueda comparar
+      contra lo que ya está cargado antes de mandar un POST completo.
+
+  POST /api/import/movZonaServicioFletera:
+    resumen: Zonas de cada empresa fletera (tabla fleteras_zonas).
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: |
+        `MovZonas` acepta tres formas: array de números, array de strings, o un solo
+        string con las zonas separadas por coma ("1,2,3,4"). Se deduplica y se ordena.
+      ejemplo: |
+        {
+          "EscenarioId": 1000,
+          "TipoDeZona": "Distribucion",
+          "Efletera": "5",
+          "TipoServicio-TipoZona-Zona": [
+            { "TipoDeServicio": "URGENTE", "MovZonas": ["1,2,3,4"] }
+          ]
+        }
+    notas: |
+      fleteras_zonas es la tabla que define qué ve cada empresa en el dashboard: si una
+      zona no está acá, los usuarios de esa fletera no la ven aunque tengan pedidos.
+
+  PUT /api/import/movZonaServicioFletera:
+    resumen: Actualización de las zonas de una empresa fletera.
+    consumidores:
+      - Sender de GeneXus / SGM (AS400)
+    auth: requireApiKey → header `x-api-key` = INTERNAL_API_KEY (timing-safe).
+    auth_badges:
+      - x-api-key
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Integración con la app móvil (MoveIT)
+  # ══════════════════════════════════════════════════════════════════════════
+
+  POST /api/import/gps:
+    resumen: Ingesta de posiciones GPS de la app móvil de los repartidores.
+    consumidores:
+      - App móvil MoveIT (Flutter, package `MoveIT`)
+      - Procesos internos con INTERNAL_API_KEY
+    auth: |
+      Dos caminos alternativos, cualquiera alcanza:
+        1. Header `X-API-Key` = INTERNAL_API_KEY (uso interno).
+        2. Campo `token` DENTRO DEL BODY = GPS_TRACKING_TOKEN (app móvil).
+      Los dos con safeCompare (timing-safe). El token en el body es una decisión vieja
+      de la app móvil, no un patrón a repetir en endpoints nuevos.
+
+      Este endpoint NO pasa por requireApiKey, así que tampoco tiene el bypass de
+      ENABLE_SECURITY_CHECKS: valida siempre.
+    auth_badges:
+      - x-api-key
+      - token en body
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: |
+        `{ token, gps: [...] }`. Si no viene la clave `gps`, se asume que el body ES el
+        registro. Un solo objeto también se acepta.
+      campos:
+        - nombre: token
+          tipo: string
+          requerido: false
+          descripcion: GPS_TRACKING_TOKEN. Obligatorio si no se manda el header X-API-Key.
+        - nombre: movil
+          tipo: int
+          requerido: true
+          descripcion: Móvil que reporta. También se acepta `movil_id`.
+        - nombre: latitud / longitud
+          tipo: number
+          requerido: true
+          descripcion: Posición. Sin esto el registro no sirve para nada.
+        - nombre: escenario
+          tipo: int
+          requerido: false
+          descripcion: Escenario operativo. También `escenarioid` o `escenario_id`.
+        - nombre: accuracy / satellites_used / battery_level / app_state
+          tipo: varios
+          requerido: false
+          descripcion: Telemetría del dispositivo. Se guarda toda, sirve para diagnosticar tracking flojo.
+        - nombre: is_mock_location
+          tipo: boolean
+          requerido: false
+          descripcion: El dispositivo declara ubicación simulada. Se guarda tal cual, no se rechaza.
+      ejemplo: |
+        {
+          "token": "EL_GPS_TRACKING_TOKEN",
+          "gps": [
+            {
+              "movil": 330,
+              "escenario": 1000,
+              "latitud": -34.8721,
+              "longitud": -56.1654,
+              "velocidad": 42.5,
+              "accuracy": 8,
+              "battery_level": 78,
+              "app_state": "background"
+            }
+          ]
+        }
+    respuestas:
+      "202":
+        descripcion: Encolado. NO significa que ya esté en la base.
+        ejemplo: |
+          {
+            "success": true,
+            "message": "1 registros GPS encolados para procesamiento",
+            "queued": 1,
+            "queueStats": { "pending": 1 }
+          }
+      "403":
+        descripcion: Ni el header X-API-Key ni el token del body son válidos.
+    errores:
+      - codigo: 403
+        code: (sin code)
+        cuando: 'Respuesta `{ error: "No autorizado. Se requiere X-API-Key en header o token en body." }`.'
+        solucion: Revisar GPS_TRACKING_TOKEN del ambiente. La app móvil lo trae compilado por ambiente.
+      - codigo: 202
+        code: (no es un error)
+        cuando: Se devuelve 202 y la posición todavía no aparece en /api/latest.
+        solucion: Es lo esperado. La cola inserta en lotes y el trigger sincroniza gps_latest_positions.
+    notas: |
+      No escribe directo: encola en lib/gps-batch-queue y el trigger
+      sync_gps_latest_position hace el upsert a gps_latest_positions. Por eso un POST
+      con 202 no garantiza que la posición ya se vea en /api/latest.
+
+      Es el endpoint más llamado de la app (cada móvil reporta cada pocos segundos):
+      cualquier cosa que se le agregue al handler se paga multiplicada por la flota.
+
+  DELETE /api/import/gps:
+    resumen: Borrado de registros GPS por IDs.
+    consumidores:
+      - Procesos internos con INTERNAL_API_KEY
+    auth: Igual que el POST — header `X-API-Key` o `token` en el body (safeCompare).
+    auth_badges:
+      - x-api-key
+      - token en body
+    notas: |
+      Es una herramienta de limpieza, no parte del flujo normal de la app móvil.
+
+  POST /api/import/puntos-interes:
+    resumen: Upsert masivo de puntos de interés desde una planilla Excel.
+    consumidores:
+      - Pantalla de administración de POIs del dashboard (ImportPuntosInteresModal)
+    auth: |
+      NINGUNO. El handler no invoca ningún gate: quien llegue al puerto puede reescribir
+      los puntos de interés de cualquier usuario, incluidos los privados.
+    auth_badges:
+      - sin auth
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: '`{ rows: [...] }` con las filas ya parseadas del Excel.'
+      ejemplo: |
+        {
+          "rows": [
+            {
+              "id": 41,
+              "nombre": "DEPOSITO CENTRAL",
+              "categoria": "Deposito",
+              "latitud": -34.87,
+              "longitud": -56.16,
+              "usuario_email": "dmedaglia@riogas.com.uy"
+            }
+          ]
+        }
+    notas: |
+      El id de la planilla es la conflict key. Si (usuario_email, nombre) ya existe con
+      OTRO id, se borra la fila conflictiva y se inserta la del Excel con su id. Los POIs
+      que no vienen en la planilla quedan intactos.
+
+  POST /api/import/puntos-venta:
+    resumen: Importación de puntos de venta desde un archivo .xlsx.
+    consumidores:
+      - Pantalla de administración del dashboard
+    auth: |
+      NINGUNO. Recibe un archivo y escribe la tabla puntoventa sin validar nada.
+    auth_badges:
+      - sin auth
+    cuerpo:
+      contentType: multipart/form-data
+      requerido: true
+      descripcion: |
+        `file`: el .xlsx; `usuario`: email o username de quien importa.
+        Columnas esperadas: ID, Nombre, Direccion, CoordX (latitud), CoordY (longitud),
+        Telefono, escenario_id, empresa_fletera_id.
+    notas: |
+      Ojo con CoordX/CoordY: X es la LATITUD e Y la longitud, al revés de lo que sugiere
+      el nombre. Invertirlas manda todos los puntos al Índico.
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Autenticación
+  # ══════════════════════════════════════════════════════════════════════════
+
+  POST /api/auth/login:
+    resumen: Login contra SecuritySuite, con el control de bloqueos de TrackMovil encima.
+    consumidores:
+      - Pantalla de login del dashboard (contexts/AuthContext)
+    auth: |
+      NINGUNO, y tiene que ser así: es el endpoint que emite la sesión. Lo que sí tiene
+      es `runLoginSecurity` (lib/login-security.ts), que registra el intento y aplica
+      los bloqueos por usuario/IP configurados en /admin.
+    auth_badges:
+      - sin auth
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: 'Los nombres van en PascalCase porque es el contrato de secapi.'
+      campos:
+        - nombre: UserName
+          tipo: string
+          requerido: true
+          descripcion: Usuario de SecuritySuite.
+        - nombre: Password
+          tipo: string
+          requerido: true
+          descripcion: Contraseña.
+      ejemplo: |
+        { "UserName": "dmedaglia", "Password": "..." }
+    respuestas:
+      "200":
+        descripcion: '`success: true` con el token y los datos del usuario, o `success: false` con el motivo.'
+    notas: |
+      El `Sistema` que se le manda a secapi sale de LOGIN_SISTEMA y hoy vale 'GOYA': es
+      así a propósito (el padrón de usuarios es compartido), no es un error de copiado.
+
+      El token que devuelve secapi NO trae el flag de root. Todo lo que dependa de "es
+      root" se resuelve preguntando a secapi, nunca leyendo el token.
+
+  POST /api/auth/permisos:
+    resumen: Proxy hacia POST /api/db/permisos de SecuritySuite.
+    consumidores:
+      - Dashboard (resolución de permisos al entrar a una pantalla)
+    auth: |
+      Exige el header `Authorization` (401 si falta) pero NO lo verifica: lo reenvía tal
+      cual a secapi, que es quien decide. El gate real está del otro lado.
+    auth_badges:
+      - sin auth
+    notas: |
+      Existe para evitar el mixed-content y el CORS: el navegador no le puede pegar
+      directo a secapi. La respuesta se devuelve con el mismo status que contestó secapi.
+
+  POST /api/auth/logout:
+    resumen: Limpieza de cookies residuales de Supabase al cerrar sesión.
+    consumidores:
+      - Dashboard (logout)
+    auth: |
+      NINGUNO. No hace falta: lo único que hace es mandar Max-Age=0 para las cookies
+      `sb-*-auth-token` del propio request.
+    auth_badges:
+      - sin auth
+    notas: |
+      Viene de un bug real: quedaban cookies `sb-<ref>-auth-token` vencidas de cuando se
+      usaba signInAnonymously, el cliente las seguía mandando al WebSocket de Realtime y
+      Supabase las rechazaba, dejando el Realtime colgado en "Conectando".
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Este portal
+  # ══════════════════════════════════════════════════════════════════════════
+
+  GET /api/docs/spec:
+    resumen: El catálogo completo de APIs (OpenAPI 3.1 + anotaciones), solo para root.
+    consumidores:
+      - El portal /docs de esta misma app
+    auth: |
+      requireRoot (lib/docs/root-guard.ts): verifica la FIRMA del JWT (HS256, JWT_SECRET)
+      y después le pregunta a SecuritySuite por el objeto `docs` / acción `view` de la
+      app 5. Cachea 5 minutos el sí y 30 segundos el no. Ante cualquier error, deniega.
+    auth_badges:
+      - jwt
+    errores:
+      - codigo: 401
+        code: TOKEN_INVALIDO
+        cuando: La firma no verifica contra JWT_SECRET, o el token está malformado.
+        solucion: Es el único endpoint de la app que verifica la firma. Un token armado a mano no entra.
+      - codigo: 503
+        code: SECRETO_NO_CONFIGURADO
+        cuando: JWT_SECRET falta, está vacía, mide menos de 32 caracteres o vale el default del repo de secapi.
+        solucion: Setear en el .env del server el MISMO secreto con el que firma SecuritySuite.
+      - codigo: 503
+        code: SECAPI_INACCESIBLE
+        cuando: SecuritySuite no contestó a tiempo.
+        solucion: Es fail-closed a propósito. El catálogo no se abre "por las dudas".
+    notas: |
+      El documento se sirve desde el JSON versionado en el repo (import estático), no
+      leyendo el filesystem en runtime: eso es lo que dejó roto a /api/doc, que busca un
+      .md que ya no existe en el deploy. Los `servers` sí se resuelven al servir, para no
+      versionar direcciones internas.
+
+  POST /api/docs/try:
+    resumen: Ejecuta una llamada a una API de esta app desde el servidor, con la sesión del root.
+    consumidores:
+      - El portal /docs de esta misma app
+    auth: requireRoot, el mismo gate que GET /api/docs/spec.
+    auth_badges:
+      - jwt
+    cuerpo:
+      contentType: application/json
+      requerido: true
+      descripcion: |
+        `{ payload }` donde payload es el base64 de
+        `{ metodo, path, query, headers, body, confirmacion }`.
+
+        El base64 no es ofuscación: el WAF de nginx delante de TrackMovil rechaza con
+        403 los bodies con sintaxis de shell, y el cuerpo de un ejemplo legítimo puede
+        tenerla. Codificado, el WAF ve una tira de base64 y el cuerpo llega entero.
+      campos:
+        - nombre: metodo
+          tipo: string
+          requerido: true
+          descripcion: GET, HEAD, POST, PUT, PATCH o DELETE.
+        - nombre: path
+          tipo: string
+          requerido: true
+          descripcion: Tiene que empezar con /api/ y ser del propio host. Nunca es un proxy abierto.
+        - nombre: confirmacion
+          tipo: string
+          requerido: false
+          descripcion: Obligatorio en las escrituras, y tiene que ser el path exacto.
+      ejemplo: |
+        {
+          "payload": "eyJtZXRvZG8iOiJHRVQiLCJwYXRoIjoiL2FwaS9zZXJ2ZXItdGltZSJ9"
+        }
+    respuestas:
+      "200":
+        descripcion: El ejecutor respondió. El status del endpoint llamado va adentro, en `status`.
+        ejemplo: |
+          {
+            "success": true,
+            "status": 200,
+            "statusText": "OK",
+            "headers": { "content-type": "application/json" },
+            "body": "{\"serverTime\":\"2026-08-17T15:00:00.000Z\"}",
+            "duracionMs": 12,
+            "truncado": false
+          }
+      "428":
+        descripcion: Escritura sin `confirmacion` o con el path mal escrito.
+      "504":
+        descripcion: El endpoint llamado no respondió en 30 segundos.
+    errores:
+      - codigo: 400
+        code: PATH_FUERA_DE_API
+        cuando: El path no empieza con /api/.
+        solucion: El ejecutor solo llama APIs de esta app; no sirve para abrir páginas.
+      - codigo: 400
+        code: PATH_INVALIDO
+        cuando: URL absoluta, //host, traversal (`..`, `%2e`) o caracteres de control.
+        solucion: Ninguna, es intencional. No es un proxy abierto.
+      - codigo: 428
+        code: CONFIRMACION_REQUERIDA
+        cuando: POST/PUT/PATCH/DELETE sin `confirmacion` igual al path exacto.
+        solucion: Escribir el path en el diálogo. El ambiente puede ser producción.
+    notas: |
+      Los headers `cookie` y `authorization` que mande el cliente se descartan: los pone
+      el servidor con la sesión del root que abrió el portal, y la respuesta informa
+      cuáles se descartaron en `headersDescartados`.
+
+      La respuesta se corta en 1 MB (`truncado: true`) y la llamada se aborta a los 30 s.
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Camino crítico del dashboard
+  # ══════════════════════════════════════════════════════════════════════════
+
+  GET /api/latest:
+    resumen: Última posición conocida de un móvil.
+    consumidores:
+      - Mapa del dashboard (ficha del móvil, seguimiento)
+    auth: requireAuth (sesión de Supabase). Con ENABLE_SECURITY_CHECKS='false' se saltea.
+    parametros:
+      - nombre: movilId
+        en: query
+        tipo: string
+        requerido: true
+        descripcion: Móvil a consultar. Sin esto devuelve 400.
+        ejemplo: 330
+    notas: |
+      Lee gps_latest_positions, que tiene UNA fila por móvil y la mantiene actualizada
+      el trigger sync_gps_latest_position a partir de lo que encola /api/import/gps.
+
+  GET /api/all-positions:
+    resumen: Posición de todos los móviles del escenario, para pintar el mapa.
+    consumidores:
+      - Mapa del dashboard (carga inicial y repoll)
+    auth: requireAuth (sesión de Supabase).
+    notas: |
+      El móvil que todavía no reportó GPS en el día cae en PTOVTA_FALLBACK: se lo ubica
+      en las coordenadas de su punto de venta y, best-effort, se le siembra una fila en
+      gps_tracking_history para que el resto del sistema lo vea igual.
+
+  GET /api/pedidos:
+    resumen: Pedidos del escenario con filtros, ya scopeados por empresa fletera.
+    consumidores:
+      - Dashboard (mapa, tabla extendida, panel del móvil)
+    auth: |
+      requireAuth (sesión de Supabase) + scope por los headers `x-track-isroot` y
+      `empresas_fleteras`. El scope es fail-closed: un usuario no-root sin empresas en
+      la query recibe lista vacía, no todo.
+    notas: |
+      `x-track-isroot` lo pone el front y es forjable. Para el scope de datos alcanza —el
+      peor caso es ver de más dentro de la propia app— pero no sirve como control de
+      acceso a nada más.
+
+  GET /api/services:
+    resumen: Services del escenario con filtros, con el mismo scope que los pedidos.
+    consumidores:
+      - Dashboard (mapa, tabla extendida)
+    auth: requireAuth + scope por empresa (mismo criterio fail-closed que /api/pedidos).
+
+  GET /api/zonas:
+    resumen: Zonas disponibles, opcionalmente filtradas por empresa fletera.
+    consumidores:
+      - Dashboard (capas del mapa, selectores de zona)
+    auth: |
+      NINGUNO. El handler no invoca ningún gate: la lista de zonas se sirve a cualquiera
+      que llegue al puerto. El filtro por `empresaIds` es un filtro de datos, no un
+      control de acceso: quien no lo manda, ve todas.
+    auth_badges:
+      - sin auth
+
+  GET /api/demoras:
+    resumen: Demoras vigentes por zona (capa de información del mapa).
+    consumidores:
+      - Dashboard (capas del mapa)
+    auth: requireAuth (sesión de Supabase).
+
+  GET /api/moviles-extended:
+    resumen: Móviles con datos extendidos para la tabla del dashboard.
+    consumidores:
+      - Tabla extendida del dashboard
+    auth: requireAuth + scope por empresa vía `x-track-isroot`.
+
+  GET /api/moviles-with-activity:
+    resumen: Móviles con actividad en el período, para los selectores.
+    consumidores:
+      - Selectores de móvil del dashboard
+    auth: requireAuth (sesión de Supabase).
+
+  GET /api/empresas:
+    resumen: Padrón de empresas fleteras visible para el usuario.
+    consumidores:
+      - Selector de empresa del dashboard
+    auth: requireAuth (sesión de Supabase).
+
+  GET /api/escenario-settings:
+    resumen: Settings del escenario que la UI necesita para arrancar.
+    consumidores:
+      - Hook useEscenarioSettings del dashboard
+    auth: |
+      NINGUNO, y está declarado como decisión en el propio handler: son datos
+      operacionales, no sensibles. Aun así es una superficie abierta más.
+    auth_badges:
+      - sin auth
+
+  GET /api/server-time:
+    resumen: Hora del servidor en ISO 8601, para calcular el offset con el cliente.
+    consumidores:
+      - Hook useServerTime del dashboard
+    auth: |
+      NINGUNO, a propósito: sin la hora del servidor el dashboard calcula mal todos los
+      atrasos, y el dato no es sensible.
+    auth_badges:
+      - sin auth
+    notas: |
+      Es el mejor endpoint para probar el "Try it" de este portal: no escribe nada, no
+      necesita parámetros y responde siempre.
+
+  GET /api/user-preferences:
+    resumen: Preferencias de UI del usuario.
+    consumidores:
+      - Dashboard (preferencias, capas guardadas)
+    auth: |
+      NINGUNO. Recibe el `user_id` por query y devuelve sus preferencias: cualquiera que
+      sepa un user_id lee las preferencias de ese usuario.
+    auth_badges:
+      - sin auth
+
+  PUT /api/user-preferences:
+    resumen: Guarda las preferencias de UI del usuario (upsert).
+    consumidores:
+      - Dashboard (preferencias)
+    auth: |
+      NINGUNO. Escribe las preferencias del `user_id` que venga en el body, sin validar
+      que sea el del que llama.
+    auth_badges:
+      - sin auth
+
+  GET /api/notificaciones/pending:
+    resumen: Notificaciones pendientes de leer para el usuario.
+    consumidores:
+      - Campanita del dashboard
+    auth: |
+      NINGUNO en el handler. Devuelve 401 si no puede resolver al usuario, pero eso sale
+      del dato que le pasa el cliente, no de un gate.
+    auth_badges:
+      - sin auth
+
+  GET /api/realtime-config:
+    resumen: Configuración del canal de Realtime (intervalos, flags).
+    consumidores:
+      - RealtimeProvider del dashboard
+    auth: Header `x-track-isroot` para escribir; la lectura la usa todo el dashboard.
+
+  GET /api/geocode:
+    resumen: Proxy hacia el Nominatim self-hosted de Riogas.
+    consumidores:
+      - Buscador de direcciones del mapa
+    auth: |
+      NINGUNO. Es un proxy de salida: cualquiera que llegue al puerto puede usar el
+      Nominatim interno a través de esta app.
+    auth_badges:
+      - sin auth
+    notas: |
+      Existe por dos razones que no se pueden resolver en el cliente: mixed-content (la
+      app va por https y Nominatim es http interno) y CORS.
+
+  GET /api/overpass:
+    resumen: Geometría completa de una calle (todos sus tramos de OSM unidos).
+    consumidores:
+      - Mapa del dashboard (pintar una calle de punta a punta)
+    auth: |
+      NINGUNO. Mismo caso que /api/geocode: proxy de salida sin gate.
+    auth_badges:
+      - sin auth
+    notas: |
+      En OSM una calle está partida en muchos `way` con el mismo nombre: Nominatim
+      devuelve uno solo y Overpass los junta todos.
+
+  GET /api/movil/{id}:
+    resumen: Ficha de un móvil (datos del padrón + estado actual).
+    consumidores:
+      - Panel del móvil en el dashboard
+    auth: requireAuth (sesión de Supabase).
+    parametros:
+      - nombre: id
+        en: path
+        tipo: int
+        requerido: true
+        descripcion: Número de móvil.
+        ejemplo: 330
+
+  GET /api/pedido-detalle/{pedidoId}:
+    resumen: Detalle completo de un pedido, para el popup del mapa y la tabla.
+    consumidores:
+      - Dashboard (popup del pedido, tabla extendida)
+    auth: requireAuth (sesión de Supabase).
+    parametros:
+      - nombre: pedidoId
+        en: path
+        tipo: string
+        requerido: true
+        descripcion: El `id` del pedido tal como lo manda el AS400.
+
+  GET /api/moviles-dia:
+    resumen: Proyección diaria por móvil (lo que hizo el móvil en el día).
+    consumidores:
+      - Dashboard (resumen del día, tabla extendida)
+    auth: requireAuth + scope por empresa vía `x-track-isroot`.
+    notas: |
+      Lee una proyección precalculada, no los hechos crudos. Si un número no cierra,
+      antes de mirar el handler hay que ver cuándo se reconstruyó la proyección
+      (POST /api/moviles-dia/rebuild).
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Métricas
+  # ══════════════════════════════════════════════════════════════════════════
+
+  GET /api/metricas/dashboard:
+    resumen: KPIs, tendencia, ranking y detalle del dashboard de cumplimiento.
+    consumidores:
+      - Pantalla /dashboard/metricas-cumplimiento
+    auth: |
+      requireAuth → requireAllowlistedEmail(METRICAS_DASHBOARD_ALLOWED_EMAILS)
+      → requireFuncionalidad('Estadisticas Cumplimiento') → scope por headers
+      x-track-isroot / x-track-empresas-ids (fail-closed sin tocar la base).
+    notas: |
+      Todo se calcula por ESCENARIO: los tiempos de un mismo chofer en escenarios
+      distintos no se suman nunca. Los percentiles se calculan exactos sobre los hechos
+      (percentile_cont), jamás promediando promedios de otro agregado.
+
+  GET /api/metricas/desfasaje:
+    resumen: Franjas de desfasaje entre la demora proyectada y la real, por pedido entregado.
+    consumidores:
+      - Card "Acierto de la demora" de /dashboard/metricas-cumplimiento
+    auth: |
+      Mismo orden y helpers que /api/metricas/dashboard: requireAuth →
+      requireAllowlistedEmail → requireFuncionalidad('Estadisticas Cumplimiento') →
+      scope por headers.
+    notas: |
+      El cálculo entero vive en la RPC `metricas_desfasaje`
+      (docs/sqls/2026-08-03-desfasaje-demoras.sql); el handler solo valida, resuelve el
+      scope por empresa y llama. Si el número no cierra, el bug casi siempre está en la
+      RPC, no acá.
+
+      El scope por empresa se INTERSECTA con lo que pide el usuario: el query param
+      `empresa` nunca amplía lo que el rol permite ver.

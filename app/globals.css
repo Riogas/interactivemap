@@ -26,6 +26,10 @@
   --color-stats-warning-soft: #FEF3C7;
   --color-stats-destructive: #DC2626;
   --color-stats-destructive-soft: #FEE2E2;
+  /* Texto sobre un relleno solido `bg-stats-destructive` (hermano de -primary-fg).
+   * En dark el relleno se aclara, asi que este token se oscurece: ver el bloque
+   * [data-theme="dark"]. */
+  --color-stats-destructive-fg: #FFFFFF;
   --color-stats-info: #3B82F6;
   --color-stats-info-soft: #DBEAFE;
   --color-stats-neutral: #6B7280;
@@ -37,7 +41,11 @@
   --color-stats-surface-2: #F1F5F9;
   --color-stats-border: #E2E8F0;
   --color-stats-foreground: #0F172A;
-  --color-stats-muted-fg: #64748B;
+  /* #64748B daba 4,34:1 sobre surface-2 (#F1F5F9): por debajo del 4,5:1 de AA,
+     y el visor de /docs lo usa en texto de 0,65-0,8rem, donde AA-large no vale.
+     #5E6C82 sube a 4,86:1 sobre surface-2, 5,09:1 sobre background y 5,33:1
+     sobre surface, sin salirse del slate de la paleta. */
+  --color-stats-muted-fg: #5E6C82;
 
   /* Fonts: Fira Sans (body) + Fira Code (data/tabular numbers) */
   --font-stats-sans: var(--font-stats-sans-base, 'Fira Sans'), system-ui, sans-serif;
@@ -124,6 +132,30 @@
   --color-stats-warning-soft: #422006;
   --color-stats-destructive-soft: #450A0A;
   --color-stats-info-soft: #0B2447;
+
+  /* ─── Primer plano en oscuro ────────────────────────────────────────────
+   * Este bloque redefinia SOLO los fondos (-soft), asi que todo el color de
+   * TEXTO seguia saliendo de la paleta clara: los nombres de modulo del portal
+   * /docs quedaban en #1E40AF sobre #111827 = 2,03:1 (AA pide 4,5:1) y lo mismo
+   * pasaba con los badges y los KPI del resto de los dashboards en oscuro.
+   *
+   * Los valores de abajo estan medidos contra TODOS los fondos oscuros con los
+   * que conviven (background, surface, surface-2 y los -soft de arriba); el peor
+   * caso de cada uno queda anotado al lado. Si se toca alguno, hay que volver a
+   * medir: es lo unico que sostiene la accesibilidad de la pantalla.
+   *
+   * Los *-fg se INVIERTEN a propositio: en claro son el blanco sobre un relleno
+   * oscuro, y en oscuro el casi-negro sobre un relleno claro. */
+  --color-stats-primary: #8AB4F8;        /* 8,42 sobre surface · 7,34 sobre info-soft */
+  --color-stats-primary-fg: #0B1220;     /* 8,88 sobre el relleno primary */
+  --color-stats-destructive: #F87171;    /* 6,41 sobre surface · 5,84 sobre destructive-soft */
+  --color-stats-destructive-fg: #0B1220; /* 6,77 sobre el relleno destructive */
+  --color-stats-info: #7DD3FC;           /* 10,64 sobre surface · 9,28 sobre info-soft */
+  --color-stats-success: #4ADE80;        /* 10,18 sobre surface · 8,55 sobre success-soft */
+  --color-stats-warning: #FBBF24;        /* 10,63 sobre surface · 8,73 sobre warning-soft */
+  --color-stats-neutral: #D1D5DB;        /* 12,04 sobre surface · 7,00 sobre neutral-soft */
+  --color-stats-neutral-soft: #374151;   /* el gris claro de la paleta clara era un
+                                          * bloque blanco en medio de la pantalla */
 
   /* Métricas de Cumplimiento — paleta dark (mismo mapeo, hex validados). */
   --color-metricas-serie: #5b8cf0;
