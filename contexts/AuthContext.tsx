@@ -23,6 +23,13 @@ import {
   matchesResponse,
 } from '@/lib/session-handoff';
 import { resolveLandingRoute } from '@/lib/role-attributes';
+import {
+  AVISO_SESION_INACTIVIDAD,
+  AVISO_SESION_RECHAZADA,
+  setSessionNotice,
+} from '@/lib/session-notice';
+import { fetchPermisos } from '@/lib/permisos-securitysuite';
+import toast from 'react-hot-toast';
 
 interface User {
   id: string;
@@ -122,54 +129,6 @@ function tieneVerTodasEmpresas(
   }
 }
 
-// Acciones de permisos consultadas al Security Suite
-const PERMISOS_A_CONSULTAR = [
-  { ObjetoKey: 'dashboard', AccionKey: 'stats' },
-  { ObjetoKey: 'dashboard', AccionKey: 'date' },
-  { ObjetoKey: 'dashboard', AccionKey: 'updptsventa' },
-  { ObjetoKey: 'dashboard', AccionKey: 'asigmovil' },
-  { ObjetoKey: 'dashboard', AccionKey: 'configzonaemp' },
-  { ObjetoKey: 'dashboard', AccionKey: 'ranking' },
-];
-
-async function fetchPermisos(token: string): Promise<Set<string>> {
-  try {
-    const res = await fetch('/api/auth/permisos', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        aplicacion: 'RiogasTracking',
-        permisos: PERMISOS_A_CONSULTAR,
-      }),
-    });
-
-    if (!res.ok) {
-      console.warn('⚠️ fetchPermisos: respuesta no OK', res.status);
-      return new Set();
-    }
-
-    const data = await res.json();
-    const granted = new Set<string>();
-
-    if (Array.isArray(data.resultados)) {
-      for (const r of data.resultados) {
-        if (r.permitido === 'GRANTED') {
-          granted.add(r.accionKey as string);
-        }
-      }
-    }
-
-    console.log('✅ Permisos cargados:', [...granted]);
-    return granted;
-  } catch (e) {
-    console.warn('⚠️ Error al cargar permisos:', e);
-    return new Set();
-  }
-}
-
 interface AuthContextType {
   user: User | null;
   escenarioId: number;
@@ -200,6 +159,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Timeout global de inactividad (minutos) leído de /api/realtime-config. null =
   // aún no cargado → resolveIdleTimeoutMs cae al default (8h).
   const globalIdleMinutesRef = useRef<number | null>(null);
+
+  // Último token para el que ya se consultaron permisos. Evita que el efecto de
+  // revalidación repita la consulta que el propio login() acaba de hacer.
+  const permisosConsultadosRef = useRef<string | null>(null);
 
   /** Atributos planos de todos los roles del usuario (para leer overrides como TiempoInactividadMin). */
   const flattenAtributos = (
@@ -275,9 +238,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  /** Limpiar sesión expirada de storage */
-  const clearExpiredSession = () => {
-    console.log('⏰ Sesión expirada por inactividad — cerrando sesión automáticamente');
+  /**
+   * Limpiar la sesión de storage y del estado.
+   *
+   * `motivo` (opcional) queda guardado para que la pantalla de login lo muestre:
+   * un deslogueo automático sin cartel es indistinguible de un arranque en frío
+   * y el usuario lo lee como un bug. Ver lib/session-notice.ts.
+   */
+  const clearSession = useCallback((motivo?: string) => {
     authStorage.removeItem('trackmovil_user');
     authStorage.removeItem('trackmovil_token');
     authStorage.removeItem('trackmovil_allowed_empresas');
@@ -286,6 +254,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authStorage.removeItem(LAST_ACTIVITY_KEY);
     setUser(null);
     setPermisos(new Set());
+    permisosConsultadosRef.current = null;
+    if (motivo) setSessionNotice(motivo);
+  }, []);
+
+  /** Limpiar sesión expirada de storage */
+  const clearExpiredSession = () => {
+    console.log('⏰ Sesión expirada por inactividad — cerrando sesión automáticamente');
+    clearSession(AVISO_SESION_INACTIVIDAD);
   };
 
   useEffect(() => {
@@ -439,6 +415,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const intervalId = setInterval(checkExpiration, EXPIRY_CHECK_INTERVAL_MS);
     return () => clearInterval(intervalId);
   }, [user?.loginTime]);
+
+  // 🔐 Revalidar la sesión contra el SecuritySuite cuando se rehidrata desde storage.
+  //
+  // La sesión rehidratada puede traer un token que el SecuritySuite ya no acepta:
+  // rotación del secreto de firma (invalida TODOS los tokens vigentes de golpe),
+  // token vencido, usuario dado de baja. Sin este chequeo la app arranca
+  // "logueada" — los permisos salen del cache de storage, la UI se pinta
+  // habilitada — y recién falla endpoint por endpoint, sin cartel. En Modo
+  // Kiosko no hay siquiera un vencimiento por inactividad que la rescate: la
+  // pantalla se queda para siempre mostrando nada.
+  //
+  // Criterio: solo el 401 cierra la sesión. Un error de red NO (un kiosko sin
+  // conectividad no debe desloguearse solo), y un 503 tampoco (el problema es de
+  // infraestructura; re-loguearse no lo arregla) — ahí avisamos y seguimos.
+  useEffect(() => {
+    const token = user?.token;
+    if (!token) return;
+    // login() ya consultó para este token: no repetir.
+    if (permisosConsultadosRef.current === token) return;
+    permisosConsultadosRef.current = token;
+
+    let cancelled = false;
+    (async () => {
+      const resultado = await fetchPermisos(token);
+      if (cancelled) return;
+
+      if (resultado.estado === 'ok') {
+        // Además de validar la sesión, refresca el cache: si a alguien le
+        // revocaron un permiso, se aplica en el próximo arranque.
+        setPermisos(resultado.permisos);
+        authStorage.setItem('trackmovil_permisos', JSON.stringify([...resultado.permisos]));
+        return;
+      }
+
+      if (resultado.estado === 'sesion_invalida') {
+        console.warn('🔐 Sesión rechazada por el SecuritySuite — cerrando sesión');
+        clearSession(AVISO_SESION_RECHAZADA);
+        toast.error(AVISO_SESION_RECHAZADA);
+        return;
+      }
+
+      if (resultado.estado === 'servicio_no_configurado') {
+        toast.error(
+          'El servicio de seguridad no está disponible. Los permisos pueden estar desactualizados — avisá a sistemas.',
+        );
+        return;
+      }
+
+      // error_red: dejamos los permisos cacheados como están y seguimos.
+      console.warn('⚠️ No se pudieron revalidar los permisos (red) — se usan los cacheados');
+    })();
+
+    return () => { cancelled = true; };
+  }, [user?.token, clearSession]);
 
   // ⏰ Tracking de actividad: cada interacción del usuario renueva la ventana de
   // sesión (sliding). Solo activo con sesión iniciada. Al montar/loguear se siembra
@@ -606,10 +636,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         authStorage.setItem('trackmovil_token', newUser.token);
         authStorage.setItem('trackmovil_escenario_id', String(selectedEscenarioId));
 
-        // Cargar permisos del Security Suite
-        const grantedPermisos = await fetchPermisos(newUser.token);
-        setPermisos(grantedPermisos);
-        authStorage.setItem('trackmovil_permisos', JSON.stringify([...grantedPermisos]));
+        // Cargar permisos del Security Suite.
+        // Marcamos el token como ya consultado para que el efecto de
+        // revalidación no repita esta misma llamada al montar el usuario.
+        const resultadoPermisos = await fetchPermisos(newUser.token);
+        permisosConsultadosRef.current = newUser.token;
+
+        if (
+          resultadoPermisos.estado === 'sesion_invalida' ||
+          resultadoPermisos.estado === 'servicio_no_configurado'
+        ) {
+          // El SecuritySuite acaba de emitir este token y ya lo rechaza (401), o
+          // no tiene el secreto de firma configurado (503). Dejar entrar igual
+          // sería el peor de los mundos: usuario adentro, todas las acciones
+          // deshabilitadas y ningún cartel. Preferimos no loguear y decir qué pasó.
+          console.error('❌ Login abortado: no se pudieron resolver los permisos', resultadoPermisos.estado);
+          clearSession();
+          return {
+            success: false,
+            error:
+              resultadoPermisos.estado === 'servicio_no_configurado'
+                ? 'El servicio de seguridad no está disponible. Avisá a sistemas.'
+                : 'El servicio de seguridad rechazó la sesión. Volvé a intentar; si sigue, avisá a sistemas.',
+          };
+        }
+
+        if (resultadoPermisos.estado === 'error_red') {
+          // No llegamos a preguntar. Degradamos sin romper: entra con los
+          // permisos vacíos, pero AVISADO — así "todo deshabilitado" no se
+          // confunde con "no tenés permisos asignados".
+          console.warn('⚠️ Login sin permisos cargados (error de red)');
+          setPermisos(new Set());
+          authStorage.removeItem('trackmovil_permisos');
+          // No reintentamos en el acto (el efecto de revalidación pegaría otra
+          // vez contra la misma red caída); el próximo montaje lo reintenta.
+          toast.error(
+            'No se pudieron cargar tus permisos (problema de red). Algunas acciones van a aparecer deshabilitadas: recargá la página.',
+          );
+        } else {
+          setPermisos(resultadoPermisos.permisos);
+          authStorage.setItem(
+            'trackmovil_permisos',
+            JSON.stringify([...resultadoPermisos.permisos]),
+          );
+        }
 
         setUser(newUser);
         setEscenarioId(selectedEscenarioId);
@@ -660,6 +730,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('🔐 Limpiando sesión local...');
     setUser(null);
     setPermisos(new Set());
+    permisosConsultadosRef.current = null;
     // Modo Kiosko: volver a 'session' en el logout, para que un login posterior
     // en esta misma PC (de otro usuario, o del mismo tras revocación) arranque
     // siempre en el path seguro por defecto.

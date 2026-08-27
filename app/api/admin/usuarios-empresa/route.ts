@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase';
-import { requireFuncionalidad } from '@/lib/api-auth-gates';
+import {
+  describirErrorUpstream,
+  requireAuthorizationHeader,
+  requireFuncionalidad,
+} from '@/lib/api-auth-gates';
 
 /**
  * API proxy: GET /api/admin/usuarios-empresa
@@ -21,6 +25,13 @@ import { requireFuncionalidad } from '@/lib/api-auth-gates';
 const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
 
 export async function GET(request: NextRequest) {
+  // Sesión primero. Sin token, esta pantalla (/admin/usuarios-empresa) quedaba
+  // vacía sin explicación: el header vacío se forwardeaba al SecuritySuite y su
+  // 401 opaco llegaba como "Error del servicio upstream". Cortamos acá con un
+  // mensaje que dice que fue por sesión.
+  const auth = requireAuthorizationHeader(request);
+  if (typeof auth !== 'string') return auth;
+
   const gate = requireFuncionalidad(request, 'Gestion de Usuarios');
   if (gate !== true) return gate;
 
@@ -133,8 +144,9 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Forward del token del usuario al upstream (proxy con auth del usuario)
-  const authHeader = request.headers.get('Authorization') ?? '';
+  // Forward del token del usuario al upstream (proxy con auth del usuario).
+  // Ya validado arriba por requireAuthorizationHeader: acá nunca es vacío.
+  const authHeader = auth;
 
   // Helper interno para llamar al upstream con un param ya construido.
   async function callUpstream(param: string): Promise<{ ok: boolean; status: number; body: unknown; url: string }> {
@@ -167,13 +179,17 @@ export async function GET(request: NextRequest) {
         `[usuarios-empresa] Upstream error final ${attempt.status}:`,
         JSON.stringify(attempt.body),
       );
+      // Traducir 401/403/503 del SecuritySuite a algo accionable — ver
+      // describirErrorUpstream. La pantalla muestra `json.error` tal cual.
+      const desc = describirErrorUpstream(attempt.status);
       return NextResponse.json(
         {
           success: false,
-          error: 'Error del servicio upstream',
+          error: desc.error,
+          code: desc.code,
           upstream_status: attempt.status,
           upstream_url: attempt.url,
-          detail: attempt.body,
+          ...(desc.ocultarDetalle ? {} : { detail: attempt.body }),
         },
         { status: attempt.status },
       );

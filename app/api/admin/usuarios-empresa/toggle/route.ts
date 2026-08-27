@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireFuncionalidad } from '@/lib/api-auth-gates';
+import {
+  describirErrorUpstream,
+  requireAuthorizationHeader,
+  requireFuncionalidad,
+} from '@/lib/api-auth-gates';
 
 /**
  * API: POST /api/admin/usuarios-empresa/toggle
  *
- * Gate: funcionalidad 'Gestion de Usuarios' (via x-track-funcs).
+ * Gates: sesión (header Authorization usable) + funcionalidad 'Gestion de
+ * Usuarios' (via x-track-funcs). La sesión se chequea primero: sin token el
+ * problema es 401 (sesión), no 403 (permisos).
  *
  * Proxía al endpoint del SecuritySuite:
  *   POST ${SECURITY_SUITE_URL}/api/db/usuarios/{userId}/permite-login
@@ -28,6 +34,13 @@ const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3
 type Accion = 'grant' | 'revoke' | 'toggle';
 
 export async function POST(request: NextRequest) {
+  // Sesión primero: esto es una ESCRITURA que habilita o deshabilita el acceso
+  // de una persona al sistema. Si no hay token, cortamos con un 401 propio y un
+  // mensaje que dice que fue por sesión, en vez de mandar un `Authorization`
+  // vacío al SecuritySuite y devolver su 401 opaco como si el servicio fallara.
+  const auth = requireAuthorizationHeader(request);
+  if (typeof auth !== 'string') return auth;
+
   const gate = requireFuncionalidad(request, 'Gestion de Usuarios');
   if (gate !== true) return gate;
 
@@ -67,7 +80,7 @@ export async function POST(request: NextRequest) {
   }
 
   const callerUser = request.headers.get('x-track-user') ?? 'unknown';
-  const authHeader = request.headers.get('Authorization') ?? '';
+  const authHeader = auth; // ya validado arriba por requireAuthorizationHeader
   const upstreamUrl = `${SECURITY_SUITE_URL}/api/db/usuarios/${userId}/permite-login`;
 
   console.log(
@@ -92,13 +105,21 @@ export async function POST(request: NextRequest) {
         `[usuarios-empresa/toggle] upstream error ${upstreamRes.status}:`,
         JSON.stringify(data),
       );
+      // El 401/503 del SecuritySuite llega con códigos internos
+      // (TOKEN_INVALIDO, TOKEN_VENCIDO, SECRETO_NO_CONFIGURADO, ...) que al
+      // usuario no le dicen nada. Los traducimos y, en esos casos, NO
+      // reenviamos `detail`: el cliente prioriza `detail.error` sobre `error`,
+      // así que dejarlo volvería a mostrar el código crudo. El body upstream
+      // igual queda en el log de arriba.
+      const desc = describirErrorUpstream(upstreamRes.status);
       return NextResponse.json(
         {
           success: false,
-          error: 'Error del servicio upstream',
+          error: desc.error,
+          code: desc.code,
           upstream_status: upstreamRes.status,
           upstream_url: upstreamUrl,
-          detail: data,
+          ...(desc.ocultarDetalle ? {} : { detail: data }),
         },
         { status: upstreamRes.status },
       );

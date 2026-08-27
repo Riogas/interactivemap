@@ -101,3 +101,103 @@ export function requireAllowlistedEmail(
   }
   return true;
 }
+
+/**
+ * requireAuthorizationHeader — exige una credencial usable en `Authorization`
+ * ANTES de proxiar a los endpoints `/api/db/*` del SecuritySuite.
+ *
+ * Por qué vive acá y no repetido en cada route: las rutas que proxían al
+ * SecuritySuite venían mandando
+ *   `Authorization: request.headers.get('Authorization') ?? ''`.
+ * Con la sesión caída eso forwardea un header vacío y delega el rechazo al
+ * upstream, que responde un 401 opaco ({ error: 'SIN_TOKEN' }) que el cliente
+ * muestra como "Error del servicio upstream" — o, en la pantalla de listado,
+ * como una tabla vacía sin ninguna explicación. Cortar acá permite decir lo que
+ * realmente pasó: se cayó la sesión, no el otro servicio.
+ *
+ * Esto deja de ser un caso raro cuando el SecuritySuite cierra `/api/db/*`
+ * (todas las operaciones pasan a exigir JWT con firma verificada): al setear el
+ * secreto de firma, TODOS los tokens vigentes se invalidan de una.
+ *
+ * También corta el caso `"Bearer "` / `"Bearer null"`: los helpers
+ * `getAuthHeaders` del cliente arman el header como `'Bearer ' + (token ?? '')`,
+ * así que sin token el header EXISTE pero no trae credencial.
+ *
+ * Uso:
+ *   const auth = requireAuthorizationHeader(request);
+ *   if (typeof auth !== 'string') return auth;
+ *   // `auth` es el header ya validado, listo para forwardear al upstream.
+ */
+export function requireAuthorizationHeader(request: NextRequest): string | NextResponse {
+  const raw = (request.headers.get('Authorization') ?? '').trim();
+  // Sacar el esquema para mirar la credencial en sí. `\b` (y no `\s+`) para que
+  // un `"Bearer"` pelado también quede como credencial vacía.
+  const credencial = raw.replace(/^Bearer\b/i, '').trim();
+
+  if (
+    raw.length === 0 ||
+    credencial.length === 0 ||
+    credencial === 'null' ||
+    credencial === 'undefined'
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Tu sesión venció o no es válida. Volvé a iniciar sesión.',
+        code: 'SIN_SESION',
+      },
+      { status: 401 },
+    );
+  }
+
+  return raw;
+}
+
+/**
+ * describirErrorUpstream — traduce el status de un error del SecuritySuite a un
+ * mensaje que el usuario pueda accionar.
+ *
+ * El SecuritySuite contesta con códigos internos (`TOKEN_INVALIDO`,
+ * `TOKEN_VENCIDO`, `SIN_TOKEN`, `USUARIO_NO_ENCONTRADO`, `SECRETO_NO_CONFIGURADO`)
+ * que, pasados tal cual al front, se leen como "se rompió algo" en vez de "se te
+ * venció la sesión". Distinguir importa porque la acción del usuario es
+ * distinta: re-loguearse (401), pedir permisos (403), o avisar a sistemas
+ * (503 — re-loguearse no arregla nada).
+ *
+ * `ocultarDetalle` marca los casos donde NO conviene reenviar el body del
+ * upstream al cliente: las pantallas priorizan `detail.error` sobre `error`, así
+ * que dejarlo pisaría el mensaje traducido con el código crudo.
+ */
+export function describirErrorUpstream(status: number): {
+  error: string;
+  code: string;
+  ocultarDetalle: boolean;
+} {
+  if (status === 401) {
+    return {
+      error: 'Tu sesión venció o no es válida. Volvé a iniciar sesión.',
+      code: 'SESION_INVALIDA',
+      ocultarDetalle: true,
+    };
+  }
+  if (status === 403) {
+    return {
+      error: 'No tenés permisos para esta operación en el SecuritySuite.',
+      code: 'SIN_PERMISO_UPSTREAM',
+      ocultarDetalle: false,
+    };
+  }
+  if (status === 503) {
+    return {
+      error:
+        'El servicio de seguridad no está disponible o no está configurado. Avisá a sistemas.',
+      code: 'UPSTREAM_NO_DISPONIBLE',
+      ocultarDetalle: true,
+    };
+  }
+  return {
+    error: 'Error del servicio upstream',
+    code: 'UPSTREAM_ERROR',
+    ocultarDetalle: false,
+  };
+}

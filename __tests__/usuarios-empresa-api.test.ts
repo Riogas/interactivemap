@@ -25,6 +25,7 @@ vi.mock('@/lib/supabase', () => ({
 
 import { GET } from '../app/api/admin/usuarios-empresa/route';
 import { POST } from '../app/api/admin/usuarios-empresa/toggle/route';
+import { GET as GET_USUARIO_DETALLE } from '../app/api/admin/login-security/usuario-detalle/route';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -261,5 +262,130 @@ describe('POST /api/admin/usuarios-empresa/toggle', () => {
     );
     const res = await POST(req);
     expect(res.status).toBe(502);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gate de SESIÓN (requireAuthorizationHeader)
+//
+// El SecuritySuite cierra /api/db/*: todas las operaciones pasan a exigir JWT
+// con firma verificada, y al setear el secreto TODOS los tokens vigentes se
+// invalidan de golpe. Estas rutas venían forwardeando
+// `Authorization ?? ''`, así que sin token mandaban un header vacío y devolvían
+// el 401 opaco del upstream ("Error del servicio upstream" / pantalla vacía).
+// Ahora cortan antes con un 401 propio que dice que fue por sesión.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Headers con funcionalidad OK pero SIN token — el caso post-deslogueo. */
+function sinTokenHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    'x-track-isroot': 'N',
+    'x-track-user': 'gestor01',
+    'x-track-funcs': 'Gestion de Usuarios,Query Inicios de sesion',
+    ...extra,
+  };
+}
+
+describe('gate de sesión en los proxies al SecuritySuite', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('GET usuarios-empresa sin Authorization → 401 SIN_SESION y NO llama al upstream', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch');
+    const req = makeRequest(
+      'GET',
+      'http://localhost/api/admin/usuarios-empresa?empresas=FLETERA_1',
+      sinTokenHeaders(),
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.code).toBe('SIN_SESION');
+    expect(body.error).toMatch(/sesión/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("GET usuarios-empresa con 'Bearer ' vacío (token null en storage) → 401 SIN_SESION", async () => {
+    // getAuthHeaders del cliente arma `'Bearer ' + (token ?? '')`: sin token el
+    // header EXISTE pero no trae credencial.
+    const fetchSpy = vi.spyOn(global, 'fetch');
+    const req = makeRequest(
+      'GET',
+      'http://localhost/api/admin/usuarios-empresa?empresas=FLETERA_1',
+      sinTokenHeaders({ Authorization: 'Bearer ' }),
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe('SIN_SESION');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('POST toggle sin Authorization → 401 SIN_SESION y NO escribe upstream', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch');
+    const req = makeRequest(
+      'POST',
+      'http://localhost/api/admin/usuarios-empresa/toggle',
+      sinTokenHeaders(),
+      { userId: 5, enabled: true },
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.code).toBe('SIN_SESION');
+    // Es una escritura que habilita/deshabilita el acceso de una persona: no
+    // debe salir de acá sin sesión.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('GET usuario-detalle sin Authorization → 401 SIN_SESION', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch');
+    const req = makeRequest(
+      'GET',
+      'http://localhost/api/admin/login-security/usuario-detalle?username=jperez',
+      sinTokenHeaders(),
+    );
+    const res = await GET_USUARIO_DETALLE(req);
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe('SIN_SESION');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('401 del upstream se traduce a un mensaje de sesión, sin filtrar TOKEN_INVALIDO', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'TOKEN_INVALIDO' }), { status: 401 }),
+    );
+
+    const req = makeRequest(
+      'GET',
+      'http://localhost/api/admin/usuarios-empresa?empresas=FLETERA_1',
+      rootHeaders(),
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.code).toBe('SESION_INVALIDA');
+    expect(body.error).toMatch(/sesión/i);
+    // El cliente prioriza detail.error sobre error: si lo dejáramos, la pantalla
+    // volvería a mostrar el código crudo del SecuritySuite.
+    expect(body.detail).toBeUndefined();
+  });
+
+  it('503 SECRETO_NO_CONFIGURADO del upstream NO se presenta como sesión vencida', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'SECRETO_NO_CONFIGURADO' }), { status: 503 }),
+    );
+
+    const req = makeRequest(
+      'POST',
+      'http://localhost/api/admin/usuarios-empresa/toggle',
+      rootHeaders(),
+      { userId: 5, enabled: true },
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.code).toBe('UPSTREAM_NO_DISPONIBLE');
+    expect(body.error).not.toMatch(/volvé a iniciar sesión/i);
   });
 });

@@ -398,6 +398,9 @@
           "400": {
             "description": "Request inválido"
           },
+          "401": {
+            "description": "No autenticado"
+          },
           "502": {
             "description": "Error del upstream"
           }
@@ -412,6 +415,7 @@
             "Query Inicios de sesion"
           ],
           "gates": [
+            "requireAuthorizationHeader (token para el SecuritySuite)",
             "requireFuncionalidad"
           ],
           "sinGate": false
@@ -741,6 +745,9 @@
           "400": {
             "description": "Request inválido"
           },
+          "401": {
+            "description": "No autenticado"
+          },
           "500": {
             "description": "Error interno"
           },
@@ -759,6 +766,7 @@
           ],
           "gates": [
             "header x-track-isroot (spoofeable)",
+            "requireAuthorizationHeader (token para el SecuritySuite)",
             "requireFuncionalidad"
           ],
           "sinGate": false
@@ -776,6 +784,9 @@
           "400": {
             "description": "Request inválido"
           },
+          "401": {
+            "description": "No autenticado"
+          },
           "502": {
             "description": "Error del upstream"
           }
@@ -790,6 +801,7 @@
             "Gestion de Usuarios"
           ],
           "gates": [
+            "requireAuthorizationHeader (token para el SecuritySuite)",
             "requireFuncionalidad"
           ],
           "sinGate": false
@@ -996,11 +1008,14 @@
           "200": {
             "description": "OK"
           },
+          "400": {
+            "description": "Request inválido"
+          },
           "401": {
             "description": "No autenticado"
           },
-          "500": {
-            "description": "Error interno"
+          "502": {
+            "description": "Error del upstream"
           }
         },
         "summary": "POST /api/auth/permisos",
@@ -1010,8 +1025,10 @@
         "x-archivo": "app/api/auth/permisos/route.ts",
         "x-auth": {
           "funcionalidades": [],
-          "gates": [],
-          "sinGate": true
+          "gates": [
+            "requireAuthorizationHeader (token para el SecuritySuite)"
+          ],
+          "sinGate": false
         },
         "x-generado": true
       }
@@ -4691,7 +4708,7 @@
     "archivosExcluidos": 2,
     "endpoints": 129,
     "endpointsSinDocblock": 42,
-    "endpointsSinGate": 29,
+    "endpointsSinGate": 28,
     "modulos": 40
   }
 }

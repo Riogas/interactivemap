@@ -246,6 +246,8 @@ function detectarAuth(fuenteConComentarios) {
   if (/\brequireRole\s*\(/.test(fuente)) gates.push('requireRole');
   if (/\brequireAllowlistedEmail\s*\(/.test(fuente)) gates.push('requireAllowlistedEmail (env)');
   if (/\brequireRoot\s*\(/.test(fuente)) gates.push('requireRoot (verificado contra secapi)');
+  if (/\brequireAuthorizationHeader\s*\(/.test(fuente))
+    gates.push('requireAuthorizationHeader (token para el SecuritySuite)');
 
   for (const m of fuente.matchAll(/requireFuncionalidad\s*\(\s*[^,]+,\s*['"]([^'"]+)['"]/g)) {
     gates.push('requireFuncionalidad');
@@ -292,6 +294,10 @@ function detectarEstados(fuenteConComentarios) {
   const codigos = new Set([200]);
   for (const m of fuente.matchAll(/status\s*:\s*(\d{3})/g)) codigos.add(Number(m[1]));
   for (const m of fuente.matchAll(/\bstatus\s*=\s*(\d{3})/g)) codigos.add(Number(m[1]));
+  // Los gates devuelven su status DESDE el helper, así que no queda ningún
+  // literal en el archivo de la route. Sin esto, mover un 401 a un helper lo
+  // borraba de la documentación aunque el handler lo siga devolviendo.
+  if (/\brequireAuthorizationHeader\s*\(/.test(fuente)) codigos.add(401);
   return [...codigos].sort((a, b) => a - b);
 }
 

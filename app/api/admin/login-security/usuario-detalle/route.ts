@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireFuncionalidad } from '@/lib/api-auth-gates';
+import {
+  describirErrorUpstream,
+  requireAuthorizationHeader,
+  requireFuncionalidad,
+} from '@/lib/api-auth-gates';
 
 /**
  * GET /api/admin/login-security/usuario-detalle?username=X
@@ -21,6 +25,8 @@ import { requireFuncionalidad } from '@/lib/api-auth-gates';
  * Forma de respuesta de este proxy hacia el cliente:
  *   200 — { success: true, usuario: <item del upstream> }
  *   400 — { success: false, error: 'Parámetro username requerido' }
+ *   401 — { success: false, code: 'SIN_SESION' | 'SESION_INVALIDA' } (sin token
+ *         propio, o token rechazado por el SecuritySuite)
  *   403 — { success: false, error: 'Acceso denegado' }
  *   404 — { success: false, error: 'Usuario no encontrado', detail: <upstream> }
  *   502 — { success: false, error: 'Error al conectar con SecuritySuite' }
@@ -30,6 +36,12 @@ import { requireFuncionalidad } from '@/lib/api-auth-gates';
 const SECURITY_SUITE_URL = process.env.SECURITY_SUITE_URL || 'http://localhost:3001';
 
 export async function GET(request: NextRequest) {
+  // Sesión primero: mismo criterio que /api/admin/usuarios-empresa. Sin token
+  // el header vacío se forwardeaba al SecuritySuite y su 401 volvía como
+  // "Error del servicio upstream", indistinguible de una caída del servicio.
+  const auth = requireAuthorizationHeader(request);
+  if (typeof auth !== 'string') return auth;
+
   const gate = requireFuncionalidad(request, 'Query Inicios de sesion');
   if (gate !== true) return gate;
 
@@ -45,7 +57,7 @@ export async function GET(request: NextRequest) {
 
   const trimmed = username.trim();
   const upstreamUrl = `${SECURITY_SUITE_URL}/api/db/usuarios/por-username?username=${encodeURIComponent(trimmed)}`;
-  const authHeader = request.headers.get('Authorization') ?? '';
+  const authHeader = auth; // ya validado arriba por requireAuthorizationHeader
   const callerUser = request.headers.get('x-track-user') ?? 'unknown';
 
   console.log(
@@ -69,15 +81,17 @@ export async function GET(request: NextRequest) {
         `[usuario-detalle] upstream ${upstreamRes.status}:`,
         JSON.stringify(body),
       );
+      // 404 conserva su mensaje propio (es un resultado esperable de la
+      // búsqueda). El resto pasa por describirErrorUpstream para que un 401 del
+      // SecuritySuite se lea como "se te venció la sesión" y no como una caída.
+      const desc = describirErrorUpstream(upstreamRes.status);
       return NextResponse.json(
         {
           success: false,
-          error:
-            upstreamRes.status === 404
-              ? 'Usuario no encontrado'
-              : 'Error del servicio upstream',
+          error: upstreamRes.status === 404 ? 'Usuario no encontrado' : desc.error,
+          ...(upstreamRes.status === 404 ? {} : { code: desc.code }),
           upstream_status: upstreamRes.status,
-          detail: body,
+          ...(desc.ocultarDetalle ? {} : { detail: body }),
         },
         { status: upstreamRes.status },
       );

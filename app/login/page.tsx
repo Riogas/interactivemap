@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { takeSessionNotice } from '@/lib/session-notice';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,6 +20,15 @@ export default function LoginPage() {
   const ESCENARIOS = [
     { label: 'Montevideo', value: 1000 },
   ];
+
+  // Si llegamos acá por un deslogueo automático (inactividad, o token rechazado
+  // por el SecuritySuite), mostrar el motivo. Sin esto el usuario aterriza en el
+  // login sin explicación y lo lee como un bug de la app. El aviso es one-shot:
+  // takeSessionNotice lo borra al leerlo.
+  useEffect(() => {
+    const aviso = takeSessionNotice();
+    if (aviso) setError(aviso);
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
