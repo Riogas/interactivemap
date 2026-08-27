@@ -22,19 +22,37 @@ export default function StatsLayout({ children }: { children: React.ReactNode })
   const canAccess = isRoot(user) || hasFuncionalidad(user?.roles, 'Estadistica Global RiogasTracking');
 
   useEffect(() => {
-    // Esperar a que el contexto de auth esté resuelto antes de evaluar.
-    // Si user es null pero isAuthenticated tampoco es true, aún está cargando.
-    if (!isAuthenticated) return;
+    // Sin sesión → al login, ACÁ MISMO.
+    //
+    // No es "todavía cargando": el AuthProvider no renderiza a sus hijos hasta
+    // terminar de rehidratar (contexts/AuthContext.tsx, `if (isLoading) return
+    // <spinner>`), así que si este layout llegó a montarse el auth ya está
+    // resuelto y `!isAuthenticated` significa que no hay sesión (o que la
+    // acaban de cerrar por token rechazado).
+    //
+    // Antes esto devolvía un spinner y NO renderizaba children, de modo que el
+    // <ProtectedRoute> que redirige al login —que vive debajo, adentro de
+    // page.tsx— nunca se montaba: la pantalla de pared quedaba en spinner
+    // infinito, sin cartel y sin salida. Por eso el redirect se hace en el
+    // layout, que es quien corta el árbol.
+    if (!isAuthenticated) {
+      router.replace('/login');
+      return;
+    }
     if (!canAccess) {
       router.replace('/dashboard');
     }
   }, [isAuthenticated, canAccess, router]);
 
-  // Mientras el auth no está listo, mostrar spinner neutro.
+  // Sin sesión: cartel legible (no un spinner) mientras se procesa el redirect.
+  // En un kiosko de pared el toast ya se fue y no hay nadie mirando; el cartel
+  // tiene que explicarse solo.
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stats-background dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-stats-info" />
+        <p className="text-stats-muted-fg dark:text-gray-400 text-sm">
+          Tu sesión no está activa. Redirigiendo al inicio de sesión…
+        </p>
       </div>
     );
   }

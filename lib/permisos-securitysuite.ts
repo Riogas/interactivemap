@@ -6,6 +6,24 @@
  * tiene acciones otorgadas".
  */
 
+import { es503Permanente, leerCodigoGuard } from './securitysuite-guard';
+
+/**
+ * Cada cuánto se revalida la sesión contra el SecuritySuite mientras la app
+ * está abierta (contexts/AuthContext.tsx).
+ *
+ * Por qué hace falta un intervalo y no alcanza con revalidar al montar: el
+ * kiosko de pared se monta UNA vez y queda días abierto (el rollover de
+ * medianoche es un setTimeout que cambia estado, no un reload). Sin intervalo,
+ * un token que muere al tercer día no lo detecta nadie — que es exactamente el
+ * caso que motivó todo esto.
+ *
+ * 10 minutos es el compromiso: la pantalla de pared se entera del token muerto
+ * en menos de lo que tarda alguien en pasar por ahí, y /api/db/permisos —el
+ * endpoint más caliente del ecosistema— recibe 6 requests por hora por pestaña.
+ */
+export const REVALIDACION_PERMISOS_INTERVAL_MS = 10 * 60 * 1000;
+
 // Acciones de permisos consultadas al Security Suite
 export const PERMISOS_A_CONSULTAR = [
   { ObjetoKey: 'dashboard', AccionKey: 'stats' },
@@ -30,16 +48,27 @@ export const PERMISOS_A_CONSULTAR = [
  *                               significa de verdad "sin acciones otorgadas".
  *  - 'sesion_invalida'  (401) → el SecuritySuite rechazó el token. Hay que
  *                               avisar y mandar a re-login.
- *  - 'servicio_no_configurado' (503) → al SecuritySuite le falta el secreto de
- *                               firma. Re-loguearse no arregla nada; es un
- *                               problema de infraestructura.
+ *  - 'servicio_no_configurado' (503 + x-auth-guard: SECRETO_NO_CONFIGURADO) →
+ *                               al SecuritySuite le falta el secreto de firma.
+ *                               Es PERMANENTE: ni reintentar ni re-loguearse lo
+ *                               arreglan.
+ *  - 'servicio_caido'   (503 sin ese código, típicamente ERROR_GUARD) → el guard
+ *                               del SecuritySuite falló (p.ej. Postgres no
+ *                               contesta). Es TRANSITORIO: se degrada igual que
+ *                               un error de red y se reintenta.
  *  - 'error_red'              → no llegamos a preguntar. Acá SÍ tiene sentido
  *                               degradar sin romper la sesión.
+ *
+ * La distinción entre los dos 503 no es cosmética: colapsarlos hacía que un hipo
+ * de Postgres a milisegundos de un login YA ACEPTADO dejara a todo el mundo
+ * afuera, con un cartel que decía "volvé a intentar" para algo que iba a fallar
+ * idéntico. Ver lib/securitysuite-guard.ts.
  */
 export type ResultadoPermisos =
   | { estado: 'ok'; permisos: Set<string> }
   | { estado: 'sesion_invalida' }
   | { estado: 'servicio_no_configurado' }
+  | { estado: 'servicio_caido' }
   | { estado: 'error_red' };
 
 export async function fetchPermisos(token: string): Promise<ResultadoPermisos> {
@@ -67,10 +96,21 @@ export async function fetchPermisos(token: string): Promise<ResultadoPermisos> {
   }
 
   if (res.status === 503) {
-    console.error(
-      '⛔ fetchPermisos: el servicio de seguridad no está disponible/configurado (503)',
+    // Cuál de los dos 503 es se lee del HEADER x-auth-guard, nunca del body: el
+    // guard de secapi manda prosa para humanos en `error` y el código en el
+    // header (ver lib/securitysuite-guard.ts). El proxy /api/auth/permisos lo
+    // reenvía tal cual para que esta rama pueda decidir.
+    const codigo = leerCodigoGuard(res);
+    if (es503Permanente(codigo)) {
+      console.error(
+        '⛔ fetchPermisos: al SecuritySuite le falta el secreto de firma (503 SECRETO_NO_CONFIGURADO) — reintentar no sirve',
+      );
+      return { estado: 'servicio_no_configurado' };
+    }
+    console.warn(
+      `⚠️ fetchPermisos: el SecuritySuite falló de forma transitoria (503${codigo ? ` ${codigo}` : ''}) — se reintenta`,
     );
-    return { estado: 'servicio_no_configurado' };
+    return { estado: 'servicio_caido' };
   }
 
   if (!res.ok) {

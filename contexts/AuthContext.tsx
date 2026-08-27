@@ -28,7 +28,10 @@ import {
   AVISO_SESION_RECHAZADA,
   setSessionNotice,
 } from '@/lib/session-notice';
-import { fetchPermisos } from '@/lib/permisos-securitysuite';
+import {
+  fetchPermisos,
+  REVALIDACION_PERMISOS_INTERVAL_MS,
+} from '@/lib/permisos-securitysuite';
 import toast from 'react-hot-toast';
 
 interface User {
@@ -416,7 +419,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(intervalId);
   }, [user?.loginTime]);
 
-  // 🔐 Revalidar la sesión contra el SecuritySuite cuando se rehidrata desde storage.
+  // 🔐 Revalidar la sesión contra el SecuritySuite: al rehidratar Y periódicamente.
   //
   // La sesión rehidratada puede traer un token que el SecuritySuite ya no acepta:
   // rotación del secreto de firma (invalida TODOS los tokens vigentes de golpe),
@@ -426,28 +429,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Kiosko no hay siquiera un vencimiento por inactividad que la rescate: la
   // pantalla se queda para siempre mostrando nada.
   //
-  // Criterio: solo el 401 cierra la sesión. Un error de red NO (un kiosko sin
-  // conectividad no debe desloguearse solo), y un 503 tampoco (el problema es de
-  // infraestructura; re-loguearse no lo arregla) — ahí avisamos y seguimos.
+  // POR QUÉ UN INTERVALO Y NO SOLO AL MONTAR: el kiosko de pared se monta una
+  // sola vez y queda días abierto (el rollover de medianoche de /dashboard/stats
+  // es un setTimeout que cambia estado, NO un location.reload). Chequear solo al
+  // montar dejaba sin cubrir justo el caso del pedido: el token muere el día 3
+  // con la página abierta y nadie se entera. Además, un blip de red en el
+  // arranque quemaba el único intento de toda la vida de la página.
+  //
+  // Criterio de qué cierra la sesión: SOLO el 401. Un error de red no (un kiosko
+  // sin conectividad no debe desloguearse solo) y un 503 tampoco (es problema de
+  // infraestructura; re-loguearse no lo arregla) — ahí avisamos y seguimos con
+  // los permisos cacheados.
   useEffect(() => {
     const token = user?.token;
     if (!token) return;
-    // login() ya consultó para este token: no repetir.
-    if (permisosConsultadosRef.current === token) return;
-    permisosConsultadosRef.current = token;
 
     let cancelled = false;
-    (async () => {
+
+    const revalidar = async () => {
       const resultado = await fetchPermisos(token);
       if (cancelled) return;
 
       if (resultado.estado === 'ok') {
         // Además de validar la sesión, refresca el cache: si a alguien le
-        // revocaron un permiso, se aplica en el próximo arranque.
+        // revocaron un permiso, se aplica sin esperar al próximo arranque.
+        permisosConsultadosRef.current = token;
         setPermisos(resultado.permisos);
         authStorage.setItem('trackmovil_permisos', JSON.stringify([...resultado.permisos]));
         return;
       }
+
+      // Cualquier desenlace que NO sea 'ok' deja de contar como "ya consultado":
+      // así un remontaje reintenta en vez de dar por saldado un intento fallido.
+      permisosConsultadosRef.current = null;
 
       if (resultado.estado === 'sesion_invalida') {
         console.warn('🔐 Sesión rechazada por el SecuritySuite — cerrando sesión');
@@ -457,17 +471,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (resultado.estado === 'servicio_no_configurado') {
+        // Permanente (falta JWT_SECRET): el próximo tick va a fallar igual, pero
+        // no cerramos la sesión porque re-loguearse tampoco lo arregla.
         toast.error(
-          'El servicio de seguridad no está disponible. Los permisos pueden estar desactualizados — avisá a sistemas.',
+          'El servicio de seguridad no está configurado. Los permisos pueden estar desactualizados — avisá a sistemas.',
         );
         return;
       }
 
-      // error_red: dejamos los permisos cacheados como están y seguimos.
-      console.warn('⚠️ No se pudieron revalidar los permisos (red) — se usan los cacheados');
-    })();
+      // 'servicio_caido' (503 transitorio) y 'error_red': dejamos los permisos
+      // cacheados como están y seguimos. El próximo tick del intervalo reintenta,
+      // así que no se avisa por toast para no empapelar una pantalla de pared.
+      console.warn(
+        `⚠️ No se pudieron revalidar los permisos (${resultado.estado}) — se usan los cacheados; se reintenta en ${Math.round(REVALIDACION_PERMISOS_INTERVAL_MS / 60000)} min`,
+      );
+    };
 
-    return () => { cancelled = true; };
+    // Primera pasada al montar, salvo que login() ya haya consultado ESTE token
+    // hace un instante (evita duplicar la llamada justo después de entrar).
+    if (permisosConsultadosRef.current !== token) {
+      permisosConsultadosRef.current = token;
+      void revalidar();
+    }
+
+    const intervalId = setInterval(() => { void revalidar(); }, REVALIDACION_PERMISOS_INTERVAL_MS);
+
+    return () => { cancelled = true; clearInterval(intervalId); };
   }, [user?.token, clearSession]);
 
   // ⏰ Tracking de actividad: cada interacción del usuario renueva la ventana de
@@ -646,32 +675,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           resultadoPermisos.estado === 'sesion_invalida' ||
           resultadoPermisos.estado === 'servicio_no_configurado'
         ) {
-          // El SecuritySuite acaba de emitir este token y ya lo rechaza (401), o
-          // no tiene el secreto de firma configurado (503). Dejar entrar igual
+          // Cortamos SOLO ante fallas permanentes: el SecuritySuite acaba de
+          // emitir este token y ya lo rechaza (401), o no tiene el secreto de
+          // firma configurado (503 SECRETO_NO_CONFIGURADO). Dejar entrar igual
           // sería el peor de los mundos: usuario adentro, todas las acciones
-          // deshabilitadas y ningún cartel. Preferimos no loguear y decir qué pasó.
+          // deshabilitadas y ningún cartel.
+          //
+          // Ojo con lo que NO entra acá: el otro 503 de secapi (ERROR_GUARD, un
+          // hipo de Postgres) llega como 'servicio_caido' y se degrada más abajo.
+          // Cortar también por ese caso dejaba a TODO el mundo afuera por un
+          // tropiezo transitorio, a milisegundos de un login ya aceptado, y con
+          // un cartel que decía "volvé a intentar" para algo que iba a fallar
+          // idéntico. Ver lib/securitysuite-guard.ts.
           console.error('❌ Login abortado: no se pudieron resolver los permisos', resultadoPermisos.estado);
           clearSession();
           return {
             success: false,
             error:
               resultadoPermisos.estado === 'servicio_no_configurado'
-                ? 'El servicio de seguridad no está disponible. Avisá a sistemas.'
+                ? 'El servicio de seguridad no está configurado. Reintentar no lo arregla — avisá a sistemas.'
                 : 'El servicio de seguridad rechazó la sesión. Volvé a intentar; si sigue, avisá a sistemas.',
           };
         }
 
-        if (resultadoPermisos.estado === 'error_red') {
-          // No llegamos a preguntar. Degradamos sin romper: entra con los
-          // permisos vacíos, pero AVISADO — así "todo deshabilitado" no se
-          // confunde con "no tenés permisos asignados".
-          console.warn('⚠️ Login sin permisos cargados (error de red)');
+        if (
+          resultadoPermisos.estado === 'error_red' ||
+          resultadoPermisos.estado === 'servicio_caido'
+        ) {
+          // No llegamos a preguntar (red), o el guard se cayó de forma
+          // transitoria. Degradamos sin romper: entra con los permisos vacíos,
+          // pero AVISADO — así "todo deshabilitado" no se confunde con "no tenés
+          // permisos asignados".
+          console.warn(`⚠️ Login sin permisos cargados (${resultadoPermisos.estado})`);
           setPermisos(new Set());
           authStorage.removeItem('trackmovil_permisos');
-          // No reintentamos en el acto (el efecto de revalidación pegaría otra
-          // vez contra la misma red caída); el próximo montaje lo reintenta.
+          // No reintentamos en el acto (pegaría otra vez contra lo mismo que
+          // acaba de fallar); el intervalo de revalidación lo reintenta solo.
           toast.error(
-            'No se pudieron cargar tus permisos (problema de red). Algunas acciones van a aparecer deshabilitadas: recargá la página.',
+            resultadoPermisos.estado === 'error_red'
+              ? 'No se pudieron cargar tus permisos (problema de red). Algunas acciones van a aparecer deshabilitadas: se reintenta solo.'
+              : 'El servicio de seguridad no respondió. Algunas acciones van a aparecer deshabilitadas: se reintenta solo.',
           );
         } else {
           setPermisos(resultadoPermisos.permisos);

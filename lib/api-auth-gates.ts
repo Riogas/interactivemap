@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { es503Permanente } from './securitysuite-guard';
 
 /**
  * requireFuncionalidad — gate genérico de autorización por funcionalidad.
@@ -110,10 +111,11 @@ export function requireAllowlistedEmail(
  * SecuritySuite venían mandando
  *   `Authorization: request.headers.get('Authorization') ?? ''`.
  * Con la sesión caída eso forwardea un header vacío y delega el rechazo al
- * upstream, que responde un 401 opaco ({ error: 'SIN_TOKEN' }) que el cliente
- * muestra como "Error del servicio upstream" — o, en la pantalla de listado,
- * como una tabla vacía sin ninguna explicación. Cortar acá permite decir lo que
- * realmente pasó: se cayó la sesión, no el otro servicio.
+ * upstream, que responde un 401 opaco (body con prosa genérica + el código
+ * SIN_TOKEN en el header `x-auth-guard`) que el cliente muestra como "Error del
+ * servicio upstream" — o, en la pantalla de listado, como una tabla vacía sin
+ * ninguna explicación. Cortar acá permite decir lo que realmente pasó: se cayó
+ * la sesión, no el otro servicio.
  *
  * Esto deja de ser un caso raro cuando el SecuritySuite cierra `/api/db/*`
  * (todas las operaciones pasan a exigir JWT con firma verificada): al setear el
@@ -154,25 +156,36 @@ export function requireAuthorizationHeader(request: NextRequest): string | NextR
 }
 
 /**
- * describirErrorUpstream — traduce el status de un error del SecuritySuite a un
- * mensaje que el usuario pueda accionar.
+ * describirErrorUpstream — traduce un error del SecuritySuite a un mensaje que
+ * el usuario pueda accionar.
  *
  * El SecuritySuite contesta con códigos internos (`TOKEN_INVALIDO`,
- * `TOKEN_VENCIDO`, `SIN_TOKEN`, `USUARIO_NO_ENCONTRADO`, `SECRETO_NO_CONFIGURADO`)
- * que, pasados tal cual al front, se leen como "se rompió algo" en vez de "se te
- * venció la sesión". Distinguir importa porque la acción del usuario es
- * distinta: re-loguearse (401), pedir permisos (403), o avisar a sistemas
- * (503 — re-loguearse no arregla nada).
+ * `TOKEN_VENCIDO`, `SIN_TOKEN`, `USUARIO_NO_ENCONTRADO`, `SIN_POLITICA`,
+ * `SECRETO_NO_CONFIGURADO`, `ERROR_GUARD`) que, pasados tal cual al front, se
+ * leen como "se rompió algo" en vez de "se te venció la sesión". Distinguir
+ * importa porque la acción es distinta: re-loguearse, pedir permisos, avisar a
+ * sistemas, o simplemente reintentar.
+ *
+ * DÓNDE VIENE EL CÓDIGO: en el header `x-auth-guard`, NO en el body. El guard
+ * manda en `error` un mensaje en prosa para humanos, así que comparar el body
+ * contra un código es código muerto (ver lib/securitysuite-guard.ts). Por eso el
+ * segundo parámetro: los callers le pasan `res.headers.get('x-auth-guard')`. Es
+ * opcional — sin él se cae al comportamiento por status, que es el conservador.
  *
  * `ocultarDetalle` marca los casos donde NO conviene reenviar el body del
  * upstream al cliente: las pantallas priorizan `detail.error` sobre `error`, así
- * que dejarlo pisaría el mensaje traducido con el código crudo.
+ * que dejarlo pisaría el mensaje traducido con el del upstream.
  */
-export function describirErrorUpstream(status: number): {
+export function describirErrorUpstream(
+  status: number,
+  codigoGuard?: string | null,
+): {
   error: string;
   code: string;
   ocultarDetalle: boolean;
 } {
+  const codigo = (codigoGuard ?? '').trim().toUpperCase();
+
   if (status === 401) {
     return {
       error: 'Tu sesión venció o no es válida. Volvé a iniciar sesión.',
@@ -181,6 +194,19 @@ export function describirErrorUpstream(status: number): {
     };
   }
   if (status === 403) {
+    // No todo 403 es "a este usuario le falta un permiso": el guard también
+    // devuelve 403 cuando la ruta no tiene política declarada o queda fuera del
+    // alcance del servicio. Eso es un bug de configuración, y mandar a soporte a
+    // revisar el RBAC del usuario cuando el problema está en la tabla de
+    // políticas es hacerle perder el tiempo al que atiende el reclamo.
+    if (codigo === 'SIN_POLITICA' || codigo === 'SERVICIO_FUERA_DE_ALCANCE') {
+      return {
+        error:
+          'El SecuritySuite no tiene declarada una política para esta operación. Es un problema de configuración, no de tus permisos — avisá a sistemas.',
+        code: 'CONFIG_UPSTREAM',
+        ocultarDetalle: false,
+      };
+    }
     return {
       error: 'No tenés permisos para esta operación en el SecuritySuite.',
       code: 'SIN_PERMISO_UPSTREAM',
@@ -188,9 +214,19 @@ export function describirErrorUpstream(status: number): {
     };
   }
   if (status === 503) {
+    // Los dos 503 del SecuritySuite no son lo mismo: falta el secreto de firma
+    // (permanente, reintentar no sirve) vs. el guard se cayó (transitorio).
+    if (es503Permanente(codigo)) {
+      return {
+        error:
+          'El servicio de seguridad no está configurado. Reintentar no lo arregla — avisá a sistemas.',
+        code: 'UPSTREAM_NO_CONFIGURADO',
+        ocultarDetalle: true,
+      };
+    }
     return {
       error:
-        'El servicio de seguridad no está disponible o no está configurado. Avisá a sistemas.',
+        'El servicio de seguridad no está respondiendo. Probá de nuevo en unos minutos; si sigue, avisá a sistemas.',
       code: 'UPSTREAM_NO_DISPONIBLE',
       ocultarDetalle: true,
     };

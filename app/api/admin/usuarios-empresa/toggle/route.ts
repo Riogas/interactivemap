@@ -4,6 +4,7 @@ import {
   requireAuthorizationHeader,
   requireFuncionalidad,
 } from '@/lib/api-auth-gates';
+import { HEADER_AUTH_GUARD } from '@/lib/securitysuite-guard';
 
 /**
  * API: POST /api/admin/usuarios-empresa/toggle
@@ -105,13 +106,19 @@ export async function POST(request: NextRequest) {
         `[usuarios-empresa/toggle] upstream error ${upstreamRes.status}:`,
         JSON.stringify(data),
       );
-      // El 401/503 del SecuritySuite llega con códigos internos
-      // (TOKEN_INVALIDO, TOKEN_VENCIDO, SECRETO_NO_CONFIGURADO, ...) que al
-      // usuario no le dicen nada. Los traducimos y, en esos casos, NO
-      // reenviamos `detail`: el cliente prioriza `detail.error` sobre `error`,
-      // así que dejarlo volvería a mostrar el código crudo. El body upstream
-      // igual queda en el log de arriba.
-      const desc = describirErrorUpstream(upstreamRes.status);
+      // El 401/403/503 del SecuritySuite trae el código interno (TOKEN_INVALIDO,
+      // TOKEN_VENCIDO, SIN_POLITICA, SECRETO_NO_CONFIGURADO, ERROR_GUARD, ...)
+      // en el header `x-auth-guard`, NO en el body — el body trae un mensaje
+      // genérico del upstream. Se lo pasamos a describirErrorUpstream para poder
+      // separar, por ejemplo, "falta el secreto" (permanente) de "el guard se
+      // cayó" (transitorio). En los casos con ocultarDetalle NO reenviamos
+      // `detail`: el cliente prioriza `detail.error` sobre `error`, así que
+      // dejarlo pisaría el mensaje traducido. El body upstream igual queda en el
+      // log de arriba.
+      const desc = describirErrorUpstream(
+        upstreamRes.status,
+        upstreamRes.headers.get(HEADER_AUTH_GUARD),
+      );
       return NextResponse.json(
         {
           success: false,

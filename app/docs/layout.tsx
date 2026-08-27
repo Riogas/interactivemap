@@ -38,14 +38,24 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
   const puedeVer = isRoot(user);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    // Sin sesión → al login. Mismo callejón que había en los layouts de
+    // /dashboard/stats y /dashboard/metricas-cumplimiento: el AuthProvider no
+    // renderiza children mientras rehidrata, así que acá `!isAuthenticated` ya
+    // significa "no hay sesión" y devolver un spinner sin renderizar children
+    // dejaba la pantalla girando para siempre, sin cartel y sin salida.
+    if (!isAuthenticated) {
+      router.replace('/login');
+      return;
+    }
     if (!puedeVer) router.replace('/dashboard');
   }, [isAuthenticated, puedeVer, router]);
 
   if (!isAuthenticated) {
     return (
       <div className="h-full flex items-center justify-center bg-stats-background">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-stats-info" />
+        <p className="text-stats-muted-fg text-sm">
+          Tu sesión no está activa. Redirigiendo al inicio de sesión…
+        </p>
       </div>
     );
   }

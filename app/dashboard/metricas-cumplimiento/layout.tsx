@@ -24,18 +24,27 @@ export default function MetricasCumplimientoLayout({ children }: { children: Rea
   const canAccess = isRoot(user) || hasFuncionalidad(user?.roles, 'Estadisticas Cumplimiento');
 
   useEffect(() => {
-    // Esperar a que el contexto de auth esté resuelto antes de evaluar.
-    if (!isAuthenticated) return;
+    // Sin sesión → al login, ACÁ MISMO. Mismo razonamiento que en
+    // app/dashboard/stats/layout.tsx: el AuthProvider no renderiza children
+    // mientras rehidrata, así que `!isAuthenticated` acá no es "cargando" sino
+    // "no hay sesión". Devolver un spinner sin renderizar children dejaba al
+    // <ProtectedRoute> de la page sin montar y el redirect no ocurría nunca.
+    if (!isAuthenticated) {
+      router.replace('/login');
+      return;
+    }
     if (!canAccess) {
       router.replace('/dashboard');
     }
   }, [isAuthenticated, canAccess, router]);
 
-  // Mientras el auth no está listo, mostrar spinner neutro.
+  // Sin sesión: cartel legible (no un spinner) mientras se procesa el redirect.
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stats-background dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-stats-info" />
+        <p className="text-stats-muted-fg dark:text-gray-400 text-sm">
+          Tu sesión no está activa. Redirigiendo al inicio de sesión…
+        </p>
       </div>
     );
   }

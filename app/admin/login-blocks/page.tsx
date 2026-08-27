@@ -246,6 +246,9 @@ export default function LoginBlocksPage() {
   // ─── Estado: intentos ───────────────────────────────────────────────────────
   const [attempts, setAttempts] = useState<LoginAttempt[]>([]);
   const [attemptsLoading, setAttemptsLoading] = useState(true);
+  // Motivo por el que las columnas Nombre/Empresa quedaron sin resolver. null =
+  // se resolvieron bien (o solo hubo 404, que es "usuario inexistente", no falla).
+  const [avisoEnriquecido, setAvisoEnriquecido] = useState<string | null>(null);
   const [attemptsTotal, setAttemptsTotal] = useState(0);
   const [usernameFilter, setUsernameFilter] = useState('');
   const [ipFilter, setIpFilter] = useState('');
@@ -356,6 +359,24 @@ export default function LoginBlocksPage() {
         { headers: getAuthHeaders() }
       );
       if (!res.ok) {
+        // 404 = el usuario no existe en el SecuritySuite: resultado esperable de
+        // la búsqueda, se cachea como "sin datos" y listo.
+        //
+        // Cualquier otro status (401 sesión vencida, 403, 502, 503) es un fallo
+        // del servicio: la tabla se muestra SIN enriquecer y hasta ahora eso
+        // pasaba en silencio — el operador veía Nombre/Empresa en blanco y lo
+        // leía como "estos usuarios no tienen datos cargados". La ruta ya
+        // traduce el error a algo accionable; lo levantamos a un cartel.
+        // Tampoco lo cacheamos: es una falla transitoria, el próximo refresh
+        // tiene que reintentar en vez de dar el usuario por irresoluble.
+        if (res.status !== 404) {
+          const json = await res.json().catch(() => null);
+          setAvisoEnriquecido(
+            (json?.error as string | undefined) ??
+              'No se pudieron resolver los datos de los usuarios en el SecuritySuite.',
+          );
+          return null;
+        }
         cache.set(username, null);
         return null;
       }
@@ -368,13 +389,21 @@ export default function LoginBlocksPage() {
       cache.set(username, null);
       return null;
     } catch {
-      cache.set(username, null);
+      // Ni siquiera llegamos a preguntar (red): mismo criterio que arriba, se
+      // avisa y no se cachea para poder reintentar.
+      setAvisoEnriquecido(
+        'No se pudieron resolver los datos de los usuarios (problema de red). Las columnas Nombre y Empresa quedan vacías.',
+      );
       return null;
     }
   }, []);
 
   // ─── Enriquecer intentos con nombre y empresa fletera (batched, concurrencia 5) ──
   const enrichAttempts = useCallback(async (rawAttempts: LoginAttempt[]) => {
+    // Arrancar limpio: si esta pasada resuelve bien, el cartel de la anterior
+    // no debe quedar colgado.
+    setAvisoEnriquecido(null);
+
     // Deduplicar usernames que no esten en cache
     const uniqueUsernames = [...new Set(rawAttempts.map(a => a.username))].filter(
       u => !userDetailCacheRef.current.has(u)
@@ -398,8 +427,11 @@ export default function LoginBlocksPage() {
     setAttempts(prev => prev.map(attempt => {
       const cached = userDetailCacheRef.current.get(attempt.username);
       if (cached === undefined) {
-        // Todavia no resuelto (no deberia pasar, pero defensivo)
-        return attempt;
+        // No quedó en cache: falló el servicio (ver resolveUsuarioDetalle, que a
+        // propósito no cachea los errores para poder reintentar). Hay que apagar
+        // el spinner igual, si no la celda gira para siempre; el motivo lo
+        // explica el cartel de avisoEnriquecido.
+        return { ...attempt, _resolving: false };
       }
       if (cached === null) {
         // 404 — usuario no encontrado
@@ -1393,6 +1425,21 @@ export default function LoginBlocksPage() {
               />
             </div>
           </div>
+
+          {/* La tabla se muestra igual aunque el enriquecimiento falle (los
+              intentos son datos propios), pero con el motivo a la vista: una
+              tabla con Nombre y Empresa en blanco y sin explicación se lee como
+              un problema de datos y no como una sesión vencida. */}
+          {avisoEnriquecido && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <svg className="mt-0.5 h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+              <span>
+                {avisoEnriquecido} Las columnas <strong>Nombre</strong> y <strong>Empresa</strong> pueden aparecer vacías.
+              </span>
+            </div>
+          )}
 
           {attemptsLoading ? (
             <div className="flex items-center gap-2 text-gray-400 text-sm py-4">

@@ -5,6 +5,7 @@ import {
   requireAuthorizationHeader,
   requireFuncionalidad,
 } from '@/lib/api-auth-gates';
+import { HEADER_AUTH_GUARD } from '@/lib/securitysuite-guard';
 
 /**
  * API proxy: GET /api/admin/usuarios-empresa
@@ -149,7 +150,9 @@ export async function GET(request: NextRequest) {
   const authHeader = auth;
 
   // Helper interno para llamar al upstream con un param ya construido.
-  async function callUpstream(param: string): Promise<{ ok: boolean; status: number; body: unknown; url: string }> {
+  // `guard` es el header x-auth-guard del upstream: el código del rechazo viaja
+  // ahí y no en el body, así que hay que arrastrarlo hasta describirErrorUpstream.
+  async function callUpstream(param: string): Promise<{ ok: boolean; status: number; body: unknown; url: string; guard: string | null }> {
     const upstreamUrl = `${SECURITY_SUITE_URL}/api/db/usuarios/por-empresa-fletera?empresas=${encodeURIComponent(param)}`;
     console.log(
       `[usuarios-empresa] GET upstream → ${upstreamUrl} (caller: ${request.headers.get('x-track-user') ?? 'unknown'})`,
@@ -164,7 +167,13 @@ export async function GET(request: NextRequest) {
         signal: AbortSignal.timeout(15000),
       });
       const body = await upstreamRes.json().catch(() => null);
-      return { ok: upstreamRes.ok, status: upstreamRes.status, body, url: upstreamUrl };
+      return {
+        ok: upstreamRes.ok,
+        status: upstreamRes.status,
+        body,
+        url: upstreamUrl,
+        guard: upstreamRes.headers.get(HEADER_AUTH_GUARD),
+      };
     } catch (err) {
       console.error('[usuarios-empresa] Excepción al llamar upstream:', err);
       throw err;
@@ -181,7 +190,7 @@ export async function GET(request: NextRequest) {
       );
       // Traducir 401/403/503 del SecuritySuite a algo accionable — ver
       // describirErrorUpstream. La pantalla muestra `json.error` tal cual.
-      const desc = describirErrorUpstream(attempt.status);
+      const desc = describirErrorUpstream(attempt.status, attempt.guard);
       return NextResponse.json(
         {
           success: false,

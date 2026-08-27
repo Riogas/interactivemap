@@ -351,9 +351,13 @@ describe('gate de sesión en los proxies al SecuritySuite', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('401 del upstream se traduce a un mensaje de sesión, sin filtrar TOKEN_INVALIDO', async () => {
+  it('401 del upstream se traduce a un mensaje de sesión, sin filtrar el detalle del upstream', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: 'TOKEN_INVALIDO' }), { status: 401 }),
+      // Shape REAL de secapi: prosa en el body, código en el header.
+      new Response(
+        JSON.stringify({ success: false, error: 'Tu sesión no es válida, volvé a iniciar sesión' }),
+        { status: 401, headers: { 'x-auth-guard': 'TOKEN_INVALIDO' } },
+      ),
     );
 
     const req = makeRequest(
@@ -371,9 +375,38 @@ describe('gate de sesión en los proxies al SecuritySuite', () => {
     expect(body.detail).toBeUndefined();
   });
 
-  it('503 SECRETO_NO_CONFIGURADO del upstream NO se presenta como sesión vencida', async () => {
+  // OJO con el shape del mock: secapi manda el CÓDIGO en el header x-auth-guard
+  // y en el body un mensaje en prosa. Mockear `{ error: 'SECRETO_NO_CONFIGURADO' }`
+  // era modelar una respuesta que el servidor nunca emite.
+  it('503 SECRETO_NO_CONFIGURADO (header) → permanente, y NO se presenta como sesión vencida', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: 'SECRETO_NO_CONFIGURADO' }), { status: 503 }),
+      new Response(JSON.stringify({ success: false, error: 'Servicio no configurado' }), {
+        status: 503,
+        headers: { 'x-auth-guard': 'SECRETO_NO_CONFIGURADO' },
+      }),
+    );
+
+    const req = makeRequest(
+      'POST',
+      'http://localhost/api/admin/usuarios-empresa/toggle',
+      rootHeaders(),
+      { userId: 5, enabled: true },
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.code).toBe('UPSTREAM_NO_CONFIGURADO');
+    expect(body.error).not.toMatch(/volvé a iniciar sesión/i);
+    // Reintentar no arregla nada: el mensaje no debe invitar a hacerlo.
+    expect(body.error).toMatch(/no lo arregla/i);
+  });
+
+  it('503 ERROR_GUARD (header) → transitorio, el mensaje invita a reintentar', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, error: 'Error del guard' }), {
+        status: 503,
+        headers: { 'x-auth-guard': 'ERROR_GUARD' },
+      }),
     );
 
     const req = makeRequest(
@@ -386,6 +419,6 @@ describe('gate de sesión en los proxies al SecuritySuite', () => {
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.code).toBe('UPSTREAM_NO_DISPONIBLE');
-    expect(body.error).not.toMatch(/volvé a iniciar sesión/i);
+    expect(body.error).toMatch(/de nuevo/i);
   });
 });

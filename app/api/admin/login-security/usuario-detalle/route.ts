@@ -4,6 +4,7 @@ import {
   requireAuthorizationHeader,
   requireFuncionalidad,
 } from '@/lib/api-auth-gates';
+import { HEADER_AUTH_GUARD } from '@/lib/securitysuite-guard';
 
 /**
  * GET /api/admin/login-security/usuario-detalle?username=X
@@ -84,7 +85,11 @@ export async function GET(request: NextRequest) {
       // 404 conserva su mensaje propio (es un resultado esperable de la
       // búsqueda). El resto pasa por describirErrorUpstream para que un 401 del
       // SecuritySuite se lea como "se te venció la sesión" y no como una caída.
-      const desc = describirErrorUpstream(upstreamRes.status);
+      // El código del guard viaja en el header `x-auth-guard`, no en el body.
+      const desc = describirErrorUpstream(
+        upstreamRes.status,
+        upstreamRes.headers.get(HEADER_AUTH_GUARD),
+      );
       return NextResponse.json(
         {
           success: false,
